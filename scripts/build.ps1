@@ -39,10 +39,10 @@ if (-not (Test-Path $sln)) {
 	exit 1
 }
 
-$out = & $msbuild $sln -restore -m -nologo -verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" 2>&1
+$out = & $msbuild $sln -restore "-p:RestorePackagesConfig=true" -m -nologo -verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" 2>&1
 $code = $LASTEXITCODE
-$diag = $out | ForEach-Object { "$_" } | Where-Object { $_ -match ":\s*(fatal )?(error|warning) [A-Z]*\d+" } | Select-Object -Unique
-$errors = @($diag | Where-Object { $_ -match ":\s*(fatal )?error " }).Count
+$diag = $out | ForEach-Object { "$_" } | Where-Object { $_ -match ":\s*(fatal )?(error|warning)( [A-Z]+\d+)?\s*:" } | Select-Object -Unique
+$errors = @($diag | Where-Object { $_ -match ":\s*(fatal )?error( [A-Z]+\d+)?\s*:" }).Count
 $warnings = @($diag).Count - $errors
 $diag | Select-Object -First 30 | ForEach-Object { Write-Output $_ }
 if ($code -ne 0 -and @($diag).Count -eq 0) {
