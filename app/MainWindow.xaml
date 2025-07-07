@@ -28,6 +28,37 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	mc:Ignorable="d"
 	Title="Sable">
 
-	<Grid>
+	<!-- port of app/index.html (L100-110) and app/css/index.sass (L12-49).
+		Only the splash so far: no tabs, so NightPDF hides the header too. -->
+	<Grid Background="#1e1e1e">
+		<Grid x:Name="splashContainer">
+			<!-- #splash: 300x232, 60px from the top, centred -->
+			<Grid x:Name="splash" Width="300" Height="232" Margin="0,60,0,0"
+				HorizontalAlignment="Center" VerticalAlignment="Top">
+				<!-- the dashed border is gradient3.svg in NightPDF, drawn here
+					instead of loaded. StrokeDashArray counts in stroke widths,
+					so "2 2" at 3px is the svg's "6 6" -->
+				<Rectangle StrokeThickness="3" StrokeDashArray="2 2" RadiusX="4" RadiusY="4">
+					<Rectangle.Stroke>
+						<LinearGradientBrush MappingMode="Absolute" StartPoint="156.079,232" EndPoint="143.921,0">
+							<GradientStop Offset="0" Color="#29c0ea" />
+							<GradientStop Offset="0.683" Color="#d773e9" />
+							<GradientStop Offset="1" Color="#fc515d" />
+						</LinearGradientBrush>
+					</Rectangle.Stroke>
+				</Rectangle>
+				<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+					<Image Source="ms-appx:///assets/icon2.png" Width="100" Margin="0,0,0,20" />
+					<!-- an h3 inside an 18px box: 1.17em, bold, 1em top margin -->
+					<TextBlock Text="Drop PDF here" FontSize="21" FontWeight="Bold"
+						Foreground="#cccccc" Margin="0,21,0,0" HorizontalAlignment="Center" />
+				</StackPanel>
+			</Grid>
+			<!-- #splash-extra: 316px from the top, h3 at 16.64px -->
+			<TextBlock x:Name="prompt" Text="Open File with CTRL+O" FontSize="16.64"
+				FontWeight="Bold" Foreground="#bbbbbb" Margin="0,333,0,0"
+				HorizontalAlignment="Center" VerticalAlignment="Top" />
+		</Grid>
 	</Grid>
 </Window>
+<!--trans rights-->
