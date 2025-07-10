@@ -31,6 +31,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<ResourceDictionary.MergedDictionaries>
 				<XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
 			</ResourceDictionary.MergedDictionaries>
+
+			<!-- Manrope instead of NightPDF's Arial (see docs/DECISIONS.md).
+				It's a variable font; FontWeight picks from the wght axis. -->
+			<FontFamily x:Key="SableFontFamily">ms-appx:///assets/fonts/Manrope-VF.ttf#Manrope</FontFamily>
+			<!-- controls (buttons, menus, ...) read this key -->
+			<FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///assets/fonts/Manrope-VF.ttf#Manrope</FontFamily>
+			<!-- plain TextBlocks don't, so give them an implicit style -->
+			<Style TargetType="TextBlock">
+				<Setter Property="FontFamily" Value="{StaticResource SableFontFamily}" />
+			</Style>
 		</ResourceDictionary>
 	</Application.Resources>
 </Application>

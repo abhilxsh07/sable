@@ -46,12 +46,20 @@ manifest mode, with a pinned baseline.
 Every file keeps Advaith Madhukar's 2021 copyright line from NightPDF and adds
 mine below it. First line of the header: "Sable, a native port of NightPDF".
 
+## Font: Manrope (2026-10-07)
+
+NightPDF used Arial everywhere, and the WinUI default would be Segoe UI. I
+wanted something with a bit more character that still reads well as small
+light text on a dark background, so I went with Manrope. It's a variable
+font (wght 200-800), OFL licensed, and ships inside the app with its licence
+next to it. Taken from googlefonts/manrope at
+`468c0dbe38efa331b80bfe9448256abe27be44c3` (v4.505).
+
 ## Still undecided
 
 - Help menu links. Upstream is archived and its issues are closed, so pointing
   there makes no sense.
 - Whether to import settings from an existing NightPDF install.
-- Font: Segoe UI Variable (the WinUI default) or Arial like upstream.
 - File associations other than .pdf.
 - Packaging. Probably Velopack, but that can wait until there's something to
   ship.
@@ -71,6 +79,7 @@ mine below it. First line of the header: "Sable, a native port of NightPDF".
 
 ## Differences from NightPDF
 
+- The UI font is Manrope, not Arial (see above).
 - `update_pdfium.py --pinned`: upstream committed pdf.js straight into the
   repo, so `update_pdfjs.py` only ever had to update it. I'm not committing
   the PDFium binaries, so a fresh clone needs a way to download the pinned
