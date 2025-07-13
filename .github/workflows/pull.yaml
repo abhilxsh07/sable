@@ -41,14 +41,14 @@ jobs:
       # keep vcpkg's built libraries between runs (gtest, spdlog, ...)
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: cache nuget packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: packages
           key: nuget-${{ hashFiles('app/packages.config') }}
       - name: cache vcpkg builds
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vcpkg-cache
           key: vcpkg-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
