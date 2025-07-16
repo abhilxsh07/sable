@@ -81,7 +81,8 @@ next to it. Taken from googlefonts/manrope at
 
 - The UI font is Manrope, not Arial (see above).
 - `pull.yaml` also runs on pushes to main and by hand, not only on pull
-  requests. It builds x64 and ARM64 on windows-2025 and runs the tests on x64.
+  requests. It builds x64 and ARM64 on windows-2022 (windows-2025 only has VS 2026) and
+  runs the tests on x64.
 - `update_pdfium.py --pinned`: upstream committed pdf.js straight into the
   repo, so `update_pdfjs.py` only ever had to update it. I'm not committing
   the PDFium binaries, so a fresh clone needs a way to download the pinned
