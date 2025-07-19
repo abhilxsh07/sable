@@ -6,7 +6,9 @@ built on PDF.js and has since been archived. Sable is C++/WinRT with WinUI 3
 (Windows App SDK) and PDFium, and the dark filter is done in Direct2D.
 
 The plan is parity first: same features, presets, colours, keybinds, settings
-and command line as NightPDF. Improvements come after that.
+and command line as NightPDF. After that it grows into a full reader, with
+comments, Fill & Sign, page organizing and more, all offline. See
+[docs/DESIGN.md](docs/DESIGN.md).
 
 Status: very early. Nothing runs yet.
 
