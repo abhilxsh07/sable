@@ -27,8 +27,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			treat that one as a message. -->
 		<MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);CS1668</MSBuildWarningsAsMessages>
 	</PropertyGroup>
+	<PropertyGroup>
+		<!-- versionString() reports these. VERSION and .pdfium_version are the
+			real sources; the App SDK one has to match app/packages.config,
+			which CheckWinAppSdkVersion below makes sure of. -->
+		<SableVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</SableVersion>
+		<SablePdfiumVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory).pdfium_version').Trim())</SablePdfiumVersion>
+		<SableWinAppSdkVersion>2.5.1</SableWinAppSdkVersion>
+	</PropertyGroup>
 	<ItemDefinitionGroup>
 		<ClCompile>
+			<PreprocessorDefinitions>SABLE_VERSION="$(SableVersion)";SABLE_PDFIUM_VERSION="$(SablePdfiumVersion)";SABLE_WINAPPSDK_VERSION="$(SableWinAppSdkVersion)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
 			<LanguageStandard>stdcpp20</LanguageStandard>
 			<!-- /permissive- -->
 			<ConformanceMode>true</ConformanceMode>
@@ -68,4 +77,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<AdditionalOptions>%(AdditionalOptions) /defaultlib:ucrt.lib</AdditionalOptions>
 		</Link>
 	</ItemDefinitionGroup>
+
+	<Target Name="CheckWinAppSdkVersion" BeforeTargets="PrepareForBuild" Condition="'$(MSBuildProjectName)'=='Sable'">
+		<XmlPeek XmlInputPath="$(MSBuildProjectDirectory)\packages.config" Query="/packages/package[@id='Microsoft.WindowsAppSDK']/@version">
+			<Output TaskParameter="Result" PropertyName="_SablePackagesConfigSdk" />
+		</XmlPeek>
+		<Error Condition="'$(_SablePackagesConfigSdk)' != '$(SableWinAppSdkVersion)'" Text="SableWinAppSdkVersion ($(SableWinAppSdkVersion)) doesn't match Microsoft.WindowsAppSDK in packages.config ($(_SablePackagesConfigSdk)). Update Directory.Build.props." />
+	</Target>
 </Project>
