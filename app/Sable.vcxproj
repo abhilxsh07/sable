@@ -160,11 +160,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- helpers/ is plain C++ with no WinRT in it, so it stays out of the pch -->
 	<ItemGroup>
 		<ClInclude Include="helpers\version.h" />
+		<ClInclude Include="helpers\sliders.h" />
 		<ClInclude Include="helpers\settings.h" />
 		<ClInclude Include="helpers\keybinds.h" />
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="helpers\version.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\sliders.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\settings.cpp">
