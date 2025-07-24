@@ -203,11 +203,20 @@ TEST(ParseCli, PageWithoutAPdfIsDropped) {
 	EXPECT_FALSE(r.page.has_value());
 }
 
-TEST(ParseCli, UnknownOptionIsAnError) {
+TEST(ParseCli, UnknownOptionsAreIgnored) {
 	const CliArgs r = parseCli({"a.pdf", "--hlep"});
-	EXPECT_EQ(r.error, "Unknown argument: hlep");
-	EXPECT_EQ(parseCli({"-x"}).error, "Unknown argument: x");
-	EXPECT_EQ(parseCli({"--color=red"}).error, "Unknown argument: color");
+	EXPECT_TRUE(r.error.empty());
+	EXPECT_EQ(r.files, Args({"a.pdf"}));
+	// and they don't take the next argument with them
+	EXPECT_EQ(parseCli({"-x", "c.pdf"}).files, Args({"c.pdf"}));
+	EXPECT_EQ(parseCli({"--color=red", "b.pdf"}).files, Args({"b.pdf"}));
+}
+
+TEST(FileUrl, LeavesNulAndBrokenUtf8Encoded) {
+	EXPECT_EQ(helpers::fileUrlToPath("file:///C:/a%00b.pdf"), "C:/a%00b.pdf");
+	EXPECT_EQ(helpers::fileUrlToPath("file:///C:/a%FFb.pdf"), "C:/a%FFb.pdf");
+	EXPECT_EQ(helpers::fileUrlToPath("file:///C:/%C3%A9t%C3%A9.pdf"),
+	          "C:/\xC3\xA9t\xC3\xA9.pdf");
 }
 
 TEST(ParseCli, DoubleDashEndsTheOptions) {

@@ -25,7 +25,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace helpers {
 long long mathRound(double value) {
-	return static_cast<long long>(std::floor(value + 0.5));
+	// the sliders never get near these, but a hand-edited value could, and
+	// casting NaN or something past 2^63 to an integer is undefined
+	if (!std::isfinite(value)) {
+		return 0;
+	}
+	const double rounded = std::floor(value + 0.5);
+	if (rounded >= 9.2e18 || rounded <= -9.2e18) {
+		return rounded > 0 ? 9200000000000000000LL : -9200000000000000000LL;
+	}
+	return static_cast<long long>(rounded);
 }
 
 // port of app/helpers/private.ts setupSliders() (L150-296), tooltips[0].to

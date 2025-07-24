@@ -93,12 +93,37 @@ int hexValue(char c) {
 	return -1;
 }
 
-// a broken escape like "%zz" is left as it is
+bool isValidUtf8(const std::string& text) {
+	size_t i = 0;
+	while (i < text.size()) {
+		const auto c = static_cast<unsigned char>(text[i]);
+		size_t len = c < 0x80           ? 1
+		             : (c >> 5) == 0x6  ? 2
+		             : (c >> 4) == 0xE  ? 3
+		             : (c >> 3) == 0x1E ? 4
+		                                : 0;
+		if (len == 0 || i + len > text.size()) {
+			return false;
+		}
+		for (size_t k = 1; k < len; k++) {
+			if ((static_cast<unsigned char>(text[i + k]) >> 6) != 0x2) {
+				return false;
+			}
+		}
+		i += len;
+	}
+	return true;
+}
+
+// a broken escape like "%zz" is left as it is. So is %00 (a NUL in the
+// middle of a path) and anything that doesn't decode to valid UTF-8, since
+// the app turns the path back into UTF-16 later.
 std::string percentDecode(const std::string& text) {
 	std::string out;
 	for (size_t i = 0; i < text.size(); i++) {
 		if (text[i] == '%' && i + 2 < text.size() &&
-		    hexValue(text[i + 1]) >= 0 && hexValue(text[i + 2]) >= 0) {
+		    hexValue(text[i + 1]) >= 0 && hexValue(text[i + 2]) >= 0 &&
+		    hexValue(text[i + 1]) * 16 + hexValue(text[i + 2]) != 0) {
 			out += static_cast<char>(hexValue(text[i + 1]) * 16 +
 			                         hexValue(text[i + 2]));
 			i += 2;
@@ -106,7 +131,7 @@ std::string percentDecode(const std::string& text) {
 			out += text[i];
 		}
 	}
-	return out;
+	return isValidUtf8(out) ? out : text;
 }
 
 bool startsWithNoCase(const std::string& text, const std::string& prefix) {
@@ -266,15 +291,10 @@ CliArgs parseCli(const std::vector<std::string>& args) {
 			const size_t skip = arg[2] == '=' ? 3 : 2;
 			result.page = parsePage(arg.substr(skip));
 		} else {
-			// yargs would quietly swallow this, and the next argument along
-			// with it. A typo like --hlep is better off with a message.
-			const size_t equals = arg.find('=');
-			const size_t dashes = arg.rfind("--", 0) == 0 ? 2 : 1;
-			result.error = "Unknown argument: " +
-			               arg.substr(dashes, equals == std::string::npos
-			                                      ? std::string::npos
-			                                      : equals - dashes);
-			break;
+			// unknown options are ignored, like yargs does. yargs would also
+			// take the next argument as their value, so "--foo file.pdf"
+			// lost the file in NightPDF. Here it doesn't.
+			continue;
 		}
 	}
 	// app.ts only looks at -p when there is a pdf to open
