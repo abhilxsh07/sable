@@ -31,9 +31,15 @@ if (-not $tests) {
 	exit 1
 }
 $failed = 0
-foreach ($t in $tests) {
-	& $t.FullName --gtest_brief=1
-	if ($LASTEXITCODE -ne 0) { $failed++ }
+# run from the repo root, some tests read files under tests/ (golden data)
+Push-Location $root
+try {
+	foreach ($t in $tests) {
+		& $t.FullName --gtest_brief=1
+		if ($LASTEXITCODE -ne 0) { $failed++ }
+	}
+} finally {
+	Pop-Location
 }
 $state = if ($failed -eq 0) { "OK" } else { "FAILED" }
 Write-Output "test ${state}: $(@($tests).Count) binary(ies), $failed failing"
