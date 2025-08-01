@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ResourceDictionary>
 			<ResourceDictionary.MergedDictionaries>
 				<XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+				<ResourceDictionary Source="ms-appx:///styles/Theme.xaml" />
 			</ResourceDictionary.MergedDictionaries>
 
 			<!-- Manrope instead of NightPDF's Arial (see docs/DECISIONS.md).

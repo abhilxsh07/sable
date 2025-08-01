@@ -95,7 +95,12 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
 
 - The UI font is Manrope, not Arial (see above).
 - The classic File / Edit / View / Window / Help menu bar becomes a single
-  Menu button.
+  Menu button. Help points at Sable's repo instead of NightPDF's, and there's
+  no Contact item for now.
+- The window opens maximized. Restoring it still gives NightPDF's 550x420
+  (565 wide really, because of the minimum width).
+- The title bar is drawn by the app (WinUI's TitleBar control) so the Menu
+  button, and later the tabs and presets, can live in it.
 - Lots of tools NightPDF never had (see DESIGN.md).
 - Unknown command-line options are ignored like yargs did, but they don't
   take the next argument as their value. In NightPDF `--foo file.pdf` meant

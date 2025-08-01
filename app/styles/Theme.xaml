@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+-->
+<!-- Colours and shared styles. The greys build on NightPDF's #1e1e1e and
+	#2d2d2d, the accent is the splash border's gradient. -->
+<ResourceDictionary
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+	<ResourceDictionary.ThemeDictionaries>
+		<!-- the app is always dark (App.xaml), so Default is the only one -->
+		<ResourceDictionary x:Key="Default">
+			<SolidColorBrush x:Key="SableTitleBarBrush" Color="#1a1a1a" />
+			<SolidColorBrush x:Key="SablePaneBrush" Color="#1e1e1e" />
+			<SolidColorBrush x:Key="SableContentBrush" Color="#232323" />
+			<SolidColorBrush x:Key="SableCardBrush" Color="#2b2b2b" />
+			<SolidColorBrush x:Key="SableCardHoverBrush" Color="#323232" />
+			<SolidColorBrush x:Key="SableCardPressedBrush" Color="#282828" />
+			<SolidColorBrush x:Key="SableCardBorderBrush" Color="#353535" />
+			<SolidColorBrush x:Key="SableDividerBrush" Color="#333333" />
+			<SolidColorBrush x:Key="SableTextBrush" Color="#e8e8e8" />
+			<SolidColorBrush x:Key="SableTextSecondaryBrush" Color="#a6a6a6" />
+			<SolidColorBrush x:Key="SableTextTertiaryBrush" Color="#7a7a7a" />
+		</ResourceDictionary>
+	</ResourceDictionary.ThemeDictionaries>
+
+	<Color x:Key="SableCyan">#29c0ea</Color>
+	<Color x:Key="SableViolet">#d773e9</Color>
+	<Color x:Key="SableCoral">#fc515d</Color>
+
+	<!-- left to right version of the splash gradient, for buttons -->
+	<LinearGradientBrush x:Key="SableAccentGradient" StartPoint="0,0.5" EndPoint="1,0.5">
+		<GradientStop Offset="0" Color="#29c0ea" />
+		<GradientStop Offset="0.683" Color="#d773e9" />
+		<GradientStop Offset="1" Color="#fc515d" />
+	</LinearGradientBrush>
+
+	<CornerRadius x:Key="SableCardCornerRadius">8</CornerRadius>
+
+	<!-- flat buttons that sit in the title bar (the Menu button) -->
+	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="10,6" />
+		<Setter Property="CornerRadius" Value="4" />
+		<Setter Property="FontSize" Value="13" />
+		<Setter Property="VerticalAlignment" Value="Center" />
+	</Style>
+</ResourceDictionary>

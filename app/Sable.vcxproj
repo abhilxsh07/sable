@@ -114,6 +114,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<WarningLevel>Level4</WarningLevel>
 			<AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
 		</ClCompile>
+		<Link>
+			<!-- ShellExecuteW, and the open dialog later on -->
+			<AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
 		<ClCompile>
@@ -144,6 +148,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ApplicationDefinition Include="App.xaml" />
 		<Page Include="MainWindow.xaml" />
+		<Page Include="styles\Theme.xaml" />
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="pch.cpp">
