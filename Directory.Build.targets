@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+-->
+<!-- PDFium for the app and the tests. This lives in .targets, not .props, so
+	it comes after Microsoft.Cpp's own defaults and adds to them instead of
+	getting overwritten. update_pdfium.py puts the build in
+	third_party/pdfium/{x64,arm64}. -->
+<Project>
+	<PropertyGroup Condition="'$(MSBuildProjectName)'=='Sable' or '$(MSBuildProjectName)'=='Sable.Tests'">
+		<SableUsesPdfium>true</SableUsesPdfium>
+		<SablePdfiumArch Condition="'$(Platform)'=='ARM64'">arm64</SablePdfiumArch>
+		<SablePdfiumArch Condition="'$(Platform)'!='ARM64'">x64</SablePdfiumArch>
+		<SablePdfiumDir>$(MSBuildThisFileDirectory)third_party\pdfium\$(SablePdfiumArch)\</SablePdfiumDir>
+	</PropertyGroup>
+
+	<ItemDefinitionGroup Condition="'$(SableUsesPdfium)'=='true'">
+		<ClCompile>
+			<AdditionalIncludeDirectories>$(SablePdfiumDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+		</ClCompile>
+		<Link>
+			<AdditionalDependencies>$(SablePdfiumDir)lib\pdfium.dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<!-- both exes load pdfium.dll from their own folder -->
+	<ItemGroup Condition="'$(SableUsesPdfium)'=='true'">
+		<CopyFileToFolders Include="$(SablePdfiumDir)bin\pdfium.dll">
+			<DestinationFolders>$(OutDir)</DestinationFolders>
+		</CopyFileToFolders>
+	</ItemGroup>
+
+	<Target Name="CheckPdfium" BeforeTargets="PrepareForBuild" Condition="'$(SableUsesPdfium)'=='true' and !Exists('$(SablePdfiumDir)bin\pdfium.dll')">
+		<Error Text="PDFium isn't downloaded yet ($(SablePdfiumDir) is missing). Run 'uv run update_pdfium.py --pinned' in the repo root." />
+	</Target>
+</Project>

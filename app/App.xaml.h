@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "App.xaml.g.h"
 
+#include "pdf/engine.h"
+
 namespace winrt::Sable::implementation {
 struct App : AppT<App> {
 	App();
@@ -29,5 +31,7 @@ struct App : AppT<App> {
 
   private:
 	winrt::Microsoft::UI::Xaml::Window window{nullptr};
+	// PDFium's own thread, up for as long as the app is
+	pdf::Engine m_pdf;
 };
 } // namespace winrt::Sable::implementation

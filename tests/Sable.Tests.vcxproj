@@ -72,7 +72,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ImportGroup>
 	<ItemDefinitionGroup>
 		<ClCompile>
-			<AdditionalIncludeDirectories>..\app\helpers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<AdditionalIncludeDirectories>..\app\helpers;..\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 		</ClCompile>
 		<Link>
 			<SubSystem>Console</SubSystem>
@@ -93,6 +93,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="main.cpp" />
 		<ClCompile Include="sanity_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
+		<ClCompile Include="pdf_engine_test.cpp" />
 		<ClCompile Include="recents_test.cpp" />
 		<ClCompile Include="cli_test.cpp" />
 		<ClCompile Include="filter_test.cpp" />
@@ -104,6 +105,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ClInclude Include="..\app\helpers\version.h" />
 		<ClCompile Include="..\app\helpers\version.cpp" />
+		<ClInclude Include="..\app\pdf\engine.h" />
+		<ClCompile Include="..\app\pdf\engine.cpp" />
 		<ClInclude Include="..\app\helpers\recents.h" />
 		<ClCompile Include="..\app\helpers\recents.cpp" />
 		<ClInclude Include="..\app\helpers\cli.h" />
