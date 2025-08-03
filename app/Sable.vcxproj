@@ -144,10 +144,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="MainWindow.xaml.h">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
 		</ClInclude>
+		<ClInclude Include="HomePage.xaml.h">
+			<DependentUpon>HomePage.xaml</DependentUpon>
+		</ClInclude>
 	</ItemGroup>
 	<ItemGroup>
 		<ApplicationDefinition Include="App.xaml" />
 		<Page Include="MainWindow.xaml" />
+		<Page Include="HomePage.xaml" />
 		<Page Include="styles\Theme.xaml" />
 	</ItemGroup>
 	<ItemGroup>
@@ -159,6 +163,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
+		</ClCompile>
+		<ClCompile Include="HomePage.xaml.cpp">
+			<DependentUpon>HomePage.xaml</DependentUpon>
 		</ClCompile>
 		<ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
 	</ItemGroup>
@@ -199,6 +206,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Midl Include="MainWindow.idl">
 			<SubType>Code</SubType>
 			<DependentUpon>MainWindow.xaml</DependentUpon>
+		</Midl>
+		<Midl Include="HomePage.idl">
+			<SubType>Code</SubType>
+			<DependentUpon>HomePage.xaml</DependentUpon>
 		</Midl>
 	</ItemGroup>
 	<ItemGroup>

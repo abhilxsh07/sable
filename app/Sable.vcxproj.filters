@@ -24,12 +24,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<ItemGroup>
 		<Page Include="MainWindow.xaml" />
+		<Page Include="HomePage.xaml" />
 		<Page Include="styles\Theme.xaml">
 			<Filter>styles</Filter>
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
 		<Midl Include="MainWindow.idl" />
+		<Midl Include="HomePage.idl" />
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="pch.cpp" />

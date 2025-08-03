@@ -101,6 +101,13 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
   (565 wide really, because of the minimum width).
 - The title bar is drawn by the app (WinUI's TitleBar control) so the Menu
   button, and later the tabs and presets, can live in it.
+- With nothing open you get a home screen instead of the bare splash: a pane
+  with Recent / Starred and the tools, a tools strip, the splash itself as a
+  drop card, a preview of the four presets on a sample page, and the recent
+  files list. The splash keeps its gradient border and both lines of text.
+- Recent files live in `%APPDATA%\Sable\recent.json`, not in config.json, so
+  the settings file stays the shape NightPDF wrote. Up to 50 files; starred
+  ones are kept first and survive Clear recent.
 - Lots of tools NightPDF never had (see DESIGN.md).
 - Unknown command-line options are ignored like yargs did, but they don't
   take the next argument as their value. In NightPDF `--foo file.pdf` meant

@@ -138,6 +138,21 @@ void MainWindow::onMinimize(const Windows::Foundation::IInspectable&,
 	m_presenter.Minimize();
 }
 
+// Recent and Starred are the only items that stay selected
+void MainWindow::onNavSelectionChanged(
+    const Controls::NavigationView&,
+    const Controls::NavigationViewSelectionChangedEventArgs& args) {
+	auto item = args.SelectedItemContainer();
+	if (!item) {
+		return;
+	}
+	const auto tag = unbox_value_or<hstring>(item.Tag(), hstring{});
+	// IsSelected in the XAML can fire this while the page is still loading
+	if (auto home = Home()) {
+		home.ShowStarredOnly(tag == L"starred");
+	}
+}
+
 // the Help items keep their link in Tag
 void MainWindow::onOpenLink(const Windows::Foundation::IInspectable& sender,
                             const RoutedEventArgs&) {
