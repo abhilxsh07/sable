@@ -1,0 +1,64 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >> 2 << /S /D >>] >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 144 >>
+stream
+0 0 0 rg 50 592 200 200 re f
+1 0 0 rg 345 592 200 200 re f
+0 0 1 rg 50 50 200 200 re f
+BT /F1 24 Tf 0 0 0 rg 50 400 Td (Sable test page 1) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 88 >>
+stream
+0 1 0 rg 100 100 200 200 re f
+BT /F1 24 Tf 0 0 0 rg 400 300 Td (Sable test page 2) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Rotate 90 /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 72 >>
+stream
+0 0 0 rg 0 0 150 200 re f
+BT /F1 12 Tf 0 0 0 rg 160 90 Td (page 3) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Title (Sable test file) >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000118 00000 n 
+0000000187 00000 n 
+0000000284 00000 n 
+0000000410 00000 n 
+0000000605 00000 n 
+0000000731 00000 n 
+0000000869 00000 n 
+0000001006 00000 n 
+0000001128 00000 n 
+trailer
+<< /Size 11 /Root 1 0 R /Info 10 0 R /ID [<c92012b42c2cff6b47f1964e3ec13cbf> <c92012b42c2cff6b47f1964e3ec13cbf>] >>
+startxref
+1175
+%%EOF
