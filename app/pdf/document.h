@@ -51,6 +51,15 @@ struct PageSize {
 	float height = 0;
 };
 
+// 8-bit BGRA, top row first, `stride` bytes per row. Pages are drawn onto
+// white, so alpha is always 255.
+struct Bitmap {
+	int width = 0;
+	int height = 0;
+	int stride = 0;
+	std::vector<std::uint8_t> pixels;
+};
+
 class Document;
 
 struct OpenResult {
@@ -82,6 +91,11 @@ class Document {
 	std::optional<PageSize> pageSize(int index) const;
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
+	// draws a page into a width x height bitmap. rotation is extra quarter
+	// turns clockwise (0-3) on top of the page's own /Rotate. nullopt if the
+	// page won't load or the size is zero or too big to be sensible.
+	std::optional<Bitmap> render(int index, int width, int height,
+	                             int rotation = 0) const;
 
   private:
 	friend OpenResult openDocument(std::vector<std::uint8_t> data,
