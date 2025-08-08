@@ -36,10 +36,17 @@ std::atomic<int> g_engines{0};
 Engine::Engine() {
 	[[maybe_unused]] const int others = g_engines.fetch_add(1);
 	assert(others == 0 && "only one pdf::Engine at a time");
-	m_thread = std::thread([this] { loop(); });
+	try {
+		m_thread = std::thread([this] { loop(); });
+	} catch (...) {
+		g_engines.fetch_sub(1);
+		throw;
+	}
 }
 
 Engine::~Engine() {
+	// joining itself would never return
+	assert(!onThread() && "pdf::Engine destroyed from its own thread");
 	{
 		std::lock_guard lock(m_mutex);
 		m_stopping = true;
@@ -63,6 +70,10 @@ void Engine::post(std::function<void()> work) {
 
 bool Engine::onThread() {
 	return t_onPdfiumThread;
+}
+
+bool Engine::running() {
+	return g_engines.load() > 0;
 }
 
 void Engine::loop() {

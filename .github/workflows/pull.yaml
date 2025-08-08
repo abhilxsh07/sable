@@ -61,7 +61,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: third_party/pdfium
-          key: pdfium-${{ hashFiles('.pdfium_version') }}
+          key: pdfium-${{ hashFiles('.pdfium_version', 'update_pdfium.py') }}
       - uses: actions/setup-python@v7
         if: steps.pdfium-cache.outputs.cache-hit != 'true'
         with:

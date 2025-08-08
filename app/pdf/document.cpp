@@ -151,8 +151,14 @@ OpenResult openDocument(std::vector<std::uint8_t> data,
 		return {nullptr, fromPdfium(FPDF_GetLastError(), !password.empty())};
 	}
 	// moving the vector keeps the same buffer, so PDFium's pointer stays good
-	return {std::unique_ptr<Document>(new Document(std::move(data), handle)),
-	        Error::None};
+	try {
+		return {
+		    std::unique_ptr<Document>(new Document(std::move(data), handle)),
+		    Error::None};
+	} catch (...) {
+		FPDF_CloseDocument(handle);
+		throw;
+	}
 }
 
 OpenResult openFile(const std::filesystem::path& path,
@@ -182,10 +188,16 @@ Document::Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle)
     : m_data(std::move(data)), m_handle(handle) {}
 
 Document::~Document() {
-	// off the PDFium thread this leaks the document rather than closing it
-	// somewhere it isn't allowed to
-	if (m_handle && !offThread()) {
+	if (!m_handle) {
+		return;
+	}
+	// Off the PDFium thread this leaks the document rather than closing it
+	// somewhere it isn't allowed to. Once the engine is gone (the app is
+	// shutting down) that's expected, so only complain while it's running.
+	if (Engine::onThread()) {
 		FPDF_CloseDocument(m_handle);
+	} else if (Engine::running()) {
+		offThread();
 	}
 }
 
@@ -223,6 +235,7 @@ std::string Document::pageLabel(int index) const {
 	buffer.resize(bytes - 2);
 	return utf16ToUtf8(buffer);
 }
+
 std::optional<Bitmap> Document::render(int index, int width, int height,
                                        int rotation) const {
 	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle)) {

@@ -30,8 +30,9 @@ struct App : AppT<App> {
 	void OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 
   private:
-	winrt::Microsoft::UI::Xaml::Window window{nullptr};
-	// PDFium's own thread, up for as long as the app is
+	// PDFium's own thread, up for as long as the app is. Declared first so
+	// it's torn down last, after the window and anything it holds.
 	pdf::Engine m_pdf;
+	winrt::Microsoft::UI::Xaml::Window window{nullptr};
 };
 } // namespace winrt::Sable::implementation
