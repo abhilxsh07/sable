@@ -54,8 +54,8 @@ std::string toUtf8(const fs::path& path) {
 }
 
 fs::path fromUtf8(const std::string& text) {
-	return fs::path(std::u8string(
-	    reinterpret_cast<const char8_t*>(text.data()), text.size()));
+	return fs::path(std::u8string(reinterpret_cast<const char8_t*>(text.data()),
+	                              text.size()));
 }
 
 std::string displayName(const fs::path& path) {

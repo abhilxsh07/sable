@@ -88,7 +88,8 @@ std::wstring lowered(std::wstring_view text) {
 
 Windows::UI::Color rgb(std::uint32_t hex) {
 	return {255, static_cast<std::uint8_t>(hex >> 16),
-	        static_cast<std::uint8_t>(hex >> 8), static_cast<std::uint8_t>(hex)};
+	        static_cast<std::uint8_t>(hex >> 8),
+	        static_cast<std::uint8_t>(hex)};
 }
 
 SolidColorBrush brush(std::uint32_t hex) {
@@ -168,7 +169,8 @@ void HomePage::onSizeChanged(const Windows::Foundation::IInspectable&,
 void HomePage::onPresetClick(const Windows::Foundation::IInspectable& sender,
                              const RoutedEventArgs&) {
 	if (auto button = sender.try_as<Button>()) {
-		showPreset(to_string(unbox_value_or<hstring>(button.Tag(), L"default")));
+		showPreset(
+		    to_string(unbox_value_or<hstring>(button.Tag(), L"default")));
 	}
 }
 
@@ -261,7 +263,8 @@ void HomePage::rebuildList() {
 		anyBeforeSearch = true;
 		if (!m_query.empty()) {
 			const std::wstring name{to_hstring(file.name)};
-			const std::wstring folder{to_hstring(helpers::folderLabel(file.path))};
+			const std::wstring folder{
+			    to_hstring(helpers::folderLabel(file.path))};
 			if (lowered(name).find(m_query) == std::wstring::npos &&
 			    lowered(folder).find(m_query) == std::wstring::npos) {
 				continue;
@@ -274,8 +277,10 @@ void HomePage::rebuildList() {
 	ListTitle().Text(m_starredOnly ? L"Starred" : L"Recent");
 	SearchBox().PlaceholderText(m_starredOnly ? L"Search starred files"
 	                                          : L"Search recent files");
-	RecentList().Visibility(any ? XVisibility::Visible : XVisibility::Collapsed);
-	EmptyState().Visibility(any ? XVisibility::Collapsed : XVisibility::Visible);
+	RecentList().Visibility(any ? XVisibility::Visible
+	                            : XVisibility::Collapsed);
+	EmptyState().Visibility(any ? XVisibility::Collapsed
+	                            : XVisibility::Visible);
 	ClearButton().Visibility(!m_starredOnly && !m_recents.empty()
 	                             ? XVisibility::Visible
 	                             : XVisibility::Collapsed);
@@ -350,7 +355,8 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	row.Children().Append(location);
 	row.Children().Append(
 	    cell(to_hstring(helpers::openedLabel(file.openedAt, now, offset)), 3));
-	row.Children().Append(cell(to_hstring(helpers::humanSize(file.sizeBytes)), 4));
+	row.Children().Append(
+	    cell(to_hstring(helpers::humanSize(file.sizeBytes)), 4));
 
 	Button star;
 	if (auto style = Application::Current()

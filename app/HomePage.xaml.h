@@ -45,9 +45,9 @@ struct HomePage : HomePageT<HomePage> {
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
-	void onSizeChanged(const winrt::Windows::Foundation::IInspectable&,
-	                   const winrt::Microsoft::UI::Xaml::SizeChangedEventArgs&
-	                       args);
+	void
+	onSizeChanged(const winrt::Windows::Foundation::IInspectable&,
+	              const winrt::Microsoft::UI::Xaml::SizeChangedEventArgs& args);
 	void showPreset(const std::string& preset);
 	void rebuildList();
 	winrt::Microsoft::UI::Xaml::Controls::Grid

@@ -101,8 +101,7 @@ std::string numbered(int index) {
 // a local-looking time written as UTC
 chr::sys_seconds at(int year, unsigned month, unsigned day, int hour,
                     int minute, int second = 0) {
-	return chr::sys_days{chr::year{year} / chr::month{month} /
-	                     chr::day{day}} +
+	return chr::sys_days{chr::year{year} / chr::month{month} / chr::day{day}} +
 	       chr::hours{hour} + chr::minutes{minute} + chr::seconds{second};
 }
 
@@ -473,19 +472,19 @@ TEST_F(RecentsFiles, FolderInPlaceOfFileIsEmpty) {
 }
 
 TEST_F(RecentsFiles, BadEntriesAreSkipped) {
-	const std::string text = listJson(
-	    R"(42, "a.pdf", null, [], )"
-	    R"({"name": "no path"}, )"
-	    R"({"path": 7}, )"
-	    R"({"path": ""}, )"
-	    R"({"path": "b.pdf", "opened": "yesterday"}, )"
-	    R"({"path": "c.pdf", "opened": 1.5}, )"
-	    R"({"path": "d.pdf", "opened": -5}, )"
-	    R"({"path": "e.pdf", "size": -1}, )"
-	    R"({"path": "f.pdf", "size": "big"}, )"
-	    R"({"path": "g.pdf", "starred": "yes"}, )"
-	    R"({"path": "h.pdf", "name": 12}, )"
-	    R"({"path": "good.pdf", "opened": 10})");
+	const std::string text =
+	    listJson(R"(42, "a.pdf", null, [], )"
+	             R"({"name": "no path"}, )"
+	             R"({"path": 7}, )"
+	             R"({"path": ""}, )"
+	             R"({"path": "b.pdf", "opened": "yesterday"}, )"
+	             R"({"path": "c.pdf", "opened": 1.5}, )"
+	             R"({"path": "d.pdf", "opened": -5}, )"
+	             R"({"path": "e.pdf", "size": -1}, )"
+	             R"({"path": "f.pdf", "size": "big"}, )"
+	             R"({"path": "g.pdf", "starred": "yes"}, )"
+	             R"({"path": "h.pdf", "name": 12}, )"
+	             R"({"path": "good.pdf", "opened": 10})");
 	write(file(), text);
 	const RecentFiles recents = helpers::loadRecents(file());
 	ASSERT_EQ(recents.items().size(), 1u);
@@ -526,9 +525,9 @@ TEST_F(RecentsFiles, UnknownKeysAndVersionAreIgnored) {
 }
 
 TEST_F(RecentsFiles, FileOrderIsKept) {
-	write(file(), listJson(entryJson("a.pdf", 3) + ", " +
-	                       entryJson("b.pdf", 2) + ", " +
-	                       entryJson("c.pdf", 1)));
+	write(file(),
+	      listJson(entryJson("a.pdf", 3) + ", " + entryJson("b.pdf", 2) + ", " +
+	               entryJson("c.pdf", 1)));
 	const RecentFiles recents = helpers::loadRecents(file());
 	ASSERT_EQ(recents.items().size(), 3u);
 	EXPECT_EQ(recents.items()[0].path, fs::path("a.pdf"));
@@ -550,8 +549,8 @@ TEST_F(RecentsFiles, LoadKeepsTheFirstFifty) {
 TEST_F(RecentsFiles, LoadCapKeepsStarredEntries) {
 	std::string entries;
 	for (int i = 0; i < 70; ++i) {
-		entries += (i == 0 ? "" : ", ") +
-		           entryJson(numbered(i), 1000 - i, i == 65);
+		entries +=
+		    (i == 0 ? "" : ", ") + entryJson(numbered(i), 1000 - i, i == 65);
 	}
 	write(file(), listJson(entries));
 	const RecentFiles recents = helpers::loadRecents(file());
