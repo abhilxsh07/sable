@@ -71,8 +71,6 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
 
 ## Still undecided
 
-- Help menu links. Upstream is archived and its issues are closed, so pointing
-  there makes no sense.
 - Whether to import settings from an existing NightPDF install.
 - File associations other than .pdf.
 - Packaging. Probably Velopack, but that can wait until there's something to
@@ -121,3 +119,5 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
   repo, so `update_pdfjs.py` only ever had to update it. I'm not committing
   the PDFium binaries, so a fresh clone needs a way to download the pinned
   version.
+- I generate the test PDFs with `tests/fixtures/make_fixtures.py` instead of
+  copying PDF.js's sample, so there's no borrowed fixture licence to sort out.
