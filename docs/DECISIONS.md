@@ -69,6 +69,34 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
 - One Menu button instead of the classic menu bar. Same items, same shortcuts.
 - Layout ideas from Acrobat, but the icons are Windows' own Fluent icons.
 
+## Drawing surface (2026-10-11)
+
+I tried one VirtualSurfaceImageSource inside a ScrollViewer before wiring up
+the viewer. The check repeats one fixture raster over 1,000 page positions,
+640 by 880,000 pixels in total. On the hardware path at 100% display scale,
+the first and last positions draw, scrolling keeps the page gaps intact,
+and all four filter states redraw with the upload counter still at one.
+
+The surface handles XAML's update rectangles in pixels. The drawing origin
+accounts for the atlas offset returned by BeginDraw, and each update is
+clipped. Its callback holds a weak reference: I can drop the wrapper, leave
+the Image holding its source, scroll into an undrawn area and close safely.
+
+That is enough to keep the single-surface approach for the next viewer step.
+It doesn't establish a real 1,000-page PDF's memory use. The page cache,
+zoom/DPI rerasterization and device-loss recovery still need implementing.
+
+To repeat the check, run these from the repo root in PowerShell:
+
+```powershell
+$env:SableSurfaceTest = 'true'
+.\scripts\build.ps1 -Config Debug -Platform x64
+.\x64\Debug\Sable\Sable.exe
+```
+
+Close the test window, set `$env:SableSurfaceTest = 'false'`, then build
+again to return to the home screen.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

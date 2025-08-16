@@ -20,6 +20,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "App.xaml.h"
 #include "MainWindow.xaml.h"
+#ifdef SABLE_SURFACE_TEST
+#include "../tests/surface_test.h"
+#endif
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -40,7 +43,11 @@ App::App() {
 }
 
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
+#ifdef SABLE_SURFACE_TEST
+	window = surfaceTest(m_pdf);
+#else
 	window = make<MainWindow>();
+#endif
 	// release the window while XAML is still up, not in App's destructor
 	window.Closed([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {

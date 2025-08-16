@@ -124,6 +124,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 		</ClCompile>
 	</ItemDefinitionGroup>
+	<!-- opt-in surface check; normal builds keep the home screen -->
+	<ItemDefinitionGroup Condition="'$(SableSurfaceTest)'=='true'">
+		<ClCompile>
+			<PreprocessorDefinitions>SABLE_SURFACE_TEST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+		<Link>
+			<AdditionalDependencies>d3d11.lib;%(AdditionalDependencies)</AdditionalDependencies>
+		</Link>
+	</ItemDefinitionGroup>
+	<ItemGroup Condition="'$(SableSurfaceTest)'=='true'">
+		<ClCompile Include="..\tests\surface_test.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+	</ItemGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
 		<ClCompile>
 			<PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -175,6 +189,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="pdf\document.h" />
 		<ClInclude Include="pdf\page_filter.h" />
+		<ClInclude Include="pdf\surface.h" />
 		<ClInclude Include="pdf\engine.h" />
 		<ClInclude Include="helpers\recents.h" />
 		<ClInclude Include="helpers\cli.h" />
@@ -194,6 +209,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\page_filter.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\surface.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\engine.cpp">
