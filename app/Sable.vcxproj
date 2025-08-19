@@ -124,8 +124,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 		</ClCompile>
 	</ItemDefinitionGroup>
-	<!-- opt-in surface check; normal builds keep the home screen -->
-	<ItemDefinitionGroup Condition="'$(SableSurfaceTest)'=='true'">
+	<!-- opt-in surface check, Debug only; normal builds keep the home screen -->
+	<ItemDefinitionGroup Condition="'$(SableSurfaceTest)'=='true' And '$(Configuration)'=='Debug'">
 		<ClCompile>
 			<PreprocessorDefinitions>SABLE_SURFACE_TEST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 		</ClCompile>
@@ -133,7 +133,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<AdditionalDependencies>d3d11.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
-	<ItemGroup Condition="'$(SableSurfaceTest)'=='true'">
+	<ItemGroup Condition="'$(SableSurfaceTest)'=='true' And '$(Configuration)'=='Debug'">
 		<ClCompile Include="..\tests\surface_test.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
@@ -339,5 +339,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Error Condition="!Exists('..\packages\Microsoft.Windows.CppWinRT.3.0.260818.1\build\native\Microsoft.Windows.CppWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.CppWinRT.3.0.260818.1\build\native\Microsoft.Windows.CppWinRT.props'))" />
 		<Error Condition="!Exists('..\packages\Microsoft.Windows.CppWinRT.3.0.260818.1\build\native\Microsoft.Windows.CppWinRT.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.CppWinRT.3.0.260818.1\build\native\Microsoft.Windows.CppWinRT.targets'))" />
 		<Error Condition="!Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.260126.7\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.ImplementationLibrary.1.0.260126.7\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
+	</Target>
+	<!-- the surface check is a Debug spike, keep it out of Release -->
+	<Target Name="SableSurfaceTestDebugOnly" BeforeTargets="PrepareForBuild" Condition="'$(SableSurfaceTest)'=='true' And '$(Configuration)'!='Debug'">
+		<Error Text="SableSurfaceTest only works in Debug builds. Run Remove-Item Env:SableSurfaceTest and build again." />
 	</Target>
 </Project>

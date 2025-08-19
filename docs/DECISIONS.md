@@ -94,8 +94,9 @@ $env:SableSurfaceTest = 'true'
 .\x64\Debug\Sable\Sable.exe
 ```
 
-Close the test window, set `$env:SableSurfaceTest = 'false'`, then build
-again to return to the home screen.
+Close the test window, run `Remove-Item Env:SableSurfaceTest`, then build
+again to return to the home screen. The check only exists in Debug builds;
+a Release build stops with an error while the variable is set.
 
 ## Still undecided
 
