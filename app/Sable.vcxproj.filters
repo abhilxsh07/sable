@@ -94,6 +94,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="pdf\surface.h">
 			<Filter>pdf</Filter>
 		</ClInclude>
+		<ClInclude Include="pdf\surface_util.h">
+			<Filter>pdf</Filter>
+		</ClInclude>
 		<ClCompile Include="pdf\surface.cpp">
 			<Filter>pdf</Filter>
 		</ClCompile>

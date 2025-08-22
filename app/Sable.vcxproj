@@ -130,7 +130,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PreprocessorDefinitions>SABLE_SURFACE_TEST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 		</ClCompile>
 		<Link>
-			<AdditionalDependencies>d3d11.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>d3d11.lib;d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemGroup Condition="'$(SableSurfaceTest)'=='true' And '$(Configuration)'=='Debug'">
@@ -191,6 +191,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="pdf\page_cache.h" />
 		<ClInclude Include="pdf\page_filter.h" />
 		<ClInclude Include="pdf\surface.h" />
+		<ClInclude Include="pdf\surface_util.h" />
 		<ClInclude Include="pdf\engine.h" />
 		<ClInclude Include="helpers\recents.h" />
 		<ClInclude Include="helpers\cli.h" />
