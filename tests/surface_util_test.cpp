@@ -89,4 +89,13 @@ TEST(ClipToSurface, TallSurface) {
 	ASSERT_TRUE(clipped);
 	EXPECT_TRUE(same(*clipped, {0, 6'749'000, 4'792, 6'750'133}));
 }
+
+TEST(FitsOneSurface, UpToTwoToTheTwentyFour) {
+	EXPECT_TRUE(pdf::fitsOneSurface(4'792, 6'750'133));
+	EXPECT_TRUE(pdf::fitsOneSurface(1, 16'777'216));
+	EXPECT_FALSE(pdf::fitsOneSurface(1, 16'777'217));
+	EXPECT_FALSE(pdf::fitsOneSurface(16'777'217, 1));
+	EXPECT_FALSE(pdf::fitsOneSurface(0, 100));
+	EXPECT_FALSE(pdf::fitsOneSurface(100, -1));
+}
 } // namespace

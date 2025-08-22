@@ -49,6 +49,17 @@ inline DrawLoss drawLoss(HRESULT result) {
 	}
 }
 
+// DirectComposition's cap on each side of a virtual surface. XAML itself
+// checks for under 17,000,000, so this is the one that bites first.
+// see:
+// https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-createvirtualsurface
+inline constexpr long long MAX_SURFACE_SIDE = 16'777'216;
+
+inline bool fitsOneSurface(long long width, long long height) {
+	return width > 0 && height > 0 && width <= MAX_SURFACE_SIDE &&
+	       height <= MAX_SURFACE_SIDE;
+}
+
 // the part of rect that lies inside a width by height surface, if any
 inline std::optional<RECT> clipToSurface(const RECT& rect, int width,
                                          int height) {
