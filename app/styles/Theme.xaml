@@ -30,6 +30,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<SolidColorBrush x:Key="SableTitleBarBrush" Color="#1a1a1a" />
 			<SolidColorBrush x:Key="SablePaneBrush" Color="#1e1e1e" />
 			<SolidColorBrush x:Key="SableContentBrush" Color="#232323" />
+			<!-- pdf.js's dark body background (web/viewer.css), which is what
+				NightPDF showed around the pages -->
+			<SolidColorBrush x:Key="SableViewerBrush" Color="#2a2a2e" />
 			<SolidColorBrush x:Key="SableCardBrush" Color="#2b2b2b" />
 			<SolidColorBrush x:Key="SableCardHoverBrush" Color="#323232" />
 			<SolidColorBrush x:Key="SableCardPressedBrush" Color="#282828" />

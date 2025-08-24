@@ -136,6 +136,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 			<local:HomePage x:Name="Home" />
 		</NavigationView>
+
+		<!-- a PDF from the command line replaces the home screen for now.
+			Tabs will hold one of these each. -->
+		<local:ViewerPage x:Name="Viewer" Grid.Row="1" Visibility="Collapsed" />
 	</Grid>
 </Window>
 <!--trans rights-->

@@ -67,6 +67,16 @@ MainWindow::MainWindow() {
 void MainWindow::InitializeComponent() {
 	MainWindowT::InitializeComponent();
 	setupTitleBar();
+	// the document goes before App's PDFium engine does
+	Closed([this](auto&&, auto&&) { get_self<ViewerPage>(Viewer())->close(); });
+}
+
+void MainWindow::openDocument(pdf::Engine& engine,
+                              const std::filesystem::path& path,
+                              std::optional<int> page) {
+	Nav().Visibility(Visibility::Collapsed);
+	Viewer().Visibility(Visibility::Visible);
+	get_self<ViewerPage>(Viewer())->open(engine, path, page);
 }
 
 // port of app/main/app.ts createWindow() (L135-148), just the window part.
