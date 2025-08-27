@@ -94,6 +94,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="sanity_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
 		<ClCompile Include="layout_test.cpp" />
+		<ClCompile Include="zoom_test.cpp" />
 		<ClCompile Include="pdf_render_test.cpp" />
 		<ClCompile Include="pdf_document_test.cpp" />
 		<ClCompile Include="pdf_engine_test.cpp" />
@@ -114,6 +115,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\app\helpers\version.cpp" />
 		<ClInclude Include="..\app\helpers\layout.h" />
 		<ClCompile Include="..\app\helpers\layout.cpp" />
+		<ClInclude Include="..\app\helpers\zoom.h" />
+		<ClCompile Include="..\app\helpers\zoom.cpp" />
 		<ClInclude Include="..\app\pdf\document.h" />
 		<ClInclude Include="..\app\pdf\page_cache.h" />
 		<ClCompile Include="..\app\pdf\page_cache.cpp" />
