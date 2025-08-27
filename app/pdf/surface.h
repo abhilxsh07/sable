@@ -45,6 +45,8 @@ class Surface {
 	source() const;
 	void invalidate(const RECT& rect);
 	void setDevice(ID2D1Device& device);
+	// new size in pixels, for a zoom; everything is drawn again
+	void resize(int width, int height);
 
   private:
 	struct Updates;

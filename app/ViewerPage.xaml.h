@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "helpers/layout.h"
 #include "helpers/sliders.h"
+#include "helpers/zoom.h"
 #include "pdf/page_cache.h"
 
 namespace pdf {
@@ -59,6 +60,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void close();
 	// changes only the GPU filter; page rasters stay in the cache
 	void setValues(const helpers::SliderValues& values);
+	// pdf.js's zoom: about 10% a step, or back to "auto"
+	void zoomIn(int steps = 1);
+	void zoomOut(int steps = 1);
+	void zoomReset();
 
   private:
 	struct Device {
@@ -70,6 +75,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	};
 
 	void opened(pdf::SessionInfo info);
+	bool relayout(double zoom);
+	bool setZoom(double zoom, winrt::Windows::Foundation::Point anchor);
+	void fitAuto();
+	void settle();
+	double imageLeft();
+	void onWheel(
+	    const winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs& args);
 	void rendered(pdf::RenderResult result);
 	void showMessage(const winrt::hstring& text);
 	Device makeDevice();
@@ -83,7 +95,20 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	pdf::PageKey key(std::size_t page) const;
 
 	std::unique_ptr<pdf::Session> m_session;
+	// page sizes in points, to lay them out again at another zoom
+	std::vector<helpers::PageSize> m_sizes;
 	std::optional<helpers::PageLayout> m_layout;
+	double m_zoom = 1;
+	// pdf.js opens at "auto" and keeps it until a zoom key or the wheel
+	bool m_autoZoom = true;
+	// opening can finish before the viewport has a size, so "auto" is
+	// worked out again once it has one
+	bool m_fitPending = false;
+	// right after a zoom the old rasters are stretched; sharp ones are
+	// rendered once it has been still for a moment
+	bool m_settling = false;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_settle{nullptr};
+	helpers::WheelTicks m_wheelTicks;
 	std::optional<int> m_startPage;
 	double m_scale = 1;
 	helpers::SliderValues m_values;

@@ -88,6 +88,13 @@ void Surface::invalidate(const RECT& rect) {
 	}
 }
 
+void Surface::resize(int width, int height) {
+	winrt::check_hresult(m_native->Resize(width, height));
+	m_width = width;
+	m_height = height;
+	winrt::check_hresult(m_native->Invalidate({0, 0, m_width, m_height}));
+}
+
 void Surface::setDevice(ID2D1Device& device) {
 	winrt::check_hresult(m_drawing->SetDevice(&device));
 	m_device.copy_from(&device);
