@@ -28,7 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	mc:Ignorable="d"
 	Title="Sable">
 
-	<Grid RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}">
+	<Grid RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}"
+		Tapped="onHideConfigurator" KeyDown="onFilterKeyDown">
 		<!-- my own title bar instead of the system one. The Menu button takes
 			the place of NightPDF's menu bar (menutemplate.ts), same items, same
 			shortcuts. Tabs and the preset buttons move up here later. -->
@@ -91,6 +92,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</Button.Flyout>
 				</Button>
 			</TitleBar.LeftHeader>
+			<TitleBar.RightHeader>
+				<StackPanel x:Name="Presets" Orientation="Horizontal" Spacing="8"
+					Margin="8,0" Visibility="Collapsed" Tapped="onKeepConfigurator">
+					<Button x:Name="DefaultPreset" Tag="default" Content="Default" Click="onPresetClick" AutomationProperties.ItemStatus="Selected"
+						Style="{StaticResource SablePresetButtonStyle}" Background="#1e2024" Foreground="#fbfbff" BorderBrush="#797979" />
+					<Button x:Name="SepiaPreset" Tag="sepia" Content="Sepia" Click="onPresetClick"
+						Style="{StaticResource SablePresetButtonStyle}" Background="#9e9174" Foreground="#40392d" />
+					<Button x:Name="RedeyePreset" Tag="redeye" Content="Redeye" Click="onPresetClick"
+						Style="{StaticResource SablePresetButtonStyle}" Background="#36272b" Foreground="#bc8b96" />
+					<Button x:Name="CustomPreset" Tag="custom" Content="Custom" Click="onPresetClick"
+						Style="{StaticResource SablePresetButtonStyle}" Background="#c1c1c1" Foreground="#232323" Padding="3.5,4" />
+				</StackPanel>
+			</TitleBar.RightHeader>
 		</TitleBar>
 
 		<!-- Recent and Starred filter the same list, the tools are shortcuts
@@ -140,6 +154,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- a PDF from the command line replaces the home screen for now.
 			Tabs will hold one of these each. -->
 		<local:ViewerPage x:Name="Viewer" Grid.Row="1" Visibility="Collapsed" />
+		<!-- #darkConfigurator in index.sass: 200 wide, at most 550 tall,
+			rgb(45,45,45) with a #666 border, 16px 24px padding, 4px corners and
+			a small shadow. Lined up under the preset buttons when it opens. -->
+		<Border x:Name="DarkConfigurator" Grid.Row="1" Visibility="Collapsed"
+			HorizontalAlignment="Right" VerticalAlignment="Top" Width="200"
+			MaxHeight="550" Margin="0,0,8,8" Background="#2d2d2d"
+			BorderBrush="#666666" BorderThickness="1" Padding="24,16"
+			CornerRadius="4" Translation="0,0,8" Tapped="onKeepConfigurator">
+			<Border.Shadow>
+				<ThemeShadow />
+			</Border.Shadow>
+			<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+				<StackPanel Spacing="8">
+					<TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+					<StackPanel x:Name="FilterSliders" Spacing="8" />
+				</StackPanel>
+			</ScrollViewer>
+		</Border>
 	</Grid>
 </Window>
 <!--trans rights-->

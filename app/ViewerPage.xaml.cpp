@@ -95,6 +95,29 @@ void ViewerPage::close() {
 	m_cache.clear();
 }
 
+// port of app/helpers/private.ts updateDarkSettings() (L91-116)
+void ViewerPage::setValues(const helpers::SliderValues& values) {
+	if (m_closed) {
+		return;
+	}
+	m_values = values;
+	if (!m_surface || !m_layout) {
+		return;
+	}
+	try {
+		m_device.filter->setValues(values);
+		const auto blank = helpers::applyFilter(values, {255, 255, 255});
+		m_device.placeholder->SetColor(
+		    D2D1::ColorF(blank.r / 255.0f, blank.g / 255.0f, blank.b / 255.0f));
+		// offscreen tiles also contain the old filter, so invalidate them too
+		m_surface->invalidate({0, 0, static_cast<LONG>(pdf::MAX_SURFACE_SIDE),
+		                       static_cast<LONG>(pdf::MAX_SURFACE_SIDE)});
+	} catch (...) {
+		// most likely a lost device; m_values is already kept, and the rebuild
+		// that follows draws with it
+	}
+}
+
 void ViewerPage::opened(pdf::SessionInfo info) {
 	if (m_closed || info.canceled) {
 		return;

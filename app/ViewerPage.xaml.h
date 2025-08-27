@@ -57,6 +57,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	          std::optional<int> page);
 	// lets go of the document while the engine is still around
 	void close();
+	// changes only the GPU filter; page rasters stay in the cache
+	void setValues(const helpers::SliderValues& values);
 
   private:
 	struct Device {
