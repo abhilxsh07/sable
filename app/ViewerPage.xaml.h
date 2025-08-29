@@ -29,9 +29,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "helpers/layout.h"
+#include "helpers/navigation.h"
 #include "helpers/sliders.h"
 #include "helpers/zoom.h"
 #include "pdf/page_cache.h"
@@ -65,6 +68,27 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomOut(int steps = 1);
 	void zoomReset();
 
+	// the right rail and the keys, wired up in ViewerPage.xaml
+	void onPreviewKeyDown(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
+	void onPageBoxKeyDown(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
+	void onPageBoxGotFocus(const winrt::Windows::Foundation::IInspectable&,
+	                       const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onPageBoxLosingFocus(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::LosingFocusEventArgs&);
+	void onPreviousPage(const winrt::Windows::Foundation::IInspectable&,
+	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onNextPage(const winrt::Windows::Foundation::IInspectable&,
+	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onZoomIn(const winrt::Windows::Foundation::IInspectable&,
+	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onZoomOut(const winrt::Windows::Foundation::IInspectable&,
+	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+
   private:
 	struct Device {
 		winrt::com_ptr<ID2D1Device> device;
@@ -79,6 +103,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool setZoom(double zoom, winrt::Windows::Foundation::Point anchor);
 	void fitAuto();
 	void settle();
+	void goToPage(std::size_t page);
+	void scrollToPage(std::size_t page);
+	void jumpTo(std::optional<double> x, double y);
+	void updateCurrentPage();
+	void showPosition();
+	void commitPageBox();
+	void leavePageBox();
 	double imageLeft();
 	void onWheel(
 	    const winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs& args);
@@ -110,6 +141,19 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_settle{nullptr};
 	helpers::WheelTicks m_wheelTicks;
 	std::optional<int> m_startPage;
+	// pdf.js's current page (0-based) and the labels it would have shown
+	std::size_t m_current = 0;
+	std::vector<std::string> m_labels;
+	// what the page box was last set to, so only an edit goes anywhere
+	winrt::hstring m_pageBoxText;
+	// a jump through ChangeView lands a moment later, where a browser's
+	// scrollTop changes at once. Until it has, the current page is worked
+	// out for the offsets it's going to (x, y), with a timer in case it
+	// never quite gets there.
+	std::optional<std::pair<double, double>> m_landingAt;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_land{nullptr};
+	// while setZoom has the new layout but the old offsets
+	bool m_holdCurrent = false;
 	double m_scale = 1;
 	helpers::SliderValues m_values;
 	helpers::PageRange m_visible;

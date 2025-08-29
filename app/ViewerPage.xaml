@@ -24,17 +24,72 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:local="using:Sable">
 
-	<Grid Background="{ThemeResource SableViewerBrush}">
+	<Grid Background="{ThemeResource SableViewerBrush}" PreviewKeyDown="onPreviewKeyDown">
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="*" />
+			<ColumnDefinition Width="Auto" />
+		</Grid.ColumnDefinitions>
 		<!-- the surface is sized in physical pixels and the Image in DIPs, so
-			Fill maps one onto the other without blurring. Zoom comes later. -->
+			Fill maps one onto the other without blurring. Focusable, like
+			pdf.js's viewer container, so the keys work after a click; no focus
+			rectangle, as it has outline: none. -->
 		<ScrollViewer x:Name="Scroller" ZoomMode="Disabled"
-			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+			IsTabStop="True" UseSystemFocusVisuals="False">
 			<Image x:Name="Pages" Stretch="Fill"
 				HorizontalAlignment="Center" VerticalAlignment="Top" />
 		</ScrollViewer>
-		<TextBlock x:Name="Message" Visibility="Collapsed"
+		<TextBlock x:Name="Message" Grid.ColumnSpan="2" Visibility="Collapsed"
 			HorizontalAlignment="Center" VerticalAlignment="Center"
 			MaxWidth="480" TextWrapping="Wrap" TextAlignment="Center"
 			Foreground="{ThemeResource SableTextSecondaryBrush}" />
+
+		<!-- the right rail. Page number and zoom sit at the bottom, where
+			pdf.js had them in its toolbar: the page box, "of N", previous and
+			next page, zoom in and out. Thumbnails and the other panels go at
+			the top later. Tooltips are pdf.js's en-US titles. -->
+		<Border x:Name="Rail" Grid.Column="1" Width="56" Visibility="Collapsed"
+			Background="{ThemeResource SablePaneBrush}"
+			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
+			<Border.Resources>
+				<!-- a disabled button stays flat, only its icon dims -->
+				<SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+				<SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+			</Border.Resources>
+			<StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center"
+				Spacing="2" Padding="0,8,0,12">
+				<TextBox x:Name="PageBox" Width="44" MinWidth="0" Padding="2,5,2,6"
+					TextAlignment="Center" IsSpellCheckEnabled="False"
+					IsTextPredictionEnabled="False"
+					ToolTipService.ToolTip="Page" AutomationProperties.Name="Page"
+					KeyDown="onPageBoxKeyDown" GotFocus="onPageBoxGotFocus"
+					LosingFocus="onPageBoxLosingFocus" />
+				<TextBlock x:Name="PageTotal" MaxWidth="52" Margin="0,2,0,6"
+					FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
+					HorizontalAlignment="Center"
+					Foreground="{ThemeResource SableTextSecondaryBrush}" />
+				<Button x:Name="PreviousButton" Style="{StaticResource SableRailButtonStyle}"
+					ToolTipService.ToolTip="Previous Page"
+					AutomationProperties.Name="Previous Page" Click="onPreviousPage">
+					<FontIcon Glyph="&#xE70E;" FontSize="14" />
+				</Button>
+				<Button x:Name="NextButton" Style="{StaticResource SableRailButtonStyle}"
+					ToolTipService.ToolTip="Next Page"
+					AutomationProperties.Name="Next Page" Click="onNextPage">
+					<FontIcon Glyph="&#xE70D;" FontSize="14" />
+				</Button>
+				<Border Height="1" Margin="6,6" Background="{ThemeResource SableDividerBrush}" />
+				<Button x:Name="ZoomInButton" Style="{StaticResource SableRailButtonStyle}"
+					ToolTipService.ToolTip="Zoom In"
+					AutomationProperties.Name="Zoom In" Click="onZoomIn">
+					<FontIcon Glyph="&#xE8A3;" FontSize="14" />
+				</Button>
+				<Button x:Name="ZoomOutButton" Style="{StaticResource SableRailButtonStyle}"
+					ToolTipService.ToolTip="Zoom Out"
+					AutomationProperties.Name="Zoom Out" Click="onZoomOut">
+					<FontIcon Glyph="&#xE71F;" FontSize="14" />
+				</Button>
+			</StackPanel>
+		</Border>
 	</Grid>
 </Page>

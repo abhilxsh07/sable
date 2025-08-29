@@ -167,6 +167,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="CornerRadius" Value="6" />
 	</Style>
 
+	<!-- icon buttons on the viewer's right rail -->
+	<Style x:Key="SableRailButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Width" Value="40" />
+		<Setter Property="Height" Value="36" />
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="CornerRadius" Value="4" />
+		<Setter Property="HorizontalAlignment" Value="Center" />
+		<!-- a click leaves the keyboard focus on the pages -->
+		<Setter Property="AllowFocusOnInteraction" Value="False" />
+	</Style>
+
 	<!-- flat buttons that sit in the title bar (the Menu button) -->
 	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
