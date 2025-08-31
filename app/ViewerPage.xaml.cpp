@@ -148,32 +148,51 @@ void ViewerPage::setValues(const helpers::SliderValues& values) {
 }
 
 void ViewerPage::zoomIn(int steps) {
-	if (m_layout && setZoom(helpers::zoomIn(m_zoom, steps), {0, 0})) {
-		m_autoZoom = false;
+	if (m_layout) {
+		zoomTo(helpers::zoomIn(m_zoom, steps), {0, 0});
 	}
 }
 
 void ViewerPage::zoomOut(int steps) {
-	if (m_layout && setZoom(helpers::zoomOut(m_zoom, steps), {0, 0})) {
-		m_autoZoom = false;
+	if (m_layout) {
+		zoomTo(helpers::zoomOut(m_zoom, steps), {0, 0});
 	}
 }
 
 // pdf.js's zoomReset goes back to "auto", not to 100%
 void ViewerPage::zoomReset() {
-	if (m_layout) {
-		m_autoZoom = true;
-		fitAuto();
+	setPreset(helpers::ZoomPreset::Auto);
+}
+
+// a number, as zoomIn and zoomOut set it, so the zoom no longer follows the
+// window. pdf.js keeps it even when the scale doesn't change, but not when
+// it couldn't be applied (see relayout).
+void ViewerPage::zoomTo(double zoom, Windows::Foundation::Point anchor) {
+	if (std::abs(zoom - m_zoom) < 1e-9 || setZoom(zoom, anchor)) {
+		m_preset = helpers::ZoomPreset::None;
+		showPosition();
 	}
 }
 
-// "auto" is worked out for pdf.js's current page
-void ViewerPage::fitAuto() {
-	if (!m_layout || m_current >= m_sizes.size()) {
+// pdf_viewer.js currentScaleValue = "auto", "page-fit" and so on
+void ViewerPage::setPreset(helpers::ZoomPreset preset) {
+	if (!m_layout) {
 		return;
 	}
-	setZoom(helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
-	                          Scroller().ActualHeight()),
+	m_preset = preset;
+	applyPreset();
+	showPosition();
+}
+
+// the preset worked out again for pdf.js's current page
+void ViewerPage::applyPreset() {
+	if (!m_layout || m_preset == helpers::ZoomPreset::None ||
+	    m_current >= m_sizes.size()) {
+		return;
+	}
+	setZoom(helpers::presetZoom(m_preset, m_sizes[m_current],
+	                            Scroller().ActualWidth(),
+	                            Scroller().ActualHeight()),
 	        {0, 0});
 }
 
@@ -427,6 +446,9 @@ void ViewerPage::showPosition() {
 	NextButton().IsEnabled(m_current + 1 < count);
 	ZoomOutButton().IsEnabled(m_zoom > helpers::MIN_ZOOM);
 	ZoomInButton().IsEnabled(m_zoom < helpers::MAX_ZOOM);
+	// the rail is too narrow for pdf.js's "Automatic Zoom", so the button
+	// always shows the percentage and the menu ticks the preset
+	ZoomText().Text(to_hstring(helpers::zoomPercent(m_zoom)));
 }
 
 // app.js webViewerPageNumberChanged, for an edited page box: go there if
@@ -464,7 +486,9 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 	using helpers::NavFocus;
 	using helpers::NavKey;
 	using Windows::System::VirtualKey;
-	if (!m_layout || args.Handled()) {
+	// a menu opened from the rail keeps its own keys
+	if (!m_layout || args.Handled() ||
+	    args.OriginalSource().try_as<MenuFlyoutItemBase>()) {
 		return;
 	}
 	NavKey pressed = NavKey::Other;
@@ -533,15 +557,15 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 		focus = NavFocus::Button;
 	}
 	const auto count = m_layout->pages().size();
-	// pdf.js's "page-fit" comes with the zoom presets; until then the
-	// scrolling keys only turn pages when there's nothing to scroll
+	// in "page-fit" the scrolling keys turn pages, otherwise only when
+	// there's nothing to scroll that way
 	const helpers::NavState state{
 	    m_current, count,
 	    Scroller().ComputedVerticalScrollBarVisibility() ==
 	        XVisibility::Visible,
 	    Scroller().ComputedHorizontalScrollBarVisibility() ==
 	        XVisibility::Visible,
-	    false};
+	    m_preset == helpers::ZoomPreset::PageFit};
 	const auto action = helpers::navAction(pressed, modifiers, focus, state);
 	switch (action) {
 	case NavAction::None:
@@ -674,6 +698,42 @@ void ViewerPage::onZoomOut(const Windows::Foundation::IInspectable&,
 	}
 }
 
+// toolbar.js #updateUIState: the entry for the preset, or for the number if
+// it's one of the menu's, is the selected one; anything else is "custom"
+// and nothing is ticked (the button shows the percentage either way)
+void ViewerPage::onZoomMenuOpening(const Windows::Foundation::IInspectable&,
+                                   const Windows::Foundation::IInspectable&) {
+	for (const auto& entry : ZoomMenu().Items()) {
+		const auto item = entry.try_as<RadioMenuFlyoutItem>();
+		if (!item) {
+			continue;
+		}
+		const auto value = helpers::zoomValue(
+		    to_string(unbox_value_or<hstring>(item.Tag(), L"")));
+		item.IsChecked(value &&
+		               helpers::zoomChoiceSelected(*value, m_preset, m_zoom));
+	}
+}
+
+// app.js webViewerScaleChanged: currentScaleValue = the entry's value
+void ViewerPage::onZoomChoice(const Windows::Foundation::IInspectable& sender,
+                              const RoutedEventArgs&) {
+	const auto item = sender.try_as<MenuFlyoutItem>();
+	if (!item || !m_layout) {
+		return;
+	}
+	const auto value =
+	    helpers::zoomValue(to_string(unbox_value_or<hstring>(item.Tag(), L"")));
+	if (!value) {
+		return;
+	}
+	if (value->preset == helpers::ZoomPreset::None) {
+		zoomTo(value->zoom, {0, 0});
+	} else {
+		setPreset(value->preset);
+	}
+}
+
 // Ctrl+wheel, around the pointer (app.js webViewerWheel)
 void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
 	using Windows::System::VirtualKeyModifiers;
@@ -691,10 +751,10 @@ void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
 	const int ticks = m_wheelTicks.add(helpers::wheelTicks(
 	    point.Properties().MouseWheelDelta(),
 	    lines == WHEEL_PAGESCROLL ? 0 : static_cast<int>(lines)));
-	if (ticks != 0 && setZoom(ticks > 0 ? helpers::zoomIn(m_zoom, ticks)
-	                                    : helpers::zoomOut(m_zoom, -ticks),
-	                          point.Position())) {
-		m_autoZoom = false;
+	if (ticks != 0) {
+		zoomTo(ticks > 0 ? helpers::zoomIn(m_zoom, ticks)
+		                 : helpers::zoomOut(m_zoom, -ticks),
+		       point.Position());
 	}
 }
 
@@ -726,13 +786,13 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
 		        ? static_cast<std::size_t>(*m_startPage - 1)
 		        : 0;
-		if (m_autoZoom) {
-			m_zoom =
-			    helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
-			                      Scroller().ActualHeight());
+		if (m_preset != helpers::ZoomPreset::None) {
+			m_zoom = helpers::presetZoom(m_preset, m_sizes[m_current],
+			                             Scroller().ActualWidth(),
+			                             Scroller().ActualHeight());
 		}
 		m_layout.emplace(m_sizes, m_zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
-		m_fitPending = m_autoZoom;
+		m_fitPending = helpers::followsViewport(m_preset);
 		const auto size = pdf::scaledSurfaceSize(m_layout->width(),
 		                                         m_layout->height(), m_scale);
 		if (!size) {
@@ -767,15 +827,17 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		showPosition();
 		m_viewChanged = Scroller().ViewChanged(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
-		// app.js webViewerResize: "auto" is worked out again for the new size.
-		// The scroller's size, so the rail and later the side panels count.
+		// app.js webViewerResize: "auto", "page-fit" and "page-width" are
+		// worked out again for the new size. The scroller's size, so the rail
+		// and later the side panels count.
 		m_sizeChanged =
 		    Scroller().SizeChanged(auto_revoke, [this](auto&&, auto&&) {
-			    if (m_autoZoom) {
+			    if (helpers::followsViewport(m_preset)) {
 				    // after this layout pass, not inside it
 				    DispatcherQueue().TryEnqueue([weak = get_weak()] {
-					    if (auto self = weak.get(); self && self->m_autoZoom) {
-						    self->fitAuto();
+					    if (auto self = weak.get();
+					        self && helpers::followsViewport(self->m_preset)) {
+						    self->applyPreset();
 					    }
 				    });
 			    }
@@ -881,11 +943,12 @@ void ViewerPage::updateVisible() {
 	}
 	if (Scroller().ViewportHeight() > 0 &&
 	    Scroller().ExtentHeight() >= Pages().Height() - 1) {
-		if (std::exchange(m_fitPending, false) && m_autoZoom) {
-			// "auto" for the page -p asks for, or the first
-			const double zoom =
-			    helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
-			                      Scroller().ActualHeight());
+		if (std::exchange(m_fitPending, false) &&
+		    helpers::followsViewport(m_preset)) {
+			// for the page -p asks for, or the first
+			const double zoom = helpers::presetZoom(
+			    m_preset, m_sizes[m_current], Scroller().ActualWidth(),
+			    Scroller().ActualHeight());
 			try {
 				// -p waits for the new extent; asked for again in case the
 				// size didn't change enough to start another layout pass

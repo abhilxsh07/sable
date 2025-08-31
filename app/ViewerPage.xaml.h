@@ -88,6 +88,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onZoomOut(const winrt::Windows::Foundation::IInspectable&,
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onZoomMenuOpening(const winrt::Windows::Foundation::IInspectable&,
+	                       const winrt::Windows::Foundation::IInspectable&);
+	void onZoomChoice(const winrt::Windows::Foundation::IInspectable& sender,
+	                  const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
 #ifdef SABLE_SURFACE_TEST
@@ -107,7 +111,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void queueScale();
 	bool setScale(double scale);
 	bool setZoom(double zoom, winrt::Windows::Foundation::Point anchor);
-	void fitAuto();
+	void zoomTo(double zoom, winrt::Windows::Foundation::Point anchor);
+	void setPreset(helpers::ZoomPreset preset);
+	void applyPreset();
 	void settle();
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
@@ -136,10 +142,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::vector<helpers::PageSize> m_sizes;
 	std::optional<helpers::PageLayout> m_layout;
 	double m_zoom = 1;
-	// pdf.js opens at "auto" and keeps it until a zoom key or the wheel
-	bool m_autoZoom = true;
-	// opening can finish before the viewport has a size, so "auto" is
-	// worked out again once it has one
+	// pdf.js's currentScaleValue when it's a name: it opens at "auto", and
+	// a zoom key, the wheel or a percentage from the menu makes it a number
+	helpers::ZoomPreset m_preset = helpers::ZoomPreset::Auto;
+	// opening can finish before the viewport has a size, so a fitting
+	// preset is worked out again once it has one
 	bool m_fitPending = false;
 	// right after a zoom the old rasters are stretched; sharp ones are
 	// rendered once it has been still for a moment
