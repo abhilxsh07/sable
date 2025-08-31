@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <optional>
 #include <vector>
 
 #include "zoom.h"
@@ -81,6 +83,118 @@ TEST(AutoZoom, NoViewportYetMeansOneHundredPercent) {
 	const helpers::PageSize a4{595.28, 841.89};
 	EXPECT_DOUBLE_EQ(helpers::autoZoom(a4, 0, 0), 1);
 	EXPECT_DOUBLE_EQ(helpers::autoZoom({0, 0}, 800, 600), 1);
+}
+
+TEST(PresetZoom, ActualSizeIsAlwaysOneHundredPercent) {
+	const helpers::PageSize a4{595.28, 841.89};
+	EXPECT_DOUBLE_EQ(
+	    helpers::presetZoom(helpers::ZoomPreset::PageActual, a4, 1920, 984), 1);
+	EXPECT_DOUBLE_EQ(
+	    helpers::presetZoom(helpers::ZoomPreset::PageActual, a4, 0, 0), 1);
+}
+
+TEST(PresetZoom, PageWidthAndPageFit) {
+	using helpers::ZoomPreset;
+	const helpers::PageSize a4{595.28, 841.89};
+	// (1880 - 40) / (595.28 * 4/3) and (984 - 5) / (841.89 * 4/3)
+	EXPECT_NEAR(helpers::presetZoom(ZoomPreset::PageWidth, a4, 1880, 984),
+	            2.31824, 1e-5);
+	EXPECT_NEAR(helpers::presetZoom(ZoomPreset::PageFit, a4, 1880, 984),
+	            0.87214, 1e-5);
+	// a narrow window: the width is what limits page-fit
+	EXPECT_NEAR(helpers::presetZoom(ZoomPreset::PageFit, a4, 500, 984), 0.57956,
+	            1e-5);
+	// "auto" is page-width capped at 125% for this portrait page
+	EXPECT_DOUBLE_EQ(helpers::presetZoom(ZoomPreset::Auto, a4, 1880, 984),
+	                 1.25);
+}
+
+TEST(PresetZoom, KeptWithinTheZoomRange) {
+	using helpers::ZoomPreset;
+	const helpers::PageSize stamp{20, 20};
+	EXPECT_DOUBLE_EQ(
+	    helpers::presetZoom(ZoomPreset::PageWidth, stamp, 1880, 984),
+	    helpers::MAX_ZOOM);
+	const helpers::PageSize a4{595.28, 841.89};
+	EXPECT_DOUBLE_EQ(helpers::presetZoom(ZoomPreset::PageFit, a4, 30, 984),
+	                 helpers::MIN_ZOOM);
+}
+
+TEST(PresetZoom, OnlyTheFittingOnesFollowTheWindow) {
+	using helpers::ZoomPreset;
+	EXPECT_TRUE(helpers::followsViewport(ZoomPreset::Auto));
+	EXPECT_TRUE(helpers::followsViewport(ZoomPreset::PageFit));
+	EXPECT_TRUE(helpers::followsViewport(ZoomPreset::PageWidth));
+	EXPECT_FALSE(helpers::followsViewport(ZoomPreset::PageActual));
+	EXPECT_FALSE(helpers::followsViewport(ZoomPreset::None));
+}
+
+TEST(ZoomValue, MenuValuesLikeSetScale) {
+	using helpers::ZoomPreset;
+	using helpers::ZoomValue;
+	EXPECT_EQ(helpers::zoomValue("auto"), (ZoomValue{ZoomPreset::Auto}));
+	EXPECT_EQ(helpers::zoomValue("page-actual"),
+	          (ZoomValue{ZoomPreset::PageActual}));
+	EXPECT_EQ(helpers::zoomValue("page-fit"), (ZoomValue{ZoomPreset::PageFit}));
+	EXPECT_EQ(helpers::zoomValue("page-width"),
+	          (ZoomValue{ZoomPreset::PageWidth}));
+	for (const double choice : helpers::ZOOM_CHOICES) {
+		char text[16];
+		std::snprintf(text, sizeof(text), "%g", choice);
+		EXPECT_EQ(helpers::zoomValue(text),
+		          (ZoomValue{ZoomPreset::None, choice}))
+		    << text;
+	}
+}
+
+TEST(ZoomValue, NumbersLikeParseFloat) {
+	using helpers::ZoomPreset;
+	using helpers::ZoomValue;
+	EXPECT_EQ(helpers::zoomValue(" 1.5"), (ZoomValue{ZoomPreset::None, 1.5}));
+	EXPECT_EQ(helpers::zoomValue("+2"), (ZoomValue{ZoomPreset::None, 2}));
+	EXPECT_EQ(helpers::zoomValue("1.5x"), (ZoomValue{ZoomPreset::None, 1.5}));
+	EXPECT_EQ(helpers::zoomValue("50"),
+	          (ZoomValue{ZoomPreset::None, helpers::MAX_ZOOM}));
+	EXPECT_EQ(helpers::zoomValue("0.01"),
+	          (ZoomValue{ZoomPreset::None, helpers::MIN_ZOOM}));
+	for (const char* text : {"", "0", "-1", "custom", "page-height", "Auto",
+	                         " auto", "nan", "inf", "1e999"}) {
+		EXPECT_EQ(helpers::zoomValue(text), std::nullopt) << '"' << text << '"';
+	}
+}
+
+TEST(ZoomChoiceSelected, PresetFirstThenTheNumber) {
+	using helpers::ZoomPreset;
+	using helpers::ZoomValue;
+	const ZoomValue fit{ZoomPreset::PageFit};
+	const ZoomValue hundred{ZoomPreset::None, 1};
+	// Page Fit is ticked, not 100%, even when page-fit works out to 100%
+	EXPECT_TRUE(helpers::zoomChoiceSelected(fit, ZoomPreset::PageFit, 1));
+	EXPECT_FALSE(helpers::zoomChoiceSelected(hundred, ZoomPreset::PageFit, 1));
+	// Actual Size is a preset too, so 100% stays unticked
+	EXPECT_FALSE(
+	    helpers::zoomChoiceSelected(hundred, ZoomPreset::PageActual, 1));
+	// a plain 100% ticks the 100% entry
+	EXPECT_TRUE(helpers::zoomChoiceSelected(hundred, ZoomPreset::None, 1));
+	EXPECT_FALSE(helpers::zoomChoiceSelected(fit, ZoomPreset::None, 1));
+	// a custom zoom ticks nothing
+	for (const double choice : helpers::ZOOM_CHOICES) {
+		EXPECT_FALSE(helpers::zoomChoiceSelected({ZoomPreset::None, choice},
+		                                         ZoomPreset::None, 1.1));
+	}
+}
+
+TEST(ZoomPercent, LikeTheZoomMenu) {
+	EXPECT_EQ(helpers::zoomPercent(1.25), "125%");
+	EXPECT_EQ(helpers::zoomPercent(1.1), "110%");
+	EXPECT_EQ(helpers::zoomPercent(0.1), "10%");
+	EXPECT_EQ(helpers::zoomPercent(0.75), "75%");
+	EXPECT_EQ(helpers::zoomPercent(10), "1,000%");
+	EXPECT_EQ(helpers::zoomPercent(1.2345), "123.45%");
+	EXPECT_EQ(helpers::zoomPercent(1.23456), "123.46%");
+	EXPECT_EQ(helpers::zoomPercent(0.87214), "87.21%");
+	EXPECT_EQ(helpers::zoomPercent(2.5), "250%");
+	EXPECT_EQ(helpers::zoomPercent(1.005), "100.5%");
 }
 
 TEST(WheelTicks, ANotchIsThreeAndAThirdTicks) {
