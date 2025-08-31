@@ -114,6 +114,8 @@ void ViewerPage::close() {
 	m_viewChanged.revoke();
 	m_sizeChanged.revoke();
 	m_layoutUpdated.revoke();
+	m_rootChanged.revoke();
+	m_loaded.revoke();
 	m_session.reset();
 	Pages().Source(nullptr);
 	m_surface.reset();
@@ -219,19 +221,81 @@ bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
 // zoom just stays, see "Still undecided" in DECISIONS.md.
 bool ViewerPage::relayout(double zoom) {
 	helpers::PageLayout next(m_sizes, zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
-	const double width = std::ceil(next.width() * m_scale);
-	const double height = std::ceil(next.height() * m_scale);
-	if (!pdf::fitsOneSurface(static_cast<long long>(width),
-	                         static_cast<long long>(height))) {
+	const auto size =
+	    pdf::scaledSurfaceSize(next.width(), next.height(), m_scale);
+	if (!size) {
 		return false;
 	}
-	m_surface->resize(static_cast<int>(width), static_cast<int>(height));
+	m_surface->resize(size->cx, size->cy);
 	m_layout = std::move(next);
 	m_zoom = zoom;
-	Pages().Width(width / m_scale);
-	Pages().Height(height / m_scale);
+	Pages().Width(size->cx / m_scale);
+	Pages().Height(size->cy / m_scale);
 	showPosition();
 	return true;
+}
+
+// a root change also covers moving to another monitor
+// see:
+// https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.xamlroot.changed
+void ViewerPage::watchScale() {
+	if (m_closed) {
+		return;
+	}
+	if (auto root = XamlRoot()) {
+		m_rootChanged =
+		    root.Changed(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+			    if (auto self = weak.get()) {
+				    self->queueScale();
+			    }
+		    });
+		queueScale();
+	}
+}
+
+void ViewerPage::queueScale() {
+	if (m_closed || m_scaleQueued || !XamlRoot() ||
+	    XamlRoot().RasterizationScale() == m_scale) {
+		return;
+	}
+	m_scaleQueued = DispatcherQueue().TryEnqueue([weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->m_scaleQueued = false;
+			if (!self->m_closed && self->XamlRoot()) {
+				self->setScale(self->XamlRoot().RasterizationScale());
+			}
+		}
+	});
+}
+
+bool ViewerPage::setScale(double scale) {
+	if (m_closed || !m_layout || !m_surface || scale == m_scale) {
+		return false;
+	}
+	const auto size =
+	    pdf::scaledSurfaceSize(m_layout->width(), m_layout->height(), scale);
+	if (!size) {
+		// keep the readable surface until larger documents are supported
+		return false;
+	}
+	try {
+		const auto x = Scroller().HorizontalOffset();
+		const auto y = Scroller().VerticalOffset();
+		m_surface->resize(size->cx, size->cy);
+		m_scale = scale;
+		settle();
+		m_holdCurrent = true;
+		Pages().Width(size->cx / scale);
+		Pages().Height(size->cy / scale);
+		Scroller().UpdateLayout();
+		m_holdCurrent = false;
+		jumpTo(x, y);
+		updateVisible();
+		return true;
+	} catch (...) {
+		m_holdCurrent = false;
+		return false;
+	}
 }
 
 // the Image is centred in the scroller while it's narrower than it
@@ -669,18 +733,16 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		}
 		m_layout.emplace(m_sizes, m_zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
 		m_fitPending = m_autoZoom;
-		const double width = std::ceil(m_layout->width() * m_scale);
-		const double height = std::ceil(m_layout->height() * m_scale);
-		if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 ||
-		    height <= 0 || width > pdf::MAX_SURFACE_SIDE ||
-		    height > pdf::MAX_SURFACE_SIDE) {
+		const auto size = pdf::scaledSurfaceSize(m_layout->width(),
+		                                         m_layout->height(), m_scale);
+		if (!size) {
 			m_layout.reset();
 			showMessage(L"This PDF is too long to show in one piece yet.");
 			return;
 		}
 		m_device = makeDevice();
 		m_surface = pdf::Surface::create(
-		    *m_device.device, static_cast<int>(width), static_cast<int>(height),
+		    *m_device.device, size->cx, size->cy,
 		    [weak = get_weak()](ID2D1DeviceContext& context, const RECT& rect) {
 			    if (auto self = weak.get()) {
 				    self->draw(context, rect);
@@ -692,8 +754,14 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			    }
 		    });
 		Pages().Source(m_surface->source());
-		Pages().Width(width / m_scale);
-		Pages().Height(height / m_scale);
+		Pages().Width(size->cx / m_scale);
+		Pages().Height(size->cy / m_scale);
+		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+			if (auto self = weak.get()) {
+				self->watchScale();
+			}
+		});
+		watchScale();
 		// the "auto" fit that's still to come takes the rail into account
 		Rail().Visibility(XVisibility::Visible);
 		showPosition();

@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
+#include <limits>
 
 #include "pdf/surface_util.h"
 
@@ -97,5 +98,33 @@ TEST(FitsOneSurface, UpToTwoToTheTwentyFour) {
 	EXPECT_FALSE(pdf::fitsOneSurface(16'777'217, 1));
 	EXPECT_FALSE(pdf::fitsOneSurface(0, 100));
 	EXPECT_FALSE(pdf::fitsOneSurface(100, -1));
+}
+TEST(ScaledSurfaceSize, RoundsUpAtEachDisplayScale) {
+	for (double scale : {1.0, 1.25, 1.5, 2.0}) {
+		const auto size = pdf::scaledSurfaceSize(601.1, 842.1, scale);
+		ASSERT_TRUE(size);
+		EXPECT_EQ(size->cx, static_cast<LONG>(std::ceil(601.1 * scale)));
+		EXPECT_EQ(size->cy, static_cast<LONG>(std::ceil(842.1 * scale)));
+	}
+}
+
+TEST(ScaledSurfaceSize, LimitIsInPhysicalPixels) {
+	const auto size = pdf::scaledSurfaceSize(100, 8'388'608, 2);
+	ASSERT_TRUE(size);
+	EXPECT_EQ(size->cy, pdf::MAX_SURFACE_SIDE);
+	EXPECT_FALSE(pdf::scaledSurfaceSize(100, 8'388'608.1, 2));
+	EXPECT_FALSE(pdf::scaledSurfaceSize(8'388'608.1, 100, 2));
+	EXPECT_TRUE(pdf::scaledSurfaceSize(100, 8'388'609, 1));
+}
+
+TEST(ScaledSurfaceSize, InvalidInputsAndOverflowHaveNoSize) {
+	for (double bad : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+	                   std::numeric_limits<double>::quiet_NaN()}) {
+		EXPECT_FALSE(pdf::scaledSurfaceSize(bad, 100, 1));
+		EXPECT_FALSE(pdf::scaledSurfaceSize(100, bad, 1));
+		EXPECT_FALSE(pdf::scaledSurfaceSize(100, 100, bad));
+	}
+	EXPECT_FALSE(pdf::scaledSurfaceSize(1e308, 100, 2));
+	EXPECT_FALSE(pdf::scaledSurfaceSize(100, 1e308, 2));
 }
 } // namespace

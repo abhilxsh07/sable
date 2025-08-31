@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <d2d1_1.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace pdf {
@@ -58,6 +59,23 @@ inline constexpr long long MAX_SURFACE_SIDE = 16'777'216;
 inline bool fitsOneSurface(long long width, long long height) {
 	return width > 0 && height > 0 && width <= MAX_SURFACE_SIDE &&
 	       height <= MAX_SURFACE_SIDE;
+}
+
+// check in floating point before converting; a bad scale or an enormous
+// document must never overflow the native surface dimensions
+inline std::optional<SIZE> scaledSurfaceSize(double width, double height,
+                                             double scale) {
+	if (!std::isfinite(scale) || scale <= 0 || !std::isfinite(width) ||
+	    !std::isfinite(height) || width <= 0 || height <= 0) {
+		return std::nullopt;
+	}
+	width = std::ceil(width * scale);
+	height = std::ceil(height * scale);
+	if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 ||
+	    height <= 0 || width > MAX_SURFACE_SIDE || height > MAX_SURFACE_SIDE) {
+		return std::nullopt;
+	}
+	return SIZE{static_cast<LONG>(width), static_cast<LONG>(height)};
 }
 
 // the part of rect that lies inside a width by height surface, if any
