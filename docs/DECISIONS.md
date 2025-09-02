@@ -181,6 +181,30 @@ with `Remove-Item Env:SableScaleTest, Env:SableSurfaceTest`, then rebuild.
 The ordinary surface/device-loss probe stays available when SableScaleTest
 isn't set.
 
+## Thumbnails (2026-10-14)
+
+The rail opens a 200 DIP thumbnail panel. DisplayThumbs is read from
+config.json when opening a document, with NightPDF's default of showing
+it. F4 toggles it outside text fields, and clicking a thumbnail goes to
+that page. Page labels appear in the tooltip and accessibility name.
+Thumbnails stay unfiltered, as they did in NightPDF.
+
+I only keep thumbnail controls near the viewport, reusing them as the
+strip scrolls. Their rasters share the page cache and engine thread, with
+the main pages rendered first. A display-scale change refreshes both.
+Very tall thumbnail rasters use the same render limits as the main pages;
+the strip keeps their proportions. Invalid dimensions are rejected before
+converting to integers.
+
+Thumbnail jumps wait until after layout and the initial page fit. An
+explicit page jump refreshes the thumbnail position even if that page was
+already current. Closing moves focus out of the page box before clearing
+the panel, and an error hides the panel along with the main view.
+
+The scale probe now checks thumbnail raster sizes and that page 500's
+thumbnail stays in view at each injected scale. Real monitor moves still
+need checking.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

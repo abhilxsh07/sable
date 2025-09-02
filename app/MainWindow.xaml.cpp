@@ -27,11 +27,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <algorithm>
 #include <filesystem>
 #include <microsoft.ui.xaml.window.h>
+#include <ShlObj.h>
 #include <shellapi.h>
 #include <winrt/Microsoft.UI.h>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.System.h>
+
+#include "helpers/settings.h"
+#include "helpers/version.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Windowing;
@@ -57,6 +61,20 @@ std::filesystem::path exeDir() {
 	}
 	buf.resize(len);
 	return std::filesystem::path(buf).parent_path();
+}
+
+// %APPDATA%\Sable\config.json, the settings file in the shape NightPDF wrote
+std::filesystem::path configFile() {
+	PWSTR raw = nullptr;
+	const HRESULT hr = SHGetKnownFolderPath(FOLDERID_RoamingAppData,
+	                                        KF_FLAG_DEFAULT, nullptr, &raw);
+	std::filesystem::path dir;
+	if (SUCCEEDED(hr)) {
+		dir = raw;
+	}
+	CoTaskMemFree(raw);
+	return dir.empty() ? std::filesystem::path{}
+	                   : dir / L"Sable" / L"config.json";
 }
 } // namespace
 
@@ -96,7 +114,20 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	ZoomOutItem().IsEnabled(true);
 	updateTitleBar();
 	get_self<ViewerPage>(Viewer())->setValues(m_values);
-	get_self<ViewerPage>(Viewer())->open(engine, path, page);
+	// app/helpers/file.ts openFile() (L60-66): DisplayThumbs added
+	// pagemode=thumbs, which opened pdf.js's sidebar on its thumbnails.
+	// Read only; nothing writes the file until the settings window does.
+	bool thumbnails = true;
+	try {
+		const auto file = configFile();
+		if (!file.empty()) {
+			thumbnails = helpers::loadSettings(file, helpers::versionString())
+			                 .general.DisplayThumbs;
+		}
+	} catch (...) {
+		// the defaults, like a missing file
+	}
+	get_self<ViewerPage>(Viewer())->open(engine, path, page, thumbnails);
 }
 
 // port of app/main/app.ts createWindow() (L135-148), just the window part.

@@ -199,6 +199,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="helpers\zoom.h" />
 		<ClInclude Include="helpers\navigation.h" />
+		<ClInclude Include="helpers\thumbnails.h" />
 		<ClInclude Include="pdf\document.h" />
 		<ClInclude Include="pdf\page_cache.h" />
 		<ClInclude Include="pdf\session.h" />
@@ -224,6 +225,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\navigation.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\thumbnails.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document.cpp">

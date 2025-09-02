@@ -25,12 +25,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <d3d11.h>
 #include <winrt/Microsoft.UI.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.System.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <utility>
 
 #include "helpers/filter.h"
@@ -85,11 +89,12 @@ ViewerPage::ViewerPage() : m_cache(CACHE_BYTES) {}
 ViewerPage::~ViewerPage() = default;
 
 void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
-                      std::optional<int> page) {
+                      std::optional<int> page, bool thumbnails) {
 	if (m_closed || m_session) {
 		return;
 	}
 	m_startPage = page;
+	setThumbnailsOpen(thumbnails);
 	m_session = std::make_unique<pdf::Session>(engine);
 	m_session->open(
 	    path, {},
@@ -114,6 +119,20 @@ void ViewerPage::close() {
 	m_viewChanged.revoke();
 	m_sizeChanged.revoke();
 	m_layoutUpdated.revoke();
+	m_thumbScrolled.revoke();
+	m_thumbResized.revoke();
+	// closing the window with the page box focused and the thumbnail panel
+	// open crashed inside Microsoft.UI.Xaml.dll (0xc0000005) after this page
+	// was gone; with the focus on the pages first it closes cleanly
+	if (PageBox().FocusState() != FocusState::Unfocused) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+	ThumbnailPanel().Visibility(XVisibility::Collapsed);
+	Thumbnails().Children().Clear();
+	m_thumbs.clear();
+	m_spareThumbs.clear();
+	m_thumbLoaded.clear();
+	m_strip.reset();
 	m_rootChanged.revoke();
 	m_loaded.revoke();
 	m_session.reset();
@@ -302,6 +321,7 @@ bool ViewerPage::setScale(double scale) {
 		const auto y = Scroller().VerticalOffset();
 		m_surface->resize(size->cx, size->cy);
 		m_scale = scale;
+		m_thumbLoaded.clear();
 		settle();
 		m_holdCurrent = true;
 		Pages().Width(size->cx / scale);
@@ -353,6 +373,9 @@ void ViewerPage::goToPage(std::size_t page) {
 	m_current = page;
 	showPosition();
 	scrollToPage(page);
+	// even if this was already current, the initial thumbnail jump may
+	// have been requested before the main view finished fitting
+	scrollThumbnailIntoView();
 }
 
 // pdf_viewer.js #scrollIntoView and ui_utils.js scrollIntoView: the top of
@@ -449,12 +472,23 @@ void ViewerPage::showPosition() {
 	// the rail is too narrow for pdf.js's "Automatic Zoom", so the button
 	// always shows the percentage and the menu ticks the preset
 	ZoomText().Text(to_hstring(helpers::zoomPercent(m_zoom)));
+	// pagechanging: the thumbnails move their highlight and keep it in view
+	if (thumbnailsOpen() && m_thumbCurrent != m_current) {
+		const auto previous = std::exchange(m_thumbCurrent, m_current);
+		for (const auto page : {previous, m_thumbCurrent}) {
+			if (const auto found = page ? m_thumbs.find(*page) : m_thumbs.end();
+			    found != m_thumbs.end()) {
+				styleThumbnail(found->second, found->first);
+			}
+		}
+		scrollThumbnailIntoView();
+	}
 }
 
 // app.js webViewerPageNumberChanged, for an edited page box: go there if
 // it names a page, and show the current page in the box either way
 void ViewerPage::commitPageBox() {
-	if (!m_layout) {
+	if (m_closed || !m_layout) {
 		return;
 	}
 	const auto text = PageBox().Text();
@@ -478,6 +512,293 @@ void ViewerPage::leavePageBox() {
 		commitPageBox();
 		Scroller().Focus(FocusState::Programmatic);
 	}
+}
+
+// the thumbnail panel (pdf_sidebar.js and pdf_thumbnail_viewer.js)
+
+bool ViewerPage::thumbnailsOpen() {
+	return !m_closed && m_strip &&
+	       ThumbnailPanel().Visibility() == XVisibility::Visible;
+}
+
+// pdf_sidebar.js open/close: opening highlights the current page's
+// thumbnail and scrolls it into view. The pages get the room back, and
+// "auto" and the fitting presets refit through the scroller's SizeChanged.
+void ViewerPage::setThumbnailsOpen(bool open) {
+	ThumbnailsButton().IsChecked(open);
+	if (!m_strip) {
+		m_thumbsWanted = open;
+		return;
+	}
+	ThumbnailPanel().Visibility(open ? XVisibility::Visible
+	                                 : XVisibility::Collapsed);
+	if (!open) {
+		m_hoverThumb.reset();
+		return;
+	}
+	// the strip's viewport, to know what's in view
+	ThumbnailScroller().UpdateLayout();
+	m_thumbCurrent = m_current;
+	for (const auto& [page, button] : m_thumbs) {
+		styleThumbnail(button, page);
+	}
+	scrollThumbnailIntoView();
+	updateThumbnails();
+}
+
+void ViewerPage::scrollThumbnailIntoView() {
+	if (!thumbnailsOpen() || m_thumbScrollQueued) {
+		return;
+	}
+	m_thumbScrollPending = true;
+	// let panel layout and the initial page fit finish before scrolling
+	m_thumbScrollQueued = DispatcherQueue().TryEnqueue([weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->m_thumbScrollQueued = false;
+			self->landThumbnailScroll();
+		}
+	});
+}
+
+void ViewerPage::landThumbnailScroll() {
+	if (!thumbnailsOpen()) {
+		return;
+	}
+	auto scroller = ThumbnailScroller();
+	// opening comes before the panel's first layout when DisplayThumbs is
+	// on; then this waits until the strip has its size
+	m_thumbScrollPending = scroller.ViewportHeight() <= 0 ||
+	                       scroller.ExtentHeight() + 1 < m_strip->height();
+	if (m_thumbScrollPending) {
+		return;
+	}
+	if (const auto y = m_strip->scrollTo(m_current, scroller.VerticalOffset(),
+	                                     scroller.ViewportHeight())) {
+		scroller.ChangeView(nullptr, *y, nullptr, true);
+	}
+}
+
+// one thumbnail: an <a> around a 7 px border, 1 px of padding and the
+// image, with a dashed outline until the render is in (viewer.css)
+Button ViewerPage::makeThumbnail() {
+	if (!m_thumbPlain) {
+		// --thumbnail-selected-color and --thumbnail-hover-color, dark
+		m_thumbSelected = Media::SolidColorBrush({0x33, 0xff, 0xff, 0xff});
+		m_thumbHover = Media::SolidColorBrush({0x1a, 0xff, 0xff, 0xff});
+		m_thumbPlain = Media::SolidColorBrush({0, 0, 0, 0});
+	}
+	Button button;
+	button.Style(Application::Current()
+	                 .Resources()
+	                 .Lookup(box_value(L"SableThumbnailButtonStyle"))
+	                 .as<winrt::Microsoft::UI::Xaml::Style>());
+	Border frame;
+	frame.BorderThickness({helpers::THUMBNAIL_BORDER, helpers::THUMBNAIL_BORDER,
+	                       helpers::THUMBNAIL_BORDER,
+	                       helpers::THUMBNAIL_BORDER});
+	frame.Padding({helpers::THUMBNAIL_PADDING, helpers::THUMBNAIL_PADDING,
+	               helpers::THUMBNAIL_PADDING, helpers::THUMBNAIL_PADDING});
+	frame.CornerRadius({2, 2, 2, 2});
+	frame.BorderBrush(m_thumbPlain);
+	Grid box;
+	box.Width(helpers::THUMBNAIL_WIDTH);
+	Shapes::Rectangle outline;
+	outline.Stroke(Media::SolidColorBrush({0xff, 132, 132, 132}));
+	outline.StrokeThickness(1);
+	Media::DoubleCollection dashes;
+	dashes.Append(3);
+	dashes.Append(3);
+	outline.StrokeDashArray(dashes);
+	Image image;
+	image.Stretch(Media::Stretch::Fill);
+	box.Children().Append(outline);
+	box.Children().Append(image);
+	frame.Child(box);
+	button.Content(frame);
+	// linkService.goToPage(id)
+	button.Click([weak = get_weak()](const auto& sender, auto&&) {
+		auto self = weak.get();
+		const auto tag = sender.template as<Button>().Tag();
+		if (self && tag) {
+			self->leavePageBox();
+			self->goToPage(
+			    static_cast<std::size_t>(unbox_value_or<int32_t>(tag, 0)));
+		}
+	});
+	const auto hover = [weak = get_weak()](const IInspectable& sender,
+	                                       bool entered) {
+		auto self = weak.get();
+		const auto button = sender.as<Button>();
+		const auto tag = button.Tag();
+		if (!self || !tag) {
+			return;
+		}
+		const auto page =
+		    static_cast<std::size_t>(unbox_value_or<int32_t>(tag, 0));
+		if (entered) {
+			self->m_hoverThumb = page;
+		} else if (self->m_hoverThumb == page) {
+			self->m_hoverThumb.reset();
+		}
+		self->styleThumbnail(button, page);
+	};
+	button.PointerEntered(
+	    [hover](const auto& sender, auto&&) { hover(sender, true); });
+	button.PointerExited(
+	    [hover](const auto& sender, auto&&) { hover(sender, false); });
+	return button;
+}
+
+// .thumbnail.selected and :hover: the border and the image's opacity
+void ViewerPage::styleThumbnail(const Button& button, std::size_t page) {
+	const auto frame = button.Content().as<Border>();
+	const auto image = frame.Child().as<Grid>().Children().GetAt(1).as<Image>();
+	const bool selected = page == m_current;
+	const bool hovered = m_hoverThumb == page;
+	frame.BorderBrush(selected  ? m_thumbSelected
+	                  : hovered ? m_thumbHover
+	                            : m_thumbPlain);
+	image.Opacity(selected ? 1 : hovered ? 0.95 : 0.9);
+}
+
+void ViewerPage::showThumbnail(std::size_t page, const pdf::Bitmap& bitmap) {
+	const auto found = m_thumbs.find(page);
+	if (found == m_thumbs.end() || bitmap.width <= 0 || bitmap.height <= 0) {
+		return;
+	}
+	Media::Imaging::WriteableBitmap pixels(bitmap.width, bitmap.height);
+	auto* to = pixels.PixelBuffer().data();
+	const auto row = static_cast<std::size_t>(bitmap.width) * 4;
+	for (int y = 0; y < bitmap.height; ++y) {
+		std::memcpy(to + row * y,
+		            bitmap.pixels.data() +
+		                static_cast<std::size_t>(bitmap.stride) * y,
+		            row);
+	}
+	pixels.Invalidate();
+	const auto box = found->second.Content().as<Border>().Child().as<Grid>();
+	box.Children().GetAt(1).as<Image>().Source(pixels);
+	box.Children().GetAt(0).Visibility(XVisibility::Collapsed);
+	m_thumbLoaded.insert(page);
+}
+
+pdf::PageKey ViewerPage::thumbKey(std::size_t page) const {
+	const auto pixels = m_strip->renderSize(page, m_scale);
+	const auto size = helpers::renderSize(pixels.width, pixels.height,
+	                                      MAX_PAGE_PIXELS, MAX_PAGE_SIDE);
+	return {static_cast<int>(page), size.width, size.height, 0};
+}
+
+void ViewerPage::onThumbnailsClick(const IInspectable&,
+                                   const RoutedEventArgs&) {
+	leavePageBox();
+	setThumbnailsOpen(
+	    unbox_value_or<bool>(ThumbnailsButton().IsChecked(), false));
+}
+
+// the thumbnails from a screen above the view to a screen below it are
+// made, the rest go back to be reused, like ItemsRepeater does but at
+// pdf.js's exact positions, so scrolling to a thumbnail lands on it
+void ViewerPage::updateThumbnails() {
+	if (!thumbnailsOpen()) {
+		return;
+	}
+	if (m_thumbScrollPending) {
+		scrollThumbnailIntoView();
+	}
+	auto scroller = ThumbnailScroller();
+	const double view = (std::max)(scroller.ViewportHeight(), 1.0);
+	const auto range =
+	    m_strip->pagesIn(scroller.VerticalOffset() - view, 3 * view);
+	for (auto it = m_thumbs.begin(); it != m_thumbs.end();) {
+		if (it->first >= range.first && it->first < range.end) {
+			++it;
+			continue;
+		}
+		const auto button = it->second;
+		button.Visibility(XVisibility::Collapsed);
+		button.Tag(nullptr);
+		button.Content()
+		    .as<Border>()
+		    .Child()
+		    .as<Grid>()
+		    .Children()
+		    .GetAt(1)
+		    .as<Image>()
+		    .Source(nullptr);
+		if (m_hoverThumb == it->first) {
+			m_hoverThumb.reset();
+		}
+		m_thumbLoaded.erase(it->first);
+		m_spareThumbs.push_back(button);
+		it = m_thumbs.erase(it);
+	}
+	bool missing = false;
+	for (auto page = range.first; page < range.end; ++page) {
+		if (m_thumbs.contains(page)) {
+			continue;
+		}
+		Button button{nullptr};
+		if (m_spareThumbs.empty()) {
+			button = makeThumbnail();
+			Thumbnails().Children().Append(button);
+		} else {
+			button = m_spareThumbs.back();
+			m_spareThumbs.pop_back();
+		}
+		prepareThumbnail(button, page);
+		missing = missing || !m_thumbLoaded.contains(page);
+	}
+	if (missing) {
+		queueRequest();
+	}
+}
+
+void ViewerPage::prepareThumbnail(const Button& button, std::size_t page) {
+	button.Tag(box_value(static_cast<int32_t>(page)));
+	// Tab goes through the thumbnails in page order, not the order they
+	// were made in
+	button.TabIndex(static_cast<int32_t>(page));
+	const double outer =
+	    helpers::THUMBNAIL_WIDTH +
+	    2 * (helpers::THUMBNAIL_BORDER + helpers::THUMBNAIL_PADDING);
+	const double width =
+	    ThumbnailPanel().Width() - ThumbnailPanel().BorderThickness().Left;
+	Canvas::SetLeft(button, (std::max)(0.0, std::floor((width - outer) / 2)));
+	Canvas::SetTop(button, m_strip->top(page));
+	const auto box = button.Content().as<Border>().Child().as<Grid>();
+	box.Height(m_strip->imageHeight(page));
+	box.Children().GetAt(0).Visibility(XVisibility::Visible);
+	box.Children().GetAt(1).as<Image>().Source(nullptr);
+	// pdfjs-thumb-page-title and pdfjs-thumb-page-canvas
+	const auto name = to_hstring(helpers::pageName(page, m_labels));
+	Controls::ToolTipService::SetToolTip(button, box_value(L"Page " + name));
+	Automation::AutomationProperties::SetName(button,
+	                                          L"Thumbnail of Page " + name);
+	button.Visibility(XVisibility::Visible);
+	m_thumbs.insert_or_assign(page, button);
+	m_thumbLoaded.erase(page);
+	styleThumbnail(button, page);
+	if (const auto* bitmap = m_cache.find(thumbKey(page))) {
+		showThumbnail(page, *bitmap);
+	}
+}
+
+// many thumbnails are made in one layout pass; look for work once after it
+void ViewerPage::queueRequest() {
+	if (m_requestQueued || m_closed) {
+		return;
+	}
+	m_requestQueued = DispatcherQueue().TryEnqueue([weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->m_requestQueued = false;
+			try {
+				self->requestNext();
+			} catch (...) {
+				self->showMessage(L"Couldn't show this PDF: " + to_message());
+			}
+		}
+	});
 }
 
 void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
@@ -541,6 +862,9 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 	case VirtualKey::P:
 		pressed = NavKey::P;
 		break;
+	case VirtualKey::F4:
+		pressed = NavKey::F4;
+		break;
 	default:
 		return;
 	}
@@ -589,6 +913,9 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 	case NavAction::FocusPageBox:
 		PageBox().Focus(FocusState::Keyboard);
 		PageBox().SelectAll();
+		break;
+	case NavAction::ToggleSidebar:
+		setThumbnailsOpen(!thumbnailsOpen());
 		break;
 	}
 	if (action != NavAction::None) {
@@ -822,9 +1149,18 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			}
 		});
 		watchScale();
+		m_strip.emplace(m_sizes);
+		Thumbnails().Height(m_strip->height());
+		m_thumbScrolled = ThumbnailScroller().ViewChanged(
+		    auto_revoke, [this](auto&&, auto&&) { updateThumbnails(); });
+		m_thumbResized = ThumbnailScroller().SizeChanged(
+		    auto_revoke, [this](auto&&, auto&&) { updateThumbnails(); });
 		// the "auto" fit that's still to come takes the rail into account
 		Rail().Visibility(XVisibility::Visible);
 		showPosition();
+		if (m_thumbsWanted) {
+			setThumbnailsOpen(true);
+		}
 		m_viewChanged = Scroller().ViewChanged(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
 		// app.js webViewerResize: "auto", "page-fit" and "page-width" are
@@ -878,10 +1214,15 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 }
 
 void ViewerPage::showMessage(const hstring& text) {
+	if (m_closed) {
+		return;
+	}
 	Message().Text(text);
 	Message().Visibility(XVisibility::Visible);
 	Scroller().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
+	ThumbnailPanel().Visibility(XVisibility::Collapsed);
+	m_thumbScrollPending = false;
 }
 
 ViewerPage::Device ViewerPage::makeDevice() {
@@ -975,6 +1316,9 @@ void ViewerPage::updateVisible() {
 		}
 	}
 	updateCurrentPage();
+	if (m_thumbScrollPending) {
+		scrollThumbnailIntoView();
+	}
 	const double top = Scroller().VerticalOffset();
 	double height = Scroller().ViewportHeight();
 	if (height <= 0) {
@@ -995,7 +1339,7 @@ void ViewerPage::updateVisible() {
 }
 
 void ViewerPage::requestNext() {
-	if (!m_session || !m_layout) {
+	if (m_closed || !m_session || !m_layout) {
 		return;
 	}
 	for (const auto page : helpers::renderOrder(m_visible, m_wanted)) {
@@ -1015,18 +1359,56 @@ void ViewerPage::requestNext() {
 		if (m_settling || m_rendering || m_failed.contains(wanted)) {
 			continue;
 		}
-		m_rendering = m_session->render(
-		    wanted, [weak = get_weak(),
-		             queue = DispatcherQueue()](pdf::RenderResult result) {
-			    auto rendered =
-			        std::make_shared<pdf::RenderResult>(std::move(result));
-			    queue.TryEnqueue([weak, rendered] {
-				    if (auto self = weak.get()) {
-					    self->rendered(std::move(*rendered));
-				    }
-			    });
-		    });
+		startRender(wanted);
 	}
+	// pdf_rendering_queue.js: thumbnails once the pages have what they
+	// need, the ones in view and below first, then the ones above
+	if (!thumbnailsOpen() || m_thumbs.empty()) {
+		return;
+	}
+	const double top = ThumbnailScroller().VerticalOffset();
+	const auto below = [this, top](std::size_t page) {
+		return m_strip->top(page) + m_strip->outerHeight(page) > top;
+	};
+	std::vector<std::size_t> order;
+	for (const auto& [page, button] : m_thumbs) {
+		if (below(page)) {
+			order.push_back(page);
+		}
+	}
+	for (auto it = m_thumbs.rbegin(); it != m_thumbs.rend(); ++it) {
+		if (!below(it->first)) {
+			order.push_back(it->first);
+		}
+	}
+	for (const auto page : order) {
+		if (m_thumbLoaded.contains(page)) {
+			continue;
+		}
+		const auto wanted = thumbKey(page);
+		if (const auto* bitmap = m_cache.find(wanted)) {
+			showThumbnail(page, *bitmap);
+			continue;
+		}
+		if (m_settling || m_rendering || m_failed.contains(wanted)) {
+			continue;
+		}
+		startRender(wanted);
+	}
+}
+
+void ViewerPage::startRender(const pdf::PageKey& key) {
+	m_rendering =
+	    m_session->render(key, [weak = get_weak(), queue = DispatcherQueue()](
+	                               pdf::RenderResult result) {
+		    auto rendered =
+		        std::make_shared<pdf::RenderResult>(std::move(result));
+		    queue.TryEnqueue([weak, rendered] {
+			    if (auto self = weak.get()) {
+				    self->rendered(std::move(*rendered));
+			    }
+		    });
+	    });
 }
 
 void ViewerPage::rendered(pdf::RenderResult result) {
@@ -1050,6 +1432,20 @@ void ViewerPage::rendered(pdf::RenderResult result) {
 					}
 					// kept nowhere means rendering it again would go the
 					// same way, round and round
+					if (!m_cache.put(result.key, std::move(*result.bitmap)) &&
+					    !shown) {
+						m_failed.insert(result.key);
+					}
+				}
+			} else if (m_strip && page < m_strip->size() &&
+			           result.key == thumbKey(page)) {
+				if (!result.bitmap) {
+					m_failed.insert(result.key);
+				} else {
+					const bool shown = m_thumbs.contains(page);
+					if (shown) {
+						showThumbnail(page, *result.bitmap);
+					}
 					if (!m_cache.put(result.key, std::move(*result.bitmap)) &&
 					    !shown) {
 						m_failed.insert(result.key);

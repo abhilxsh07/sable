@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/layout.h"
 #include "helpers/navigation.h"
 #include "helpers/sliders.h"
+#include "helpers/thumbnails.h"
 #include "helpers/zoom.h"
 #include "pdf/page_cache.h"
 
@@ -56,9 +57,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	~ViewerPage();
 
 	// opens path and, once the pages are laid out, scrolls to page (1-based,
-	// like -p). One document per page; tabs will give each its own.
+	// like -p). thumbnails opens the thumbnail panel with it, NightPDF's
+	// DisplayThumbs. One document per page; tabs will give each its own.
 	void open(pdf::Engine& engine, const std::filesystem::path& path,
-	          std::optional<int> page);
+	          std::optional<int> page, bool thumbnails);
 	// lets go of the document while the engine is still around
 	void close();
 	// changes only the GPU filter; page rasters stay in the cache
@@ -92,6 +94,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                       const winrt::Windows::Foundation::IInspectable&);
 	void onZoomChoice(const winrt::Windows::Foundation::IInspectable& sender,
 	                  const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onThumbnailsClick(const winrt::Windows::Foundation::IInspectable&,
+	                       const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
 #ifdef SABLE_SURFACE_TEST
@@ -122,6 +126,22 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void showPosition();
 	void commitPageBox();
 	void leavePageBox();
+	bool thumbnailsOpen();
+	void setThumbnailsOpen(bool open);
+	void scrollThumbnailIntoView();
+	void landThumbnailScroll();
+	void updateThumbnails();
+	winrt::Microsoft::UI::Xaml::Controls::Button makeThumbnail();
+	void
+	prepareThumbnail(const winrt::Microsoft::UI::Xaml::Controls::Button& button,
+	                 std::size_t page);
+	void
+	styleThumbnail(const winrt::Microsoft::UI::Xaml::Controls::Button& button,
+	               std::size_t page);
+	void showThumbnail(std::size_t page, const pdf::Bitmap& bitmap);
+	pdf::PageKey thumbKey(std::size_t page) const;
+	void queueRequest();
+	void startRender(const pdf::PageKey& key);
 	double imageLeft();
 	void onWheel(
 	    const winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs& args);
@@ -187,6 +207,33 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    m_sizeChanged;
 	winrt::Microsoft::UI::Xaml::FrameworkElement::LayoutUpdated_revoker
 	    m_layoutUpdated;
+	bool m_requestQueued = false;
+
+	// the thumbnail panel: pdf.js's sidebar in its thumbnails view, from the
+	// right rail. Thumbnails aren't filtered, like NightPDF's.
+	std::optional<helpers::ThumbnailStrip> m_strip;
+	// open asked for before the document was in (DisplayThumbs)
+	bool m_thumbsWanted = false;
+	// the thumbnails made for pages near the view, which of them show a
+	// render at the current display scale, and the ones put aside
+	std::map<std::size_t, winrt::Microsoft::UI::Xaml::Controls::Button>
+	    m_thumbs;
+	std::vector<winrt::Microsoft::UI::Xaml::Controls::Button> m_spareThumbs;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker
+	    m_thumbScrolled;
+	winrt::Microsoft::UI::Xaml::FrameworkElement::SizeChanged_revoker
+	    m_thumbResized;
+	std::set<std::size_t> m_thumbLoaded;
+	std::optional<std::size_t> m_hoverThumb;
+	// the page the thumbnails last highlighted
+	std::optional<std::size_t> m_thumbCurrent;
+	// a scroll to the current thumbnail asked for before the strip had a
+	// size
+	bool m_thumbScrollPending = false;
+	bool m_thumbScrollQueued = false;
+	winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_thumbSelected{nullptr};
+	winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_thumbHover{nullptr};
+	winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_thumbPlain{nullptr};
 };
 } // namespace winrt::Sable::implementation
 

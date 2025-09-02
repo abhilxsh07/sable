@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/pch.h"
 #include "../app/ViewerPage.xaml.h"
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <cmath>
 #include <memory>
 
@@ -64,7 +65,24 @@ struct ScaleTest {
 				return;
 			}
 		}
+		const double thumbTop =
+		    v.m_strip->top(v.m_current) + helpers::THUMBNAIL_BORDER;
+		const double viewTop = v.ThumbnailScroller().VerticalOffset();
+		if (thumbTop < viewTop ||
+		    thumbTop + v.m_strip->imageHeight(v.m_current) >
+		        viewTop + v.ThumbnailScroller().ViewportHeight()) {
+			status.Text(L"FAIL: thumbnail outside view at step " +
+			            to_hstring(step) + L", top " + to_hstring(thumbTop) +
+			            L", scroll " + to_hstring(viewTop));
+			timer.Stop();
+			return;
+		}
 		if (step < 0) {
+			if (v.m_current != 499) {
+				status.Text(L"FAIL: starting page was not 500");
+				timer.Stop();
+				return;
+			}
 			// the monitor stays at its real scale during this injected check
 			v.m_rootChanged.revoke();
 			zoom = v.m_zoom;
@@ -79,12 +97,33 @@ struct ScaleTest {
 			timer.Stop();
 			return;
 		}
+		for (const auto& [index, button] : v.m_thumbs) {
+			if (!v.m_thumbLoaded.contains(index)) {
+				return;
+			}
+			const auto bitmap = button.Content()
+			                        .as<Border>()
+			                        .Child()
+			                        .as<Grid>()
+			                        .Children()
+			                        .GetAt(1)
+			                        .as<Image>()
+			                        .Source()
+			                        .as<Media::Imaging::WriteableBitmap>();
+			const auto key = v.thumbKey(index);
+			if (bitmap.PixelWidth() != key.width ||
+			    bitmap.PixelHeight() != key.height) {
+				status.Text(L"FAIL: thumbnail has the old raster size");
+				timer.Stop();
+				return;
+			}
+		}
 		if (++step == 4) {
 			if (v.setScale(0) || v.setScale(1e308) || v.m_scale != 1.0) {
 				status.Text(L"FAIL: invalid scale changed the surface");
 			} else {
 				status.Text(L"PASS: 150%, 200%, 125%, 100%; sharp pages, "
-				            L"same page/zoom/offsets; invalid scales rejected");
+				            L"sharp thumbnails; same page/zoom/offsets");
 			}
 			timer.Stop();
 			return;
@@ -144,7 +183,7 @@ Window scaleTest(pdf::Engine& engine) {
 		state->timer.Stop();
 		state->viewer->close();
 	});
-	state->viewer->open(engine, L"tests/fixtures/long.pdf", 500);
+	state->viewer->open(engine, L"tests/fixtures/long.pdf", 500, true);
 	state->timer = state->viewer->DispatcherQueue().CreateTimer();
 	state->timer.Interval(std::chrono::milliseconds(250));
 	state->timer.Tick([weak](auto&&, auto&&) {

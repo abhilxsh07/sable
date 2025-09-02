@@ -55,6 +55,11 @@ struct PageText {
 PageText pageText(std::size_t page, std::size_t count,
                   std::span<const std::string> labels);
 
+// a page as the thumbnails' "Page { $page }" strings name it: its label if
+// the PDF's labels are in use (even an empty one), else its number, grouped
+// like an en-US number ("1,000")
+std::string pageName(std::size_t page, std::span<const std::string> labels);
+
 // the page (0-based) that what was typed in the page box goes to: a label
 // first, then a number the way JavaScript's (text | 0) reads it, so " 7 "
 // and "7.9" are page 7. nullopt if it's neither or past the last page
@@ -97,6 +102,7 @@ enum class NavKey {
 	K,
 	N,
 	P,
+	F4,
 };
 
 struct NavModifiers {
@@ -117,7 +123,15 @@ struct NavState {
 	bool pageFit = false;
 };
 
-enum class NavAction { None, Previous, Next, First, Last, FocusPageBox };
+enum class NavAction {
+	None,
+	Previous,
+	Next,
+	First,
+	Last,
+	FocusPageBox,
+	ToggleSidebar,
+};
 
 // None leaves the key to the scroller. Previous on the first page and Next
 // on the last still take the key, like pdf.js.

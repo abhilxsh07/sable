@@ -180,6 +180,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="AllowFocusOnInteraction" Value="False" />
 	</Style>
 
+	<!-- the rail's buttons that open a panel; lit while it's open -->
+	<Style x:Key="SableRailToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Width" Value="40" />
+		<Setter Property="Height" Value="36" />
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="CornerRadius" Value="4" />
+		<Setter Property="HorizontalAlignment" Value="Center" />
+		<Setter Property="AllowFocusOnInteraction" Value="False" />
+	</Style>
+
+	<!-- a thumbnail in the thumbnail panel: no chrome of its own, the border
+		and highlight are drawn by the viewer like pdf.js's .thumbnail -->
+	<Style x:Key="SableThumbnailButtonStyle" TargetType="Button">
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="AllowFocusOnInteraction" Value="False" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<ContentPresenter Background="{TemplateBinding Background}"
+						Content="{TemplateBinding Content}" />
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
 	<!-- flat buttons that sit in the title bar (the Menu button) -->
 	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
