@@ -100,6 +100,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
   private:
 #ifdef SABLE_SURFACE_TEST
 	friend struct ScaleTest;
+	friend struct ViewerErrorTest;
 #endif
 	struct Device {
 		winrt::com_ptr<ID2D1Device> device;
