@@ -239,6 +239,26 @@ Build with `SableSurfaceTest=true`, then launch from the repo root with
 `SableErrorTest=true`. Read the window's PASS or FAIL result before closing;
 exit 0 only checks shutdown. Clear both variables and rebuild afterwards.
 
+## Files while open (2026-10-15)
+
+The loader reads a PDF into memory before handing it to PDFium. Its file
+stream is closed before the session's open callback, so the source can be
+renamed, overwritten or deleted while the document stays open. The open
+session keeps its original bytes; opening the replacement gets its new
+contents. Nothing needed changing in the loader for V09.
+
+Session tests now cover Unicode folders and filenames with spaces,
+including a supplementary-plane character, and rendering after renaming,
+replacing and deleting the source. Existing tests cover CLI UTF-8 parsing
+and the document loader's wide paths.
+
+I also opened the viewer with a quoted absolute path containing accented
+letters, Japanese, an emoji, spaces, a leading filename dash, #, % and &.
+It opened at page 500, and Windows allowed its isolated source file to be
+renamed, overwritten and deleted while the viewer stayed open. The window
+closed with exit 0. The later UI navigation check was inconclusive; fresh
+renders after deletion are checked by the Session tests.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

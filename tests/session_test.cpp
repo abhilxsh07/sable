@@ -135,11 +135,15 @@ class SessionTest : public ::testing::Test {
 	}
 
 	fs::path writeTemp(std::string_view name, const std::string& bytes) {
-		m_dirs.push_back(makeTempDir("session"));
-		const auto path = m_dirs.back() / std::string(name);
+		const auto path = tempDir() / std::string(name);
 		std::ofstream out(path, std::ios::binary);
 		out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 		return path;
+	}
+
+	fs::path tempDir() {
+		m_dirs.push_back(makeTempDir("session"));
+		return m_dirs.back();
 	}
 
 	// opens and waits for the answer
@@ -260,6 +264,53 @@ TEST_F(SessionTest, OpensOnlyOnce) {
 	open(session, fixturePath("pages.pdf"));
 	EXPECT_FALSE(
 	    session.open(fixturePath("pages.pdf"), {}, [](pdf::SessionInfo) {}));
+}
+
+TEST_F(SessionTest, OpensAndRendersAUnicodePathWithSpaces) {
+	const auto folder = tempDir() / L"Zo\u00eb \u65e5\u672c\u8a9e \U0001f4d6";
+	ASSERT_TRUE(fs::create_directories(folder));
+	const auto path = folder / L"-reading notes \u00fc.pdf";
+	ASSERT_TRUE(fs::copy_file(fixturePath("pages.pdf"), path));
+	pdf::Session session(engine);
+	const auto info = open(session, path);
+	ASSERT_EQ(info.error, pdf::Error::None);
+	ASSERT_EQ(info.pages.size(), 3u);
+	EXPECT_EQ(info.labels, (std::vector<std::string>{"i", "ii", "1"}));
+	const auto result = render(session, {2, 80, 120});
+	EXPECT_FALSE(result.canceled);
+	ASSERT_TRUE(result.bitmap);
+	EXPECT_EQ(result.bitmap->width, 80);
+	EXPECT_EQ(result.bitmap->height, 120);
+}
+
+TEST_F(SessionTest, SourceCanBeRenamedReplacedAndDeletedWhileOpen) {
+	const auto path = writeTemp("read while open.pdf", manyPages(3));
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, path).pages.size(), 3u);
+	const auto before = render(session, {2, 60, 85});
+	ASSERT_TRUE(before.bitmap);
+
+	std::error_code ec;
+	const auto renamed = path.parent_path() / "renamed.pdf";
+	fs::rename(path, renamed, ec);
+	ASSERT_FALSE(ec) << ec.message();
+	// the open session must keep its own bytes, not read the new file
+	{
+		std::ofstream out(renamed, std::ios::binary | std::ios::trunc);
+		out << manyPages(1);
+		out.close();
+		ASSERT_FALSE(out.fail());
+	}
+	pdf::Session replacement(engine);
+	ASSERT_EQ(open(replacement, renamed).pages.size(), 1u);
+	ASSERT_TRUE(fs::remove(renamed, ec)) << ec.message();
+	ASSERT_FALSE(ec) << ec.message();
+
+	const auto after = render(session, {2, 60, 85});
+	EXPECT_FALSE(after.canceled);
+	ASSERT_TRUE(after.bitmap);
+	EXPECT_EQ(after.bitmap->pixels, before.bitmap->pixels);
+	EXPECT_TRUE(render(replacement, {0, 60, 85}).bitmap);
 }
 
 TEST_F(SessionTest, NeedsACallback) {
