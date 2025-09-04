@@ -101,7 +101,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<TitleBar.Content>
 				<!-- the strip lives here; viewers stay mounted below it -->
 				<TabView x:Name="Tabs" Height="48" Visibility="Collapsed"
-					IsAddTabButtonVisible="False" CanReorderTabs="False"
+					IsAddTabButtonVisible="True" CanReorderTabs="False"
 					CanDragTabs="False" TabWidthMode="Equal"
 					AutomationProperties.Name="Documents" />
 			</TitleBar.Content>
@@ -166,6 +166,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<!-- each tab keeps its viewer and reading position while hidden -->
 		<Grid x:Name="Documents" Grid.Row="1" Visibility="Collapsed" />
+		<InfoBar x:Name="PickerError" Grid.Row="1" VerticalAlignment="Top"
+			Severity="Error" IsOpen="False" IsClosable="True"
+			Title="Couldn't open the file dialog" />
 		<!-- #darkConfigurator in index.sass: 200 wide, at most 550 tall,
 			rgb(45,45,45) with a #666 border, 16px 24px padding, 4px corners and
 			a small shadow. Lined up under the preset buttons when it opens. -->

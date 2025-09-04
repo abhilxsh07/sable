@@ -83,13 +83,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					Foreground="{ThemeResource SableTextSecondaryBrush}" />
 			</StackPanel>
 
-			<!-- tools strip. None of these do anything until the viewer is in,
-				the tooltips say what they're for. -->
+			<!-- tools strip. Open works; the other tools come later. -->
 			<Border Style="{StaticResource CardStyle}" Padding="10,8">
 				<ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
 					VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
 					<StackPanel Orientation="Horizontal" Spacing="4">
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Open a PDF (Ctrl+O)">
+						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Open a PDF (Ctrl+O)" Click="onOpen">
 							<StackPanel Orientation="Horizontal" Spacing="10">
 								<Border Width="30" Height="30" CornerRadius="6" Background="#2629c0ea">
 									<FontIcon Glyph="&#xE8E5;" FontSize="15" Foreground="#29c0ea" />
@@ -162,7 +161,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<!-- NightPDF's splash (app/index.html L100-110) as a card. Same
 					gradient on the dashed border (gradient3.svg, bottom to top),
 					same two lines. -->
-				<Border x:Name="DropCard" Style="{StaticResource CardStyle}" Height="264" Padding="14">
+				<Border x:Name="DropCard" Tapped="onOpenTapped" Style="{StaticResource CardStyle}" Height="264" Padding="14">
 					<Grid>
 						<Rectangle RadiusX="6" RadiusY="6" StrokeThickness="1.5" StrokeDashArray="4 4">
 							<Rectangle.Stroke>
@@ -179,7 +178,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								Foreground="#cccccc" Margin="0,16,0,0" HorizontalAlignment="Center" />
 							<TextBlock Text="Open File with CTRL+O" FontSize="14" FontWeight="SemiBold"
 								Foreground="#bbbbbb" Margin="0,6,0,0" HorizontalAlignment="Center" />
-							<Button Style="{StaticResource SableAccentButtonStyle}" Content="Open a PDF"
+							<Button Style="{StaticResource SableAccentButtonStyle}" Content="Open a PDF" Click="onOpen"
 								Margin="0,18,0,0" HorizontalAlignment="Center" />
 						</StackPanel>
 					</Grid>
