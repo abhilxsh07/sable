@@ -27,3 +27,4 @@ class Engine;
 winrt::Microsoft::UI::Xaml::Window surfaceTest(pdf::Engine& engine);
 winrt::Microsoft::UI::Xaml::Window scaleTest(pdf::Engine& engine);
 winrt::Microsoft::UI::Xaml::Window viewerErrorTest(pdf::Engine& engine);
+winrt::Microsoft::UI::Xaml::Window tabsTest(pdf::Engine& engine);

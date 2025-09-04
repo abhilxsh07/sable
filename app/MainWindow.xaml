@@ -32,10 +32,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		Tapped="onHideConfigurator" KeyDown="onFilterKeyDown">
 		<!-- my own title bar instead of the system one. The Menu button takes
 			the place of NightPDF's menu bar (menutemplate.ts), same items, same
-			shortcuts. Tabs and the preset buttons move up here later. -->
+			shortcuts. Tabs and presets share the bar. -->
 		<TitleBar x:Name="AppTitleBar" Title="Sable"
 			IsBackButtonVisible="False" IsPaneToggleButtonVisible="False"
 			Background="{ThemeResource SableTitleBarBrush}">
+			<TitleBar.Resources>
+				<!-- the title bar centres content by default; tabs start left -->
+				<HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Left</HorizontalAlignment>
+			</TitleBar.Resources>
 			<TitleBar.IconSource>
 				<ImageIconSource ImageSource="ms-appx:///assets/icon.png" />
 			</TitleBar.IconSource>
@@ -94,6 +98,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</Button.Flyout>
 				</Button>
 			</TitleBar.LeftHeader>
+			<TitleBar.Content>
+				<!-- the strip lives here; viewers stay mounted below it -->
+				<TabView x:Name="Tabs" Height="48" Visibility="Collapsed"
+					IsAddTabButtonVisible="False" CanReorderTabs="False"
+					CanDragTabs="False" TabWidthMode="Equal"
+					AutomationProperties.Name="Documents" />
+			</TitleBar.Content>
 			<TitleBar.RightHeader>
 				<StackPanel x:Name="Presets" Orientation="Horizontal" Spacing="8"
 					Margin="8,0" Visibility="Collapsed" Tapped="onKeepConfigurator">
@@ -153,9 +164,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<local:HomePage x:Name="Home" />
 		</NavigationView>
 
-		<!-- a PDF from the command line replaces the home screen for now.
-			Tabs will hold one of these each. -->
-		<local:ViewerPage x:Name="Viewer" Grid.Row="1" Visibility="Collapsed" />
+		<!-- each tab keeps its viewer and reading position while hidden -->
+		<Grid x:Name="Documents" Grid.Row="1" Visibility="Collapsed" />
 		<!-- #darkConfigurator in index.sass: 200 wide, at most 550 tall,
 			rgb(45,45,45) with a #666 border, 16px 24px padding, 4px corners and
 			a small shadow. Lined up under the preset buttons when it opens. -->

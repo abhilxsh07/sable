@@ -259,6 +259,37 @@ renamed, overwritten and deleted while the viewer stayed open. The window
 closed with exit 0. The later UI navigation check was inconclusive; fresh
 renders after deletion are checked by the Session tests.
 
+## First document tabs (2026-10-15)
+
+Each document now gets its own ViewerPage, kept mounted while another tab
+is selected so its page, zoom and thumbnail state stay around. Every file
+on the command line opens a tab; the last file is selected. A repeated
+absolute, lexically normalized path selects the existing tab, as
+path.resolve did in NightPDF. It doesn't resolve filesystem links.
+
+The title-bar TabView shows filenames with a leading ellipsis and the full
+path in a tooltip. Its add button stays hidden until the open dialog is
+wired. The native strip handles selection and close buttons. I handle
+Ctrl+W/F4 and next/previous (Ctrl+Tab/PageDown, Ctrl+Shift+Tab/PageUp) on the
+window so navigation stops at the ends instead of TabView's usual wrap.
+Reopen, tab moves, position shortcuts and drag reorder are still to come.
+Tab widths still use WinUI's defaults; matching the 15% limit is left for
+the tab-strip pass.
+
+A tab opens its session once loaded, including background tabs. Password
+prompts from a background tab wait until selection, and an existing dialog isn't
+shown twice. Filters apply to every tab, including one that hasn't opened
+yet. Zoom actions use only the selected viewer. Closing the last tab
+returns to the home screen and hides the tab strip and presets. Closing the
+window releases every viewer before the PDF engine.
+
+The Debug-only SableTabsTest probe exercises duplicate paths, independent
+page/zoom, shared filters, an error tab, a deferred password prompt, closing
+while opening and returning home. It reports PASS or a failing step in the
+window. Build with SableSurfaceTest=true, set `$env:SableTabsTest = 'true'`,
+then launch from the repo root. Read the result before closing; exit 0 only
+confirms shutdown. Clear both variables and rebuild afterwards.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

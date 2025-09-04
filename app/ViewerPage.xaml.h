@@ -58,11 +58,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
 	// opens path and, once the pages are laid out, scrolls to page (1-based,
 	// like -p). thumbnails opens the thumbnail panel with it, NightPDF's
-	// DisplayThumbs. One document per page; tabs will give each its own.
+	// DisplayThumbs. One viewer per document tab.
 	void open(pdf::Engine& engine, const std::filesystem::path& path,
 	          std::optional<int> page, bool thumbnails);
 	// lets go of the document while the engine is still around
 	void close();
+	// a pending password prompt waits until this tab is selected
+	void activate();
 	// changes only the GPU filter; page rasters stay in the cache
 	void setValues(const helpers::SliderValues& values);
 	// pdf.js's zoom: about 10% a step, or back to "auto"
@@ -99,6 +101,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
   private:
 #ifdef SABLE_SURFACE_TEST
+	friend struct TabsTest;
 	friend struct ScaleTest;
 	friend struct ViewerErrorTest;
 #endif
