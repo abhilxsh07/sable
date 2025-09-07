@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <stdexcept>
@@ -272,4 +273,17 @@ class KeybindsHelper {
 	const Keybinds& removeActionKeybind(const std::string& action,
 	                                    std::size_t index);
 };
+// Windows modifier bits, kept independent of WinRT for the tests
+constexpr unsigned SHORTCUT_CTRL = 1, SHORTCUT_ALT = 2, SHORTCUT_SHIFT = 4,
+                   SHORTCUT_WIN = 8;
+struct Shortcut {
+	unsigned key, modifiers;
+	std::string action;
+	std::optional<std::string> data;
+};
+std::vector<Shortcut>
+buildShortcuts(const KeybindsHelper& settings,
+               const std::function<unsigned(const std::string&)>& keyCode);
+const Shortcut* matchShortcut(const std::vector<Shortcut>& shortcuts,
+                              unsigned key, unsigned modifiers);
 } // namespace helpers

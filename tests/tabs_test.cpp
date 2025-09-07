@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <chrono>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -36,6 +37,7 @@ struct TabsTest {
 	pdf::Engine& engine;
 	TextBlock status;
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
+	bool shortcuts = false;
 	int step = 0;
 	int ticks = 0;
 	double zoom = 0;
@@ -45,6 +47,18 @@ struct TabsTest {
 	TabsTest(MainWindow& owner, pdf::Engine& pdf)
 	    : window(owner.get_weak()), engine(pdf) {}
 
+	void focus(bool pageBox) {
+		if (auto owner = window.get()) {
+			if (auto current = owner->Viewer()) {
+				auto v = get_self<ViewerPage>(current);
+				if (pageBox) {
+					v->PageBox().Focus(FocusState::Programmatic);
+				} else {
+					v->Scroller().Focus(FocusState::Programmatic);
+				}
+			}
+		}
+	}
 	void check(bool condition) {
 		if (!condition) {
 			throw std::runtime_error("tab check failed");
@@ -61,6 +75,22 @@ struct TabsTest {
 			return;
 		}
 		try {
+			if (shortcuts) {
+				const auto current = self->Viewer();
+				const auto focus = Input::FocusManager::GetFocusedElement(
+				    self->RootGrid().XamlRoot());
+				hstring where = L"other";
+				if (current) {
+					const auto v = get_self<ViewerPage>(current);
+					where = focus == v->Scroller()  ? L"document"
+					        : focus == v->PageBox() ? L"page box"
+					                                : L"other";
+				}
+				status.Text(L"Focus: " + where + L"; tab " +
+				            to_hstring(self->Tabs().SelectedIndex() + 1) +
+				            L" of " + to_hstring(self->m_tabs.size()));
+				return;
+			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
@@ -233,10 +263,28 @@ Window tabsTest(pdf::Engine& engine) {
 	auto state =
 	    std::make_shared<Sable::implementation::TabsTest>(*window, engine);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
+	wchar_t mode[8]{};
+	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->status.Text(L"Checking document tabs");
 	state->status.TextWrapping(TextWrapping::Wrap);
 	Border report;
-	report.Child(state->status);
+	StackPanel controls;
+	controls.Children().Append(state->status);
+	if (state->shortcuts) {
+		for (const bool pageBox : {false, true}) {
+			Button focus;
+			focus.Content(
+			    box_value(pageBox ? L"Focus page box" : L"Focus document"));
+			focus.Click([weak, pageBox](auto&&, auto&&) {
+				if (auto state = weak.lock()) {
+					state->focus(pageBox);
+				}
+			});
+			controls.Children().Append(focus);
+		}
+	}
+	report.Child(controls);
 	report.Background(
 	    Microsoft::UI::Xaml::Media::SolidColorBrush({255, 30, 30, 30}));
 	report.VerticalAlignment(VerticalAlignment::Bottom);

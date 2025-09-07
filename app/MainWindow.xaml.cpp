@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <microsoft.ui.xaml.window.h>
 #include <ShlObj.h>
@@ -77,6 +78,42 @@ std::filesystem::path configFile() {
 	return dir.empty() ? std::filesystem::path{}
 	                   : dir / L"Sable" / L"config.json";
 }
+// see:
+// https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+unsigned shortcutKey(const std::string& name) {
+	const auto text = winrt::to_hstring(name);
+	if (text.size() == 1) {
+		const SHORT code = VkKeyScanW(text[0]);
+		return code == -1 ? 0 : code & 0xff;
+	}
+	if (name.starts_with("F")) {
+		unsigned number = 0;
+		const auto end = name.data() + name.size();
+		const auto parsed = std::from_chars(name.data() + 1, end, number);
+		if (parsed.ec == std::errc{} && parsed.ptr == end && number >= 1 &&
+		    number <= 24) {
+			return VK_F1 + number - 1;
+		}
+	}
+	const std::pair<const char*, unsigned> names[] = {
+	    {"Tab", VK_TAB},        {"PageUp", VK_PRIOR},
+	    {"PageDown", VK_NEXT},  {"Home", VK_HOME},
+	    {"End", VK_END},        {"Enter", VK_RETURN},
+	    {"Return", VK_RETURN},  {"Escape", VK_ESCAPE},
+	    {"Esc", VK_ESCAPE},     {"Space", VK_SPACE},
+	    {"Backspace", VK_BACK}, {"Delete", VK_DELETE},
+	    {"Insert", VK_INSERT},  {"ArrowLeft", VK_LEFT},
+	    {"Left", VK_LEFT},      {"ArrowRight", VK_RIGHT},
+	    {"Right", VK_RIGHT},    {"ArrowUp", VK_UP},
+	    {"Up", VK_UP},          {"ArrowDown", VK_DOWN},
+	    {"Down", VK_DOWN}};
+	for (const auto& [label, code] : names) {
+		if (name == label) {
+			return code;
+		}
+	}
+	return 0;
+}
 } // namespace
 
 namespace winrt::Sable::implementation {
@@ -90,8 +127,8 @@ void MainWindow::InitializeComponent() {
 	MainWindowT::InitializeComponent();
 	setupTitleBar();
 	setupSliders();
-	setupZoomKeys();
 	setupTabKeys();
+	setupZoomKeys();
 	setupOpen();
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
@@ -142,8 +179,7 @@ void MainWindow::setupOpen() {
 			self->pickDocuments();
 		}
 	});
-	for (const auto key :
-	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::T}) {
+	for (const auto key : {Windows::System::VirtualKey::O}) {
 		Input::KeyboardAccelerator accelerator;
 		accelerator.Key(key);
 		accelerator.Modifiers(Windows::System::VirtualKeyModifiers::Control);
@@ -245,58 +281,79 @@ winrt::Sable::ViewerPage MainWindow::Viewer() {
 }
 
 void MainWindow::setupTabKeys() {
-	using Windows::System::VirtualKey;
+	auto settings =
+	    helpers::nightpdf_default_settings(helpers::versionString());
+	try {
+		const auto file = configFile();
+		if (!file.empty()) {
+			settings = helpers::loadSettings(file, helpers::versionString());
+		}
+	} catch (...) {
+		OutputDebugStringW(L"Couldn't load shortcuts; using defaults.\n");
+	}
+	m_shortcuts = helpers::buildShortcuts(
+	    helpers::KeybindsHelper(settings.keybinds, "win32"), shortcutKey);
 	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
 		auto self = weak.get();
-		if (!self || self->m_closing || args.Handled() ||
-		    (GetKeyState(VK_CONTROL) & 0x8000) == 0 ||
-		    (GetKeyState(VK_MENU) & 0x8000) != 0 ||
-		    (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
-		    (GetKeyState(VK_RWIN) & 0x8000) != 0) {
+		if (!self || self->m_closing || args.Handled()) {
 			return;
 		}
-		const auto key = args.Key();
-		const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-		// port of app/render/index.ts reopen/switch/move-tab (L214-328),
-		// with the default triggers in helpers/settings.cpp
-		if (shift && key == VirtualKey::T) {
-			self->reopenTab();
+		const auto held = [](int key) {
+			return (GetKeyState(key) & 0x8000) != 0;
+		};
+		const unsigned modifiers =
+		    (held(VK_CONTROL) ? helpers::SHORTCUT_CTRL : 0) |
+		    (held(VK_MENU) ? helpers::SHORTCUT_ALT : 0) |
+		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
+		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
+		const auto key = static_cast<unsigned>(args.Key());
+		// these belong to NightPDF's fixed menu, not the settings store
+		if (modifiers == helpers::SHORTCUT_CTRL && key >= '1' && key <= '9') {
+			self->selectTabPosition(
+			    key == '9'
+			        ? static_cast<int>(self->Tabs().TabItems().Size()) - 1
+			        : static_cast<int>(key - '1'));
 			args.Handled(true);
 			return;
 		}
-		if (!self->Viewer()) {
+		if ((modifiers == helpers::SHORTCUT_CTRL &&
+		     (key == 'O' || key == 'P')) ||
+		    (modifiers == helpers::SHORTCUT_ALT && key == 'S')) {
+			// @todo: wire fixed Print and Settings when their UI is ready
 			return;
 		}
-		const int current = self->Tabs().SelectedIndex();
-		const int last = static_cast<int>(self->Tabs().TabItems().Size()) - 1;
-		if (!shift && key >= VirtualKey::Number1 &&
-		    key <= VirtualKey::Number9) {
-			const int position =
-			    static_cast<int>(key) - static_cast<int>(VirtualKey::Number1);
-			self->selectTabPosition(position == 8 ? last : position);
-			args.Handled(true);
-		} else if (shift &&
-		           (key == VirtualKey::PageUp || key == VirtualKey::PageDown ||
-		            key == VirtualKey::Home || key == VirtualKey::End)) {
-			const int target = key == VirtualKey::Home     ? 0
-			                   : key == VirtualKey::End    ? last
-			                   : key == VirtualKey::PageUp ? current - 1
-			                                               : current + 1;
-			self->moveTab(target);
-			args.Handled(true);
-		} else if (!shift && (key == VirtualKey::W || key == VirtualKey::F4)) {
-			self->closeTab(
-			    self->Tabs().SelectedItem().as<Controls::TabViewItem>());
-			args.Handled(true);
-		} else if (key == VirtualKey::Tab ||
-		           (!shift && (key == VirtualKey::PageUp ||
-		                       key == VirtualKey::PageDown))) {
-			const int direction = shift || key == VirtualKey::PageUp ? -1 : 1;
-			self->selectTabPosition(current + direction);
-			// TabView wraps by default; electron-tabs stopped at either end
+		if (const auto* binding =
+		        helpers::matchShortcut(self->m_shortcuts, key, modifiers)) {
+			self->dispatchShortcut(*binding);
 			args.Handled(true);
 		}
 	});
+}
+
+void MainWindow::dispatchShortcut(const helpers::Shortcut& shortcut) {
+	const auto& action = shortcut.action;
+	const auto data = shortcut.data.value_or("");
+	if (action == "openNewPDF") {
+		pickDocuments();
+	} else if (action == "reopen-tab") {
+		reopenTab();
+	} else if (Viewer()) {
+		const int current = Tabs().SelectedIndex();
+		if (action == "close-tab") {
+			closeTab(Tabs().SelectedItem().as<Controls::TabViewItem>());
+		} else if (action == "switch-tab" &&
+		           (data == "next" || data == "prev")) {
+			selectTabPosition(current + (data == "next" ? 1 : -1));
+		} else if (action == "move-tab") {
+			if (data == "next" || data == "prev") {
+				moveTab(current + (data == "next" ? 1 : -1));
+			} else if (data == "start" || data == "end") {
+				moveTab(data == "start"
+				            ? 0
+				            : static_cast<int>(Tabs().TabItems().Size()) - 1);
+			}
+		}
+	}
 }
 
 void MainWindow::selectTab() {
@@ -432,6 +489,7 @@ void MainWindow::setupWindow() {
 	// NightPDF's size is still what you get back when you restore the window,
 	// but it starts maximized now (docs/DECISIONS.md)
 	appWindow.Resize({px(WIDTH), px(HEIGHT)});
+	// @todo: honor general.MaximizeOnOpen when the setting is wired
 	m_presenter.Maximize();
 }
 

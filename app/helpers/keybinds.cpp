@@ -293,4 +293,48 @@ const Keybinds& KeybindsHelper::removeActionKeybind(const std::string& action,
 	}
 	return entry;
 }
+// port of app/main/app.ts keybind registration (L427-440). The window
+// supplies key codes so layout-dependent character keys stay at the UI edge.
+std::vector<Shortcut>
+buildShortcuts(const KeybindsHelper& settings,
+               const std::function<unsigned(const std::string&)>& keyCode) {
+	std::vector<Shortcut> result;
+	for (const auto& id : settings.actions) {
+		for (const auto& binding : settings.getActionKeybinds(id)) {
+			if (!binding.getKey() || binding.getKey()->empty()) {
+				continue;
+			}
+			const auto key = keyCode(*binding.getKey());
+			unsigned modifiers = 0;
+			for (const auto& [name, value] : binding.getKeybind().modifiers) {
+				if (name == "CommandOrControl" || name == "Control") {
+					modifiers |= SHORTCUT_CTRL;
+				} else if (name == "Alt") {
+					modifiers |= SHORTCUT_ALT;
+				} else if (name == "Shift") {
+					modifiers |= SHORTCUT_SHIFT;
+				} else if (name == "Meta") {
+					modifiers |= SHORTCUT_WIN;
+				} else if (name == "AltGraph") {
+					modifiers |= SHORTCUT_CTRL | SHORTCUT_ALT;
+				}
+			}
+			if (key && modifiers) {
+				result.push_back({key, modifiers, settings.getAction(id),
+				                  settings.getActionData(id)});
+			}
+		}
+	}
+	return result;
+}
+
+const Shortcut* matchShortcut(const std::vector<Shortcut>& shortcuts,
+                              unsigned key, unsigned modifiers) {
+	for (const auto& binding : shortcuts) {
+		if (binding.key == key && binding.modifiers == modifiers) {
+			return &binding;
+		}
+	}
+	return nullptr;
+}
 } // namespace helpers

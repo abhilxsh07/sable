@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "MainWindow.g.h"
 #include "HomePage.xaml.h"
 #include "ViewerPage.xaml.h"
+#include "helpers/keybinds.h"
 
 #include <filesystem>
 #include <optional>
@@ -100,6 +101,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setupTitleBar();
 	void setupZoomKeys();
 	void setupTabKeys();
+	void dispatchShortcut(const helpers::Shortcut& shortcut);
+	std::vector<helpers::Shortcut> m_shortcuts;
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();
