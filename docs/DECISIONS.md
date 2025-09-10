@@ -479,3 +479,7 @@ plus reorder completion and cancellation with the same mounted viewer.
 Its interactive shortcut mode has a button to clear only that window's
 bindings and focus the header. Ctrl+F4/Tab/Shift+Tab must then leave it alone;
 fixed Ctrl+1-9 still works. This doesn't write the settings file.
+
+The interactive tab probe also counts native drag-start/completion events and
+shows the native drop result. This distinguishes an accepted reorder from a
+cancelled or rejected drag; seeing a drag finish alone isn't confirmation.
