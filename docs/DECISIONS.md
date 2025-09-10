@@ -237,7 +237,8 @@ then opens a normal document.
 
 Build with `SableSurfaceTest=true`, then launch from the repo root with
 `SableErrorTest=true`. Read the window's PASS or FAIL result before closing;
-exit 0 only checks shutdown. Clear both variables and rebuild afterwards.
+failure, exception or closing before completion exits non-zero. Clear both
+variables and rebuild afterwards.
 
 ## Files while open (2026-10-15)
 
@@ -287,8 +288,9 @@ The Debug-only SableTabsTest probe exercises duplicate paths, independent
 page/zoom, shared filters, an error tab, a deferred password prompt, closing
 while opening and returning home. It reports PASS or a failing step in the
 window. Build with SableSurfaceTest=true, set `$env:SableTabsTest = 'true'`,
-then launch from the repo root. Read the result before closing; exit 0 only
-confirms shutdown. Clear both variables and rebuild afterwards.
+then launch from the repo root. Read the result before closing; the process
+exits non-zero on a failure, exception or early close. Clear both variables
+and rebuild afterwards.
 
 ## Opening PDFs from the shell (2026-10-15)
 
@@ -335,6 +337,24 @@ For a focus check, build with SableSurfaceTest=true and run with both
 SableTabsTest=true and SableShortcutTest=true. The two focus buttons and
 status use WinUI FocusManager, so the page box cannot mask the document
 focus in an accessibility snapshot. Clear all three variables afterwards.
+
+## Probe exit codes (2026-10-15)
+
+The automated tabs, viewer-error and scale checks now fail the process on a
+failed check or exception. Closing before completion also fails. Their
+completion state is pure C++ and checked by GoogleTest; XAML, dialog, bitmap
+and focus checks stay in the probes. Error-message and surface-size maths
+already have GoogleTests, so those are not dependent on a UI run.
+
+Set SableProbeAutoClose=true for an unattended success exit. For each probe,
+SableProbeFault=check exercises its failed check and =exception exercises
+its exception path. Both must exit non-zero. Clear these variables after
+use. The interactive shortcut-focus mode has no automatic pass result.
+
+For local verification, a temporary user property sheet can put IntDir
+outside a synced folder. Google Drive held PDBs through upload-queue hard
+links even after the compiler helper stopped. The tracked solution and CI
+keep their existing paths, and the same build/test scripts still run.
 
 ## Music pane (2026-10-15)
 

@@ -59,6 +59,9 @@ App::App() {
     !defined DISABLE_XAML_GENERATED_BREAK_ON_UNHANDLED_EXCEPTION
 	UnhandledException(
 	    [](IInspectable const&, UnhandledExceptionEventArgs const& e) {
+#ifdef SABLE_SURFACE_TEST
+		    probeFail(L"FAIL: unhandled XAML exception: " + e.Message());
+#endif
 		    if (IsDebuggerPresent()) {
 			    auto errorMessage = e.Message();
 			    __debugbreak();
@@ -69,7 +72,11 @@ App::App() {
 
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 #ifdef SABLE_SURFACE_TEST
-	window = surfaceTest(m_pdf);
+	try {
+		window = surfaceTest(m_pdf);
+	} catch (...) {
+		probeFail(L"FAIL: probe startup: " + to_message());
+	}
 #else
 	auto main = make_self<MainWindow>();
 	main->setEngine(m_pdf);
@@ -85,6 +92,9 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 	window.Closed([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->window = nullptr;
+#ifdef SABLE_SURFACE_TEST
+			probeClosed();
+#endif
 		}
 	});
 	window.Activate();

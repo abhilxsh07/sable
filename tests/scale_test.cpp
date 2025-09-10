@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/pch.h"
 #include "../app/ViewerPage.xaml.h"
+#include "surface_test.h"
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <cmath>
@@ -31,6 +32,7 @@ using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 // the real viewer with injected scales; no display settings are changed
 struct ScaleTest {
+	weak_ref<Window> window;
 	com_ptr<ViewerPage> viewer = make_self<ViewerPage>();
 	TextBlock status;
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
@@ -42,10 +44,20 @@ struct ScaleTest {
 	std::size_t page = 0;
 
 	void tick() {
+		try {
+			if (!probeCheck()) {
+				probeFail(L"FAIL: forced scale check");
+			}
+			tickScale();
+		} catch (...) {
+			probeFail(L"FAIL: scale exception: " + to_message());
+		}
+	}
+	void tickScale() {
 		auto& v = *viewer;
 		constexpr double scales[]{1.5, 2.0, 1.25, 1.0};
 		if (++ticks > 120) {
-			status.Text(L"FAIL: timed out waiting for sharp pages");
+			probeFail(L"FAIL: timed out waiting for sharp pages");
 			timer.Stop();
 			return;
 		}
@@ -71,15 +83,15 @@ struct ScaleTest {
 		if (thumbTop < viewTop ||
 		    thumbTop + v.m_strip->imageHeight(v.m_current) >
 		        viewTop + v.ThumbnailScroller().ViewportHeight()) {
-			status.Text(L"FAIL: thumbnail outside view at step " +
-			            to_hstring(step) + L", top " + to_hstring(thumbTop) +
-			            L", scroll " + to_hstring(viewTop));
+			probeFail(L"FAIL: thumbnail outside view at step " +
+			          to_hstring(step) + L", top " + to_hstring(thumbTop) +
+			          L", scroll " + to_hstring(viewTop));
 			timer.Stop();
 			return;
 		}
 		if (step < 0) {
 			if (v.m_current != 499) {
-				status.Text(L"FAIL: starting page was not 500");
+				probeFail(L"FAIL: starting page was not 500");
 				timer.Stop();
 				return;
 			}
@@ -93,7 +105,7 @@ struct ScaleTest {
 		           page != v.m_current ||
 		           std::abs(x - v.Scroller().HorizontalOffset()) > 1 ||
 		           std::abs(y - v.Scroller().VerticalOffset()) > 1) {
-			status.Text(L"FAIL: wrong scale, reading position or zoom");
+			probeFail(L"FAIL: wrong scale, reading position or zoom");
 			timer.Stop();
 			return;
 		}
@@ -113,17 +125,18 @@ struct ScaleTest {
 			const auto key = v.thumbKey(index);
 			if (bitmap.PixelWidth() != key.width ||
 			    bitmap.PixelHeight() != key.height) {
-				status.Text(L"FAIL: thumbnail has the old raster size");
+				probeFail(L"FAIL: thumbnail has the old raster size");
 				timer.Stop();
 				return;
 			}
 		}
 		if (++step == 4) {
 			if (v.setScale(0) || v.setScale(1e308) || v.m_scale != 1.0) {
-				status.Text(L"FAIL: invalid scale changed the surface");
+				probeFail(L"FAIL: invalid scale changed the surface");
 			} else {
 				status.Text(L"PASS: 150%, 200%, 125%, 100%; sharp pages, "
 				            L"sharp thumbnails; same page/zoom/offsets");
+				probePass(window.get());
 			}
 			timer.Stop();
 			return;
@@ -135,7 +148,7 @@ struct ScaleTest {
 		v.m_settling = false;
 		v.updateVisible();
 		if (!v.setScale(scales[step])) {
-			status.Text(L"FAIL: scale change was rejected");
+			probeFail(L"FAIL: scale change was rejected");
 			timer.Stop();
 		}
 	}
@@ -157,6 +170,7 @@ Window scaleTest(pdf::Engine& engine) {
 	window.Title(L"Sable scale test");
 	window.AppWindow().Resize({1100, 900});
 	auto state = std::make_shared<Sable::implementation::ScaleTest>();
+	state->window = make_weak(window);
 	std::weak_ptr<Sable::implementation::ScaleTest> weak = state;
 	Grid grid;
 	RowDefinition top;
@@ -170,7 +184,11 @@ Window scaleTest(pdf::Engine& engine) {
 	close.Content(box_value(L"Close during render"));
 	close.Click([weak](auto&&, auto&&) {
 		if (auto self = weak.lock()) {
-			self->closeDuringRender();
+			try {
+				self->closeDuringRender();
+			} catch (...) {
+				probeFail(L"FAIL: close during render: " + to_message());
+			}
 		}
 	});
 	controls.Children().Append(close);

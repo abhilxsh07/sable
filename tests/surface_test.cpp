@@ -19,6 +19,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/pch.h"
 #include "surface_test.h"
+#include "probe_result.h"
+#include <cstdio>
+#include <cwchar>
+#include <stdexcept>
 
 #include <d3d11.h>
 #include <d3d11on12.h>
@@ -36,6 +40,43 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
+
+namespace {
+ProbeResult probeResult;
+bool envIs(const wchar_t* name, const wchar_t* expected) {
+	wchar_t value[32]{};
+	const auto size = GetEnvironmentVariableW(name, value, 32);
+	return size > 0 && size < 32 && std::wstring_view(value) == expected;
+}
+} // namespace
+
+bool probeCheck() {
+	if (envIs(L"SableProbeFault", L"exception")) {
+		throw std::runtime_error("forced probe exception");
+	}
+	return !envIs(L"SableProbeFault", L"check");
+}
+void probeFail(const hstring& reason) noexcept {
+	probeResult.fail();
+	OutputDebugStringW(reason.c_str());
+	std::fwprintf(stderr, L"%ls\n", reason.c_str());
+	ExitProcess(static_cast<UINT>(probeResult.exitCode()));
+}
+void probePass(const Window& window) {
+	probeResult.pass();
+	if (envIs(L"SableProbeAutoClose", L"true")) {
+		window.DispatcherQueue().TryEnqueue([window] { window.Close(); });
+	}
+}
+void probeClosed() {
+	const bool automated = envIs(L"SableErrorTest", L"true") ||
+	                       envIs(L"SableScaleTest", L"true") ||
+	                       (envIs(L"SableTabsTest", L"true") &&
+	                        !envIs(L"SableShortcutTest", L"true"));
+	if (automated && probeResult.exitCode()) {
+		probeFail(L"FAIL: probe closed before completion");
+	}
+}
 
 namespace {
 constexpr int WIDTH = 640;

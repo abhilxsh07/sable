@@ -70,6 +70,7 @@ constexpr int NORMAL = WRONG_PASSWORD + 1;
 struct ViewerErrorTest {
 	explicit ViewerErrorTest(pdf::Engine& pdfEngine) : engine(pdfEngine) {}
 	pdf::Engine& engine;
+	weak_ref<Window> window;
 	com_ptr<ViewerPage> viewer;
 	TextBlock status;
 	ContentControl host;
@@ -81,6 +82,7 @@ struct ViewerErrorTest {
 	void fail(const hstring& why) {
 		status.Text(L"FAIL: case " + to_hstring(step) + L": " + why);
 		timer.Stop();
+		probeFail(status.Text());
 	}
 
 	void next() {
@@ -141,6 +143,9 @@ struct ViewerErrorTest {
 
 	void tick() {
 		try {
+			if (!probeCheck()) {
+				fail(L"forced check failure");
+			}
 			if (step < 0) {
 				next();
 				return;
@@ -171,6 +176,7 @@ struct ViewerErrorTest {
 				}
 				status.Text(L"PASS: " + to_hstring(NORMAL + 1) +
 				            L" viewer cases; errors, passwords, late results");
+				probePass(window.get());
 				timer.Stop();
 				return;
 			}
@@ -217,6 +223,7 @@ Window viewerErrorTest(pdf::Engine& engine) {
 	window.AppWindow().Resize({960, 600});
 	auto state =
 	    std::make_shared<Sable::implementation::ViewerErrorTest>(engine);
+	state->window = make_weak(window);
 	std::weak_ptr<Sable::implementation::ViewerErrorTest> weak = state;
 	Grid grid;
 	RowDefinition top;
