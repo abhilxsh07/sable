@@ -144,6 +144,36 @@ void MainWindow::InitializeComponent() {
 		}
 	});
 
+	// the settings dispatcher owns these, even with focus in the strip
+	for (const auto& accelerator : Tabs().KeyboardAccelerators()) {
+		accelerator.IsEnabled(false);
+	}
+	// see:
+	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
+	Tabs().TabDragStarting([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->beginTabDrag();
+		}
+	});
+	Tabs().TabDragCompleted([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->endTabDrag();
+		}
+	});
+	// see:
+	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/title-bar
+	Tabs().SizeChanged([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->AppTitleBar().RecomputeDragRegions();
+		}
+	});
+
+	RootGrid().SizeChanged([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->updateTabWidths();
+		}
+	});
+
 	m_titleIcon = AppTitleBar().IconSource();
 	AppTitleBar().SizeChanged([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {
@@ -282,7 +312,7 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	title.Text(L"\u202a" + path.filename().wstring() + L"\u202c");
 	title.FlowDirection(FlowDirection::RightToLeft);
 	title.TextTrimming(TextTrimming::CharacterEllipsis);
-	title.MaxWidth(200);
+	tab.MaxWidth(RootGrid().ActualWidth() * 0.15);
 	tab.Header(title);
 	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
 	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
@@ -380,7 +410,7 @@ void MainWindow::dispatchShortcut(const helpers::Shortcut& shortcut) {
 }
 
 void MainWindow::selectTab() {
-	if (m_closing || m_movingTab) {
+	if (m_closing || m_movingTab || m_dragSelection) {
 		return;
 	}
 	const auto viewer = Viewer();
@@ -485,6 +515,39 @@ void MainWindow::moveTab(int index) {
 	}
 	m_movingTab = false;
 	selectTab();
+}
+
+void MainWindow::beginTabDrag() {
+	if (!m_closing) {
+		m_dragSelection = Tabs().SelectedItem();
+	}
+}
+
+void MainWindow::endTabDrag() {
+	if (m_closing) {
+		m_dragSelection = nullptr;
+		return;
+	}
+	try {
+		uint32_t index = 0;
+		if (m_dragSelection &&
+		    Tabs().TabItems().IndexOf(m_dragSelection, index)) {
+			Tabs().SelectedItem(m_dragSelection);
+		}
+	} catch (...) {
+		m_dragSelection = nullptr;
+		throw;
+	}
+	m_dragSelection = nullptr;
+	selectTab();
+}
+
+void MainWindow::updateTabWidths() {
+	// cap the whole tab, including its close button, in logical pixels
+	const double limit = RootGrid().ActualWidth() * 0.15;
+	for (const auto& entry : m_tabs) {
+		entry.tab.MaxWidth(limit);
+	}
 }
 
 // port of app/main/app.ts createWindow() (L135-148), just the window part.

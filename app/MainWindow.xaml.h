@@ -91,6 +91,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void reopenTab();
 	void selectTabPosition(int index);
 	void moveTab(int index);
+	void beginTabDrag();
+	void endTabDrag();
+	void updateTabWidths();
+	winrt::Windows::Foundation::IInspectable m_dragSelection{nullptr};
 	std::vector<DocumentTab> m_tabs;
 	std::vector<std::filesystem::path> m_closedTabs;
 	pdf::Engine* m_engine = nullptr;
