@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <utility>
 
 #include "helpers/filter.h"
@@ -139,32 +140,63 @@ void ViewerPage::activate() {
 // Cancel and OK. OK does nothing until something's typed, Enter is OK and
 // Esc is Cancel. The password goes to the open and isn't kept.
 fire_and_forget ViewerPage::askPassword(bool incorrect) {
-	auto weak = get_weak();
-	if (m_closed || m_passwordDialog) {
-		co_return;
-	}
-	if (Visibility() != XVisibility::Visible) {
-		m_passwordPending = incorrect;
-		co_return;
-	}
-	if (!XamlRoot()) {
-		// opening can beat the window's first layout, and a dialog needs a
-		// root to show in
-		m_passwordPending = incorrect;
-		m_promptLoaded = Loaded(auto_revoke, [weak](auto&&, auto&&) {
+	weak_ref<ViewerPage> weak;
+	PasswordBox box{nullptr};
+	const auto report = [&weak, &box](const wchar_t* message) noexcept {
+		OutputDebugStringW(L"PDF password prompt: ");
+		OutputDebugStringW(message);
+		OutputDebugStringW(L"\n");
+		try {
+			if (box) {
+				box.Password(L"");
+			}
+		} catch (...) {
+			OutputDebugStringW(L"Couldn't clear the password box.\n");
+		}
+		try {
 			if (auto self = weak.get()) {
-				self->m_promptLoaded.revoke();
-				if (const auto pending =
-				        std::exchange(self->m_passwordPending, std::nullopt)) {
-					self->askPassword(*pending);
+				self->m_passwordPending.reset();
+				if (auto dialog =
+				        std::exchange(self->m_passwordDialog, nullptr)) {
+					try {
+						dialog.Hide();
+					} catch (...) {
+						OutputDebugStringW(
+						    L"Couldn't hide the password dialog.\n");
+					}
+				}
+				if (!self->m_closed) {
+					self->showMessage(message);
 				}
 			}
-		});
-		co_return;
-	}
-	PasswordBox box{nullptr};
-	auto result = ContentDialogResult::None;
+		} catch (...) {
+			OutputDebugStringW(L"Couldn't show the password prompt error.\n");
+		}
+	};
 	try {
+		weak = get_weak();
+		if (m_closed || m_passwordDialog) {
+			co_return;
+		}
+		if (Visibility() != XVisibility::Visible) {
+			m_passwordPending = incorrect;
+			co_return;
+		}
+		if (!XamlRoot()) {
+			// opening can beat the window's first layout, and a dialog needs a
+			// root to show in
+			m_passwordPending = incorrect;
+			m_promptLoaded = Loaded(auto_revoke, [weak](auto&&, auto&&) {
+				if (auto self = weak.get()) {
+					self->m_promptLoaded.revoke();
+					if (const auto pending = std::exchange(
+					        self->m_passwordPending, std::nullopt)) {
+						self->askPassword(*pending);
+					}
+				}
+			});
+			co_return;
+		}
 		// pdfjs-password-label and pdfjs-password-invalid
 		TextBlock label;
 		label.Text(incorrect ? L"Invalid password. Please try again."
@@ -192,30 +224,35 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 		dialog.Opened(
 		    [box](auto&&, auto&&) { box.Focus(FocusState::Programmatic); });
 		m_passwordDialog = dialog;
-		result = co_await dialog.ShowAsync();
-	} catch (...) {
-		// another dialog was up, or the window went away: like Cancel
-		result = ContentDialogResult::None;
-	}
-	auto self = weak.get();
-	if (!self || self->m_closed) {
-		co_return;
-	}
-	self->m_passwordDialog = nullptr;
-	try {
-		if (result == ContentDialogResult::Primary) {
-			self->startOpen(to_string(box.Password()));
-		} else {
-			// pdf.js logged the cancelled prompt and left the viewer empty;
-			// this says why it's empty instead
-			self->showMessage(
-			    to_hstring(pdf::errorMessage(pdf::Error::PasswordRequired)));
+		const auto result = co_await dialog.ShowAsync();
+		// don't keep the page alive while the dialog waits
+		auto self = weak.get();
+		if (box) {
+			const auto password = box.Password();
+			box.Password(L"");
+			if (!self || self->m_closed) {
+				co_return;
+			}
+			self->m_passwordDialog = nullptr;
+			if (result == ContentDialogResult::Primary) {
+				self->startOpen(to_string(password));
+			} else {
+				// pdf.js left the viewer empty; I show why it's empty
+				self->showMessage(to_hstring(
+				    pdf::errorMessage(pdf::Error::PasswordRequired)));
+			}
 		}
+	} catch (const hresult_error& error) {
+		try {
+			report(error.message().c_str());
+		} catch (...) {
+			report(L"Couldn't open this PDF: password prompt failed.");
+		}
+	} catch (const std::exception& error) {
+		OutputDebugStringA(error.what());
+		report(L"Couldn't open this PDF: password prompt failed.");
 	} catch (...) {
-		self->showMessage(L"Couldn't open this PDF: " + to_message());
-	}
-	if (box) {
-		box.Password(L"");
+		report(L"Couldn't open this PDF: unknown password prompt error.");
 	}
 }
 
