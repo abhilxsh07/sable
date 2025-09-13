@@ -161,7 +161,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<!-- NightPDF's splash (app/index.html L100-110) as a card. Same
 					gradient on the dashed border (gradient3.svg, bottom to top),
 					same two lines. -->
-				<Border x:Name="DropCard" Tapped="onOpenTapped" Style="{StaticResource CardStyle}" Height="264" Padding="14">
+				<Border x:Name="DropCard" AllowDrop="True" Tapped="onOpenTapped" Style="{StaticResource CardStyle}" Height="264" Padding="14">
 					<Grid>
 						<Rectangle RadiusX="6" RadiusY="6" StrokeThickness="1.5" StrokeDashArray="4 4">
 							<Rectangle.Stroke>

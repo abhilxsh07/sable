@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <memory>
 #include <stdexcept>
 #include <string_view>
+#include <winrt/Windows.Storage.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -43,6 +44,22 @@ struct TabsTest {
 	int dragStarts = 0;
 	int dragFinishes = 0;
 	int dragResult = 0;
+	using DropView = Windows::ApplicationModel::DataTransfer::DataPackageView;
+	Windows::Foundation::IAsyncOperation<DropView> dropSetup{nullptr};
+	DropView dropData{nullptr};
+	com_ptr<MainWindow> closedDropWindow;
+
+	static Windows::Foundation::IAsyncOperation<DropView> makeDropData() {
+		using namespace Windows::Storage;
+		const auto pages = co_await StorageFile::GetFileFromPathAsync(
+		    std::filesystem::absolute(L"tests/fixtures/pages.pdf").wstring());
+		const auto invalid = co_await StorageFile::GetFileFromPathAsync(
+		    std::filesystem::absolute(L"tests/fixtures/not_pdf.pdf").wstring());
+		Windows::ApplicationModel::DataTransfer::DataPackage data;
+		data.SetStorageItems(std::vector<IStorageItem>{pages, pages, invalid});
+		co_return data.GetView();
+	}
+
 	double zoom = 0;
 	bool positioned = false;
 	com_ptr<ViewerPage> first;
@@ -289,14 +306,53 @@ struct TabsTest {
 				if (!viewer || !viewer->Message().IsOpen()) {
 					return;
 				}
+				if (dropSetup.Status() ==
+				    Windows::Foundation::AsyncStatus::Started) {
+					return;
+				}
+				dropData = dropSetup.GetResults();
 				while (!self->m_tabs.empty()) {
 					self->closeTab(self->m_tabs.back().tab);
 				}
 				check(!self->Viewer());
+				check(get_self<HomePage>(self->Home())->DropCard().AllowDrop());
+
+				{
+					Windows::ApplicationModel::DataTransfer::DataPackage text;
+					text.SetText(L"not a file drop");
+					self->dropDocuments(text.GetView());
+					check(self->m_tabs.empty());
+				}
+				self->dropDocuments(dropData);
+				break;
+			case 15:
+				if (self->m_tabs.size() != 2 || !viewer ||
+				    !viewer->Message().IsOpen()) {
+					return;
+				}
+				check(self->m_tabs[0].path.filename() == L"pages.pdf" &&
+				      self->m_tabs[1].path.filename() == L"not_pdf.pdf");
+				if (!get_self<ViewerPage>(self->m_tabs[0].viewer)->m_layout) {
+					return;
+				}
+				self->dropDocuments(dropData);
+				check(self->m_tabs.size() == 2);
+				while (!self->m_tabs.empty()) {
+					self->closeTab(self->m_tabs.back().tab);
+				}
+				closedDropWindow = make_self<MainWindow>();
+				closedDropWindow->setEngine(engine);
+				closedDropWindow->dropDocuments(dropData);
+				check(closedDropWindow->m_tabs.empty());
+				closedDropWindow->Close();
+				break;
+			case 16:
+				check(closedDropWindow->m_closing &&
+				      closedDropWindow->m_tabs.empty());
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
-				    L"order, drag lifecycle, width cap");
+				    L"order, drag lifecycle, width cap, splash drop");
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;
@@ -327,6 +383,7 @@ Window tabsTest(pdf::Engine& engine) {
 	wchar_t mode[8]{};
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->dropSetup = state->makeDropData();
 	state->status.Text(L"Checking document tabs");
 	state->status.TextWrapping(TextWrapping::Wrap);
 	Border report;

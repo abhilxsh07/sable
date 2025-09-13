@@ -483,3 +483,22 @@ fixed Ctrl+1-9 still works. This doesn't write the settings file.
 The interactive tab probe also counts native drag-start/completion events and
 shows the native drop result. This distinguishes an accepted reorder from a
 cancelled or rejected drag; seeing a drag finish alone isn't confirmation.
+
+## Files dropped on the splash (2026-10-15)
+
+The home splash card accepts storage-item drops while no document is open,
+then sends every local path through the same tab opener as the picker and
+command line. Like index.ts/openFile, it tries the dropped files without an
+extension filter, so a non-PDF gets the existing viewer error tab. Duplicate
+paths still select the existing tab. Text and other data formats are ignored.
+
+The source supplies its file list asynchronously. I hold a weak window
+reference and check that it is still open and on the home screen before
+opening anything. A source error uses the open-error banner; the whole
+coroutine catches WinRT, standard and unknown exceptions. Virtual items with
+no local path get an explanatory banner, since this reader opens local files.
+
+The tab probe supplies a real storage-item data package with a duplicate PDF
+and a non-PDF, checks the mounted viewers, ignores text/late results and checks
+closure during retrieval. This covers data handling separately from physical
+Explorer-to-window dragging.
