@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 
 #include "helpers/cli.h"
+#include "helpers/version.h"
 #ifdef SABLE_SURFACE_TEST
 #include "../tests/surface_test.h"
 #endif
@@ -49,6 +50,29 @@ std::vector<std::string> commandLineArgs() {
 		args.push_back(to_string(argv[i]));
 	}
 	return args;
+}
+
+// preserve pipe/file handles; a GUI launch may instead need the parent console
+// see: https://learn.microsoft.com/en-us/windows/console/attachconsole
+// see: https://learn.microsoft.com/en-us/windows/console/writeconsole
+bool writeCli(const std::string& text) {
+	HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (!output || output == INVALID_HANDLE_VALUE ||
+	    GetFileType(output) == FILE_TYPE_UNKNOWN) {
+		AttachConsole(ATTACH_PARENT_PROCESS);
+		output = GetStdHandle(STD_OUTPUT_HANDLE);
+	}
+	DWORD mode = 0;
+	DWORD written = 0;
+	if (GetConsoleMode(output, &mode)) {
+		const auto wide = to_hstring(text);
+		return WriteConsoleW(output, wide.c_str(), wide.size(), &written,
+		                     nullptr) &&
+		       written == wide.size();
+	}
+	return WriteFile(output, text.data(), static_cast<DWORD>(text.size()),
+	                 &written, nullptr) &&
+	       written == text.size();
 }
 } // namespace
 
@@ -73,18 +97,31 @@ App::App() {
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 #ifdef SABLE_SURFACE_TEST
 	try {
-		window = surfaceTest(m_pdf);
+		m_pdf = std::make_unique<pdf::Engine>();
+		window = surfaceTest(*m_pdf);
 	} catch (...) {
 		probeFail(L"FAIL: probe startup: " + to_message());
 	}
 #else
-	auto main = make_self<MainWindow>();
-	main->setEngine(m_pdf);
-	// port of app.ts's startup (L394-410): each file opens at -p.
-	// --help and --version wait for the rest of the CLI dispatch.
+	// port of app.ts's yargs dispatch/startup (L348-410)
 	const auto cli = helpers::parseCli(commandLineArgs());
+	SYSTEMTIME now{};
+	GetLocalTime(&now);
+	if (const auto text = helpers::cliText(
+	        cli, "Sable", helpers::versionString(), now.wYear)) {
+		if (!writeCli(*text + "\n")) {
+			OutputDebugStringW(L"Couldn't write CLI output.\n");
+			// no document, engine or window has been created here
+			ExitProcess(1);
+		}
+		Exit();
+		return;
+	}
+	m_pdf = std::make_unique<pdf::Engine>();
+	auto main = make_self<MainWindow>();
+	main->setEngine(*m_pdf);
 	for (const auto& file : cli.files) {
-		main->openDocument(m_pdf, to_hstring(file).c_str(), cli.page);
+		main->openDocument(*m_pdf, to_hstring(file).c_str(), cli.page);
 	}
 	window = main.as<Window>();
 #endif

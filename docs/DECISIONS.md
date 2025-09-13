@@ -502,3 +502,17 @@ The tab probe supplies a real storage-item data package with a duplicate PDF
 and a non-PDF, checks the mounted viewers, ignores text/late results and checks
 closure during retrieval. This covers data handling separately from physical
 Explorer-to-window dragging.
+
+## Command-line output (2026-10-15)
+
+Help and version requests now print and exit before creating a window or
+starting PDFium. Help wins when both switches are present, as in yargs;
+file/page arguments don't open documents in either output mode. The help
+uses Sable as the script name and the current local year in its epilog.
+The version text comes from the existing versionString helper.
+
+I preserve inherited pipe/file stdout handles. If no usable handle exists,
+I attach to the parent console as described in guide 6.9. Console output uses
+WriteConsoleW; redirected output is UTF-8 with LF and one trailing newline.
+A failed write exits with code 1 instead of opening a window or reporting
+success. Normal output requests shut down through Application.Exit.

@@ -53,6 +53,11 @@ Examples:
 
 copyright 2026)help";
 	EXPECT_EQ(helpText("Sable", 2026), expected);
+	EXPECT_EQ(helpers::cliText(parseCli({"--help"}), "Sable", "v", 2026),
+	          expected);
+	EXPECT_EQ(helpers::cliText(parseCli({"--version", "--help", "a.pdf"}),
+	                           "Sable", "v", 2026),
+	          expected);
 }
 
 TEST(HelpText, ColumnsFollowTheProgramName) {
@@ -287,4 +292,18 @@ TEST(FileUrlToPath, NormalPathsAreUntouched) {
 	      "\\\\server\\share\\a.pdf", "file.pdf", "file:a.pdf", ""}) {
 		EXPECT_EQ(fileUrlToPath(path), path);
 	}
+}
+
+TEST(CliText, VersionSkipsFilesAndPageArguments) {
+	EXPECT_EQ(helpers::cliText(parseCli({"a.pdf", "-p", "2", "--version"}),
+	                           "Sable", "Sable: example", 2026),
+	          "Sable: example");
+}
+
+TEST(CliText, NormalLaunchHasNoOutput) {
+	EXPECT_FALSE(helpers::cliText(parseCli({}), "Sable", "v", 2026));
+	EXPECT_FALSE(
+	    helpers::cliText(parseCli({"a.pdf", "-p", "2"}), "Sable", "v", 2026));
+	EXPECT_FALSE(
+	    helpers::cliText(parseCli({"--", "--help"}), "Sable", "v", 2026));
 }

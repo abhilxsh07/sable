@@ -46,6 +46,11 @@ CliArgs parseCli(const std::vector<std::string>& args);
 // "copyright <year>" as the epilog. No trailing newline, like yargs.
 std::string helpText(const std::string& programName, int year);
 
+// output requests take precedence over opening files; help wins over version
+std::optional<std::string> cliText(const CliArgs& args,
+                                   const std::string& programName,
+                                   const std::string& version, int year);
+
 // "file:///C:/x%20y.pdf" -> "C:/x y.pdf". Anything that isn't a file://
 // url comes back untouched.
 std::string fileUrlToPath(const std::string& arg);
