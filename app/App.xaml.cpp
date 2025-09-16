@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <shellapi.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -96,12 +97,16 @@ App::App() {
 
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 #ifdef SABLE_SURFACE_TEST
+	Window window{nullptr};
 	try {
 		m_pdf = std::make_unique<pdf::Engine>();
-		window = surfaceTest(*m_pdf);
+		window = surfaceTest(*m_pdf, *this);
 	} catch (...) {
 		probeFail(L"FAIL: probe startup: " + to_message());
 	}
+	trackWindow(window);
+	window.Closed([](auto&&, auto&&) { probeClosed(); });
+	window.Activate();
 #else
 	// port of app.ts's yargs dispatch/startup (L348-410)
 	const auto cli = helpers::parseCli(commandLineArgs());
@@ -117,23 +122,43 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 		Exit();
 		return;
 	}
-	m_pdf = std::make_unique<pdf::Engine>();
-	auto main = make_self<MainWindow>();
-	main->setEngine(*m_pdf);
+	std::vector<std::filesystem::path> files;
 	for (const auto& file : cli.files) {
-		main->openDocument(*m_pdf, to_hstring(file).c_str(), cli.page);
+		files.emplace_back(to_hstring(file).c_str());
 	}
-	window = main.as<Window>();
+	createWindow(files, cli.page);
 #endif
-	// release the window while XAML is still up, not in App's destructor
-	window.Closed([weak = get_weak()](auto&&, auto&&) {
+}
+
+// port of app/main/app.ts createWindow() and closed handler (L127-184).
+// i remove only the closed window, rather than clearing all of them (Q5).
+void App::trackWindow(const Window& window) {
+	window.Closed([weak = get_weak()](const auto& sender, auto&&) {
 		if (auto self = weak.get()) {
-			self->window = nullptr;
-#ifdef SABLE_SURFACE_TEST
-			probeClosed();
-#endif
+			std::erase(self->m_windows, sender.template as<Window>());
 		}
 	});
-	window.Activate();
+	m_windows.push_back(window);
+}
+
+com_ptr<MainWindow>
+App::createWindow(const std::vector<std::filesystem::path>& files,
+                  std::optional<int> page) {
+	if (!m_pdf) {
+		m_pdf = std::make_unique<pdf::Engine>();
+	}
+	auto main = make_self<MainWindow>();
+	main->setEngine(*m_pdf);
+	trackWindow(main.as<Window>());
+	try {
+		for (const auto& file : files) {
+			main->openDocument(*m_pdf, file, page);
+		}
+		main->Activate();
+	} catch (...) {
+		main->Close();
+		throw;
+	}
+	return main;
 }
 } // namespace winrt::Sable::implementation

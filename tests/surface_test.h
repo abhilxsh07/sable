@@ -24,12 +24,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace pdf {
 class Engine;
 }
+namespace winrt::Sable::implementation {
+struct App;
+}
 // shared by the automated Debug checks; failures terminate with a diagnostic
 bool probeCheck();
 void probeFail(const winrt::hstring& reason) noexcept;
 void probePass(const winrt::Microsoft::UI::Xaml::Window& window);
 void probeClosed();
-winrt::Microsoft::UI::Xaml::Window surfaceTest(pdf::Engine& engine);
+winrt::Microsoft::UI::Xaml::Window
+surfaceTest(pdf::Engine& engine, winrt::Sable::implementation::App& app);
 winrt::Microsoft::UI::Xaml::Window scaleTest(pdf::Engine& engine);
 winrt::Microsoft::UI::Xaml::Window viewerErrorTest(pdf::Engine& engine);
-winrt::Microsoft::UI::Xaml::Window tabsTest(pdf::Engine& engine);
+winrt::Microsoft::UI::Xaml::Window
+tabsTest(pdf::Engine& engine, winrt::Sable::implementation::App& app);

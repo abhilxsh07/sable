@@ -523,3 +523,22 @@ I attach to the parent console as described in guide 6.9. Console output uses
 WriteConsoleW; redirected output is UTF-8 with LF and one trailing newline.
 A failed write exits with code 1 instead of opening a window or reporting
 success. Normal output requests shut down through Application.Exit.
+
+## Reader window lifetime (2026-10-15)
+
+App keeps each reader window until its Closed event and removes only that
+window (Q5). The common createWindow path gives each window its own tabs,
+closed-tab history, preset and sliders. Windows in the same process share
+the single PDFium engine, which stays alive until all windows are released.
+Failed setup closes the partial window before passing the exception back.
+
+Each launch still starts a separate process and window (Q14). Ctrl+T still
+opens the multi-select picker in the current window; it isn't a new-window
+shortcut. The internal factory replaces upstream's createWindow/newWindow
+path without adding a menu item or tab tear-out. WinUI handles shutdown when
+the last XAML window closes, rather than calling Exit when any reader closes.
+
+The tab check uses the same factory as normal startup. It opens the same PDF
+at different pages in two windows, changes one window's preset and slider,
+closes that window with an open pending, then zooms and navigates in the
+survivor. It also opens a fresh home window after closing another reader.
