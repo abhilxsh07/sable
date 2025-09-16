@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <iterator>
 #include <sstream>
 #include <system_error>
+#include <utility>
 
 namespace helpers {
 namespace {
@@ -566,6 +567,25 @@ bool saveSettings(const fs::path& path, const NightPDFSettings& settings) {
 		fs::remove(tmp, ignored);
 		return false;
 	}
+	return true;
+}
+
+SettingsStore::SettingsStore(fs::path path, const std::string& version)
+    : m_path(std::move(path)), m_settings(loadSettings(m_path, version)) {}
+
+bool SettingsStore::setGeneral(const std::string& key, bool value) {
+	auto settings = m_settings;
+	if (key == "MaximizeOnOpen") {
+		settings.general.MaximizeOnOpen = value;
+	} else if (key == "DisplayThumbs") {
+		settings.general.DisplayThumbs = value;
+	} else {
+		return false;
+	}
+	if (!saveSettings(m_path, settings)) {
+		return false;
+	}
+	m_settings = std::move(settings);
 	return true;
 }
 

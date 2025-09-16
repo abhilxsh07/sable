@@ -542,3 +542,11 @@ The tab check uses the same factory as normal startup. It opens the same PDF
 at different pages in two windows, changes one window's preset and slider,
 closes that window with an open pending, then zooms and navigates in the
 survivor. It also opens a fresh home window after closing another reader.
+
+## Shared settings store (2026-10-15)
+
+Settings windows share one SettingsStore per app. General edits save the
+whole validated config through the existing atomic writer, keeping keybinds
+and the other general value. A failed save leaves the store unchanged so the
+checkbox can return to its saved value rather than claiming an unsaved edit
+worked. Reader windows keep their own startup/shortcut snapshots (Q7).
