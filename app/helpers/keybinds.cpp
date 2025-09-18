@@ -293,6 +293,48 @@ const Keybinds& KeybindsHelper::removeActionKeybind(const std::string& action,
 	}
 	return entry;
 }
+void KeybindCapture::reset() {
+	m_held = {};
+	m_binding = {};
+	m_display.clear();
+}
+
+void KeybindCapture::release(const std::string& key) {
+	m_held.erase(key);
+}
+
+// key-up keeps the last chord visible, like NightPDF's overlay
+void KeybindCapture::press(const std::string& key) {
+	if (m_held.contains(key) || key.empty()) {
+		return;
+	}
+	m_held.set(key, true);
+	m_binding = {};
+	m_display.clear();
+	ModifierKeyMap modifiers;
+	std::vector<std::string> normal;
+	for (const auto& [name, held] : m_held) {
+		if (const auto modifier = ModifierKeys.find(name)) {
+			modifiers.set(name, *modifier);
+			m_display += modifierToString(name, "win32") + " + ";
+		} else {
+			normal.push_back(name);
+		}
+	}
+	if (normal.size() > 1) {
+		m_display = "Invalid";
+		return;
+	}
+	if (modifiers.empty()) {
+		m_display.clear();
+		return;
+	}
+	if (normal.size() == 1) {
+		m_binding = {std::move(modifiers), normal.front()};
+		m_display += normal.front();
+	}
+}
+
 // port of app/main/app.ts keybind registration (L427-440). The window
 // supplies key codes so layout-dependent character keys stay at the UI edge.
 std::vector<Shortcut>

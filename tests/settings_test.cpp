@@ -424,6 +424,47 @@ TEST_F(SettingsFiles, StoreKeepsItsStateWhenSavingFails) {
 	EXPECT_EQ(read(file("blocked")), "not a directory");
 }
 
+TEST_F(SettingsFiles, StoreSavesKeybindEditsAndClearsWithoutChangingSnapshots) {
+	helpers::SettingsStore store(file(), kVersion);
+	ASSERT_TRUE(store.setGeneral("DisplayThumbs", false));
+	const auto snapshot = store.get();
+	helpers::KeybindsHelper edits(snapshot.keybinds, "win32");
+	const auto binding = helpers::KeybindHelper::fromTrigger("Alt+O", "win32");
+	ASSERT_TRUE(store.setKeybind(
+	    "OpenWindow",
+	    edits.updateActionKeybind("OpenWindow", 0, binding.getKeybind())));
+	EXPECT_EQ(store.get().keybinds.at("OpenWindow").action,
+	          snapshot.keybinds.at("OpenWindow").action);
+	EXPECT_EQ(store.get().general, snapshot.general);
+	EXPECT_NE(store.get().keybinds, snapshot.keybinds);
+	EXPECT_EQ(helpers::SettingsStore(file(), kVersion).get(), store.get());
+	ASSERT_TRUE(store.setKeybind("OpenWindow",
+	                             edits.removeActionKeybind("OpenWindow", 0)));
+	EXPECT_TRUE(store.get().keybinds.at("OpenWindow").keybind.empty());
+	EXPECT_EQ(helpers::loadSettings(file(), kVersion), store.get());
+}
+
+TEST_F(SettingsFiles, StoreRejectsUnknownAndInvalidKeybindCommands) {
+	helpers::SettingsStore store(file(), kVersion);
+	auto command = store.get().keybinds.at("OpenWindow");
+	EXPECT_FALSE(store.setKeybind("Unknown", command));
+	command.keybind.resize(3);
+	EXPECT_FALSE(store.setKeybind("OpenWindow", command));
+	EXPECT_FALSE(fs::exists(file()));
+	EXPECT_EQ(store.get(), helpers::nightpdf_default_settings(kVersion));
+}
+
+TEST_F(SettingsFiles, StoreKeepsKeybindsWhenSavingFails) {
+	write(file("blocked"), "not a directory");
+	helpers::SettingsStore store(file("blocked") / "config.json", kVersion);
+	const auto snapshot = store.get();
+	auto command = snapshot.keybinds.at("OpenWindow");
+	command.keybind.clear();
+	EXPECT_FALSE(store.setKeybind("OpenWindow", command));
+	EXPECT_EQ(store.get(), snapshot);
+	EXPECT_EQ(read(file("blocked")), "not a directory");
+}
+
 TEST_F(SettingsFiles, LoadMigratesAnOlderFile) {
 	Json j = defaultsJson();
 	j["version"] = "0.9.0";
