@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "helpers/settings.h"
 #include "helpers/version.h"
+#include "SettingsWindow.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Windowing;
@@ -206,6 +207,9 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
+		if (const auto settings = m_settingsWindow) {
+			settings->window.Close();
+		}
 		for (const auto& entry : m_tabs) {
 			get_self<ViewerPage>(entry.viewer)->close();
 		}
@@ -225,6 +229,14 @@ void MainWindow::setupOpen() {
 	};
 	OpenItem().Click(request);
 	Tabs().AddTabButtonClick(request);
+	Nav().ItemInvoked([weak = get_weak()](auto&&, const auto& args) {
+		if (auto self = weak.get();
+		    self && args.InvokedItemContainer() &&
+		    unbox_value_or<hstring>(args.InvokedItemContainer().Tag(),
+		                            hstring{}) == L"settings") {
+			self->onOpenSettings({}, {});
+		}
+	});
 	get_self<HomePage>(Home())->OpenRequested([weak = get_weak()] {
 		if (auto self = weak.get()) {
 			self->pickDocuments();
@@ -252,16 +264,25 @@ void MainWindow::setupOpen() {
 			self->dropDocuments(args.DataView());
 		}
 	});
-	for (const auto key : {Windows::System::VirtualKey::O}) {
+	for (const auto key :
+	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::S}) {
 		Input::KeyboardAccelerator accelerator;
 		accelerator.Key(key);
-		accelerator.Modifiers(Windows::System::VirtualKeyModifiers::Control);
-		accelerator.Invoked([weak = get_weak()](auto&&, const auto& args) {
-			if (auto self = weak.get()) {
-				self->pickDocuments();
-				args.Handled(true);
-			}
-		});
+		const bool settings = key == Windows::System::VirtualKey::S;
+		accelerator.Modifiers(
+		    settings ? Windows::System::VirtualKeyModifiers::Menu
+		             : Windows::System::VirtualKeyModifiers::Control);
+		accelerator.Invoked(
+		    [weak = get_weak(), settings](auto&&, const auto& args) {
+			    if (auto self = weak.get()) {
+				    if (settings) {
+					    self->onOpenSettings({}, {});
+				    } else {
+					    self->pickDocuments();
+				    }
+				    args.Handled(true);
+			    }
+		    });
 		RootGrid().KeyboardAccelerators().Append(accelerator);
 	}
 }
@@ -290,6 +311,7 @@ fire_and_forget MainWindow::pickDocuments() {
 			co_return;
 		}
 		m_picking = true;
+		PickerError().Title(L"Couldn't open the file dialog");
 		PickerError().IsOpen(false);
 		// see:
 		// https://learn.microsoft.com/en-us/windows/apps/develop/files/using-file-folder-pickers
@@ -453,10 +475,13 @@ void MainWindow::setupTabKeys() {
 			args.Handled(true);
 			return;
 		}
-		if ((modifiers == helpers::SHORTCUT_CTRL &&
-		     (key == 'O' || key == 'P')) ||
-		    (modifiers == helpers::SHORTCUT_ALT && key == 'S')) {
-			// @todo: wire fixed Print and Settings when their UI is ready
+		if (modifiers == helpers::SHORTCUT_ALT && key == 'S') {
+			self->onOpenSettings({}, {});
+			args.Handled(true);
+			return;
+		}
+		if (modifiers == helpers::SHORTCUT_CTRL && (key == 'O' || key == 'P')) {
+			// @todo: wire fixed Print when its UI is ready
 			return;
 		}
 		if (const auto* binding =
@@ -631,6 +656,36 @@ void MainWindow::updateTabWidths() {
 	const double limit = RootGrid().ActualWidth() * 0.15;
 	for (const auto& entry : m_tabs) {
 		entry.tab.MaxWidth(limit);
+	}
+}
+
+std::filesystem::path MainWindow::settingsPath() {
+	return configFile();
+}
+
+void MainWindow::onOpenSettings(const Windows::Foundation::IInspectable&,
+                                const RoutedEventArgs&) {
+	if (m_closing || !m_settingsStore) {
+		return;
+	}
+	try {
+		if (m_settingsWindow) {
+			m_settingsWindow->window.Activate();
+			return;
+		}
+		m_settingsWindow =
+		    ::SettingsWindow::open(this->try_as<Window>(), *m_settingsStore,
+		                           exeDir() / L"assets/icon.ico");
+		m_settingsWindow->window.Closed([weak = get_weak()](auto&&, auto&&) {
+			if (auto self = weak.get()) {
+				self->m_settingsWindow.reset();
+			}
+		});
+	} catch (...) {
+		OutputDebugStringW(to_message().c_str());
+		PickerError().Title(L"Couldn't open settings");
+		PickerError().Message(L"Close the settings window and try again.");
+		PickerError().IsOpen(true);
 	}
 }
 
