@@ -42,6 +42,7 @@ struct TabsTest {
 	pdf::Engine& engine;
 	App& app;
 	TextBlock status;
+	Border report;
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
 	bool shortcuts = false;
 	int step = 0;
@@ -106,8 +107,9 @@ struct TabsTest {
 	void clearBindings() {
 		if (auto owner = window.get()) {
 			owner->m_shortcuts.clear();
-			owner->Tabs().SelectedItem().as<TabViewItem>().Focus(
-			    FocusState::Programmatic);
+			if (auto tab = owner->Tabs().SelectedItem().try_as<TabViewItem>()) {
+				tab.Focus(FocusState::Programmatic);
+			}
 		}
 	}
 	void check(bool condition, const char* message = "tab check failed") {
@@ -129,6 +131,8 @@ struct TabsTest {
 			check(probeCheck());
 			if (shortcuts) {
 				const auto current = self->Viewer();
+				report.VerticalAlignment(current ? VerticalAlignment::Bottom
+				                                 : VerticalAlignment::Top);
 				const auto focus = Input::FocusManager::GetFocusedElement(
 				    self->RootGrid().XamlRoot());
 				hstring where = L"other";
@@ -477,6 +481,8 @@ struct TabsTest {
 				peerWindow->Close();
 				check(app.m_windows.size() == 1 &&
 				      app.m_windows.front() == self.as<Window>());
+				self->m_presenter.Maximize();
+				clearBindings();
 				self->onOpenSettings({}, {});
 				break;
 			}
@@ -496,13 +502,47 @@ struct TabsTest {
 				check(!IsWindowEnabled(owner), "settings owner is not blocked");
 				self->onOpenSettings({}, {});
 				check(self->m_settingsWindow == settings, "duplicate settings");
+				settings->select("general");
+				check(settings->m_general.Visibility() == Visibility::Visible &&
+				      settings->m_version.Visibility() ==
+				          Visibility::Collapsed);
+				for (const auto& box : settings->m_checks) {
+					check(box.IsChecked().Value());
+					box.IsChecked(false);
+					settings->save(box);
+					check(!settings->m_error.IsOpen(), "general save failed");
+				}
+				check(!uiStore->get().general.MaximizeOnOpen &&
+				      !uiStore->get().general.DisplayThumbs);
+				check(helpers::loadSettings(settingsPath,
+				                            helpers::versionString()) ==
+				          uiStore->get(),
+				      "general values were not persisted");
 				settings->window.Close();
 				check(!self->m_settingsWindow && IsWindowEnabled(owner),
 				      "settings close did not restore owner");
+				check(self->m_presenter.State() ==
+				          Microsoft::UI::Windowing::OverlappedPresenterState::
+				              Maximized,
+				      "settings changed the reader's window state");
+				self->onOpenSettings({}, {});
+				for (const auto& box : self->m_settingsWindow->m_checks) {
+					check(!box.IsChecked().Value(), "settings did not reload");
+				}
+				self->m_settingsWindow->window.Close();
+				helpers::SettingsStore blocked(settingsPath / "config.json",
+				                               helpers::versionString());
 				closedDropWindow = app.createWindow();
-				closedDropWindow->setSettingsStore(*uiStore);
+				closedDropWindow->setSettingsStore(blocked);
 				closedDropWindow->onOpenSettings({}, {});
 				check(closedDropWindow->m_settingsWindow != nullptr);
+				const auto failing = closedDropWindow->m_settingsWindow;
+				failing->m_checks[0].IsChecked(false);
+				failing->save(failing->m_checks[0]);
+				check(failing->m_error.IsOpen() &&
+				          failing->m_checks[0].IsChecked().Value() &&
+				          blocked.get().general.MaximizeOnOpen,
+				      "failed settings save was not restored");
 				closedDropWindow->Close();
 				check(!closedDropWindow->m_settingsWindow &&
 				      app.m_windows.size() == 1);
@@ -510,7 +550,7 @@ struct TabsTest {
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
 				    L"order, drag lifecycle, width cap, splash drop, startup "
-				    L"size, independent windows");
+				    L"size, independent windows, general settings");
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;
@@ -547,6 +587,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->status.Text(L"Checking document tabs");
 	state->status.TextWrapping(TextWrapping::Wrap);
 	Border report;
+	state->report = report;
 	StackPanel controls;
 	controls.Children().Append(state->status);
 	if (state->shortcuts) {

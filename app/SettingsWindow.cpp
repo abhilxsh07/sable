@@ -86,6 +86,8 @@ void SettingsWindow::initialize(const Window& owner,
 		Button item;
 		const auto section = it.key();
 		item.Content(box_value(to_hstring(section)));
+		item.Tag(box_value(to_hstring(section)));
+		item.FontSize(16);
 		item.HorizontalAlignment(HorizontalAlignment::Stretch);
 		item.HorizontalContentAlignment(HorizontalAlignment::Right);
 		item.BorderThickness({0, 1, 1, 0});
@@ -93,13 +95,14 @@ void SettingsWindow::initialize(const Window& owner,
 		item.Foreground(text);
 		item.Background(Media::SolidColorBrush({255, 0, 0, 0}));
 		item.Margin({0, 8, 0, 8});
-		item.IsEnabled(section == "version");
+		item.IsEnabled(section != "keybinds");
 		item.Click([weak, section](auto&&, auto&&) {
 			if (auto self = weak.lock()) {
 				self->select(section);
 			}
 		});
 		menu.Children().Append(item);
+		m_sections.push_back(item);
 	}
 	root.Children().Append(menu);
 	StackPanel content;
@@ -107,8 +110,47 @@ void SettingsWindow::initialize(const Window& owner,
 	m_version.Text(to_hstring(helpers::versionString()));
 	m_version.TextWrapping(TextWrapping::Wrap);
 	m_version.Foreground(text);
+	m_version.FontSize(16);
 	m_version.Margin({0, 16, 0, 0});
 	content.Children().Append(m_version);
+	m_general.Width(312);
+	m_general.HorizontalAlignment(HorizontalAlignment::Left);
+	const char* keys[] = {"MaximizeOnOpen", "DisplayThumbs"};
+	const wchar_t* labels[] = {L"Maximize On Open",
+	                           L"Display PDF page thumbnails"};
+	for (std::size_t i = 0; i < m_checks.size(); ++i) {
+		Grid row;
+		row.Margin({0, 16, 0, 0});
+		ColumnDefinition labelColumn;
+		labelColumn.Width({128, GridUnitType::Pixel});
+		row.ColumnDefinitions().Append(labelColumn);
+		row.ColumnDefinitions().Append(ColumnDefinition());
+		TextBlock label;
+		label.Text(labels[i]);
+		label.Foreground(text);
+		label.FontSize(16);
+		label.TextWrapping(TextWrapping::Wrap);
+		label.VerticalAlignment(VerticalAlignment::Center);
+		row.Children().Append(label);
+		auto box = m_checks[i];
+		box.MinWidth(0);
+		box.Width(32);
+		box.Tag(box_value(to_hstring(keys[i])));
+		box.IsChecked(i == 0 ? m_store.get().general.MaximizeOnOpen
+		                     : m_store.get().general.DisplayThumbs);
+		Automation::AutomationProperties::SetName(box, labels[i]);
+		box.HorizontalAlignment(HorizontalAlignment::Right);
+		Grid::SetColumn(box, 1);
+		box.Click([weak](const auto& sender, auto&&) {
+			if (auto self = weak.lock()) {
+				self->save(sender.template as<CheckBox>());
+			}
+		});
+		row.Children().Append(box);
+		m_general.Children().Append(row);
+	}
+	content.Children().Append(m_general);
+	content.Children().Append(m_error);
 	root.Children().Append(content);
 	window.Content(root);
 	select("version");
@@ -139,6 +181,34 @@ void SettingsWindow::initialize(const Window& owner,
 }
 
 void SettingsWindow::select(const std::string& section) {
+	for (const auto& item : m_sections) {
+		const std::uint8_t shade =
+		    unbox_value<hstring>(item.Tag()) == to_hstring(section) ? 0 : 0x1e;
+		item.Background(Media::SolidColorBrush({255, shade, shade, shade}));
+	}
 	m_version.Visibility(section == "version" ? Visibility::Visible
 	                                          : Visibility::Collapsed);
+	m_general.Visibility(section == "general" ? Visibility::Visible
+	                                          : Visibility::Collapsed);
+}
+
+void SettingsWindow::save(const CheckBox& box) {
+	const auto key = to_string(unbox_value<hstring>(box.Tag()));
+	try {
+		if (m_store.setGeneral(key, box.IsChecked().Value())) {
+			m_error.IsOpen(false);
+			return;
+		}
+	} catch (...) {
+		OutputDebugStringW(to_message().c_str());
+	}
+	OutputDebugStringW(L"Couldn't save settings.\n");
+	box.IsChecked(key == "MaximizeOnOpen"
+	                  ? m_store.get().general.MaximizeOnOpen
+	                  : m_store.get().general.DisplayThumbs);
+	m_error.Severity(InfoBarSeverity::Error);
+	m_error.Title(L"Couldn't save settings");
+	m_error.Message(L"The setting was restored. Check that the settings "
+	                L"folder is writable and try again.");
+	m_error.IsOpen(true);
 }
