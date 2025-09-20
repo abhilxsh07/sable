@@ -44,6 +44,23 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	                const std::filesystem::path& icon);
 	void select(const std::string& section);
 	void save(const winrt::Microsoft::UI::Xaml::Controls::CheckBox& box);
+	void buildKeybinds();
+	void edit(const std::string& action, std::size_t index);
+	void dismiss();
+	bool capture(unsigned key, bool down, bool repeated = false);
+	bool saveBinding(const std::string& action, std::size_t index,
+	                 const std::optional<helpers::Keybind>& binding);
+	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_keybinds;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer m_bindingScroll;
+	winrt::Microsoft::UI::Xaml::Controls::Border m_overlay;
+	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_captureText;
+	winrt::Microsoft::UI::Xaml::Controls::Button m_saveBinding;
+	winrt::Microsoft::UI::Xaml::Controls::Button m_cancelBinding;
+	winrt::Microsoft::UI::Xaml::Controls::Button m_returnFocus{nullptr};
+	helpers::KeybindCapture m_capture;
+	std::string m_action;
+	std::size_t m_bindingIndex = 0;
+	std::array<std::string, 256> m_keyNames;
 	helpers::SettingsStore& m_store;
 	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_version;
 	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_general;

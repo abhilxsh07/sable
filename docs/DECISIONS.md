@@ -576,3 +576,21 @@ The shared store validates a keybind command before saving the whole config.
 Edits and clears use the same atomic writer as General. I only replace the
 in-memory settings after the write succeeds, so a failed save keeps the old
 bindings. Readers keep their startup snapshots; edits apply after restart.
+
+## Keybind settings controls (2026-10-16)
+
+Each action has NightPDF's primary and secondary slots and hover clear
+buttons, using its #991900 red. The overlay keeps a completed chord after
+release. Escape, Cancel, an outside click or losing activation cancels it.
+I disable the rows while capturing and restore focus when the overlay closes.
+Unmodified Tab, Enter and Space still operate the overlay buttons.
+
+Save requires one normal key and at least one modifier. NightPDF checked the
+display text instead and could save an invalid or modifier-only chord. A
+failed write keeps the old binding and leaves the captured chord for retry.
+Printable keypad keys keep the browser's character names in JSON. I install
+equivalent keypad shortcuts too, so a saved keypad chord works after restart;
+the fixed top-row number shortcuts keep their existing behavior.
+
+The debug tabs check also accepts SableSettingsTest=true to run its settings
+checks without opening documents or making a WinRT storage-item drop.
