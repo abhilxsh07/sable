@@ -60,6 +60,20 @@ struct Bitmap {
 	std::vector<std::uint8_t> pixels;
 };
 
+enum class LinkFit { Keep, Page, Width, Height, Rectangle };
+struct LinkDestination {
+	int page = -1;
+	LinkFit fit = LinkFit::Keep;
+	// fractions of the displayed page, after rotation and cropping
+	std::optional<double> x, y;
+	std::optional<double> zoom; // scale, where 1 is 100%; absent means keep it
+	double width = 0, height = 0; // Rectangle only
+};
+struct Link {
+	std::optional<LinkDestination> destination;
+	std::string uri; // http(s) only; empty for an internal destination
+};
+
 class Document;
 
 struct OpenResult {
@@ -91,6 +105,8 @@ class Document {
 	std::optional<PageSize> pageSize(int index) const;
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
+	// x/y are fractions of the displayed page, measured from its top left
+	std::optional<Link> linkAt(int index, double x, double y) const;
 	// draws a page into a width x height bitmap. rotation is extra quarter
 	// turns clockwise (0-3) on top of the page's own /Rotate. nullopt if the
 	// page won't load or the size is zero or too big to be sensible.

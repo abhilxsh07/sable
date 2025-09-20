@@ -1,0 +1,54 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Dests << /chapter [6 0 R /FitH 450] >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] /CropBox [20 30 380 570] /Annots [<< /Type /Annot /Subtype /Link /Rect [40 500 160 540] /A << /S /URI /URI (https://example.com/sable?x=1#part) >> >> << /Type /Annot /Subtype /Link /Rect [40 420 160 460] /Dest [6 0 R /XYZ 60 400 2] >> << /Type /Annot /Subtype /Link /Rect [40 340 160 380] /A << /S /GoTo /D [6 0 R /Fit] >> >> << /Type /Annot /Subtype /Link /Rect [40 260 160 300] /Dest /chapter >> << /Type /Annot /Subtype /Link /Rect [40 180 160 220] /A << /S /URI /URI (javascript:alert) >> >> << /Type /Annot /Subtype /Link /Rect [40 100 160 140] /A << /S /Launch /F (calc.exe) >> >> << /Type /Annot /Subtype /Link /Rect [40 20 160 60] /A << /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 194 >>
+stream
+0 0 1 RG 40 500 120 40 re S
+0 0 1 RG 40 420 120 40 re S
+0 0 1 RG 40 340 120 40 re S
+0 0 1 RG 40 260 120 40 re S
+0 0 1 RG 40 180 120 40 re S
+0 0 1 RG 40 100 120 40 re S
+0 0 1 RG 40 20 120 40 re S
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 500] /Rotate 90 /Annots [<< /Subtype /Link /Rect [20 100 100 180] /A << /S /URI /URI (HTTP://example.com/rotated) >> >> << /Subtype /Link /Rect [120 100 200 180] /Dest [4 0 R /XYZ null 200 null] >> << /Subtype /Link /Rect [20 220 100 280] /Dest [4 0 R /FitR 40 100 200 400] >>] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 26 >>
+stream
+0 0 1 RG 20 100 80 80 re S
+endstream
+endobj
+8 0 obj
+<< /Title (Sable link fixtures) >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000104 00000 n 
+0000000167 00000 n 
+0000000264 00000 n 
+0000001079 00000 n 
+0000001324 00000 n 
+0000001723 00000 n 
+0000001799 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R /Info 8 0 R /ID [<8b927754047cf881b2224ccdb1f08502> <8b927754047cf881b2224ccdb1f08502>] >>
+startxref
+1849
+%%EOF

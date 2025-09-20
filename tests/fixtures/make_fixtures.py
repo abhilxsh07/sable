@@ -18,6 +18,7 @@
 
 # Writes the PDFs the tests open, next to this script:
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
+#   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
 #   restricted.pdf  the same page, opens without a password, all permissions off
 #   broken.pdf      not a PDF at all
@@ -261,6 +262,46 @@ def build_pdf(
     return w.finish(1, info, info + 1 if encrypt is not None else None)
 
 
+def link_pdf() -> bytes:
+    w = Writer(md5(b"sable links.pdf"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R "
+          "/Dests << /chapter [6 0 R /FitH 450] >> >>")
+    w.add(2, "<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>")
+    w.add(3, FONT)
+    actions = [
+        "/A << /S /URI /URI (https://example.com/sable?x=1#part) >>",
+        "/Dest [6 0 R /XYZ 60 400 2]",
+        "/A << /S /GoTo /D [6 0 R /Fit] >>",
+        "/Dest /chapter",
+        "/A << /S /URI /URI (javascript:alert) >>",
+        "/A << /S /Launch /F (calc.exe) >>",
+        "/A << /S /GoToR /F (other.pdf) /D [0 /Fit] >>",
+    ]
+    annots = []
+    drawing = []
+    for i, action in enumerate(actions):
+        top = 540 - i * 80
+        annots.append(f"<< /Type /Annot /Subtype /Link "
+                      f"/Rect [40 {top - 40} 160 {top}] {action} >>")
+        drawing.append(f"0 0 1 RG 40 {top - 40} 120 40 re S")
+    w.add(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] "
+          "/CropBox [20 30 380 570] /Annots [" + " ".join(annots) + "] "
+          "/Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>")
+    w.add_stream(5, content(*drawing))
+    w.add(6, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 500] /Rotate 90 "
+          "/Annots ["
+          "<< /Subtype /Link /Rect [20 100 100 180] "
+          "/A << /S /URI /URI (HTTP://example.com/rotated) >> >> "
+          "<< /Subtype /Link /Rect [120 100 200 180] "
+          "/Dest [4 0 R /XYZ null 200 null] >> "
+          "<< /Subtype /Link /Rect [20 220 100 280] "
+          "/Dest [4 0 R /FitR 40 100 200 400] >>] "
+          "/Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>")
+    w.add_stream(7, content("0 0 1 RG 20 100 80 80 re S"))
+    w.add(8, "<< /Title (Sable link fixtures) >>")
+    return w.finish(1, 8)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -271,6 +312,7 @@ def main() -> None:
             f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
         )))
     files = {
+        "links.pdf": link_pdf(),
         "long.pdf": build_pdf("long.pdf", long_pages),
         "pages.pdf": build_pdf("pages.pdf", [PAGE_1, PAGE_2, PAGE_3], LABELS),
         "password.pdf": build_pdf(
