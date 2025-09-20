@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdexcept>
 #include <string_view>
 #include <winrt/Windows.Storage.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -46,6 +47,7 @@ struct TabsTest {
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
 	bool shortcuts = false;
 	bool settingsOnly = false;
+	bool filtersOnly = false;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -215,6 +217,149 @@ struct TabsTest {
 		      "numeric keypad add matched equals");
 		reader->Close();
 	}
+	void filterValues(MainWindow& owner,
+	                  const helpers::SliderValues& expected) {
+		check(owner.m_values == expected, "preset values");
+		for (const auto& entry : owner.m_tabs) {
+			check(get_self<ViewerPage>(entry.viewer)->m_values == expected,
+			      "tab filter values");
+		}
+		const double values[] = {expected.brightness, expected.grayness,
+		                         expected.inversion,  expected.sepia,
+		                         expected.hue,        expected.extraBrightness};
+		for (std::size_t i = 0; i < helpers::SLIDERS.size(); ++i) {
+			const auto& spec = helpers::SLIDERS[i];
+			const auto slider = owner.m_sliders[i];
+			check(slider.Minimum() == spec.min &&
+			          slider.Maximum() == spec.max &&
+			          slider.StepFrequency() == spec.step &&
+			          slider.Value() == values[i],
+			      "slider range/value");
+			check(slider.IsThumbToolTipEnabled(), "disabled slider tooltip");
+			const auto text = slider.ThumbToolTipValueConverter().Convert(
+			    box_value(values[i]), {}, nullptr, L"");
+			check(unbox_value<hstring>(text) ==
+			          to_hstring(helpers::sliderTooltip(spec, values[i])),
+			      "slider tooltip");
+		}
+	}
+	void filterTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || !ready(*get_self<ViewerPage>(current))) {
+			return;
+		}
+		switch (step) {
+		case 0: {
+			check(owner.Presets().Visibility() == Visibility::Visible &&
+			          owner.m_sliders.size() == 6,
+			      "filter controls");
+			filterValues(owner, {});
+			const struct {
+				Button button;
+				helpers::SliderValues values;
+			} presets[] = {{owner.SepiaPreset(), {0, 0, 25, 100, 0, -30}},
+			               {owner.RedeyePreset(), {8, 100, 92, 100, 295, -6}},
+			               {owner.DefaultPreset(), {7, 95, 95, 55, 180, 0}}};
+			for (const auto& preset : presets) {
+				owner.onPresetClick(preset.button, {});
+				filterValues(owner, preset.values);
+				for (const auto& chip :
+				     {owner.DefaultPreset(), owner.SepiaPreset(),
+				      owner.RedeyePreset(), owner.CustomPreset()}) {
+					check(
+					    Automation::AutomationProperties::GetItemStatus(chip) ==
+					        (chip == preset.button ? L"Selected" : L""),
+					    "preset selection");
+				}
+				check(owner.DarkConfigurator().Visibility() ==
+				          Visibility::Collapsed,
+				      "inactive preset opened configurator");
+				owner.onPresetClick(preset.button, {});
+				check(owner.DarkConfigurator().Visibility() ==
+				          Visibility::Visible,
+				      "active preset did not open configurator");
+				owner.m_sliders[0].Value(42);
+				auto edited = preset.values;
+				edited.brightness = 42;
+				filterValues(owner, edited);
+				owner.onPresetClick(preset.button, {});
+				check(owner.DarkConfigurator().Visibility() ==
+				          Visibility::Collapsed,
+				      "active preset did not close configurator");
+				filterValues(owner, edited);
+			}
+			owner.onPresetClick(owner.CustomPreset(), {});
+			filterValues(owner, {0, 0, 0, 0, 0, 0});
+			check(owner.DarkConfigurator().Visibility() == Visibility::Visible);
+			for (std::size_t i = 0; i < owner.m_sliders.size(); ++i) {
+				owner.m_sliders[i].Value(helpers::SLIDERS[i].max);
+			}
+			filterValues(owner, {100, 100, 100, 100, 360, 200});
+			for (std::size_t i = 0; i < owner.m_sliders.size(); ++i) {
+				owner.m_sliders[i].Value(helpers::SLIDERS[i].min);
+			}
+			filterValues(owner, {0, 0, 0, 0, 0, -100});
+			check(owner.m_preset == "custom",
+			      "slider changed preset selection");
+			owner.onPresetClick(owner.CustomPreset(), {});
+			filterValues(owner, {0, 0, 0, 0, 0, -100});
+			owner.openDocument(engine, L"tests/fixtures/restricted.pdf", {});
+			break;
+		}
+		case 1:
+			check(owner.m_tabs.size() == 3, "new filter tab");
+			filterValues(owner, {0, 0, 0, 0, 0, -100});
+			peerWindow = app.createWindow();
+			check(peerWindow->m_values == helpers::SliderValues{} &&
+			          peerWindow->m_preset == "default",
+			      "window filter isolation");
+			peerWindow->Close();
+			owner.onPresetClick(owner.DefaultPreset(), {});
+			filterValues(owner, {});
+			owner.onPresetClick(owner.DefaultPreset(), {});
+			check(owner.DarkConfigurator().Visibility() == Visibility::Visible);
+			owner.onHideConfigurator({}, nullptr);
+			check(owner.DarkConfigurator().Visibility() ==
+			      Visibility::Collapsed);
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({565, 700});
+			break;
+		case 2:
+			check(owner.Presets().ActualWidth() > 0, "narrow preset bar");
+			owner.onPresetClick(owner.DefaultPreset(), {});
+			break;
+		case 3: {
+			const auto panel = owner.DarkConfigurator();
+			if (panel.ActualWidth() <= 0) {
+				return;
+			}
+			check(panel.ActualWidth() == 200,
+			      ("configurator width " + std::to_string(panel.ActualWidth()) +
+			       ", visibility " +
+			       std::to_string(static_cast<int>(panel.Visibility())))
+			          .c_str());
+			const auto origin = panel.TransformToVisual(owner.RootGrid())
+			                        .TransformPoint({0, 0});
+			check(origin.X >= 0 && origin.X + panel.ActualWidth() <=
+			                           owner.RootGrid().ActualWidth() + 1,
+			      "configurator outside window");
+			while (!owner.m_tabs.empty()) {
+				owner.closeTab(owner.m_tabs.back().tab);
+			}
+			check(owner.Presets().Visibility() == Visibility::Collapsed &&
+			          panel.Visibility() == Visibility::Collapsed,
+			      "home filter controls");
+			status.Text(
+			    L"PASS: preset toggles, slider ranges/tooltips, shared "
+			    L"filters, new tabs, window isolation and narrow layout");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -248,6 +393,10 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (filtersOnly) {
+				filterTick(*self);
+				return;
 			}
 			if (settingsOnly && step == 0) {
 				self->m_presenter.Maximize();
@@ -695,9 +844,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->settingsOnly =
 	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->filtersOnly = GetEnvironmentVariableW(L"SableFilterTest", mode, 8) &&
+	                     std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->settingsOnly) {
+	if (state->settingsOnly || state->filtersOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();

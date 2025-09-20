@@ -594,3 +594,13 @@ the fixed top-row number shortcuts keep their existing behavior.
 
 The debug tabs check also accepts SableSettingsTest=true to run its settings
 checks without opening documents or making a WinRT storage-item drop.
+
+## Configurator thumb tooltips (2026-10-16)
+
+The preset buttons and live sliders were already wired. I enabled the native
+thumb tooltips and send their values through the existing slider formatter.
+Percentages and the earlier hue degree-unit fix now apply to the thumb too.
+
+SableFilterTest=true with SableTabsTest=true runs the preset/configurator
+checks without making a WinRT storage-item drop. It checks retained edits,
+slider limits/tooltips, shared tabs, new-tab filters and independent windows.
