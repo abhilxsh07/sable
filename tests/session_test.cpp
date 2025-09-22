@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "pdf/engine.h"
 #include "pdf/session.h"
+#include "pdf/printing.h"
 #include "pdf_test_files.h"
 
 namespace {
@@ -202,6 +203,43 @@ TEST_F(SessionTest, LinksReturnOnTheEngineThreadAndCloseCancelsQueuedClicks) {
 	EXPECT_TRUE(late->canceled);
 	EXPECT_FALSE(late->link);
 	EXPECT_FALSE(session.linkAt(0, 0, 0, unused.callback()));
+}
+
+TEST_F(SessionTest, PrintingHasOneSlotAndCloseCancelsQueuedJobs) {
+	pdf::Session session(engine);
+	pdf::PrintJob job;
+	// An invalid page fails before GDI sees this sentinel device.
+	job.device =
+	    std::shared_ptr<void>(reinterpret_cast<void*>(1), [](void*) {});
+	job.pages = {-1};
+	Reply<pdf::PrintResult> unused;
+	EXPECT_FALSE(session.print(job, unused.callback()));
+	ASSERT_EQ(open(session, fixturePath("pages.pdf")).error, pdf::Error::None);
+	Reply<pdf::PrintResult> failed;
+	auto onThread = std::make_shared<std::atomic<bool>>(false);
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.print(job, [onThread, callback = failed.callback()](
+		                                   pdf::PrintResult result) {
+			*onThread = pdf::Engine::onThread();
+			callback(result);
+		}));
+		EXPECT_FALSE(session.print(job, unused.callback()));
+	}
+	EXPECT_EQ(failed.wait(), pdf::PrintResult::Failed);
+	EXPECT_TRUE(*onThread);
+	Reply<pdf::PrintResult> retry;
+	ASSERT_TRUE(session.print(job, retry.callback()));
+	EXPECT_EQ(retry.wait(), pdf::PrintResult::Failed);
+	Reply<pdf::PrintResult> canceled;
+	{
+		Gate gate(engine);
+		job.pages = {0};
+		ASSERT_TRUE(session.print(job, canceled.callback()));
+		session.close();
+	}
+	EXPECT_EQ(canceled.wait(), pdf::PrintResult::Canceled);
+	EXPECT_FALSE(session.print(job, unused.callback()));
 }
 
 TEST_F(SessionTest, OpensAFileAndListsItsPages) {

@@ -19,6 +19,7 @@
 # Writes the PDFs the tests open, next to this script:
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
+#   print.pdf       original colors, print-visible and screen-only annotations
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
 #   restricted.pdf  the same page, opens without a password, all permissions off
 #   broken.pdf      not a PDF at all
@@ -302,6 +303,26 @@ def link_pdf() -> bytes:
     return w.finish(1, 8)
 
 
+def print_pdf() -> bytes:
+    w = Writer(md5(b"sable print.pdf"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+    w.add(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] "
+          "/Resources << >> /Contents 4 0 R /Annots [5 0 R 6 0 R] >>")
+    w.add_stream(4, content("1 0 0 rg 10 10 30 30 re f"))
+    w.add(5, "<< /Type /Annot /Subtype /Square /Rect [50 10 80 40] "
+          "/F 4 /AP << /N 7 0 R >> >>")
+    w.add(6, "<< /Type /Annot /Subtype /Square /Rect [10 50 40 80] "
+          "/F 0 /AP << /N 8 0 R >> >>")
+    for obj, color in ((7, "0 1 0"), (8, "0 0 1")):
+        data = content(f"{color} rg 0 0 30 30 re f")
+        w.add(obj, f"<< /Type /XObject /Subtype /Form /BBox [0 0 30 30] "
+              f"/Resources << >> /Length {len(data)} >>\nstream\n"
+              + data.decode("latin-1") + "\nendstream")
+    w.add(9, "<< /Title (Sable print fixture) >>")
+    return w.finish(1, 9)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -313,6 +334,7 @@ def main() -> None:
         )))
     files = {
         "links.pdf": link_pdf(),
+        "print.pdf": print_pdf(),
         "long.pdf": build_pdf("long.pdf", long_pages),
         "pages.pdf": build_pdf("pages.pdf", [PAGE_1, PAGE_2, PAGE_3], LABELS),
         "password.pdf": build_pdf(

@@ -107,6 +107,9 @@ class Document {
 	std::string pageLabel(int index) const;
 	// x/y are fractions of the displayed page, measured from its top left
 	std::optional<Link> linkAt(int index, double x, double y) const;
+	// Windows printer HDC; original colors, print-visible annotations.
+	bool printPage(int index, void* device, int x, int y, int width,
+	               int height) const;
 	// draws a page into a width x height bitmap. rotation is extra quarter
 	// turns clockwise (0-3) on top of the page's own /Rotate. nullopt if the
 	// page won't load or the size is zero or too big to be sensible.

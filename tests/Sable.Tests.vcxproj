@@ -76,7 +76,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<Link>
 			<SubSystem>Console</SubSystem>
-			<AdditionalDependencies>gtest.lib;d2d1.lib;d3d11.lib;dxguid.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>gtest.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -98,6 +98,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="navigation_test.cpp" />
 		<ClCompile Include="thumbnails_test.cpp" />
 		<ClCompile Include="pdf_render_test.cpp" />
+		<ClCompile Include="printing_test.cpp" />
 		<ClCompile Include="pdf_document_test.cpp" />
 		<ClCompile Include="pdf_engine_test.cpp" />
 		<ClCompile Include="recents_test.cpp" />
@@ -124,6 +125,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="..\app\helpers\thumbnails.h" />
 		<ClCompile Include="..\app\helpers\thumbnails.cpp" />
 		<ClInclude Include="..\app\pdf\document.h" />
+		<ClInclude Include="..\app\pdf\printing.h" />
+		<ClCompile Include="..\app\pdf\printing.cpp" />
 		<ClInclude Include="..\app\pdf\page_cache.h" />
 		<ClCompile Include="..\app\pdf\page_cache.cpp" />
 		<ClInclude Include="..\app\pdf\session.h" />
