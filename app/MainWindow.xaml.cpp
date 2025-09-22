@@ -285,7 +285,8 @@ void MainWindow::setupOpen() {
 		}
 	});
 	for (const auto key :
-	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::S}) {
+	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::S,
+	      Windows::System::VirtualKey::P}) {
 		Input::KeyboardAccelerator accelerator;
 		accelerator.Key(key);
 		const bool settings = key == Windows::System::VirtualKey::S;
@@ -293,10 +294,12 @@ void MainWindow::setupOpen() {
 		    settings ? Windows::System::VirtualKeyModifiers::Menu
 		             : Windows::System::VirtualKeyModifiers::Control);
 		accelerator.Invoked(
-		    [weak = get_weak(), settings](auto&&, const auto& args) {
+		    [weak = get_weak(), settings, key](auto&&, const auto& args) {
 			    if (auto self = weak.get()) {
 				    if (settings) {
 					    self->onOpenSettings({}, {});
+				    } else if (key == Windows::System::VirtualKey::P) {
+					    self->onPrint({}, {});
 				    } else {
 					    self->pickDocuments();
 				    }
@@ -517,8 +520,12 @@ void MainWindow::setupTabKeys() {
 			args.Handled(true);
 			return;
 		}
-		if (modifiers == helpers::SHORTCUT_CTRL && (key == 'O' || key == 'P')) {
-			// @todo: wire fixed Print when its UI is ready
+		if (modifiers == helpers::SHORTCUT_CTRL && key == 'P') {
+			self->onPrint({}, {});
+			args.Handled(true);
+			return;
+		}
+		if (modifiers == helpers::SHORTCUT_CTRL && key == 'O') {
 			return;
 		}
 		if (const auto* binding =
@@ -571,6 +578,7 @@ void MainWindow::selectTab() {
 	ResetZoomItem().IsEnabled(hasDocument);
 	ZoomInItem().IsEnabled(hasDocument);
 	ZoomOutItem().IsEnabled(hasDocument);
+	PrintItem().IsEnabled(hasDocument && !m_printing);
 	DarkConfigurator().Visibility(Visibility::Collapsed);
 	updateTitleBar();
 	for (auto& entry : m_tabs) {
@@ -698,6 +706,26 @@ void MainWindow::updateTabWidths() {
 
 std::filesystem::path MainWindow::settingsPath() {
 	return configFile();
+}
+
+void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
+                         const RoutedEventArgs&) {
+	const auto viewer = Viewer();
+	if (m_closing || m_printing || !viewer) {
+		return;
+	}
+	HWND owner{};
+	check_hresult(this->try_as<::IWindowNative>()->get_WindowHandle(&owner));
+	m_printing = true;
+	PrintItem().IsEnabled(false);
+	get_self<ViewerPage>(viewer)->print(owner, [weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->m_printing = false;
+			if (!self->m_closing) {
+				self->PrintItem().IsEnabled(self->Viewer() != nullptr);
+			}
+		}
+	});
 }
 
 void MainWindow::onOpenSettings(const Windows::Foundation::IInspectable&,

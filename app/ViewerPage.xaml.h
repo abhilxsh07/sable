@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -49,6 +50,7 @@ struct RenderResult;
 struct SessionInfo;
 struct Link;
 struct LinkDestination;
+struct PrintDialogResult;
 } // namespace pdf
 
 namespace winrt::Sable::implementation {
@@ -73,6 +75,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomIn(int steps = 1);
 	void zoomOut(int steps = 1);
 	void zoomReset();
+	void print(void* owner, std::function<void()> done);
 	void onPageTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -224,6 +227,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_linkPending = false;
 #ifdef SABLE_SURFACE_TEST
 	std::string m_launchedUri;
+	std::function<pdf::PrintDialogResult(void*, int, int, const std::wstring&)>
+	    m_printDialog;
 #endif
 	Device m_device;
 	std::shared_ptr<pdf::Surface> m_surface;

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/helpers/version.h"
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
+#include "../app/pdf/printing.h"
 #include "surface_test.h"
 
 #include <chrono>
@@ -49,6 +50,7 @@ struct TabsTest {
 	bool settingsOnly = false;
 	bool filtersOnly = false;
 	bool linksOnly = false;
+	bool printOnly = false;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -457,6 +459,92 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void printTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& viewer = *get_self<ViewerPage>(current);
+		if (!ready(viewer) || owner.m_printing) {
+			return;
+		}
+		switch (step) {
+		case 0: {
+			check(owner.PrintItem().IsEnabled(),
+			      "print disabled with document");
+			bool shortcut = false;
+			for (const auto& key : owner.RootGrid().KeyboardAccelerators()) {
+				shortcut |= key.Key() == Windows::System::VirtualKey::P &&
+				            key.Modifiers() ==
+				                Windows::System::VirtualKeyModifiers::Control;
+			}
+			check(shortcut, "missing fixed print accelerator");
+			int calls = 0;
+			viewer.m_printDialog = [&](void* handle, int count, int page,
+			                           const std::wstring& title) {
+				HWND expected{};
+				check_hresult(
+				    owner.get_strong().as<::IWindowNative>()->get_WindowHandle(
+				        &expected));
+				check(handle == expected && count == 1 && page == 0 &&
+				          title == L"print.pdf",
+				      "print dialog active-document snapshot");
+				++calls;
+				owner.onPrint({}, {});
+				return pdf::PrintDialogResult{};
+			};
+			owner.onPrint({}, {});
+			viewer.m_printDialog = {};
+			check(calls == 1 && !owner.m_printing &&
+			          owner.PrintItem().IsEnabled(),
+			      "print cancel/reentry");
+			owner.selectTabPosition(0);
+			break;
+		}
+		case 1:
+			check(viewer.m_current == 1, "print current page setup");
+			viewer.m_printDialog = [](void*, int count, int page,
+			                          const std::wstring& title) {
+				if (count != 3 || page != 1 || title != L"pages.pdf") {
+					throw std::runtime_error("print switched tab");
+				}
+				return pdf::PrintDialogResult{{}, true};
+			};
+			owner.onPrint({}, {});
+			check(!owner.m_printing && viewer.Message().IsOpen(),
+			      "print dialog failure");
+			viewer.Message().IsOpen(false);
+			viewer.m_printDialog = [](void*, int, int, const std::wstring&) {
+				pdf::PrintJob job;
+				job.device = std::shared_ptr<void>(reinterpret_cast<void*>(1),
+				                                   [](void*) {});
+				job.pages = {
+				    -1}; // fails before any GDI call; no physical printer job
+				return pdf::PrintDialogResult{std::move(job), false};
+			};
+			owner.onPrint({}, {});
+			check(owner.m_printing && !owner.PrintItem().IsEnabled(),
+			      "print job busy state");
+			break;
+		case 2:
+			check(viewer.Message().IsOpen() && owner.PrintItem().IsEnabled(),
+			      "print job failure/reset");
+			viewer.m_printDialog = {};
+			while (!owner.m_tabs.empty()) {
+				owner.closeTab(owner.m_tabs.back().tab);
+			}
+			check(!owner.PrintItem().IsEnabled(), "print enabled on home");
+			owner.onPrint({}, {});
+			check(!owner.m_printing, "print without document");
+			status.Text(L"PASS: print menu/accelerator, active tab/current "
+			            L"page, cancel, reentry, failures and home");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -490,6 +578,10 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (printOnly) {
+				printTick(*self);
+				return;
 			}
 			if (linksOnly) {
 				linkTick(*self);
@@ -949,9 +1041,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                     std::wstring_view(mode) == L"true";
 	state->linksOnly = GetEnvironmentVariableW(L"SableLinkTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->printOnly = GetEnvironmentVariableW(L"SablePrintTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->settingsOnly || state->filtersOnly || state->linksOnly) {
+	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
+	    state->printOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1002,7 +1097,10 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->linksOnly) {
+	if (state->printOnly) {
+		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
+		window->openDocument(engine, L"tests/fixtures/print.pdf", {});
+	} else if (state->linksOnly) {
 		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
 	} else if (!state->settingsOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);

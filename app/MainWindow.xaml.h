@@ -47,6 +47,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	}
 	void onOpenSettings(const winrt::Windows::Foundation::IInspectable&,
 	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onPrint(const winrt::Windows::Foundation::IInspectable&,
+	             const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
 	void setEngine(pdf::Engine& engine) {
 		m_engine = &engine;
@@ -114,6 +116,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	pdf::Engine* m_engine = nullptr;
 	bool m_closing = false;
 	bool m_picking = false;
+	bool m_printing = false;
 	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();

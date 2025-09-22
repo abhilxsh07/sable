@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/filter.h"
 #include "pdf/page_filter.h"
 #include "pdf/session.h"
+#include "pdf/printing.h"
 #include "pdf/surface.h"
 #include "pdf/surface_util.h"
 
@@ -517,6 +518,59 @@ void ViewerPage::settle() {
 	}
 	m_settle.Stop();
 	m_settle.Start();
+}
+
+void ViewerPage::print(void* owner, std::function<void()> done) {
+	try {
+		if (m_closed || !m_session || m_sizes.empty()) {
+			if (!m_closed) {
+				showMessage(L"This PDF isn't ready to print yet.");
+			}
+			done();
+			return;
+		}
+		const auto session = m_session.get();
+		const auto title = m_path.filename().wstring();
+		auto selection =
+#ifdef SABLE_SURFACE_TEST
+		    m_printDialog
+		        ? m_printDialog(owner, static_cast<int>(m_sizes.size()),
+		                        static_cast<int>(m_current), title)
+		        :
+#endif
+		        pdf::choosePrinter(owner, static_cast<int>(m_sizes.size()),
+		                           static_cast<int>(m_current), title);
+		if (selection.failed) {
+			showMessage(L"Couldn't open the print dialog. Check that a printer "
+			            L"is installed.");
+		}
+		if (!m_closed && m_session.get() == session && selection.job) {
+			if (session->print(
+			        std::move(*selection.job),
+			        [weak = get_weak(), queue = DispatcherQueue(),
+			         done](pdf::PrintResult result) {
+				        queue.TryEnqueue([weak, done, result] {
+					        if (auto self = weak.get();
+					            self && !self->m_closed &&
+					            result == pdf::PrintResult::Failed) {
+						        self->showMessage(
+						            L"Couldn't print this PDF. Check the "
+						            L"printer and try again.");
+					        }
+					        done();
+				        });
+			        })) {
+				return;
+			}
+			showMessage(L"This PDF isn't ready to print yet.");
+		}
+	} catch (...) {
+		if (!m_closed) {
+			showMessage(
+			    L"Couldn't print this PDF. Check the printer and try again.");
+		}
+	}
+	done();
 }
 
 void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
