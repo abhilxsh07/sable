@@ -47,6 +47,8 @@ class Session;
 class Surface;
 struct RenderResult;
 struct SessionInfo;
+struct Link;
+struct LinkDestination;
 } // namespace pdf
 
 namespace winrt::Sable::implementation {
@@ -71,6 +73,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomIn(int steps = 1);
 	void zoomOut(int steps = 1);
 	void zoomReset();
+	void onPageTapped(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
 
 	// the right rail and the keys, wired up in ViewerPage.xaml
 	void onPreviewKeyDown(
@@ -127,6 +132,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void settle();
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
+	void requestLink(winrt::Windows::Foundation::Point point);
+	void followLink(const pdf::LinkDestination& target);
+	winrt::fire_and_forget openLink(std::string uri);
 	void jumpTo(std::optional<double> x, double y);
 	void updateCurrentPage();
 	void showPosition();
@@ -213,6 +221,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::set<pdf::PageKey> m_failed;
 	bool m_rendering = false;
 	bool m_closed = false;
+	bool m_linkPending = false;
+#ifdef SABLE_SURFACE_TEST
+	std::string m_launchedUri;
+#endif
 	Device m_device;
 	std::shared_ptr<pdf::Surface> m_surface;
 	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker

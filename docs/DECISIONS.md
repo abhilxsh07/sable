@@ -604,3 +604,23 @@ Percentages and the earlier hue degree-unit fix now apply to the thumb too.
 SableFilterTest=true with SableTabsTest=true runs the preset/configurator
 checks without making a WinRT storage-item drop. It checks retained edits,
 slider limits/tooltips, shared tabs, new-tab filters and independent windows.
+
+## PDF links (2026-10-16)
+
+A page tap sends displayed-page fractions to the PDFium engine thread. Its
+page/device transforms account for crop boxes and page rotation in both hit
+testing and destinations. Only plain link data returns to the UI; no PDFium
+handles cross threads. Closing a session cancels queued lookups, and the UI
+also ignores results for closed or hidden viewers.
+
+Internal links resolve direct and named destinations, including GoTo actions.
+XYZ, Fit, FitH, FitV and FitR use the viewer's existing zoom and scroll paths.
+FitB/BH/BV use the corresponding page fit because the viewer lays out whole
+pages. URI actions accept http/https and use Windows' default browser launcher;
+JavaScript, Launch and remote-file actions are ignored. The action type is
+checked before trusting a destination: PDFium can return one for GoToR too.
+
+The generated links.pdf fixture has cropped and rotated pages, internal and
+external targets, null XYZ values and unsupported actions. SableLinkTest=true
+with SableTabsTest=true runs the native check without WinRT drop-file access.
+That build intercepts browser launches so the check cannot open web pages.
