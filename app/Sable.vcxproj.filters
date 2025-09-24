@@ -37,6 +37,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="pch.cpp" />
+		<ClCompile Include="Notifications.cpp" />
+		<ClInclude Include="Notifications.h" />
 		<ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
 	</ItemGroup>
 	<ItemGroup>
@@ -72,6 +74,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\version.h">
 			<Filter>helpers</Filter>
 		</ClInclude>
+		<ClInclude Include="helpers\logging.h"><Filter>helpers</Filter></ClInclude>
+		<ClCompile Include="helpers\logging.cpp"><Filter>helpers</Filter></ClCompile>
 		<ClInclude Include="helpers\layout.h">
 			<Filter>helpers</Filter>
 		</ClInclude>

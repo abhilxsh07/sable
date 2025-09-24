@@ -164,6 +164,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    const winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs& args);
 	void rendered(pdf::RenderResult result);
 	void showMessage(const winrt::hstring& text);
+	void showNotice(const winrt::hstring& text);
 	Device makeDevice();
 	void rebuildDevice();
 	void updateVisible();

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "pdf/engine.h"
 #include "helpers/settings.h"
+#include "Notifications.h"
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -38,16 +39,21 @@ struct App : AppT<App> {
 	winrt::com_ptr<MainWindow>
 	createWindow(const std::vector<std::filesystem::path>& files = {},
 	             std::optional<int> page = {});
+	void showEasterEgg() noexcept {
+		m_notifications.show();
+	}
 
   private:
 #ifdef SABLE_SURFACE_TEST
 	friend struct TabsTest;
 #endif
 	void trackWindow(const winrt::Microsoft::UI::Xaml::Window& window);
+	void activateReader();
 	// only document windows need PDFium. Declared first so it's torn down
 	// last, after every window and anything they hold.
 	std::unique_ptr<pdf::Engine> m_pdf;
 	std::unique_ptr<helpers::SettingsStore> m_settings;
 	std::vector<winrt::Microsoft::UI::Xaml::Window> m_windows;
+	notices::Service m_notifications;
 };
 } // namespace winrt::Sable::implementation

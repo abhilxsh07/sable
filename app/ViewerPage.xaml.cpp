@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <utility>
 
 #include "helpers/filter.h"
+#include "helpers/logging.h"
 #include "pdf/page_filter.h"
 #include "pdf/session.h"
 #include "pdf/printing.h"
@@ -524,7 +525,7 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 	try {
 		if (m_closed || !m_session || m_sizes.empty()) {
 			if (!m_closed) {
-				showMessage(L"This PDF isn't ready to print yet.");
+				showNotice(L"This PDF isn't ready to print yet.");
 			}
 			done();
 			return;
@@ -541,8 +542,8 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 		        pdf::choosePrinter(owner, static_cast<int>(m_sizes.size()),
 		                           static_cast<int>(m_current), title);
 		if (selection.failed) {
-			showMessage(L"Couldn't open the print dialog. Check that a printer "
-			            L"is installed.");
+			showNotice(L"Couldn't open the print dialog. Check that a printer "
+			           L"is installed.");
 		}
 		if (!m_closed && m_session.get() == session && selection.job) {
 			if (session->print(
@@ -553,7 +554,7 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 					        if (auto self = weak.get();
 					            self && !self->m_closed &&
 					            result == pdf::PrintResult::Failed) {
-						        self->showMessage(
+						        self->showNotice(
 						            L"Couldn't print this PDF. Check the "
 						            L"printer and try again.");
 					        }
@@ -562,11 +563,11 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 			        })) {
 				return;
 			}
-			showMessage(L"This PDF isn't ready to print yet.");
+			showNotice(L"This PDF isn't ready to print yet.");
 		}
 	} catch (...) {
 		if (!m_closed) {
-			showMessage(
+			showNotice(
 			    L"Couldn't print this PDF. Check the printer and try again.");
 		}
 	}
@@ -684,7 +685,7 @@ fire_and_forget ViewerPage::openLink(std::string uri) {
 	} catch (...) {
 	}
 	if (auto self = weak.get(); self && !self->m_closed) {
-		self->showMessage(L"Couldn't open this link in your browser.");
+		self->showNotice(L"Couldn't open this link in your browser.");
 	}
 }
 
@@ -1543,21 +1544,27 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 	}
 }
 
+void ViewerPage::showNotice(const hstring& text) {
+	if (m_closed) {
+		return;
+	}
+	diagnostics::write(diagnostics::Level::Warning, to_string(text));
+	Message().Message(text);
+	Message().IsClosable(true);
+	Message().IsOpen(true);
+	Message().Visibility(XVisibility::Visible);
+}
+
 void ViewerPage::showMessage(const hstring& text) {
 	if (m_closed) {
 		return;
 	}
-	Message().Message(text);
-	Message().IsOpen(true);
-	Message().Visibility(XVisibility::Visible);
+	showNotice(text);
+	Message().IsClosable(false);
 	Scroller().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
 	ThumbnailPanel().Visibility(XVisibility::Collapsed);
 	m_thumbScrollPending = false;
-	// file logging comes later; I can read the failure in the debugger now
-	OutputDebugStringW(L"Sable viewer: ");
-	OutputDebugStringW(text.c_str());
-	OutputDebugStringW(L"\n");
 }
 
 ViewerPage::Device ViewerPage::makeDevice() {
