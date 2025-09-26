@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/pch.h"
 #include "../app/App.xaml.h"
 #include "../app/SettingsWindow.h"
+#include "../app/MusicPane.h"
 #include "../app/helpers/version.h"
 #include "../app/helpers/logging.h"
 #include "../app/MainWindow.xaml.h"
@@ -36,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string_view>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.System.h>
+#include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
@@ -57,6 +59,12 @@ struct TabsTest {
 	bool printOnly = false;
 	bool finishOnly = false;
 	bool editOnly = false;
+	bool musicOnly = false;
+	music::Snapshot musicSnapshot;
+	Windows::Foundation::IAsyncOperation<
+	    Windows::Storage::Streams::IRandomAccessStreamReference>
+	    musicArt{nullptr};
+	std::weak_ptr<music::Session> closedMusic;
 	int editCopies = 0;
 	int editCuts = 0;
 	int step = 0;
@@ -630,6 +638,188 @@ struct TabsTest {
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 	}
+	static Windows::Foundation::IAsyncOperation<
+	    Windows::Storage::Streams::IRandomAccessStreamReference>
+	makeMusicArtwork() {
+		using namespace Windows::Graphics::Imaging;
+		Windows::Storage::Streams::InMemoryRandomAccessStream stream;
+		const auto encoder = co_await BitmapEncoder::CreateAsync(
+		    BitmapEncoder::PngEncoderId(), stream);
+		const std::array<std::uint8_t, 16> red{0, 0, 255, 255, 0, 0, 255, 255,
+		                                       0, 0, 255, 255, 0, 0, 255, 255};
+		encoder.SetPixelData(BitmapPixelFormat::Bgra8,
+		                     BitmapAlphaMode::Straight, 2, 2, 96, 96, red);
+		co_await encoder.FlushAsync();
+		stream.Seek(0);
+		co_return Windows::Storage::Streams::RandomAccessStreamReference::
+		    CreateFromStream(stream);
+	}
+	void musicTick(MainWindow& owner) {
+		auto& pane = *owner.m_music;
+		auto& state = musicSnapshot.state;
+		switch (step) {
+		case 0: {
+			check(owner.MusicButton().Visibility() == Visibility::Collapsed,
+			      "music button without a session");
+			state.player = music::Player::Spotify;
+			state.playback = music::Playback::Playing;
+			state.title = "A test track";
+			state.artist = "A test artist";
+			state.controls.previous = true;
+			state.controls.toggle = true;
+			pane.update(musicSnapshot);
+			check(owner.MusicButton().Visibility() == Visibility::Visible &&
+			          pane.m_title.Text() == L"A test track" &&
+			          pane.m_artist.Text() == L"A test artist" &&
+			          pane.m_player.Text() == L"Spotify",
+			      "music metadata");
+			check(pane.m_previous.IsEnabled() && pane.m_play.IsEnabled() &&
+			          !pane.m_next.IsEnabled() && !pane.m_seek.IsEnabled() &&
+			          !pane.m_shuffle.IsEnabled() && !pane.m_repeat.IsEnabled(),
+			      "music capability gates");
+			pane.m_flyout.ShowAt(owner.MusicButton());
+			const auto closed = std::make_shared<bool>(false);
+			auto session = music::Session::create(
+			    owner.DispatcherQueue(), [closed](const auto&) {
+				    if (*closed) {
+					    probeFail(L"closed music session callback");
+				    }
+			    });
+			session->close();
+			*closed = true;
+			closedMusic = session;
+			musicArt = makeMusicArtwork();
+			break;
+		}
+		case 1:
+			check(pane.m_open && pane.m_timer.IsRunning(),
+			      "music flyout did not open");
+			check(closedMusic.expired(),
+			      "music request retained a closed owner");
+			state.timeline = {10 * music::TICKS_PER_SECOND,
+			                  130 * music::TICKS_PER_SECOND,
+			                  40 * music::TICKS_PER_SECOND,
+			                  10 * music::TICKS_PER_SECOND,
+			                  130 * music::TICKS_PER_SECOND,
+			                  1,
+			                  false};
+			state.playback = music::Playback::Paused;
+			state.shuffle = true;
+			state.repeat = music::Repeat::One;
+			pane.update(musicSnapshot);
+			check(pane.m_seek.Maximum() == 120 && pane.m_seek.Value() == 30 &&
+			          pane.m_elapsed.Text() == L"0:30" &&
+			          pane.m_remaining.Text() == L"-1:30",
+			      "read-only music timeline");
+			check(!pane.m_seek.IsEnabled() && !pane.m_repeat.IsEnabled() &&
+			          pane.m_shuffle.IsChecked().Value() &&
+			          unbox_value<hstring>(pane.m_repeat.Content()) ==
+			              L"Repeat: one",
+			      "read-only shuffle/repeat state");
+			check(Automation::AutomationProperties::GetName(pane.m_play) ==
+			          L"Play",
+			      "paused play label");
+			state.controls.seek = state.controls.shuffle =
+			    state.controls.repeat = true;
+			pane.update(musicSnapshot);
+			check(pane.m_seek.IsEnabled() && pane.m_shuffle.IsEnabled() &&
+			          pane.m_repeat.IsEnabled(),
+			      "supported music controls disabled");
+			state.busy = true;
+			pane.update(musicSnapshot);
+			check(!pane.m_play.IsEnabled() && !pane.m_previous.IsEnabled() &&
+			          !pane.m_seek.IsEnabled(),
+			      "busy music controls");
+			state.busy = false;
+			break;
+		case 2:
+			if (musicArt.Status() ==
+			    Windows::Foundation::AsyncStatus::Started) {
+				return;
+			}
+			musicSnapshot.artwork = musicArt.GetResults();
+			++musicSnapshot.artworkVersion;
+			pane.update(musicSnapshot);
+			break;
+		case 3:
+			if (!pane.m_art.Source() || pane.m_background.TintColor().R != 80 ||
+			    pane.m_background.TintColor().G != 0) {
+				return;
+			}
+			check(pane.m_placeholder.Visibility() == Visibility::Collapsed,
+			      "music artwork placeholder");
+			// Start another artwork read, then switch tracks before it
+			// finishes.
+			++musicSnapshot.artworkVersion;
+			pane.update(musicSnapshot);
+			musicSnapshot.artwork = nullptr;
+			++musicSnapshot.artworkVersion;
+			state.player = music::Player::AppleMusic;
+			state.title = "Another track";
+			pane.update(musicSnapshot);
+			break;
+		case 4:
+			if (pane.m_background.TintColor().R != 45) {
+				return;
+			}
+			check(!pane.m_art.Source() &&
+			          pane.m_placeholder.Visibility() == Visibility::Visible &&
+			          pane.m_player.Text() == L"Apple Music",
+			      "stale music artwork");
+			pane.m_flyout.Hide();
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({565, 700});
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			break;
+		case 5: {
+			const auto current = owner.Viewer();
+			if (!current || !ready(*get_self<ViewerPage>(current))) {
+				return;
+			}
+			const auto music = owner.MusicButton();
+			const auto position = music.TransformToVisual(owner.RootGrid())
+			                          .TransformPoint({0, 0});
+			check(music.ActualWidth() > 0 && position.X >= 0,
+			      "narrow music button");
+			for (const auto chip :
+			     {owner.DefaultPreset(), owner.SepiaPreset(),
+			      owner.RedeyePreset(), owner.CustomPreset()}) {
+				const auto point = chip.TransformToVisual(owner.RootGrid())
+				                       .TransformPoint({0, 0});
+				check(chip.ActualWidth() > 0 &&
+				          point.X >= position.X + music.ActualWidth() &&
+				          point.X + chip.ActualWidth() <=
+				              owner.RootGrid().ActualWidth(),
+				      "music displaced a preset outside the narrow window");
+			}
+			while (!owner.m_tabs.empty()) {
+				owner.closeTab(owner.m_tabs.back().tab);
+			}
+			check(owner.MusicButton().Visibility() == Visibility::Visible,
+			      "last-tab close hid active music");
+			musicSnapshot = {};
+			pane.update(musicSnapshot);
+			break;
+		}
+		case 6:
+			check(owner.MusicButton().Visibility() == Visibility::Collapsed &&
+			          !pane.m_open && !pane.m_timer.IsRunning(),
+			      "inactive music did not dismiss");
+			pane.close();
+			musicSnapshot.state.player = music::Player::Spotify;
+			musicSnapshot.state.playback = music::Playback::Playing;
+			pane.update(musicSnapshot);
+			check(owner.MusicButton().Visibility() == Visibility::Collapsed,
+			      "closed music pane accepted an update");
+			status.Text(L"PASS: music metadata, capability gates, timeline, "
+			            L"artwork/tint, stale updates and close");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void editTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -789,6 +979,10 @@ struct TabsTest {
 			}
 			if (editOnly) {
 				editTick(*self);
+				return;
+			}
+			if (musicOnly) {
+				musicTick(*self);
 				return;
 			}
 			if (finishOnly) {
@@ -1263,10 +1457,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                    std::wstring_view(mode) == L"true";
 	state->editOnly = GetEnvironmentVariableW(L"SableEditTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
+	state->musicOnly = GetEnvironmentVariableW(L"SableMusicTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
-	    state->printOnly || state->finishOnly || state->editOnly) {
+	    state->printOnly || state->finishOnly || state->editOnly ||
+	    state->musicOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1324,7 +1521,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/print.pdf", {});
 	} else if (state->linksOnly) {
 		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
-	} else if (!state->settingsOnly && !state->finishOnly) {
+	} else if (!state->settingsOnly && !state->finishOnly &&
+	           !state->musicOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
 		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);

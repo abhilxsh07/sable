@@ -94,6 +94,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="sanity_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
 		<ClCompile Include="logging_test.cpp" />
+		<ClCompile Include="music_test.cpp" />
 		<ClCompile Include="layout_test.cpp" />
 		<ClCompile Include="zoom_test.cpp" />
 		<ClCompile Include="navigation_test.cpp" />
@@ -117,6 +118,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ClInclude Include="..\app\helpers\version.h" />
 		<ClInclude Include="..\app\helpers\logging.h" />
+		<ClInclude Include="..\app\helpers\music.h" />
+		<ClCompile Include="..\app\helpers\music.cpp" />
 		<ClCompile Include="..\app\helpers\logging.cpp" />
 		<ClCompile Include="..\app\helpers\version.cpp" />
 		<ClInclude Include="..\app\helpers\layout.h" />

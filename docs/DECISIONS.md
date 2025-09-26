@@ -706,3 +706,38 @@ SableEditTest=true with SableTabsTest=true checks draft/caret preservation,
 native copy/cut dispatch, undo/redo availability, read-only/non-text targets,
 other menu actions and a tab closed while its menu is open. Clipboard events
 are intercepted so this probe does not replace the user's clipboard.
+
+## Music pane (2026-10-17)
+
+The title-bar music button follows Windows' GlobalSystemMediaTransportControls
+sessions. I accept Spotify and Apple Music's known desktop/store identifiers;
+other players, browser sessions and inactive sessions stay out of the pane.
+Windows' current supported session wins. Otherwise a playing session wins,
+with the previous target breaking ties so background events do not make the
+button switch players repeatedly. Each reader owns its subscriptions and
+removes them when closed. Metadata and artwork requests keep weak owners and
+generation guards, so an old result cannot restore a closed or changed track.
+
+The flyout shows title, artist, player, artwork, previous/play-pause/next,
+shuffle and repeat. Playback capability flags gate every command; unknown
+shuffle/repeat state remains disabled. Timelines extrapolate from Windows'
+last-updated UTC timestamp and the reported playback rate, then use a steady
+clock between updates. Seeking is clamped to the player's reported seek range.
+The slider remains readable when seeking is unsupported, and seeks are
+debounced while adjusted. Rejected commands show an inline message.
+
+Artwork is decoded to a 16 by 16 BGRA sample for its average tint. Transparent
+pixels do not contribute, and tint channels are capped at 80 to keep white
+text readable. The in-app acrylic brush fades to the new tint over 300 ms;
+missing or invalid art uses the existing grey. Windows controls acrylic's
+solid fallback. Encoded artwork is capped at 8 MiB and 16 megapixels decoded.
+The popup uses WinUI's normal light dismiss and Escape handling.
+
+SableMusicTest=true with SableTabsTest=true injects metadata/capabilities and
+in-memory artwork. It checks timeline labels, enabled states, artwork/tint,
+stale results, dismissal, and closing while the media broker starts. It never
+sends commands to a real player. Actual Spotify/Apple Music transport,
+hardware acrylic appearance and physical pointer/keyboard input remain open.
+The read-only media-manager probe returns access denied (0x80070005) in this
+environment. Broker discovery is therefore unverified with live players here;
+the reader leaves the button hidden and logs an unavailable service nonfatally.

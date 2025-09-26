@@ -44,6 +44,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/logging.h"
 #include "SettingsWindow.h"
 #include "Notifications.h"
+#include "MusicPane.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Windowing;
@@ -175,6 +176,7 @@ void MainWindow::InitializeComponent() {
 	setupZoomKeys();
 	setupOpen();
 	setupEdit();
+	setupMusic();
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
 	Tabs().SelectionChanged([weak = get_weak()](auto&&, auto&&) {
@@ -230,6 +232,9 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
+		if (m_music) {
+			m_music->close();
+		}
 		if (const auto settings = m_settingsWindow) {
 			settings->window.Close();
 		}
@@ -761,6 +766,22 @@ void MainWindow::setupEdit() {
 	});
 }
 
+void MainWindow::setupMusic() {
+	m_music = music::Pane::attach(
+	    MusicButton(),
+	    [weak = get_weak()] {
+		    if (auto self = weak.get(); self && !self->m_closing) {
+			    self->updateTitleBar();
+			    self->AppTitleBar().RecomputeDragRegions();
+		    }
+	    }
+#ifdef SABLE_SURFACE_TEST
+	    ,
+	    false // Native probes inject state without controlling a real player.
+#endif
+	);
+}
+
 Controls::TextBox MainWindow::editTarget() {
 	const auto box = m_editTarget.get();
 	if (!box || !box.IsLoaded() || !box.IsEnabled() ||
@@ -1008,8 +1029,10 @@ void MainWindow::setupTitleBar() {
 }
 
 void MainWindow::updateTitleBar() {
-	const bool compact = Presets().Visibility() == Visibility::Visible &&
-	                     AppTitleBar().ActualWidth() < 700;
+	const bool compact =
+	    Presets().Visibility() == Visibility::Visible &&
+	    AppTitleBar().ActualWidth() <
+	        (MusicButton().Visibility() == Visibility::Visible ? 748 : 700);
 	if (compact != m_compactTitle) {
 		m_compactTitle = compact;
 		// leave room for all four presets and the window buttons

@@ -37,6 +37,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct SettingsWindow;
 
+namespace music {
+class Pane;
+}
+
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
@@ -107,6 +111,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
 	void setupOpen();
 	void setupEdit();
+	void setupMusic();
+	std::shared_ptr<music::Pane> m_music;
 	void beginEditMenu();
 	void endEditMenu();
 	void commitMenuEdit();
