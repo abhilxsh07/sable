@@ -51,6 +51,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void onPrint(const winrt::Windows::Foundation::IInspectable&,
 	             const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void setEasterEgg(std::function<void()> notify);
+	void onEditCommand(const winrt::Windows::Foundation::IInspectable& sender,
+	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
 	void setEngine(pdf::Engine& engine) {
 		m_engine = &engine;
@@ -104,6 +106,18 @@ struct MainWindow : MainWindowT<MainWindow> {
 	winrt::fire_and_forget dropDocuments(
 	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
 	void setupOpen();
+	void setupEdit();
+	void beginEditMenu();
+	void endEditMenu();
+	void commitMenuEdit();
+	void updateEditMenu();
+	winrt::Microsoft::UI::Xaml::Controls::TextBox editTarget();
+	winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TextBox> m_editTarget;
+	winrt::weak_ref<winrt::Sable::ViewerPage> m_editViewer;
+	unsigned m_editGeneration = 0;
+	bool m_editClosing = false;
+	int m_editSelectionStart = 0;
+	int m_editSelectionLength = 0;
 	void selectTab();
 	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
 	void reopenTab();

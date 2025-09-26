@@ -56,6 +56,9 @@ struct TabsTest {
 	bool linksOnly = false;
 	bool printOnly = false;
 	bool finishOnly = false;
+	bool editOnly = false;
+	int editCopies = 0;
+	int editCuts = 0;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -123,7 +126,8 @@ struct TabsTest {
 			}
 		}
 	}
-	void check(bool condition, const char* message = "tab check failed") {
+	void check(bool condition,
+	           const std::string& message = "tab check failed") {
 		if (!condition) {
 			throw std::runtime_error(message);
 		}
@@ -626,6 +630,129 @@ struct TabsTest {
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 	}
+	void editTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& viewer = *get_self<ViewerPage>(current);
+		if (!ready(viewer)) {
+			return;
+		}
+		const auto box = viewer.PageBox();
+		switch (step) {
+		case 0:
+			check(!owner.MenuButton().AllowFocusOnInteraction(),
+			      "menu pointer focus");
+			check(box.Focus(FocusState::Programmatic), "page box focus");
+			box.Text(L"3");
+			box.SelectAll();
+			box.CopyingToClipboard([this](auto&&, const auto& args) {
+				++editCopies;
+				args.Handled(true);
+			});
+			box.CuttingToClipboard([this](auto&&, const auto& args) {
+				++editCuts;
+				args.Handled(true);
+			});
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			break;
+		case 1:
+			viewer.showPosition();
+			check(viewer.m_current == 1 && box.Text() == L"3" &&
+			          viewer.m_pageEditHeld,
+			      "menu committed the unfinished page edit");
+			check(owner.CopyItem().IsEnabled() && owner.CutItem().IsEnabled(),
+			      "selected text edit availability");
+			owner.onEditCommand(owner.CopyItem(), {});
+			owner.onEditCommand(owner.CutItem(), {});
+			check(editCopies == 1 && editCuts == 1, "native copy/cut dispatch");
+			box.IsReadOnly(true);
+			owner.updateEditMenu();
+			check(owner.CopyItem().IsEnabled() &&
+			          !owner.CutItem().IsEnabled() &&
+			          !owner.PasteItem().IsEnabled() &&
+			          !owner.UndoItem().IsEnabled() &&
+			          !owner.RedoItem().IsEnabled(),
+			      "read-only edit commands");
+			owner.onEditCommand(owner.CutItem(), {});
+			check(editCuts == 1, "read-only cut ran");
+			box.IsReadOnly(false);
+			box.SelectedText(L"2");
+			owner.updateEditMenu();
+			check(owner.UndoItem().IsEnabled() == box.CanUndo(), "undo state");
+			if (box.CanUndo()) {
+				owner.onEditCommand(owner.UndoItem(), {});
+				check(box.Text() == L"3", "native undo");
+				owner.updateEditMenu();
+				check(owner.RedoItem().IsEnabled(), "redo state");
+				owner.onEditCommand(owner.RedoItem(), {});
+				check(box.Text() == L"2", "native redo");
+			}
+			box.Select(1, 0);
+			owner.MainMenu().Hide();
+			break;
+		case 2:
+			check(!viewer.m_pageEditHeld &&
+			          box.FocusState() != FocusState::Unfocused &&
+			          box.Text() == L"2",
+			      "menu did not restore the edit");
+			check(box.SelectionStart() == 1 && box.SelectionLength() == 0,
+			      "menu did not restore the caret: " +
+			          std::to_string(box.SelectionStart()) + "/" +
+			          std::to_string(box.SelectionLength()) + " captured " +
+			          std::to_string(owner.m_editSelectionStart) + "/" +
+			          std::to_string(owner.m_editSelectionLength));
+			viewer.Scroller().Focus(FocusState::Programmatic);
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			check(!owner.CopyItem().IsEnabled() &&
+			          !owner.CutItem().IsEnabled() &&
+			          !owner.PasteItem().IsEnabled() &&
+			          !owner.UndoItem().IsEnabled() &&
+			          !owner.RedoItem().IsEnabled(),
+			      "non-text edit commands");
+			owner.MainMenu().Hide();
+			break;
+		case 3:
+			box.Focus(FocusState::Programmatic);
+			box.Text(L"3");
+			box.Select(1, 0);
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			break;
+		case 4:
+			owner.MainMenu().Hide();
+			break;
+		case 5:
+			check(!viewer.m_pageEditHeld && viewer.m_current == 1 &&
+			          box.Text() == L"3" && box.SelectionStart() == 1 &&
+			          box.SelectionLength() == 0,
+			      "cancelled menu did not preserve the unfinished edit");
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			break;
+		case 6:
+			owner.onResetZoom({}, {});
+			check(!viewer.m_pageEditHeld && viewer.m_current == 2,
+			      "non-edit menu action did not commit the draft");
+			owner.MainMenu().Hide();
+			break;
+		case 7:
+			box.Focus(FocusState::Programmatic);
+			box.SelectAll();
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			owner.closeTab(owner.m_tabs.front().tab);
+			owner.onEditCommand(owner.CopyItem(), {});
+			check(editCopies == 1, "closed tab received an edit command");
+			owner.MainMenu().Hide();
+			status.Text(
+			    L"PASS: Edit menu target, draft/selection, native copy/cut, "
+			    L"undo/redo state, read-only/non-text/closed targets");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -659,6 +786,10 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (editOnly) {
+				editTick(*self);
+				return;
 			}
 			if (finishOnly) {
 				finishTick(*self);
@@ -1130,10 +1261,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                   std::wstring_view(mode) == L"true";
 	state->finishOnly = GetEnvironmentVariableW(L"SableFinishTest", mode, 8) &&
 	                    std::wstring_view(mode) == L"true";
+	state->editOnly = GetEnvironmentVariableW(L"SableEditTest", mode, 8) &&
+	                  std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
-	    state->printOnly || state->finishOnly) {
+	    state->printOnly || state->finishOnly || state->editOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1184,7 +1317,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->printOnly) {
+	if (state->editOnly) {
+		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
+	} else if (state->printOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/print.pdf", {});
 	} else if (state->linksOnly) {

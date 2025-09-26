@@ -174,6 +174,7 @@ void MainWindow::InitializeComponent() {
 	setupTabKeys();
 	setupZoomKeys();
 	setupOpen();
+	setupEdit();
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
 	Tabs().SelectionChanged([weak = get_weak()](auto&&, auto&&) {
@@ -313,6 +314,7 @@ void MainWindow::setupOpen() {
 }
 
 fire_and_forget MainWindow::pickDocuments() {
+	commitMenuEdit();
 	weak_ref<MainWindow> weak;
 	const auto report = [&weak](const wchar_t* message) noexcept {
 		diagnostics::write(diagnostics::Level::Error,
@@ -512,6 +514,14 @@ void MainWindow::setupTabKeys() {
 		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
 		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
 		const auto key = static_cast<unsigned>(args.Key());
+		if (modifiers == helpers::SHORTCUT_CTRL &&
+		    (key == 'Z' || key == 'Y' || key == 'X' || key == 'C' ||
+		     key == 'V') &&
+		    Input::FocusManager::GetFocusedElement(self->RootGrid().XamlRoot())
+		        .try_as<Controls::TextBox>()) {
+			// The text field's native edit keys take priority while editing.
+			return;
+		}
 		if (self->m_easterEgg && key == 'T' &&
 		    modifiers == (helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT)) {
 			if (!args.KeyStatus().WasKeyDown) {
@@ -722,6 +732,152 @@ std::filesystem::path MainWindow::settingsPath() {
 	return configFile();
 }
 
+void MainWindow::setupEdit() {
+	MainMenu().Opening([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->beginEditMenu();
+		}
+	});
+	MainMenu().Closing([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->m_editClosing = true;
+			if (const auto box = self->editTarget()) {
+				self->m_editSelectionStart = box.SelectionStart();
+				self->m_editSelectionLength = box.SelectionLength();
+			}
+		}
+	});
+	MainMenu().Closed([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			const auto generation = self->m_editGeneration;
+			// Item Click may run after Closed; keep the target until it has.
+			self->DispatcherQueue().TryEnqueue([weak, generation] {
+				if (auto owner = weak.get();
+				    owner && owner->m_editGeneration == generation) {
+					owner->endEditMenu();
+				}
+			});
+		}
+	});
+}
+
+Controls::TextBox MainWindow::editTarget() {
+	const auto box = m_editTarget.get();
+	if (!box || !box.IsLoaded() || !box.IsEnabled() ||
+	    box.XamlRoot() != RootGrid().XamlRoot()) {
+		return nullptr;
+	}
+	DependencyObject element = box;
+	while (element) {
+		if (const auto ui = element.try_as<UIElement>();
+		    ui && ui.Visibility() != Visibility::Visible) {
+			return nullptr;
+		}
+		if (element == RootGrid()) {
+			return box;
+		}
+		element = Media::VisualTreeHelper::GetParent(element);
+	}
+	return nullptr;
+}
+
+void MainWindow::beginEditMenu() {
+	const auto focused =
+	    Input::FocusManager::GetFocusedElement(RootGrid().XamlRoot());
+	++m_editGeneration;
+	commitMenuEdit();
+	m_editClosing = false;
+	if (const auto box = focused.try_as<Controls::TextBox>()) {
+		m_editTarget = make_weak(box);
+		if (const auto viewer = Viewer()) {
+			get_self<ViewerPage>(viewer)->holdPageEdit(true);
+			m_editViewer = make_weak(viewer);
+		}
+	}
+	updateEditMenu();
+}
+
+void MainWindow::endEditMenu() {
+	if (m_closing) {
+		return;
+	}
+	if (const auto box = editTarget()) {
+		box.Focus(FocusState::Programmatic);
+		box.Select(m_editSelectionStart, m_editSelectionLength);
+	}
+	commitMenuEdit();
+}
+
+void MainWindow::commitMenuEdit() {
+	if (const auto viewer = m_editViewer.get()) {
+		get_self<ViewerPage>(viewer)->holdPageEdit(false);
+	}
+	m_editTarget = nullptr;
+	m_editViewer = nullptr;
+}
+
+void MainWindow::updateEditMenu() {
+	const auto box = editTarget();
+	const bool writable = box && !box.IsReadOnly();
+	const bool selection = box && box.SelectionLength() > 0;
+	UndoItem().IsEnabled(writable && box.CanUndo());
+	RedoItem().IsEnabled(writable && box.CanRedo());
+	CutItem().IsEnabled(writable && selection);
+	CopyItem().IsEnabled(selection);
+	bool paste = false;
+	if (writable) {
+		try {
+			using namespace Windows::ApplicationModel::DataTransfer;
+			paste =
+			    Clipboard::GetContent().Contains(StandardDataFormats::Text());
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Warning,
+			                   "Couldn't inspect clipboard text availability");
+		}
+	}
+	PasteItem().IsEnabled(paste);
+}
+
+void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
+                               const RoutedEventArgs&) {
+	if (m_closing) {
+		return;
+	}
+	const auto item = sender.try_as<Controls::MenuFlyoutItem>();
+	const auto box = editTarget();
+	if (!item || !item.IsEnabled() || !box) {
+		return;
+	}
+	try {
+		if (m_editClosing) {
+			box.Select(m_editSelectionStart, m_editSelectionLength);
+		}
+		const auto action = unbox_value_or<hstring>(item.Tag(), L"");
+		if (action == L"copy") {
+			box.CopySelectionToClipboard();
+		} else if (!box.IsReadOnly()) {
+			if (action == L"cut") {
+				box.CutSelectionToClipboard();
+			} else if (action == L"paste") {
+				box.PasteFromClipboard();
+			} else if (action == L"undo" && box.CanUndo()) {
+				box.Undo();
+			} else if (action == L"redo" && box.CanRedo()) {
+				box.Redo();
+			}
+		}
+		m_editSelectionStart = box.SelectionStart();
+		m_editSelectionLength = box.SelectionLength();
+	} catch (...) {
+		diagnostics::write(diagnostics::Level::Warning,
+		                   "Couldn't complete the text edit command");
+		PickerError().Title(L"Couldn't edit text");
+		PickerError().Message(
+		    L"Couldn't complete the edit command. Try again.");
+		PickerError().IsOpen(true);
+	}
+}
+
 void MainWindow::setEasterEgg(std::function<void()> notify) {
 	m_easterEgg = std::move(notify);
 	if (m_easterEggInstalled || !m_easterEgg) {
@@ -752,6 +908,7 @@ void MainWindow::showEasterEgg() {
 
 void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
                          const RoutedEventArgs&) {
+	commitMenuEdit();
 	const auto viewer = Viewer();
 	if (m_closing || m_printing || !viewer) {
 		return;
@@ -772,6 +929,7 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
 
 void MainWindow::onOpenSettings(const Windows::Foundation::IInspectable&,
                                 const RoutedEventArgs&) {
+	commitMenuEdit();
 	if (m_closing || !m_settingsStore) {
 		return;
 	}
@@ -920,6 +1078,7 @@ void MainWindow::setupZoomKeys() {
 
 void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
                              const RoutedEventArgs&) {
+	commitMenuEdit();
 	if (auto viewer = Viewer()) {
 		get_self<ViewerPage>(viewer)->zoomReset();
 	}
@@ -927,6 +1086,7 @@ void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
 
 void MainWindow::onZoomIn(const Windows::Foundation::IInspectable&,
                           const RoutedEventArgs&) {
+	commitMenuEdit();
 	if (auto viewer = Viewer()) {
 		get_self<ViewerPage>(viewer)->zoomIn();
 	}
@@ -934,6 +1094,7 @@ void MainWindow::onZoomIn(const Windows::Foundation::IInspectable&,
 
 void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
                            const RoutedEventArgs&) {
+	commitMenuEdit();
 	if (auto viewer = Viewer()) {
 		get_self<ViewerPage>(viewer)->zoomOut();
 	}
@@ -942,6 +1103,7 @@ void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
 // View > Toggle Full Screen (Electron's togglefullscreen role)
 void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
                                     const RoutedEventArgs&) {
+	commitMenuEdit();
 	auto appWindow = AppWindow();
 	if (appWindow.Presenter().Kind() == AppWindowPresenterKind::FullScreen) {
 		appWindow.SetPresenter(m_presenter);
@@ -953,6 +1115,7 @@ void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
 // Window > Minimize
 void MainWindow::onMinimize(const Windows::Foundation::IInspectable&,
                             const RoutedEventArgs&) {
+	commitMenuEdit();
 	m_presenter.Minimize();
 }
 
@@ -974,6 +1137,7 @@ void MainWindow::onNavSelectionChanged(
 // the Help items keep their link in Tag
 void MainWindow::onOpenLink(const Windows::Foundation::IInspectable& sender,
                             const RoutedEventArgs&) {
+	commitMenuEdit();
 	auto item = sender.try_as<Controls::MenuFlyoutItem>();
 	if (!item) {
 		return;

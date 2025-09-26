@@ -788,7 +788,9 @@ void ViewerPage::showPosition() {
 	const auto count = m_layout->pages().size();
 	const auto text = helpers::pageText(m_current, count, m_labels);
 	m_pageBoxText = to_hstring(text.box);
-	PageBox().Text(m_pageBoxText);
+	if (!m_pageEditHeld) {
+		PageBox().Text(m_pageBoxText);
+	}
 	PageTotal().Text(to_hstring(text.total));
 	PreviousButton().IsEnabled(m_current > 0);
 	NextButton().IsEnabled(m_current + 1 < count);
@@ -1298,14 +1300,28 @@ void ViewerPage::onPageBoxKeyDown(const Windows::Foundation::IInspectable&,
 // tabbing into a text field selects it in a browser, and Ctrl+Alt+G does
 void ViewerPage::onPageBoxGotFocus(const Windows::Foundation::IInspectable&,
                                    const RoutedEventArgs&) {
-	PageBox().SelectAll();
+	if (!m_pageEditHeld && PageBox().FocusState() == FocusState::Keyboard) {
+		PageBox().SelectAll();
+	}
 }
 
 // LosingFocus rather than LostFocus, which comes later: by then a click on
 // the rail could have put the current page back in the box
 void ViewerPage::onPageBoxLosingFocus(const Windows::Foundation::IInspectable&,
                                       const Input::LosingFocusEventArgs&) {
-	commitPageBox();
+	if (!m_pageEditHeld) {
+		commitPageBox();
+	}
+}
+
+void ViewerPage::holdPageEdit(bool hold) {
+	if (m_closed) {
+		return;
+	}
+	m_pageEditHeld = hold;
+	if (!hold && PageBox().FocusState() == FocusState::Unfocused) {
+		commitPageBox();
+	}
 }
 
 // the rail's buttons don't take the focus from the pages when clicked; if

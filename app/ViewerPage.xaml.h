@@ -76,6 +76,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomOut(int steps = 1);
 	void zoomReset();
 	void print(void* owner, std::function<void()> done);
+	// A menu temporarily takes focus from an unfinished page-box edit.
+	void holdPageEdit(bool hold);
 	void onPageTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -205,6 +207,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::vector<std::string> m_labels;
 	// what the page box was last set to, so only an edit goes anywhere
 	winrt::hstring m_pageBoxText;
+	bool m_pageEditHeld = false;
 	// a jump through ChangeView lands a moment later, where a browser's
 	// scrollTop changes at once. Until it has, the current page is worked
 	// out for the offsets it's going to (x, y), with a timer in case it

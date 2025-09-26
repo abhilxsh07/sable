@@ -685,3 +685,24 @@ Printing and browser-launch failures now use a closable notice. The previous
 fatal viewer error path hid the pages and rail. Fatal open/render failures
 retain that behavior; native checks verify that recoverable failures leave
 the PDF visible, and the last-tab state restores home with Print disabled.
+
+## Focused Edit menu commands (2026-10-17)
+
+Undo, Redo, Cut, Copy and Paste use the focused WinUI TextBox's native
+commands. Opening the menu captures a weak target; commands reject disabled,
+detached, hidden or closed fields. Selection, read-only state, undo/redo
+history and clipboard text availability determine which commands are enabled.
+Native Ctrl+Z/Y/X/C/V keep priority over configured tab shortcuts in text fields.
+PDF text selection remains a later reader feature.
+
+The menu button preserves pointer focus, and the page-number field defers its
+normal focus-loss commit while the menu is open. Position updates preserve
+the draft, and returning focus preserves the selection/caret. Choosing another
+menu command commits the draft before that command reads the current page.
+Closed-menu cleanup is deferred until item Click has dispatched, with a
+generation guard so an older close cannot clear a newly opened menu target.
+
+SableEditTest=true with SableTabsTest=true checks draft/caret preservation,
+native copy/cut dispatch, undo/redo availability, read-only/non-text targets,
+other menu actions and a tab closed while its menu is open. Clipboard events
+are intercepted so this probe does not replace the user's clipboard.

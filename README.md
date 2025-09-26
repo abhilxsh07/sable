@@ -12,9 +12,10 @@ comments, Fill & Sign, page organizing and more, all offline. See
 
 Status: early, with the native reader working. PDFs open in tabs with zoom,
 page labels, thumbnails, password prompts, night filters and internal/web
-links. Settings and keybind edits persist, and printing uses original colors.
+links. Settings and keybind edits persist, printing uses original colors,
+and the Edit menu works on focused text fields.
 Physical drag, monitor moves, printer output and notification delivery still
-need verification. The Edit menu remains incomplete; see
+need verification. PDF text selection is still planned; see
 [docs/PORTING_STATUS.md](docs/PORTING_STATUS.md) for the current handoff.
 
 ## Credits
