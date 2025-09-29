@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "session.h"
 
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <utility>
 
@@ -91,6 +92,7 @@ bool Session::open(const std::filesystem::path& path,
 					opened = openFile(path, password);
 					info.error = opened.error;
 					if (opened.document) {
+						info.canCopy = opened.document->canCopy();
 						const int count = opened.document->pageCount();
 						for (int page = 0; page < count && !state->closed();
 						     ++page) {
@@ -251,6 +253,85 @@ bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
 		state->m_printing = false;
 		throw;
 	}
+	return true;
+}
+
+bool Session::textPage(int page, std::function<void(TextResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, callback = std::move(callback)] {
+		TextResult result{page};
+		try {
+			if (!state->closed()) {
+				result.text = state->m_document->textPage(page);
+			}
+		} catch (...) {
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.text.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::copyText(TextSelection selection,
+                       std::function<void(CopyResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, selection, callback = std::move(callback)] {
+		CopyResult result;
+		try {
+			const auto [first, last] = ordered(selection);
+			if (!state->closed()) {
+				if (first.page < 0 || first.index < 0 || last.index < 0 ||
+				    last.page >= state->m_document->pageCount()) {
+					result.failed = true;
+				} else {
+					for (int page = first.page;
+					     page <= last.page && !state->closed(); ++page) {
+						const int start = page == first.page ? first.index : 0;
+						const int end =
+						    page == last.page &&
+						            last.index < std::numeric_limits<int>::max()
+						        ? last.index + 1
+						        : std::numeric_limits<int>::max();
+						const auto text =
+						    state->m_document->textRange(page, start, end);
+						if (!text || result.text.size() + text->size() + 2 >
+						                 16 * 1024 * 1024) {
+							result.failed = true;
+							break;
+						}
+						if (!result.text.empty() && !text->empty() &&
+						    result.text.back() != '\n' &&
+						    result.text.back() != '\r') {
+							result.text += "\r\n";
+						}
+						result.text += *text;
+					}
+				}
+			}
+		} catch (...) {
+			result.failed = true;
+		}
+		result.canceled = state->closed();
+		if (result.failed || result.canceled) {
+			result.text.clear();
+		}
+		callback(std::move(result));
+	});
 	return true;
 }
 

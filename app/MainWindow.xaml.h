@@ -120,6 +120,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	winrt::Microsoft::UI::Xaml::Controls::TextBox editTarget();
 	winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TextBox> m_editTarget;
 	winrt::weak_ref<winrt::Sable::ViewerPage> m_editViewer;
+	winrt::weak_ref<winrt::Sable::ViewerPage> m_editPdf;
 	unsigned m_editGeneration = 0;
 	bool m_editClosing = false;
 	int m_editSelectionStart = 0;

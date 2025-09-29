@@ -1,0 +1,97 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R 12 0 R] /Count 5 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 0 /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 67 >>
+stream
+BT /F1 20 Tf 40 230 Td (Alpha beta) Tj 0 -40 Td (Second line) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 90 /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 67 >>
+stream
+BT /F1 20 Tf 40 230 Td (Alpha beta) Tj 0 -40 Td (Second line) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 180 /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 67 >>
+stream
+BT /F1 20 Tf 40 230 Td (Alpha beta) Tj 0 -40 Td (Second line) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 270 /Resources << /Font << /F1 3 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 67 >>
+stream
+BT /F1 20 Tf 40 230 Td (Alpha beta) Tj 0 -40 Td (Second line) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 0 /Resources << /Font << /F1 14 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
+<< /Length 34 >>
+stream
+BT /F1 20 Tf 40 230 Td (ABC) Tj ET
+endstream
+endobj
+14 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 15 0 R >>
+endobj
+15 0 obj
+<< /Length 353 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /SableUnicode def /CMapType 2 def
+1 begincodespacerange <00> <FF> endcodespacerange
+3 beginbfchar <41> <03A9> <42> <D83DDE00> <43> <00E9> endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+16 0 obj
+<< /Title (Sable text fixtures) >>
+endobj
+xref
+0 17
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000147 00000 n 
+0000000244 00000 n 
+0000000405 00000 n 
+0000000522 00000 n 
+0000000684 00000 n 
+0000000801 00000 n 
+0000000964 00000 n 
+0000001081 00000 n 
+0000001246 00000 n 
+0000001364 00000 n 
+0000001528 00000 n 
+0000001613 00000 n 
+0000001729 00000 n 
+0000002134 00000 n 
+trailer
+<< /Size 17 /Root 1 0 R /Info 16 0 R /ID [<04918d29c0f2b7a74831f22548e840be> <04918d29c0f2b7a74831f22548e840be>] >>
+startxref
+2185
+%%EOF

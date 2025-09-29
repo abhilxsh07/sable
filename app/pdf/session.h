@@ -34,6 +34,7 @@ struct SessionInfo {
 	std::vector<PageSize> pages;
 	std::vector<std::string> labels;
 	bool canceled = false;
+	bool canCopy = false;
 };
 
 struct RenderResult {
@@ -43,6 +44,16 @@ struct RenderResult {
 };
 struct LinkResult {
 	std::optional<Link> link;
+	bool canceled = false;
+};
+struct TextResult {
+	int page = 0;
+	std::optional<TextPage> text;
+	bool canceled = false;
+};
+struct CopyResult {
+	std::string text;
+	bool failed = false;
 	bool canceled = false;
 };
 
@@ -65,6 +76,9 @@ class Session {
 	bool render(PageKey key, std::function<void(RenderResult)> callback);
 	bool linkAt(int page, double x, double y,
 	            std::function<void(LinkResult)> callback);
+	bool textPage(int page, std::function<void(TextResult)> callback);
+	bool copyText(TextSelection selection,
+	              std::function<void(CopyResult)> callback);
 	// One print job per session, independent of the screen render slot.
 	bool print(PrintJob job, std::function<void(PrintResult)> callback);
 	// doesn't interrupt PDFium; it discards that job's result when it finishes.

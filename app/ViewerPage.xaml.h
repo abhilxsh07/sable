@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/thumbnails.h"
 #include "helpers/zoom.h"
 #include "pdf/page_cache.h"
+#include "pdf/text.h"
 
 namespace pdf {
 class Engine;
@@ -78,6 +79,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void print(void* owner, std::function<void()> done);
 	// A menu temporarily takes focus from an unfinished page-box edit.
 	void holdPageEdit(bool hold);
+	bool hasTextSelection() const;
+	bool canCopySelection() const;
+	void copySelection();
+	void selectAllText();
+	void clearTextSelection();
 	void onPageTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -120,10 +126,40 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		winrt::com_ptr<ID2D1DeviceContext> context;
 		std::unique_ptr<pdf::PageFilter> filter;
 		winrt::com_ptr<ID2D1SolidColorBrush> placeholder;
+		winrt::com_ptr<ID2D1SolidColorBrush> selection;
 		std::map<std::size_t, winrt::com_ptr<ID2D1Bitmap1>> bitmaps;
 	};
 
 	void startOpen(const std::string& password);
+	void setupSelection();
+	void beginSelection(winrt::Windows::Foundation::Point point);
+	void extendSelection(winrt::Windows::Foundation::Point point);
+	void endSelection();
+	void cancelSelectionDrag();
+	void updateSelection();
+	void requestText(int page);
+	void prefetchSelectedText();
+	void invalidateSelection();
+	struct CachedText {
+		std::shared_ptr<const pdf::TextPage> text;
+		std::uint64_t used = 0;
+	};
+	std::map<int, CachedText> m_text;
+	std::set<int> m_textFailed, m_textPrefetched;
+	helpers::PageRange m_textView;
+	std::optional<int> m_textPending;
+	std::uint64_t m_textClock = 0, m_selectionVersion = 0;
+	std::optional<pdf::TextSelection> m_selection;
+	std::optional<pdf::TextPosition> m_textAnchor;
+	std::optional<winrt::Windows::Foundation::Point> m_textStart, m_textPoint;
+	winrt::Windows::Foundation::Point m_textViewport{};
+	bool m_textPointerDown = false, m_textMoved = false,
+	     m_ignoreTextTap = false;
+	bool m_copyAllowed = false, m_copying = false;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_textScroll{
+	    nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_textMenu{nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textCopy{nullptr};
 	winrt::fire_and_forget askPassword(bool incorrect);
 	void opened(pdf::SessionInfo info);
 	bool relayout(double zoom);
@@ -231,6 +267,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_linkPending = false;
 #ifdef SABLE_SURFACE_TEST
 	std::string m_launchedUri;
+	std::function<void(const std::string&)> m_copySink;
 	std::function<pdf::PrintDialogResult(void*, int, int, const std::wstring&)>
 	    m_printDialog;
 #endif
