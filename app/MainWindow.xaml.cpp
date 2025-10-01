@@ -524,6 +524,29 @@ void MainWindow::setupTabKeys() {
 		const bool editing = focused.try_as<Controls::TextBox>() ||
 		                     focused.try_as<Controls::PasswordBox>() ||
 		                     focused.try_as<Controls::RichEditBox>();
+		if (const auto active = self->Viewer()) {
+			const auto pdf = get_self<ViewerPage>(active);
+			if (modifiers == helpers::SHORTCUT_CTRL && key == 'F') {
+				pdf->openFind();
+				args.Handled(true);
+				return;
+			}
+			if ((key == VK_F3 &&
+			     (modifiers == 0 || modifiers == helpers::SHORTCUT_SHIFT)) ||
+			    (key == 'G' && (modifiers == helpers::SHORTCUT_CTRL ||
+			                    modifiers == (helpers::SHORTCUT_CTRL |
+			                                  helpers::SHORTCUT_SHIFT)))) {
+				pdf->navigateFind((modifiers & helpers::SHORTCUT_SHIFT) ? -1
+				                                                        : 1);
+				args.Handled(true);
+				return;
+			}
+			if (key == VK_ESCAPE && modifiers == 0 && pdf->findOpen()) {
+				pdf->closeFind();
+				args.Handled(true);
+				return;
+			}
+		}
 		if (modifiers == helpers::SHORTCUT_CTRL &&
 		    (key == 'Z' || key == 'Y' || key == 'X' || key == 'C' ||
 		     key == 'V' || key == 'A') &&
@@ -631,6 +654,7 @@ void MainWindow::selectTab() {
 	Presets().Visibility(hasDocument ? Visibility::Visible
 	                                 : Visibility::Collapsed);
 	ResetZoomItem().IsEnabled(hasDocument);
+	FindItem().IsEnabled(hasDocument);
 	ZoomInItem().IsEnabled(hasDocument);
 	ZoomOutItem().IsEnabled(hasDocument);
 	PrintItem().IsEnabled(hasDocument && !m_printing);
@@ -903,6 +927,13 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 	const auto item = sender.try_as<Controls::MenuFlyoutItem>();
 	const auto box = editTarget();
 	if (!item || !item.IsEnabled()) {
+		return;
+	}
+	if (unbox_value_or<hstring>(item.Tag(), L"") == L"find") {
+		commitMenuEdit();
+		if (const auto viewer = Viewer()) {
+			get_self<ViewerPage>(viewer)->openFind();
+		}
 		return;
 	}
 	if (!box) {

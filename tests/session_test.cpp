@@ -514,3 +514,74 @@ TEST_F(SessionTest, DroppingTheSessionCancelsItsWork) {
 	EXPECT_TRUE(info->canceled);
 }
 } // namespace
+
+TEST_F(SessionTest, FindReturnsDocumentRangesAndCanBeCanceled) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("text.pdf")).error, pdf::Error::None);
+	Reply<pdf::FindUpdate> reply;
+	ASSERT_TRUE(session.search(u"alpha", {}, reply.callback()));
+	const auto found = reply.wait();
+	ASSERT_TRUE(found);
+	EXPECT_TRUE(found->done);
+	EXPECT_FALSE(found->failed);
+	EXPECT_EQ(found->matches.size(), 4u);
+	EXPECT_EQ(found->pagesScanned, 5);
+	ASSERT_FALSE(found->matches.empty());
+	EXPECT_EQ(found->matches.front(), (pdf::FindMatch{0, 0, 5}));
+	Gate gate(engine);
+	Reply<pdf::FindUpdate> canceled;
+	ASSERT_TRUE(session.search(u"alpha", {}, canceled.callback()));
+	session.cancelSearch();
+	gate.open();
+	const auto result = canceled.wait();
+	ASSERT_TRUE(result);
+	EXPECT_TRUE(result->canceled);
+	EXPECT_TRUE(result->done);
+	EXPECT_TRUE(result->matches.empty());
+}
+TEST_F(SessionTest, FindYieldsBetweenPagesAndCloseStopsTheRemainingScan) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("search.pdf", manyPages(1000))).error,
+	          pdf::Error::None);
+	Reply<pdf::FindUpdate> reply;
+	const auto marker = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.search(
+	    u"missing", {},
+	    [&, marker, callback = reply.callback()](pdf::FindUpdate update) {
+		    if (update.done) {
+			    callback(std::move(update));
+			    return;
+		    }
+		    engine.post([marker] { *marker = true; });
+		    session.close();
+	    }));
+	const auto result = reply.wait();
+	ASSERT_TRUE(result);
+	EXPECT_TRUE(result->canceled);
+	EXPECT_TRUE(*marker);
+	EXPECT_EQ(result->pagesScanned, 16);
+	EXPECT_FALSE(session.search(u"a", {}, [](auto) {}));
+}
+
+TEST_F(SessionTest, FindSupersedesQueuedQueryAndRejectsInvalidInput) {
+	pdf::Session session(engine);
+	Reply<pdf::FindUpdate> unopened;
+	EXPECT_FALSE(session.search(u"a", {}, unopened.callback()));
+	ASSERT_EQ(open(session, fixturePath("text.pdf")).error, pdf::Error::None);
+	Gate gate(engine);
+	Reply<pdf::FindUpdate> stale, current;
+	ASSERT_TRUE(session.search(u"alpha", {}, stale.callback()));
+	ASSERT_TRUE(session.search(u"Second", {}, current.callback()));
+	gate.open();
+	const auto old = stale.wait(), now = current.wait();
+	ASSERT_TRUE(old && now);
+	EXPECT_TRUE(old->canceled);
+	EXPECT_FALSE(now->canceled);
+	EXPECT_EQ(now->matches.size(), 4u);
+	Reply<pdf::FindUpdate> invalid;
+	ASSERT_TRUE(
+	    session.search(std::u16string(4097, u'a'), {}, invalid.callback()));
+	const auto rejected = invalid.wait();
+	ASSERT_TRUE(rejected);
+	EXPECT_TRUE(rejected->failed);
+}

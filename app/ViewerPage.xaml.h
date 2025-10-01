@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/zoom.h"
 #include "pdf/page_cache.h"
 #include "pdf/text.h"
+#include "pdf/search.h"
 
 namespace pdf {
 class Engine;
@@ -49,6 +50,7 @@ class Session;
 class Surface;
 struct RenderResult;
 struct SessionInfo;
+struct FindUpdate;
 struct Link;
 struct LinkDestination;
 struct PrintDialogResult;
@@ -84,6 +86,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void copySelection();
 	void selectAllText();
 	void clearTextSelection();
+	void openFind();
+	void closeFind();
+	void navigateFind(int direction);
+	bool findOpen();
 	void onPageTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -127,11 +133,30 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		std::unique_ptr<pdf::PageFilter> filter;
 		winrt::com_ptr<ID2D1SolidColorBrush> placeholder;
 		winrt::com_ptr<ID2D1SolidColorBrush> selection;
+		winrt::com_ptr<ID2D1SolidColorBrush> findMatch, findActive;
 		std::map<std::size_t, winrt::com_ptr<ID2D1Bitmap1>> bitmaps;
 	};
 
 	void startOpen(const std::string& password);
 	void setupSelection();
+	void setupFind();
+	void invalidateFind();
+	void changedFind();
+	void startFind();
+	void applyFind(pdf::FindUpdate update);
+	void revealFindMatch();
+	void showFindCount();
+	bool hasFindOnPage(int page);
+	void drawFind(ID2D1DeviceContext& context, helpers::PageRange pages);
+	std::vector<pdf::FindMatch> m_findMatches;
+	std::map<int, std::vector<std::size_t>> m_findPages;
+	std::optional<std::size_t> m_findActive;
+	std::uint64_t m_findVersion = 0;
+	std::size_t m_findStartPage = 0;
+	bool m_finding = false, m_findReverse = false, m_findNeedsReveal = false,
+	     m_findLimited = false, m_findFailed = false;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_findTimer{
+	    nullptr};
 	void beginSelection(winrt::Windows::Foundation::Point point);
 	void extendSelection(winrt::Windows::Foundation::Point point);
 	void endSelection();

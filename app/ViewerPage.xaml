@@ -25,22 +25,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	xmlns:local="using:Sable">
 
 	<Grid Background="{ThemeResource SableViewerBrush}" PreviewKeyDown="onPreviewKeyDown">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="*" />
 			<ColumnDefinition Width="Auto" />
 			<ColumnDefinition Width="Auto" />
 		</Grid.ColumnDefinitions>
+
+  <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed" Padding="8"
+   Background="{ThemeResource SablePaneBrush}">
+   <StackPanel Spacing="4">
+    <Grid ColumnSpacing="4">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in document…"
+      IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" AutomationProperties.Name="Find in document" />
+     <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center" FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
+     <Button x:Name="FindPrevious" Grid.Column="2" ToolTipService.ToolTip="Previous match (Shift+Enter)" AutomationProperties.Name="Previous match"><FontIcon Glyph="&#xE70E;" FontSize="12" /></Button>
+     <Button x:Name="FindNext" Grid.Column="3" ToolTipService.ToolTip="Next match (Enter)" AutomationProperties.Name="Next match"><FontIcon Glyph="&#xE70D;" FontSize="12" /></Button>
+     <Button x:Name="FindClose" Grid.Column="4" ToolTipService.ToolTip="Close Find (Esc)" AutomationProperties.Name="Close Find"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
+    </Grid>
+    <Grid ColumnSpacing="16">
+     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+     <CheckBox x:Name="FindCase" Content="Match case" />
+     <CheckBox x:Name="FindWords" Grid.Column="1" Content="Whole words" />
+     <CheckBox x:Name="FindDiacritics" Grid.Row="1" Content="Match diacritics" />
+     <CheckBox x:Name="FindHighlight" Grid.Row="1" Grid.Column="1" Content="Highlight all" IsChecked="True" />
+    </Grid>
+   </StackPanel>
+  </Border>
 		<!-- the surface is sized in physical pixels and the Image in DIPs, so
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
 			rectangle, as it has outline: none. -->
-		<ScrollViewer x:Name="Scroller" ZoomMode="Disabled"
+		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Disabled"
 			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
 			IsTabStop="True" UseSystemFocusVisuals="False">
 			<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
 				HorizontalAlignment="Center" VerticalAlignment="Top" />
 		</ScrollViewer>
-		<InfoBar x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
+		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
 			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"
 			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480" />
 
@@ -52,7 +79,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- pdf.js's sidebar showing thumbnails, 200 px wide, opened from the
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
-		<Border x:Name="ThumbnailPanel" Grid.Column="1" Width="200" Visibility="Collapsed"
+		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200" Visibility="Collapsed"
 			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
 			<ScrollViewer x:Name="ThumbnailScroller" HorizontalScrollBarVisibility="Disabled"
 				VerticalScrollBarVisibility="Auto">
@@ -60,7 +87,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</ScrollViewer>
 		</Border>
 
-		<Border x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
+		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
 			<Border.Resources>

@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string_view>
 #include <vector>
 #include "text.h"
+#include "search.h"
 
 // PDFium's handle type, declared here so this header doesn't need fpdfview.h
 struct fpdf_document_t__;
@@ -109,6 +110,10 @@ class Document {
 	bool canCopy() const;
 	std::optional<TextPage> textPage(int index) const;
 	std::optional<std::string> textRange(int page, int first, int end) const;
+	std::optional<FindPage>
+	findPage(int page, const std::u16string& query, FindOptions options,
+	         std::size_t limit,
+	         const std::function<bool()>& canceled = {}) const;
 	// x/y are fractions of the displayed page, measured from its top left
 	std::optional<Link> linkAt(int index, double x, double y) const;
 	// Windows printer HDC; original colors, print-visible annotations.

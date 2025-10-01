@@ -289,6 +289,37 @@ bool Document::canCopy() const {
 	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x10) != 0;
 }
 
+std::optional<FindPage>
+Document::findPage(int index, const std::u16string& query, FindOptions options,
+                   std::size_t limit,
+                   const std::function<bool()>& canceled) const {
+	if (offThread() || index < 0 || index >= pageCount() ||
+	    query.size() > 4096 || query.find(u'\0') != std::u16string::npos) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	TextPtr text(FPDFText_LoadPage(page.get()));
+	if (!text) {
+		return {};
+	}
+	const int count = FPDFText_CountChars(text.get());
+	if (count < 0 || count > 1'000'000) {
+		return {};
+	}
+	std::u32string characters;
+	characters.reserve(count);
+	for (int i = 0; i < count; ++i) {
+		if (i % 1024 == 0 && canceled && canceled()) {
+			return FindPage{};
+		}
+		characters += static_cast<char32_t>(FPDFText_GetUnicode(text.get(), i));
+	}
+	return foldedFind(characters, query, options, index, limit, canceled);
+}
+
 std::optional<TextPage> Document::textPage(int index) const {
 	if (offThread() || index < 0 || index >= pageCount()) {
 		return {};

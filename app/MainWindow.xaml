@@ -74,6 +74,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<MenuFlyoutItem x:Name="CutItem" Text="Cut" Tag="cut" KeyboardAcceleratorTextOverride="Ctrl+X" IsEnabled="False" Click="onEditCommand" />
 								<MenuFlyoutItem x:Name="CopyItem" Text="Copy" Tag="copy" KeyboardAcceleratorTextOverride="Ctrl+C" IsEnabled="False" Click="onEditCommand" />
 								<MenuFlyoutItem x:Name="PasteItem" Text="Paste" Tag="paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" Click="onEditCommand" />
+<MenuFlyoutSeparator />
+<MenuFlyoutItem x:Name="FindItem" Text="Find…" Tag="find" KeyboardAcceleratorTextOverride="Ctrl+F" IsEnabled="False" Click="onEditCommand" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="View">
 								<!-- they zoom the document, the way pdf.js's own Ctrl+0, Ctrl++

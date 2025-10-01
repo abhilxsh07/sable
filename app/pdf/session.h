@@ -57,6 +57,12 @@ struct CopyResult {
 	bool canceled = false;
 };
 
+struct FindUpdate {
+	std::vector<FindMatch> matches;
+	int pagesScanned = 0, pageCount = 0;
+	bool done = false, canceled = false, failed = false, limited = false;
+};
+
 // The UI owns this, but the document stays on the engine thread. Engine must
 // outlive the session and its callbacks; work posted while it shuts down is
 // dropped. No method waits for PDFium work.
@@ -79,6 +85,11 @@ class Session {
 	bool textPage(int page, std::function<void(TextResult)> callback);
 	bool copyText(TextSelection selection,
 	              std::function<void(CopyResult)> callback);
+	// Batches run on the engine thread, yielding between pages. A new query
+	// cancels its predecessor independently of screen rendering.
+	bool search(std::u16string query, FindOptions options,
+	            std::function<void(FindUpdate)> callback);
+	void cancelSearch();
 	// One print job per session, independent of the screen render slot.
 	bool print(PrintJob job, std::function<void(PrintResult)> callback);
 	// doesn't interrupt PDFium; it discards that job's result when it finishes.

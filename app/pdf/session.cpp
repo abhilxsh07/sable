@@ -43,9 +43,91 @@ struct Session::State {
 	bool m_rendering = false;
 	bool m_printing = false;
 	std::uint64_t m_generation = 0;
+	std::uint64_t m_findGeneration = 0;
+	struct FindJob;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
 };
+
+struct Session::State::FindJob : std::enable_shared_from_this<FindJob> {
+	std::shared_ptr<State> state;
+	std::uint64_t generation = 0;
+	std::u16string query;
+	FindOptions options;
+	std::function<void(FindUpdate)> callback;
+	FindUpdate update;
+	std::size_t total = 0;
+	bool canceled() {
+		std::lock_guard lock(state->m_mutex);
+		return state->m_closed || generation != state->m_findGeneration;
+	}
+	void run() {
+		try {
+			if (!canceled()) {
+				update.pageCount = state->m_document->pageCount();
+				if (query.empty()) {
+					update.done = true;
+				} else {
+					const auto page = state->m_document->findPage(
+					    update.pagesScanned, query, options, 50'000 - total,
+					    [this] { return canceled(); });
+					if (!page) {
+						update.failed = true;
+					} else {
+						total += page->matches.size();
+						update.matches.insert(update.matches.end(),
+						                      page->matches.begin(),
+						                      page->matches.end());
+						update.limited = page->limited || total == 50'000;
+					}
+					++update.pagesScanned;
+				}
+			}
+		} catch (...) {
+			update.failed = true;
+		}
+		update.canceled = canceled();
+		update.done = update.done || update.canceled || update.failed ||
+		              update.limited || update.pagesScanned == update.pageCount;
+		if (update.canceled || update.failed) {
+			update.matches.clear();
+		}
+		if (update.done || update.pagesScanned % 16 == 0) {
+			try {
+				callback(update);
+			} catch (...) {
+				return;
+			}
+			update.matches.clear();
+		}
+		if (!update.done) {
+			const auto self = shared_from_this();
+			state->m_engine.post([self] { self->run(); });
+		}
+	}
+};
+bool Session::search(std::u16string query, FindOptions options,
+                     std::function<void(FindUpdate)> callback) {
+	const auto state = m_state;
+	auto job = std::make_shared<State::FindJob>();
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+		job->generation = ++state->m_findGeneration;
+	}
+	job->state = state;
+	job->query = std::move(query);
+	job->options = options;
+	job->callback = std::move(callback);
+	state->m_engine.post([job] { job->run(); });
+	return true;
+}
+void Session::cancelSearch() {
+	std::lock_guard lock(m_state->m_mutex);
+	++m_state->m_findGeneration;
+}
 
 Session::Session(Engine& engine)
     : m_state(new State(engine), [&engine](State* state) {
@@ -350,6 +432,7 @@ void Session::close() {
 		state->m_closed = true;
 		state->m_ready = false;
 		++state->m_generation;
+		++state->m_findGeneration;
 	}
 	state->m_engine.post([state] { state->m_document.reset(); });
 }

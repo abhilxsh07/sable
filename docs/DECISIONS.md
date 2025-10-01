@@ -776,3 +776,42 @@ mapping for Greek, accented text and an emoji. SableSelectionTest=true with
 SableTabsTest=true checks native drag/copy, menu/context gating, zoom, reverse
 page ranges, Select All, permissions and stale callbacks. It intercepts copied
 text; actual clipboard transfer and physical pointer/keyboard input remain open.
+
+## Find (2026-10-17)
+
+Find runs one page per engine job, yielding to rendering and other document
+work between pages. A separate search generation cancels old queries without
+canceling rendering. Results arrive in batches of sixteen pages and stop at
+50,000 matches. Queries are limited to 4,096 UTF-16 units, and extraction to
+1,000,000 characters per page. Search does not require copy permission.
+
+Windows Unicode normalization decomposes text and query canonically. Invariant
+lowercasing implements case-insensitive matching; optional diacritic removal
+keeps source character mappings, including combining marks and surrogate pairs.
+Whitespace runs collapse to one space. Whole words use letter/digit/mark and
+underscore boundaries. Matches do not overlap and do not cross page boundaries.
+This is text search, without OCR, linguistic stemming or full Unicode case folding.
+
+Ctrl+F and Edit > Find open a per-tab bar. Enter/F3/Ctrl+G move forward;
+Shift reverses direction, and Escape closes Find before clearing PDF selection.
+A new query starts near the current page and wraps. Counts update while scanning.
+Navigation wraps only after the scan finishes; unknown neighbors stay disabled.
+Closing retains the query/options but cancels work and removes highlights.
+Session/version guards discard stale callbacks; hidden tabs never auto-scroll.
+
+Highlights reuse the bounded character-geometry cache and draw after the page
+filter but before text selection. Navigation reveals the first matched glyph.
+Find changes invalidate the virtual surface, including offscreen cached tiles.
+Geometry retains selection's 200,000-character page limit; denser pages can be
+searched but navigation falls back to the page when geometry is unavailable.
+
+SableFindTest=true with SableTabsTest=true exercises counts, current-page start,
+wraparound, options, highlight gating, zoom, reopen and stale callbacks. Physical
+keyboard/mouse interaction and screen appearance remain separate checks.
+
+Local validation uses fresh output directories because existing compiler outputs
+can become unwritable here. Debug/Release x64 and Debug ARM64 pass normally.
+Release ARM64's link-time code generation cannot write its temporary file in
+this sandbox; a local build with WholeProgramOptimization=false passes. The
+project keeps its normal optimization settings. Its standard ARM64 Release
+link still needs verification outside this environment.

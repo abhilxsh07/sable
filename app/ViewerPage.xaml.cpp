@@ -134,7 +134,12 @@ void ViewerPage::activate() {
 	if (const auto pending = std::exchange(m_passwordPending, std::nullopt)) {
 		askPassword(*pending);
 	} else if (m_layout && !m_passwordDialog) {
-		Scroller().Focus(FocusState::Programmatic);
+		if (findOpen()) {
+			FindBox().Focus(FocusState::Programmatic);
+			revealFindMatch();
+		} else {
+			Scroller().Focus(FocusState::Programmatic);
+		}
 	}
 }
 
@@ -259,6 +264,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 }
 
 void ViewerPage::close() {
+	closeFind();
 	m_closed = true;
 	cancelSelectionDrag();
 	m_selection.reset();
@@ -1502,6 +1508,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Width(size->cx / m_scale);
 		Pages().Height(size->cy / m_scale);
 		setupSelection();
+		setupFind();
 		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
 			if (auto self = weak.get()) {
 				self->watchScale();
@@ -1624,6 +1631,10 @@ ViewerPage::Device ViewerPage::makeDevice() {
 	    device.placeholder.put()));
 	check_hresult(device.context->CreateSolidColorBrush(
 	    D2D1::ColorF(0.20f, 0.50f, 1.0f, 0.40f), device.selection.put()));
+	check_hresult(device.context->CreateSolidColorBrush(
+	    D2D1::ColorF(1.f, .85f, .05f, .45f), device.findMatch.put()));
+	check_hresult(device.context->CreateSolidColorBrush(
+	    D2D1::ColorF(1.f, .40f, .05f, .65f), device.findActive.put()));
 	return device;
 }
 
@@ -1901,6 +1912,7 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 	}
 	// the effect mustn't keep the last page alive after the GPU cache drops it
 	m_device.filter->setInput(nullptr);
+	drawFind(context, pages);
 	if (m_selection) {
 		for (auto page = pages.first; page < pages.end; ++page) {
 			const auto found = m_text.find(static_cast<int>(page));
