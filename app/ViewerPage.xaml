@@ -87,6 +87,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</ScrollViewer>
 		</Border>
 
+
+		<Border x:Name="OutlinePanel" Grid.Row="1" Grid.Column="1" Width="200"
+			Visibility="Collapsed" BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="1,0,0,0">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+					<RowDefinition Height="Auto" />
+				</Grid.RowDefinitions>
+				<TextBlock Text="Document Outline" Margin="12,12,12,8" FontSize="13"
+					Foreground="{ThemeResource SableTextSecondaryBrush}" />
+				<TextBlock x:Name="OutlineStatus" Grid.Row="1" Margin="12,4,12,12"
+					TextWrapping="Wrap" Foreground="{ThemeResource SableTextSecondaryBrush}"
+					AutomationProperties.LiveSetting="Polite" />
+				<TreeView x:Name="OutlineTree" Grid.Row="2" SelectionMode="Single"
+					CanDragItems="False" CanReorderItems="False" AllowDrop="False"
+					ScrollViewer.HorizontalScrollBarVisibility="Auto"
+					AutomationProperties.Name="Document outline" />
+				<Button x:Name="OutlineRetry" Grid.Row="3" Content="Retry" Margin="12"
+					Visibility="Collapsed" HorizontalAlignment="Left" />
+			</Grid>
+		</Border>
+
 		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
@@ -112,6 +137,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						ToolTipService.ToolTip="Show Thumbnails"
 						AutomationProperties.Name="Show Thumbnails" Click="onThumbnailsClick">
 						<FontIcon Glyph="&#xE8A9;" FontSize="14" />
+					</ToggleButton>
+					<ToggleButton x:Name="OutlineButton" Style="{StaticResource SableRailToggleButtonStyle}"
+						ToolTipService.ToolTip="Show Document Outline"
+						AutomationProperties.Name="Show Document Outline">
+						<FontIcon Glyph="&#xE8A4;" FontSize="14" />
 					</ToggleButton>
 				</StackPanel>
 				<StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center"

@@ -405,3 +405,104 @@ TEST_F(PdfDocumentTest, EveryErrorHasItsOwnMessage) {
 		    << name << " says the same as another error: " << messages[i];
 	}
 }
+
+TEST_F(PdfDocumentTest, OutlinesPreserveHierarchyUnicodeAndSafeDestinations) {
+	const auto snapshot =
+	    engine
+	        .run([] {
+		        std::pair<std::optional<pdf::Outline>,
+		                  std::vector<std::optional<pdf::Link>>>
+		            result;
+		        const auto opened = pdf::openFile(fixturePath("outline.pdf"));
+		        if (opened.document) {
+			        result.first = opened.document->outline();
+			        if (result.first) {
+				        for (std::size_t i = 0;
+				             i < result.first->entries.size(); ++i) {
+					        result.second.push_back(
+					            opened.document->outlineLink(i));
+				        }
+			        }
+		        }
+		        return result;
+	        })
+	        .get();
+	const auto& data = snapshot.first;
+	const auto& links = snapshot.second;
+	ASSERT_EQ(links.size(), 8u);
+	ASSERT_TRUE(data);
+	ASSERT_EQ(data->entries.size(), 8u);
+	EXPECT_FALSE(data->limited);
+	const auto& nodes = data->entries;
+	EXPECT_EQ(nodes[0].title, "Chapters \xCE\xA9\xF0\x9F\x98\x80");
+	EXPECT_EQ(nodes[0].parent, -1);
+	EXPECT_TRUE(nodes[0].expanded);
+	EXPECT_EQ(nodes[1].parent, 0);
+	EXPECT_EQ(nodes[2].parent, 0);
+	EXPECT_EQ(nodes[3].parent, 2);
+	EXPECT_FALSE(nodes[2].expanded);
+	ASSERT_TRUE(links[0] && links[0]->destination);
+	EXPECT_EQ(links[0]->destination->fit, pdf::LinkFit::Page);
+	ASSERT_TRUE(links[1] && links[1]->destination);
+	const auto& xyz = *links[1]->destination;
+	EXPECT_EQ(xyz.page, 1);
+	ASSERT_TRUE(xyz.x && xyz.y && xyz.zoom);
+	EXPECT_NEAR(*xyz.x, 190.0 / 240, 0.00001);
+	EXPECT_NEAR(*xyz.y, 40.0 / 360, 0.00001);
+	EXPECT_DOUBLE_EQ(*xyz.zoom, 1.5);
+	ASSERT_TRUE(links[2] && links[2]->destination);
+	EXPECT_EQ(links[2]->destination->page, 2);
+	EXPECT_EQ(links[2]->destination->fit, pdf::LinkFit::Width);
+	ASSERT_TRUE(links[2]->destination->y);
+	EXPECT_NEAR(*links[2]->destination->y, 0.25, 0.00001);
+	ASSERT_TRUE(links[3]);
+	EXPECT_EQ(links[3]->uri, "https://example.com/outline");
+	EXPECT_EQ(nodes[5].title, "Untitled");
+	for (std::size_t i = 4; i < nodes.size(); ++i) {
+		EXPECT_FALSE(links[i]);
+	}
+}
+TEST_F(PdfDocumentTest, OutlineCyclesAndDeepTreesStayBounded) {
+	const auto data =
+	    engine
+	        .run([] {
+		        std::vector<std::optional<pdf::Outline>> result;
+		        for (const auto name :
+		             {"outline_cycle.pdf", "outline_deep.pdf"}) {
+			        const auto opened = pdf::openFile(fixturePath(name));
+			        result.push_back(opened.document
+			                             ? opened.document->outline()
+			                             : std::nullopt);
+		        }
+		        return result;
+	        })
+	        .get();
+	ASSERT_EQ(data.size(), 2u);
+	ASSERT_TRUE(data[0] && data[1]);
+	EXPECT_GE(data[0]->entries.size(), 8u);
+	EXPECT_LE(data[0]->entries.size(), 9u);
+	ASSERT_EQ(data[1]->entries.size(), 64u);
+	EXPECT_TRUE(data[1]->limited);
+	for (std::size_t i = 0; i < data[1]->entries.size(); ++i) {
+		EXPECT_EQ(data[1]->entries[i].parent, static_cast<int>(i) - 1);
+		EXPECT_EQ(data[1]->entries[i].title, "Level " + std::to_string(i));
+	}
+}
+TEST_F(PdfDocumentTest, EmptyOutlinesAndCanceledExtractionAreDistinct) {
+	const auto data =
+	    engine
+	        .run([] {
+		        const auto empty = pdf::openFile(fixturePath("pages.pdf"));
+		        const auto outlined = pdf::openFile(fixturePath("outline.pdf"));
+		        return std::pair{
+		            empty.document ? empty.document->outline() : std::nullopt,
+		            outlined.document
+		                ? outlined.document->outline([] { return true; })
+		                : std::nullopt};
+	        })
+	        .get();
+	ASSERT_TRUE(data.first);
+	EXPECT_TRUE(data.first->entries.empty());
+	EXPECT_FALSE(data.first->limited);
+	EXPECT_FALSE(data.second);
+}

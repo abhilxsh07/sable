@@ -76,6 +76,17 @@ struct Link {
 	std::string uri; // http(s) only; empty for an internal destination
 };
 
+struct OutlineNode {
+	std::string title;
+	bool canFollow = false;
+	int parent = -1; // index of an earlier entry; -1 for a root
+	bool expanded = false;
+};
+struct Outline {
+	std::vector<OutlineNode> entries;
+	bool limited = false;
+};
+
 class Document;
 
 struct OpenResult {
@@ -108,6 +119,9 @@ class Document {
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
 	bool canCopy() const;
+	std::optional<Outline>
+	outline(const std::function<bool()>& canceled = {}) const;
+	std::optional<Link> outlineLink(std::size_t index) const;
 	std::optional<TextPage> textPage(int index) const;
 	std::optional<std::string> textRange(int page, int first, int end) const;
 	std::optional<FindPage>
@@ -133,5 +147,7 @@ class Document {
 	// PDFium reads straight from this, so it's declared first and goes last
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
+	// Nonowning handles stay on the engine thread for lazy target resolution.
+	mutable std::vector<void*> m_outlineBookmarks;
 };
 } // namespace pdf

@@ -44,6 +44,7 @@ struct Session::State {
 	bool m_printing = false;
 	std::uint64_t m_generation = 0;
 	std::uint64_t m_findGeneration = 0;
+	std::uint64_t m_outlineGeneration = 0;
 	struct FindJob;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
@@ -335,6 +336,65 @@ bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
 		state->m_printing = false;
 		throw;
 	}
+	return true;
+}
+
+bool Session::outlineLink(std::size_t index,
+                          std::function<void(LinkResult)> callback) {
+	const auto state = m_state;
+	std::uint64_t generation = 0;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+		generation = ++state->m_outlineGeneration;
+	}
+	state->m_engine.post([state, index, generation,
+	                      callback = std::move(callback)] {
+		LinkResult result;
+		const auto canceled = [state, generation] {
+			std::lock_guard lock(state->m_mutex);
+			return state->m_closed || generation != state->m_outlineGeneration;
+		};
+		try {
+			if (!canceled()) {
+				result.link = state->m_document->outlineLink(index);
+			}
+		} catch (...) {
+		}
+		result.canceled = canceled();
+		if (result.canceled) {
+			result.link.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::outline(std::function<void(OutlineResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, callback = std::move(callback)] {
+		OutlineResult result;
+		try {
+			if (!state->closed()) {
+				result.outline = state->m_document->outline(
+				    [state] { return state->closed(); });
+			}
+		} catch (...) {
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.outline.reset();
+		}
+		callback(std::move(result));
+	});
 	return true;
 }
 

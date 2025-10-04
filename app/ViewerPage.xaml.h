@@ -139,6 +139,25 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
 	void startOpen(const std::string& password);
 	void setupSelection();
+	void setupOutline();
+	void closeOutline();
+	void requestOutline();
+	void showOutline();
+	void followOutline(std::size_t index);
+	bool outlineOpen();
+	bool outlineHasFocus();
+	void setOutlineOpen(bool open);
+	void toggleSidebar();
+	enum class Sidebar { Thumbnails, Outline };
+	Sidebar m_sidebar = Sidebar::Thumbnails;
+	std::optional<pdf::Outline> m_outline;
+	std::vector<winrt::Microsoft::UI::Xaml::Controls::TreeViewNode>
+	    m_outlineNodes;
+	std::uint64_t m_outlineVersion = 0;
+	std::uint64_t m_outlineLinkVersion = 0;
+	bool m_outlineLinkPending = false;
+	bool m_outlinePending = false, m_outlineFailed = false,
+	     m_outlineBuilt = false;
 	void setupFind();
 	void invalidateFind();
 	void changedFind();

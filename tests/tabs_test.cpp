@@ -63,6 +63,8 @@ struct TabsTest {
 	bool musicOnly = false;
 	bool selectionOnly = false;
 	bool findOnly = false;
+	bool outlineOnly = false;
+	std::size_t outlinePage = 0;
 	std::string copiedText;
 	int copyCalls = 0;
 	music::Snapshot musicSnapshot;
@@ -949,6 +951,153 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void outlineTick(MainWindow& owner) {
+		if (step == 11) {
+			check(first && first->m_closed && !first->m_outline &&
+			          !first->m_outlinePending && first->m_outlineNodes.empty(),
+			      "closed outline accepted a late result");
+			const auto current = owner.Viewer();
+			check(static_cast<bool>(current));
+			const auto v = get_self<ViewerPage>(current);
+			check(v->m_current == outlinePage && !v->outlineOpen() &&
+			          !v->m_outlineLinkPending,
+			      "closed outline followed a late destination");
+			status.Text(
+			    L"PASS: outline hierarchy, expansion, destinations, URI "
+			    L"guards, sidebar switching, empty/retry and stale results");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_outlinePending || v.m_outlineLinkPending) {
+			return;
+		}
+		switch (step) {
+		case 0:
+			check(!v.m_outline, "outline loaded before opening sidebar");
+			v.setThumbnailsOpen(true);
+			v.setOutlineOpen(true);
+			check(v.outlineOpen() && !v.thumbnailsOpen(),
+			      "outline/thumbnail exclusivity");
+			break;
+		case 1:
+			if (!v.m_outline || !v.m_outlineBuilt) {
+				return;
+			}
+			check(v.m_outlineNodes.size() == 8 &&
+			          v.OutlineTree().RootNodes().Size() == 5,
+			      "outline hierarchy roots");
+			check(v.m_outlineNodes[0].Children().Size() == 2 &&
+			          v.m_outlineNodes[2].Children().Size() == 1,
+			      "outline hierarchy children");
+			check(v.m_outlineNodes[0].IsExpanded() &&
+			          !v.m_outlineNodes[2].IsExpanded(),
+			      "PDF expansion state");
+			check(unbox_value<hstring>(v.m_outlineNodes[0].Content()) ==
+			          L"Chapters \u03a9\U0001f600",
+			      "outline Unicode label");
+			v.OutlineTree().Focus(FocusState::Programmatic);
+			if (!v.outlineHasFocus()) {
+				return;
+			}
+			v.followOutline(1);
+			break;
+		case 2:
+			check(v.m_current == 1 && std::abs(v.m_zoom - 1.5) < 1e-6,
+			      "outline rotated XYZ destination");
+			check(v.OutlineTree().SelectedNode() == v.m_outlineNodes[1],
+			      "outline selected node");
+			v.followOutline(2);
+			break;
+		case 3:
+			check(v.m_current == 2 &&
+			          v.m_preset == helpers::ZoomPreset::PageWidth,
+			      "outline named destination");
+			v.m_outlineNodes[2].IsExpanded(true);
+			v.followOutline(3);
+			break;
+		case 4:
+			check(v.m_launchedUri == "https://example.com/outline",
+			      "outline web destination");
+			for (std::size_t index = 4; index < 8; ++index) {
+				v.followOutline(index);
+			}
+			break;
+		case 5: {
+			check(v.m_current == 2 &&
+			          v.m_preset == helpers::ZoomPreset::PageWidth &&
+			          v.m_launchedUri == "https://example.com/outline",
+			      "unsupported outline action navigated");
+			const auto root = v.m_outlineNodes[0];
+			v.toggleSidebar();
+			check(!v.outlineOpen() && !v.thumbnailsOpen(), "outline F4 close");
+			v.toggleSidebar();
+			check(v.outlineOpen() && v.m_outlineNodes[0] == root &&
+			          v.m_outlineNodes[2].IsExpanded(),
+			      "outline reopen lost cached expansion");
+			v.zoomIn();
+			break;
+		}
+		case 6:
+			check(v.m_outlineNodes.size() == 8 && v.m_outlineBuilt,
+			      "zoom lost outline");
+			v.setThumbnailsOpen(true);
+			check(v.thumbnailsOpen() && !v.outlineOpen(),
+			      "thumbnail did not close outline");
+			v.toggleSidebar();
+			v.toggleSidebar();
+			check(v.thumbnailsOpen() && !v.outlineOpen(),
+			      "F4 did not remember thumbnails");
+			v.setOutlineOpen(true);
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			break;
+		case 7:
+			check(!v.m_outline && !v.outlineOpen(),
+			      "outline state leaked between tabs");
+			v.setOutlineOpen(true);
+			break;
+		case 8:
+			if (!v.m_outline) {
+				return;
+			}
+			check(v.m_outlineNodes.empty() &&
+			          v.OutlineTree().RootNodes().Size() == 0 &&
+			          v.OutlineStatus().Text() == L"No document outline.",
+			      "empty outline state");
+			v.m_outline.reset();
+			v.m_outlineFailed = true;
+			v.showOutline();
+			check(v.OutlineRetry().Visibility() == Visibility::Visible,
+			      "outline error has no retry");
+			v.requestOutline();
+			break;
+		case 9:
+			if (!v.m_outline) {
+				return;
+			}
+			check(!v.m_outlineFailed &&
+			          v.OutlineRetry().Visibility() == Visibility::Collapsed,
+			      "outline retry did not recover");
+			v.m_outline.reset();
+			v.m_outlineBuilt = false;
+			v.requestOutline();
+			first.copy_from(&v);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			break;
+		case 10:
+			outlinePage = v.m_current;
+			v.followOutline(1);
+			v.setOutlineOpen(false);
+			break;
+		}
+		++step;
+		ticks = 0;
+	}
 	void findTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -1243,6 +1392,10 @@ struct TabsTest {
 			}
 			if (musicOnly) {
 				musicTick(*self);
+				return;
+			}
+			if (outlineOnly) {
+				outlineTick(*self);
 				return;
 			}
 			if (findOnly) {
@@ -1730,13 +1883,17 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->selectionOnly =
 	    GetEnvironmentVariableW(L"SableSelectionTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->outlineOnly =
+	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->findOnly = GetEnvironmentVariableW(L"SableFindTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
 	    state->printOnly || state->finishOnly || state->editOnly ||
-	    state->musicOnly || state->selectionOnly || state->findOnly) {
+	    state->musicOnly || state->selectionOnly || state->findOnly ||
+	    state->outlineOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1787,7 +1944,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->selectionOnly || state->findOnly) {
+	if (state->outlineOnly) {
+		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
+	} else if (state->selectionOnly || state->findOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->editOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);

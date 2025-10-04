@@ -15,16 +15,21 @@ page labels, thumbnails, password prompts, night filters and internal/web
 links. Settings and keybind edits persist, printing uses original colors,
 and text can be selected and copied across pages. Find supports case, whole
 words and diacritics, live counts, navigation and highlights. The Edit menu
-works on focused text fields and PDF selections.
+works on focused text fields and PDF selections. The document outline sidebar
+preserves hierarchy and expansion and follows internal/named destinations
+and supported web links.
 Spotify and Apple Music sessions add a music button with playback controls,
 track information, artwork and a seek bar when the player supports it.
 Physical drag, monitor moves, printer output, notification delivery and live
-music control still need verification. Outlines are still planned; see
+music control still need verification. Attachments and further reading tools are still planned; see
 [docs/PORTING_STATUS.md](docs/PORTING_STATUS.md) for the current handoff.
 
 Use Ctrl+F to search, Enter/F3/Ctrl+G for the next match, and Shift with those
 keys for the previous match. Escape closes Find. Queries and match options
 stay with each document tab.
+
+Use the right rail for thumbnails or the document outline. F4 hides or reopens
+the last sidebar. Each tab keeps its outline expansion state.
 
 ## Credits
 

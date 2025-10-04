@@ -585,3 +585,46 @@ TEST_F(SessionTest, FindSupersedesQueuedQueryAndRejectsInvalidInput) {
 	ASSERT_TRUE(rejected);
 	EXPECT_TRUE(rejected->failed);
 }
+
+TEST_F(SessionTest, OutlinesReturnOnTheEngineThreadAndCloseDiscardsQueuedData) {
+	pdf::Session session(engine);
+	Reply<pdf::OutlineResult> unopened;
+	EXPECT_FALSE(session.outline(unopened.callback()));
+	ASSERT_EQ(open(session, fixturePath("outline.pdf")).error,
+	          pdf::Error::None);
+	Reply<pdf::OutlineResult> reply;
+	const auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.outline(
+	    [onThread, callback = reply.callback()](pdf::OutlineResult result) {
+		    *onThread = pdf::Engine::onThread();
+		    callback(std::move(result));
+	    }));
+	const auto found = reply.wait();
+	ASSERT_TRUE(found && found->outline);
+	EXPECT_TRUE(*onThread);
+	EXPECT_FALSE(found->canceled);
+	EXPECT_EQ(found->outline->entries.size(), 8u);
+	{
+		Gate queued(engine);
+		Reply<pdf::LinkResult> stale, latest;
+		ASSERT_TRUE(session.outlineLink(1, stale.callback()));
+		ASSERT_TRUE(session.outlineLink(2, latest.callback()));
+		queued.open();
+		const auto old = stale.wait(), next = latest.wait();
+		ASSERT_TRUE(old && next);
+		EXPECT_TRUE(old->canceled);
+		ASSERT_TRUE(next->link && next->link->destination);
+		EXPECT_EQ(next->link->destination->page, 2);
+	}
+
+	Gate gate(engine);
+	Reply<pdf::OutlineResult> canceled;
+	ASSERT_TRUE(session.outline(canceled.callback()));
+	session.close();
+	gate.open();
+	const auto closed = canceled.wait();
+	ASSERT_TRUE(closed);
+	EXPECT_TRUE(closed->canceled);
+	EXPECT_FALSE(closed->outline);
+	EXPECT_FALSE(session.outline([](auto) {}));
+}

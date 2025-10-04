@@ -1,0 +1,74 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Outlines 6 0 R /Names << /Dests << /Names [(chapter-two) [5 0 R /FitH 210]] >> >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 0 /Resources << >> >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 90 /Resources << >> >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 0 /Resources << >> >>
+endobj
+6 0 obj
+<< /Type /Outlines /First 7 0 R /Last 15 0 R /Count 8 >>
+endobj
+7 0 obj
+<< /Title <feff00430068006100700074006500720073002003a9d83dde00> /Parent 6 0 R /First 8 0 R /Last 9 0 R /Next 11 0 R /Count 2 /Dest [3 0 R /Fit] >>
+endobj
+8 0 obj
+<< /Title (Rotated XYZ) /Parent 7 0 R /Next 9 0 R /Dest [4 0 R /XYZ 60 220 1.5] >>
+endobj
+9 0 obj
+<< /Title (Named chapter) /Parent 7 0 R /Prev 8 0 R /First 10 0 R /Last 10 0 R /Count -1 /A << /S /GoTo /D (chapter-two) >> >>
+endobj
+10 0 obj
+<< /Title (Web reference) /Parent 9 0 R /A << /S /URI /URI (https://example.com/outline) >> >>
+endobj
+11 0 obj
+<< /Title (Unsupported action) /Parent 6 0 R /Prev 7 0 R /Next 12 0 R /A << /S /Launch /F (nope.exe) >> >>
+endobj
+12 0 obj
+<< /Title () /Parent 6 0 R /Prev 11 0 R /Next 13 0 R >>
+endobj
+13 0 obj
+<< /Title (Broken destination) /Parent 6 0 R /Prev 12 0 R /Next 14 0 R /Dest [9999 0 R /Fit] >>
+endobj
+14 0 obj
+<< /Title (Unsafe URI) /Parent 6 0 R /Prev 13 0 R /Next 15 0 R /A << /S /URI /URI (javascript:alert%281%29) >> >>
+endobj
+15 0 obj
+<< /Title (Sibling cycle) /Parent 6 0 R /Prev 14 0 R /Next 15 0 R >>
+endobj
+16 0 obj
+<< /Title (Sable outline fixtures) >>
+endobj
+xref
+0 17
+0000000000 65535 f 
+0000000015 00000 n 
+0000000147 00000 n 
+0000000216 00000 n 
+0000000339 00000 n 
+0000000463 00000 n 
+0000000586 00000 n 
+0000000658 00000 n 
+0000000821 00000 n 
+0000000919 00000 n 
+0000001061 00000 n 
+0000001172 00000 n 
+0000001295 00000 n 
+0000001367 00000 n 
+0000001479 00000 n 
+0000001609 00000 n 
+0000001694 00000 n 
+trailer
+<< /Size 17 /Root 1 0 R /Info 16 0 R /ID [<87dfa830b12abb62696c4174080c047e> <87dfa830b12abb62696c4174080c047e>] >>
+startxref
+1748
+%%EOF

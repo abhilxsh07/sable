@@ -134,6 +134,7 @@ void ViewerPage::activate() {
 	if (const auto pending = std::exchange(m_passwordPending, std::nullopt)) {
 		askPassword(*pending);
 	} else if (m_layout && !m_passwordDialog) {
+		showOutline();
 		if (findOpen()) {
 			FindBox().Focus(FocusState::Programmatic);
 			revealFindMatch();
@@ -265,6 +266,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 
 void ViewerPage::close() {
 	closeFind();
+	closeOutline();
 	m_closed = true;
 	cancelSelectionDrag();
 	m_selection.reset();
@@ -868,6 +870,10 @@ bool ViewerPage::thumbnailsOpen() {
 // thumbnail and scrolls it into view. The pages get the room back, and
 // "auto" and the fitting presets refit through the scroller's SizeChanged.
 void ViewerPage::setThumbnailsOpen(bool open) {
+	if (open) {
+		setOutlineOpen(false);
+		m_sidebar = Sidebar::Thumbnails;
+	}
 	ThumbnailsButton().IsChecked(open);
 	if (!m_strip) {
 		m_thumbsWanted = open;
@@ -1155,6 +1161,12 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 	    args.OriginalSource().try_as<MenuFlyoutItemBase>()) {
 		return;
 	}
+	// The outline tree keeps its native arrows, type-ahead and selection keys.
+	if (outlineHasFocus() && args.Key() != VirtualKey::F4 &&
+	    !(args.Key() == VirtualKey::G && (GetKeyState(VK_CONTROL) & 0x8000) &&
+	      (GetKeyState(VK_MENU) & 0x8000))) {
+		return;
+	}
 	NavKey pressed = NavKey::Other;
 	switch (args.Key()) {
 	case VirtualKey::Up:
@@ -1258,7 +1270,7 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 		PageBox().SelectAll();
 		break;
 	case NavAction::ToggleSidebar:
-		setThumbnailsOpen(!thumbnailsOpen());
+		toggleSidebar();
 		break;
 	}
 	if (action != NavAction::None) {
@@ -1509,6 +1521,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Height(size->cy / m_scale);
 		setupSelection();
 		setupFind();
+		setupOutline();
 		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
 			if (auto self = weak.get()) {
 				self->watchScale();
