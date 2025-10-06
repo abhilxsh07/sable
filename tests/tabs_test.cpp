@@ -64,6 +64,8 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool attachmentsOnly = false;
+	ListViewItem attachmentItem{nullptr};
 	std::size_t outlinePage = 0;
 	std::string copiedText;
 	int copyCalls = 0;
@@ -951,6 +953,103 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void attachmentsTick(MainWindow& owner) {
+		if (step == 6) {
+			check(first && first->m_closed && !first->m_attachments &&
+			          !first->m_attachmentsPending &&
+			          first->AttachmentList().Items().Size() == 0,
+			      "closed attachment panel accepted a late result");
+			status.Text(L"PASS: attachment names, cache, sidebar switching, "
+			            L"empty/retry and close guards");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_attachmentsPending) {
+			return;
+		}
+		switch (step) {
+		case 0:
+			check(!v.m_attachments, "attachments loaded before sidebar open");
+			v.setAttachmentsOpen(true);
+			check(v.attachmentsOpen() && !v.thumbnailsOpen() &&
+			          !v.outlineOpen(),
+			      "attachment sidebar exclusivity");
+			break;
+		case 1:
+			if (!v.m_attachmentsBuilt) {
+				return;
+			}
+			check(v.AttachmentList().Items().Size() == 4,
+			      "attachment list count");
+			attachmentItem =
+			    v.AttachmentList().Items().GetAt(0).as<ListViewItem>();
+			check(unbox_value<hstring>(attachmentItem.Content()) ==
+			          L"notes \u03a9\U0001f600.txt",
+			      "attachment Unicode name");
+			v.AttachmentList().Focus(FocusState::Programmatic);
+			if (!v.attachmentsHasFocus()) {
+				return;
+			}
+			v.toggleSidebar();
+			check(!v.attachmentsHasFocus(),
+			      "closed attachment panel kept focus");
+			v.toggleSidebar();
+			check(v.attachmentsOpen(), "F4 forgot attachments");
+			v.zoomIn();
+			break;
+		case 2:
+			check(v.AttachmentList().Items().GetAt(0) == attachmentItem,
+			      "zoom rebuilt cached attachments");
+			v.setOutlineOpen(true);
+			check(!v.attachmentsOpen() && v.outlineOpen(),
+			      "outline did not close attachments");
+			v.setAttachmentsOpen(true);
+			v.setThumbnailsOpen(true);
+			check(v.thumbnailsOpen() && !v.attachmentsOpen(),
+			      "thumbnails did not close attachments");
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			break;
+		case 3:
+			check(!v.m_attachments && !v.attachmentsOpen(),
+			      "attachment state leaked between tabs");
+			v.setAttachmentsOpen(true);
+			break;
+		case 4:
+			if (!v.m_attachmentsBuilt) {
+				return;
+			}
+			check(v.AttachmentList().Items().Size() == 0 &&
+			          v.AttachmentStatus().Text() == L"No attachments.",
+			      "empty attachment state");
+			v.m_attachments.reset();
+			v.m_attachmentsFailed = true;
+			v.showAttachments();
+			check(v.AttachmentRetry().Visibility() == Visibility::Visible,
+			      "attachment load error has no retry");
+			v.requestAttachments();
+			break;
+		case 5:
+			if (!v.m_attachments) {
+				return;
+			}
+			check(!v.m_attachmentsFailed &&
+			          v.AttachmentRetry().Visibility() == Visibility::Collapsed,
+			      "attachment retry did not recover");
+			v.m_attachments.reset();
+			v.requestAttachments();
+			first.copy_from(&v);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			break;
+		}
+		++step;
+		ticks = 0;
+	}
 	void outlineTick(MainWindow& owner) {
 		if (step == 11) {
 			check(first && first->m_closed && !first->m_outline &&
@@ -1392,6 +1491,10 @@ struct TabsTest {
 			}
 			if (musicOnly) {
 				musicTick(*self);
+				return;
+			}
+			if (attachmentsOnly) {
+				attachmentsTick(*self);
 				return;
 			}
 			if (outlineOnly) {
@@ -1886,6 +1989,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->attachmentsOnly =
+	    GetEnvironmentVariableW(L"SableAttachmentsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->findOnly = GetEnvironmentVariableW(L"SableFindTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
@@ -1893,7 +1999,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
 	    state->printOnly || state->finishOnly || state->editOnly ||
 	    state->musicOnly || state->selectionOnly || state->findOnly ||
-	    state->outlineOnly) {
+	    state->outlineOnly || state->attachmentsOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1944,7 +2050,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->outlineOnly) {
+	if (state->attachmentsOnly) {
+		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
+	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
 	} else if (state->selectionOnly || state->findOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);

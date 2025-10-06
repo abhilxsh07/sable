@@ -140,6 +140,17 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void startOpen(const std::string& password);
 	void setupSelection();
 	void setupOutline();
+	void setupAttachments();
+	void closeAttachments();
+	void requestAttachments();
+	void showAttachments();
+	bool attachmentsOpen();
+	bool attachmentsHasFocus();
+	void setAttachmentsOpen(bool open);
+	std::optional<pdf::Attachments> m_attachments;
+	std::uint64_t m_attachmentVersion = 0;
+	bool m_attachmentsPending = false, m_attachmentsFailed = false,
+	     m_attachmentsBuilt = false;
 	void closeOutline();
 	void requestOutline();
 	void showOutline();
@@ -148,7 +159,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool outlineHasFocus();
 	void setOutlineOpen(bool open);
 	void toggleSidebar();
-	enum class Sidebar { Thumbnails, Outline };
+	enum class Sidebar { Thumbnails, Outline, Attachments };
 	Sidebar m_sidebar = Sidebar::Thumbnails;
 	std::optional<pdf::Outline> m_outline;
 	std::vector<winrt::Microsoft::UI::Xaml::Controls::TreeViewNode>

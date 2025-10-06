@@ -135,6 +135,7 @@ void ViewerPage::activate() {
 		askPassword(*pending);
 	} else if (m_layout && !m_passwordDialog) {
 		showOutline();
+		showAttachments();
 		if (findOpen()) {
 			FindBox().Focus(FocusState::Programmatic);
 			revealFindMatch();
@@ -267,6 +268,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 void ViewerPage::close() {
 	closeFind();
 	closeOutline();
+	closeAttachments();
 	m_closed = true;
 	cancelSelectionDrag();
 	m_selection.reset();
@@ -872,6 +874,7 @@ bool ViewerPage::thumbnailsOpen() {
 void ViewerPage::setThumbnailsOpen(bool open) {
 	if (open) {
 		setOutlineOpen(false);
+		setAttachmentsOpen(false);
 		m_sidebar = Sidebar::Thumbnails;
 	}
 	ThumbnailsButton().IsChecked(open);
@@ -1161,8 +1164,9 @@ void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
 	    args.OriginalSource().try_as<MenuFlyoutItemBase>()) {
 		return;
 	}
-	// The outline tree keeps its native arrows, type-ahead and selection keys.
-	if (outlineHasFocus() && args.Key() != VirtualKey::F4 &&
+	// Sidebar lists keep their native arrows, type-ahead and selection keys.
+	if ((outlineHasFocus() || attachmentsHasFocus()) &&
+	    args.Key() != VirtualKey::F4 &&
 	    !(args.Key() == VirtualKey::G && (GetKeyState(VK_CONTROL) & 0x8000) &&
 	      (GetKeyState(VK_MENU) & 0x8000))) {
 		return;
@@ -1522,6 +1526,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		setupSelection();
 		setupFind();
 		setupOutline();
+		setupAttachments();
 		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
 			if (auto self = weak.get()) {
 				self->watchScale();
