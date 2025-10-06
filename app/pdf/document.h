@@ -86,6 +86,14 @@ struct Outline {
 	std::vector<OutlineNode> entries;
 	bool limited = false;
 };
+struct Attachment {
+	int index = 0;
+	std::string name;
+};
+struct Attachments {
+	std::vector<Attachment> entries;
+	bool limited = false;
+};
 
 class Document;
 
@@ -119,6 +127,10 @@ class Document {
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
 	bool canCopy() const;
+	std::optional<Attachments>
+	attachments(const std::function<bool()>& canceled = {}) const;
+	std::optional<std::vector<std::uint8_t>>
+	attachment(int index, const std::function<bool()>& canceled = {}) const;
 	std::optional<Outline>
 	outline(const std::function<bool()>& canceled = {}) const;
 	std::optional<Link> outlineLink(std::size_t index) const;

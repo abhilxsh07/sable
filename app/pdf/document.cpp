@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <system_error>
 
 #include <fpdf_doc.h>
+#include <fpdf_attachment.h>
 #include <fpdf_edit.h>
 #include <fpdf_text.h>
 #include <fpdfview.h>
@@ -522,6 +523,75 @@ std::optional<Link> resolveLink(FPDF_DOCUMENT document, FPDF_DEST dest,
 	return Link{target, {}};
 }
 } // namespace
+
+// see:
+// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_attachment.h
+std::optional<Attachments>
+Document::attachments(const std::function<bool()>& canceled) const {
+	if (offThread()) {
+		return {};
+	}
+	Attachments result;
+	const int count = FPDFDoc_GetAttachmentCount(m_handle);
+	std::size_t total = 0;
+	for (int i = 0; i < (std::min)(count, 10000); ++i) {
+		if (canceled && canceled()) {
+			return {};
+		}
+		const auto handle = FPDFDoc_GetAttachment(m_handle, i);
+		const auto size =
+		    handle ? FPDFAttachment_GetName(handle, nullptr, 0) : 0;
+		std::string name;
+		if (size >= 2 && size <= 8192 && size % 2 == 0 &&
+		    total + size <= 2 * 1024 * 1024) {
+			total += size;
+			std::vector<unsigned char> bytes(size);
+			if (FPDFAttachment_GetName(
+			        handle, reinterpret_cast<FPDF_WCHAR*>(bytes.data()),
+			        size) == size &&
+			    bytes[size - 1] == 0 && bytes[size - 2] == 0) {
+				bytes.resize(size - 2);
+				name = utf16ToUtf8(bytes);
+			}
+		}
+		if (name.empty()) {
+			name = "Attachment " + std::to_string(i + 1);
+			result.limited = true;
+		}
+		for (auto& c : name) {
+			if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F) {
+				c = ' ';
+			}
+		}
+		result.entries.push_back({i, std::move(name)});
+	}
+	result.limited = result.limited || count > 10000;
+	return result;
+}
+
+std::optional<std::vector<std::uint8_t>>
+Document::attachment(int index, const std::function<bool()>& canceled) const {
+	if (offThread() || index < 0 ||
+	    index >= FPDFDoc_GetAttachmentCount(m_handle) ||
+	    (canceled && canceled())) {
+		return {};
+	}
+	const auto handle = FPDFDoc_GetAttachment(m_handle, index);
+	unsigned long size = 0;
+	if (!handle || !FPDFAttachment_GetFile(handle, nullptr, 0, &size) ||
+	    size > 128UL * 1024 * 1024 || (canceled && canceled())) {
+		return {};
+	}
+	std::vector<std::uint8_t> bytes(size);
+	unsigned char empty = 0;
+	unsigned long written = 0;
+	if (!FPDFAttachment_GetFile(handle, size ? bytes.data() : &empty, size,
+	                            &written) ||
+	    written != size || (canceled && canceled())) {
+		return {};
+	}
+	return bytes;
+}
 
 std::optional<Outline>
 Document::outline(const std::function<bool()>& canceled) const {
