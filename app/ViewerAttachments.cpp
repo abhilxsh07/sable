@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/session.h"
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
@@ -46,6 +47,7 @@ bool ViewerPage::attachmentsHasFocus() {
 	return false;
 }
 void ViewerPage::setupAttachments() {
+	setupAttachmentSaving();
 	const auto weak = get_weak();
 	AttachmentButton().Click([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
@@ -81,6 +83,8 @@ void ViewerPage::setAttachmentsOpen(bool open) {
 void ViewerPage::closeAttachments() {
 	setAttachmentsOpen(false);
 	++m_attachmentVersion;
+	++m_attachmentSaveVersion;
+	m_attachmentSaving = false;
 	m_attachmentsPending = false;
 	m_attachmentsFailed = false;
 	m_attachmentsBuilt = false;
@@ -156,7 +160,9 @@ void ViewerPage::showAttachments() {
 			ListViewItem item;
 			item.Content(box_value(to_hstring(entry.name)));
 			item.Tag(box_value(entry.index));
-			ToolTipService::SetToolTip(item, item.Content());
+			ToolTipService::SetToolTip(item, box_value(L"Save attachment as"));
+			Automation::AutomationProperties::SetHelpText(
+			    item, L"Save attachment as");
 			AttachmentList().Items().Append(item);
 		}
 		m_attachmentsBuilt = true;
