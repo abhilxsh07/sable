@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <fpdf_doc.h>
 #include <fpdf_attachment.h>
+#include <fpdf_annot.h>
 #include <fpdf_edit.h>
 #include <fpdf_text.h>
 #include <fpdfview.h>
@@ -53,6 +54,12 @@ struct BitmapDestroyer {
 	}
 };
 using PagePtr = std::unique_ptr<fpdf_page_t__, PageCloser>;
+struct AnnotationCloser {
+	void operator()(fpdf_annotation_t__* annotation) const {
+		FPDFPage_CloseAnnot(annotation);
+	}
+};
+using AnnotationPtr = std::unique_ptr<fpdf_annotation_t__, AnnotationCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
 struct TextCloser {
 	void operator()(fpdf_textpage_t__* text) const {
@@ -523,6 +530,74 @@ std::optional<Link> resolveLink(FPDF_DOCUMENT document, FPDF_DEST dest,
 	return Link{target, {}};
 }
 } // namespace
+
+std::optional<Annotations>
+Document::annotations(int index, const std::function<bool()>& canceled) const {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || index < 0 || index >= pageCount() || stopped()) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	const int count = FPDFPage_GetAnnotCount(page.get());
+	if (count < 0) {
+		return {};
+	}
+	Annotations result;
+	result.page = index;
+	result.limited = count > 4096;
+	std::size_t total = 0;
+	const auto text = [&](FPDF_ANNOTATION annotation, const char* key) {
+		std::string value;
+		const auto size = FPDFAnnot_GetStringValue(annotation, key, nullptr, 0);
+		// I bound both individual fields and the whole page's text allocation.
+		if (size < 2 || size % 2 != 0 || size > 64 * 1024 ||
+		    total + size > 1024 * 1024) {
+			result.limited = true;
+			return value;
+		}
+		total += size;
+		std::vector<unsigned char> bytes(size);
+		if (FPDFAnnot_GetStringValue(
+		        annotation, key, reinterpret_cast<FPDF_WCHAR*>(bytes.data()),
+		        size) != size ||
+		    bytes[size - 1] != 0 || bytes[size - 2] != 0) {
+			result.limited = true;
+			return value;
+		}
+		bytes.resize(size - 2);
+		return utf16ToUtf8(bytes);
+	};
+	for (int i = 0; i < (std::min)(count, 4096); ++i) {
+		if (stopped()) {
+			return {};
+		}
+		AnnotationPtr handle(FPDFPage_GetAnnot(page.get(), i));
+		if (!handle) {
+			result.limited = true;
+			continue;
+		}
+		Annotation annotation;
+		annotation.index = i;
+		annotation.flags = FPDFAnnot_GetFlags(handle.get());
+		annotation.subtype = text(handle.get(), "Subtype");
+		annotation.contents = text(handle.get(), "Contents");
+		annotation.author = text(handle.get(), "T");
+		FS_RECTF rect{};
+		if (FPDFAnnot_GetValueType(handle.get(), "Rect") == FPDF_OBJECT_ARRAY &&
+		    FPDFAnnot_GetRect(handle.get(), &rect) &&
+		    std::isfinite(rect.left) && std::isfinite(rect.bottom) &&
+		    std::isfinite(rect.right) && std::isfinite(rect.top) &&
+		    rect.left <= rect.right && rect.bottom <= rect.top) {
+			annotation.bounds =
+			    AnnotationBounds{rect.left, rect.bottom, rect.right, rect.top};
+		}
+		result.entries.push_back(std::move(annotation));
+	}
+	return stopped() ? std::nullopt : std::optional{std::move(result)};
+}
 
 // see:
 // https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_attachment.h

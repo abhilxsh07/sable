@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 #include "text.h"
 #include "search.h"
+#include "annotations.h"
 
 // PDFium's handle type, declared here so this header doesn't need fpdfview.h
 struct fpdf_document_t__;
@@ -127,6 +128,9 @@ class Document {
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
 	bool canCopy() const;
+	// All subtypes, in page order. nullopt means failure or cancellation.
+	std::optional<Annotations>
+	annotations(int page, const std::function<bool()>& canceled = {}) const;
 	std::optional<Attachments>
 	attachments(const std::function<bool()>& canceled = {}) const;
 	std::optional<std::vector<std::uint8_t>>

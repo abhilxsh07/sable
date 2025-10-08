@@ -2,6 +2,25 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Existing annotation snapshots (2026-10-22)
+
+I'm starting comments with a per-page inventory of the annotations already
+in the PDF. The result owns its UTF-8 text, flags and rectangle; no PDFium
+handle leaves the engine thread. Subtype names stay as PDF names, including
+unknown ones. Links and widgets stay in this inventory too, so a later
+comments panel can choose what to show without losing the page's indices.
+
+Rectangles use unrotated PDF coordinates in points. Missing or wrongly
+typed rectangles have no bounds. Crop, page rotation and view rotation
+belong to the later navigation/UI step. Missing fields and values other than
+strings or names come back empty, matching the pinned public API.
+
+I cap each page at 4,096 records, each field at 64 KiB of UTF-16 and the
+page's combined field reads at 1 MiB. An incomplete inventory sets limited;
+failure or cancellation returns no inventory. Cancellation releases the
+page and current annotation before returning. This step only reads existing
+annotations; editing, the comments panel and saving changes come later.
+
 ## Name: Sable (2026-10-06)
 
 This one wasn't really my call. When NightPDF was archived, its maintainer
