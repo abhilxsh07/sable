@@ -666,3 +666,164 @@ TEST_F(SessionTest, OutlinesReturnOnTheEngineThreadAndCloseDiscardsQueuedData) {
 	EXPECT_FALSE(closed->outline);
 	EXPECT_FALSE(session.outline([](auto) {}));
 }
+
+TEST_F(SessionTest, AnnotationsReturnPageSnapshotsOnTheEngineThread) {
+	pdf::Session session(engine);
+	Reply<pdf::AnnotationsResult> unopened;
+	EXPECT_FALSE(session.annotations(0, unopened.callback()));
+	ASSERT_EQ(open(session, fixturePath("annotations.pdf")).error,
+	          pdf::Error::None);
+	EXPECT_FALSE(session.annotations(0, {}));
+	Reply<pdf::AnnotationsResult> reply;
+	const auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(
+	    session.annotations(0, [onThread, cb = reply.callback()](auto result) {
+		    *onThread = pdf::Engine::onThread();
+		    cb(std::move(result));
+	    }));
+	const auto found = reply.wait();
+	ASSERT_TRUE(found && found->annotations);
+	EXPECT_TRUE(*onThread);
+	EXPECT_EQ(found->page, 0);
+	EXPECT_FALSE(found->canceled);
+	ASSERT_EQ(found->annotations->entries.size(), 6u);
+	EXPECT_EQ(found->annotations->entries[0].contents,
+	          "Notes \u03a9\U0001f600\nsecond line");
+	for (const int page : {1, 2, -1, 5}) {
+		Reply<pdf::AnnotationsResult> next;
+		ASSERT_TRUE(session.annotations(page, next.callback()));
+		const auto result = next.wait();
+		ASSERT_TRUE(result);
+		EXPECT_EQ(result->page, page);
+		EXPECT_FALSE(result->canceled);
+		if (page < 0 || page == 5) {
+			EXPECT_FALSE(result->annotations);
+		} else {
+			ASSERT_TRUE(result->annotations);
+			EXPECT_EQ(result->annotations->page, page);
+			EXPECT_EQ(result->annotations->limited, page == 2);
+			EXPECT_EQ(result->annotations->entries.size(), page == 1 ? 0u : 1u);
+		}
+	}
+}
+
+TEST_F(SessionTest, AnnotationRequestsSupersedeOnlyTheirOwnWork) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("annotations.pdf")).error,
+	          pdf::Error::None);
+	{
+		Gate gate(engine);
+		Reply<pdf::AnnotationsResult> old, latest;
+		ASSERT_TRUE(session.annotations(0, old.callback()));
+		ASSERT_TRUE(session.annotations(1, latest.callback()));
+		session.cancelRender();
+		session.cancelSearch();
+		gate.open();
+		const auto stale = old.wait(), current = latest.wait();
+		ASSERT_TRUE(stale && current && current->annotations);
+		EXPECT_EQ(stale->page, 0);
+		EXPECT_TRUE(stale->canceled);
+		EXPECT_FALSE(stale->annotations);
+		EXPECT_FALSE(current->canceled);
+		EXPECT_EQ(current->annotations->page, 1);
+	}
+	{
+		Gate gate(engine);
+		Reply<pdf::AnnotationsResult> annotations;
+		Reply<pdf::RenderResult> raster;
+		Reply<pdf::FindUpdate> find;
+		ASSERT_TRUE(session.annotations(0, annotations.callback()));
+		ASSERT_TRUE(session.render({0, 60, 85}, raster.callback()));
+		ASSERT_TRUE(session.search(u"note", {}, find.callback()));
+		session.cancelAnnotations();
+		gate.open();
+		const auto canceled = annotations.wait();
+		const auto rendered = raster.wait();
+		const auto searched = find.wait();
+		ASSERT_TRUE(canceled && rendered && searched);
+		EXPECT_TRUE(canceled->canceled);
+		EXPECT_FALSE(canceled->annotations);
+		EXPECT_FALSE(rendered->canceled);
+		EXPECT_TRUE(rendered->bitmap);
+		EXPECT_TRUE(searched->done);
+		EXPECT_FALSE(searched->canceled || searched->failed);
+	}
+}
+
+TEST_F(SessionTest, AnnotationCancellationIsIsolatedBetweenSessions) {
+	pdf::Session first(engine), second(engine);
+	ASSERT_EQ(open(first, fixturePath("annotations.pdf")).error,
+	          pdf::Error::None);
+	ASSERT_EQ(open(second, fixturePath("annotations.pdf")).error,
+	          pdf::Error::None);
+	Gate gate(engine);
+	Reply<pdf::AnnotationsResult> canceled, intact;
+	ASSERT_TRUE(first.annotations(0, canceled.callback()));
+	ASSERT_TRUE(second.annotations(0, intact.callback()));
+	first.cancelAnnotations();
+	gate.open();
+	const auto old = canceled.wait(), current = intact.wait();
+	ASSERT_TRUE(old && current && current->annotations);
+	EXPECT_TRUE(old->canceled);
+	EXPECT_FALSE(current->canceled);
+	EXPECT_EQ(current->annotations->entries.size(), 6u);
+}
+
+TEST_F(SessionTest, CloseAndDestructionCancelQueuedAnnotationRepliesOnce) {
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, fixturePath("annotations.pdf")).error,
+		          pdf::Error::None);
+		Gate gate(engine);
+		Reply<pdf::AnnotationsResult> pending;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		ASSERT_TRUE(session->annotations(
+		    0, [calls, cb = pending.callback()](auto result) {
+			    ++*calls;
+			    cb(std::move(result));
+		    }));
+		if (destroy) {
+			session.reset();
+		} else {
+			session->close();
+			EXPECT_FALSE(session->annotations(0, pending.callback()));
+		}
+		gate.open();
+		const auto canceled = pending.wait();
+		ASSERT_TRUE(canceled);
+		EXPECT_TRUE(canceled->canceled);
+		EXPECT_FALSE(canceled->annotations);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+}
+
+TEST_F(SessionTest, AnnotationCallbacksCanQueueWorkAndThrowWithoutBlocking) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("annotations.pdf")).error,
+	          pdf::Error::None);
+	Reply<pdf::AnnotationsResult> next;
+	const auto queued = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.annotations(
+	    0, [&session, queued, cb = next.callback()](auto result) {
+		    if (result.annotations) {
+			    *queued = session.annotations(1, cb);
+		    }
+	    }));
+	const auto second = next.wait();
+	ASSERT_TRUE(second && second->annotations);
+	EXPECT_TRUE(*queued);
+	EXPECT_EQ(second->page, 1);
+	const auto calls = std::make_shared<std::atomic<int>>(0);
+	ASSERT_TRUE(session.annotations(0, [calls](auto) {
+		++*calls;
+		throw 1;
+	}));
+	engine.run([] {}).get();
+	EXPECT_EQ(*calls, 1);
+	Reply<pdf::AnnotationsResult> after;
+	ASSERT_TRUE(session.annotations(0, after.callback()));
+	const auto survived = after.wait();
+	ASSERT_TRUE(survived && survived->annotations);
+	EXPECT_FALSE(survived->canceled);
+}

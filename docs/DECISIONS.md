@@ -2,6 +2,21 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Annotation session requests (2026-10-22)
+
+The session can now request an annotation snapshot without waiting on the
+UI thread. Each reply keeps its requested page, including failed and
+canceled reads. An empty inventory is a successful read; a missing inventory
+without cancellation means the page could not be read.
+
+I give these requests their own generation. A newer request or explicit
+cancel supersedes older reads without touching rendering or Find, and
+another document's session has its own generation. Close and destruction
+cancel queued reads and discard their data. Accepted callbacks run on the
+engine thread once; work that already finished can still arrive after a
+later cancel, so the future panel must guard its current request and tab.
+Callbacks may queue another read; callback exceptions stay inside the engine.
+
 ## Existing annotation snapshots (2026-10-22)
 
 I'm starting comments with a per-page inventory of the annotations already

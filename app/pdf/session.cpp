@@ -45,6 +45,7 @@ struct Session::State {
 	std::uint64_t m_generation = 0;
 	std::uint64_t m_findGeneration = 0;
 	std::uint64_t m_outlineGeneration = 0;
+	std::uint64_t m_annotationGeneration = 0;
 	struct FindJob;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
@@ -370,6 +371,49 @@ bool Session::outlineLink(std::size_t index,
 		callback(std::move(result));
 	});
 	return true;
+}
+
+bool Session::annotations(int page,
+                          std::function<void(AnnotationsResult)> callback) {
+	const auto state = m_state;
+	std::uint64_t generation = 0;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+		generation = ++state->m_annotationGeneration;
+	}
+	state->m_engine.post(
+	    [state, page, generation, callback = std::move(callback)] {
+		    AnnotationsResult result;
+		    result.page = page;
+		    const auto canceled = [state, generation] {
+			    std::lock_guard lock(state->m_mutex);
+			    return state->m_closed ||
+			           generation != state->m_annotationGeneration;
+		    };
+		    try {
+			    if (!canceled()) {
+				    result.annotations =
+				        state->m_document->annotations(page, canceled);
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't read PDF page annotations.");
+		    }
+		    result.canceled = canceled();
+		    if (result.canceled) {
+			    result.annotations.reset();
+		    }
+		    callback(std::move(result));
+	    });
+	return true;
+}
+
+void Session::cancelAnnotations() {
+	std::lock_guard lock(m_state->m_mutex);
+	++m_state->m_annotationGeneration;
 }
 
 bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
