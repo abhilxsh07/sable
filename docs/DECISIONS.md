@@ -2,6 +2,20 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Comments list scan (2026-10-22)
+
+The comments list walks the document one page at a time. I keep up to 2,000
+rows and 4 MiB of their combined text. Reaching either bound stops the scan
+and reports limited results; a limited page still allows later pages to load.
+Retry keeps completed pages and resumes the failed page without duplicates.
+
+Links, form widgets and popup containers stay out of this list. Common
+comment types remain visible even without text; unknown types stay when
+they have contents. Rows keep their page and PDF annotation index, subtype,
+author and text. Display controls are replaced with spaces while Unicode
+survives; CR and CRLF text breaks become LF. Editing and saving are separate
+steps.
+
 ## Annotation session requests (2026-10-22)
 
 The session can now request an annotation snapshot without waiting on the
