@@ -18,6 +18,7 @@
 
 # Writes the PDFs the tests open, next to this script:
 #   annotations.pdf Unicode comments, unknown types, damaged fields and limits
+#   comments.pdf    three pages of small comments for native sidebar checks
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
@@ -451,6 +452,29 @@ def annotations_pdf() -> bytes:
     return w.finish(1, 8)
 
 
+def comments_pdf() -> bytes:
+    w = Writer(md5(b"sable comments sidebar"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>")
+    for i, refs in enumerate(["7 0 R 10 0 R 11 0 R 12 0 R", "8 0 R", "9 0 R"]):
+        w.add(i + 3, "<< /Type /Page /Parent 2 0 R "
+              f"/MediaBox [0 0 300 400] /Annots [{refs}] >>")
+    w.add(6, "<< /Title (Sable comments sidebar) >>")
+    author = (b"\xfe\xff" + "Abhilash \u03a9".encode("utf-16-be")).hex()
+    text = (b"\xfe\xff" + "Notes \u03a9\U0001f600\nsecond line".encode(
+        "utf-16-be")).hex()
+    w.add(7, "<< /Type /Annot /Subtype /Text /Rect [30 40 50 60] "
+          f"/Contents <{text}> /T <{author}> >>")
+    w.add(8, "<< /Type /Annot /Subtype /Highlight /Rect [20 30 80 45] "
+          "/QuadPoints [20 45 80 45 20 30 80 30] /Contents (Review) >>")
+    w.add(9, "<< /Type /Annot /Subtype /Text /Rect [30 40 50 60] "
+          "/Contents (Last page) >>")
+    for i, kind in enumerate(["Link", "Popup", "Widget"]):
+        w.add(10 + i, f"<< /Type /Annot /Subtype /{kind} "
+              "/Rect [20 80 60 90] /Contents (Excluded) >>")
+    return w.finish(1, 6)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -462,6 +486,7 @@ def main() -> None:
         )))
     files = {
         "annotations.pdf": annotations_pdf(),
+        "comments.pdf": comments_pdf(),
         "attachments.pdf": attachments_pdf(),
         "outline.pdf": outline_pdf(),
         "outline_cycle.pdf": outline_pdf(True),

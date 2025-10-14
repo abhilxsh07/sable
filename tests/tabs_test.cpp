@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <chrono>
 #include <fstream>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <microsoft.ui.xaml.window.h>
@@ -40,6 +41,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.Peers.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.Provider.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -64,6 +67,8 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool commentsOnly = false;
+	std::uint64_t commentVersion = 0;
 	bool attachmentsOnly = false;
 	bool attachmentSaveOnly = false;
 	std::filesystem::path attachmentTarget;
@@ -1072,6 +1077,208 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void commentsTick(MainWindow& owner) {
+		if (step == 11) {
+			check(first && first->m_closed && !first->m_commentsPending &&
+			          first->CommentsList().Items().Size() == 0 &&
+			          first->m_commentScan.rows().empty(),
+			      "closed comments accepted a late result");
+			status.Text(
+			    L"PASS: comments ordering, Unicode, navigation, sidebar "
+			    L"memory, pause/resume, empty/retry/limited and close");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_commentsPending) {
+			return;
+		}
+		const auto invoke = [](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			const auto peer =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        element);
+			const auto action =
+			    peer ? peer.GetPattern(Peers::PatternInterface::Invoke)
+			               .try_as<Provider::IInvokeProvider>()
+			         : nullptr;
+			if (action) {
+				action.Invoke();
+			}
+			return static_cast<bool>(action);
+		};
+		const auto pause = [&](bool rail) {
+			auto release = std::make_shared<std::promise<void>>();
+			auto wait = release->get_future().share();
+			engine.post([wait] { wait.wait(); });
+			v.m_commentScan.reset(3);
+			v.CommentsList().Items().Clear();
+			v.showComments();
+			const bool pending = v.m_commentsPending;
+			commentVersion = v.m_commentVersion;
+			if (rail) {
+				release->set_value();
+				auto complete = std::make_shared<std::promise<void>>();
+				auto finished = complete->get_future();
+				engine.post([complete] { complete->set_value(); });
+				// i hold this ui turn until the old reply is queued.
+				check(finished.wait_for(std::chrono::seconds(2)) ==
+				          std::future_status::ready,
+				      "comments reply did not reach the UI queue");
+				v.Rail().Visibility(Visibility::Collapsed);
+			} else {
+				v.Visibility(Visibility::Collapsed);
+				release->set_value();
+			}
+			check(pending && !v.m_commentsPending &&
+			          v.m_commentVersion > commentVersion &&
+			          v.CommentsPanel().Visibility() == Visibility::Collapsed,
+			      "hidden comments did not cancel their pending request");
+			commentVersion = v.m_commentVersion;
+		};
+		switch (step) {
+		case 0:
+			check(v.m_commentScan.nextPage() == 0 &&
+			          v.CommentsList().Items().Size() == 0 && !v.commentsOpen(),
+			      "comments loaded before opening the panel");
+			v.setCommentsOpen(true);
+			break;
+		case 1: {
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			const auto& rows = v.m_commentScan.rows();
+			check(rows.size() == 3 && rows[0].page == 0 && rows[1].page == 1 &&
+			          rows[2].page == 2 && rows[1].subtype == "Highlight" &&
+			          v.CommentsStatus().Text() == L"3 comments.",
+			      "document-wide comment count or order");
+			const auto row =
+			    v.CommentsList().Items().GetAt(0).as<ListViewItem>();
+			check(std::wstring_view(
+			          Automation::AutomationProperties::GetName(row))
+			              .find(L"Abhilash \u03a9 Notes "
+			                    L"\u03a9\U0001f600\nsecond line") !=
+			          std::wstring_view::npos,
+			      "comments lost Unicode author or text");
+			check(v.CommentsList().IsItemClickEnabled(),
+			      "comment rows do not invoke navigation");
+			if (!invoke(v.CommentsList().Items().GetAt(2).as<ListViewItem>())) {
+				check(ticks < 30, "comment row has no Invoke");
+				return;
+			}
+			break;
+		}
+		case 2:
+			check(v.m_current == 2, "comment row did not navigate to its page");
+			v.CommentsList().Focus(FocusState::Programmatic);
+			if (!v.commentsHasFocus()) {
+				return;
+			}
+			v.toggleSidebar();
+			check(!v.commentsOpen() && !v.commentsHasFocus(),
+			      "closed comments kept focus");
+			v.toggleSidebar();
+			check(v.commentsOpen(), "F4 forgot comments");
+			v.setThumbnailsOpen(true);
+			check(!v.commentsOpen(), "thumbnails left comments open");
+			v.setCommentsOpen(true);
+			v.setOutlineOpen(true);
+			check(!v.commentsOpen(), "outline left comments open");
+			v.setCommentsOpen(true);
+			v.setAttachmentsOpen(true);
+			check(!v.commentsOpen(), "attachments left comments open");
+			v.setCommentsOpen(true);
+			check(!v.thumbnailsOpen() && !v.outlineOpen() &&
+			          !v.attachmentsOpen(),
+			      "comments sidebar exclusivity");
+			pause(false);
+			break;
+		case 3:
+		case 5:
+			check(v.m_commentScan.nextPage() == 0 &&
+			          v.m_commentVersion == commentVersion,
+			      "hidden comments accepted stale progress");
+			if (step == 3) {
+				v.Visibility(Visibility::Visible);
+			} else {
+				v.Rail().Visibility(Visibility::Visible);
+			}
+			break;
+		case 4:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.CommentsList().Items().Size() == 3,
+			      "viewer visibility did not resume comments");
+			pause(true);
+			break;
+		case 6:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.CommentsList().Items().Size() == 3,
+			      "rail visibility did not resume comments");
+			v.m_commentScan.reset(3);
+			v.CommentsList().Items().Clear();
+			v.m_commentScan.fail();
+			v.showComments();
+			check(v.CommentsRetry().Visibility() == Visibility::Visible &&
+			          v.CommentsStatus().Text() ==
+			              L"Couldn't load comments on page 1.",
+			      "comments failure has no visible retry");
+			check(invoke(v.CommentsRetry()), "comments Retry has no Invoke");
+			break;
+		case 7:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(!v.m_commentScan.failed() &&
+			          v.CommentsRetry().Visibility() == Visibility::Collapsed,
+			      "comments retry failed");
+			v.m_commentScan.reset(1);
+			v.CommentsList().Items().Clear();
+			check(v.m_commentScan.append({0, {}, true}));
+			v.showComments();
+			check(v.CommentsStatus().Text() ==
+			          L"Some comments could not be listed.",
+			      "comments limitation has no visible status");
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			break;
+		case 8:
+			check(!v.commentsOpen() && v.m_commentScan.nextPage() == 0,
+			      "comments state leaked between tabs");
+			v.setCommentsOpen(true);
+			break;
+		case 9:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.CommentsStatus().Text() == L"No comments." &&
+			          v.CommentsList().Items().Size() == 0,
+			      "empty document comments state");
+			break;
+		case 10: {
+			auto release = std::make_shared<std::promise<void>>();
+			auto wait = release->get_future().share();
+			engine.post([wait] { wait.wait(); });
+			v.m_commentScan.reset(3);
+			v.showComments();
+			const bool pending = v.m_commentsPending;
+			first.copy_from(&v);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			release->set_value();
+			check(pending, "closing comments had no queued request");
+			break;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
 	void attachmentsTick(MainWindow& owner) {
 		if (step == 6) {
 			check(first && first->m_closed && !first->m_attachments &&
@@ -1620,6 +1827,10 @@ struct TabsTest {
 				attachmentsTick(*self);
 				return;
 			}
+			if (commentsOnly) {
+				commentsTick(*self);
+				return;
+			}
 			if (outlineOnly) {
 				outlineTick(*self);
 				return;
@@ -2112,6 +2323,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->commentsOnly =
+	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->attachmentSaveOnly =
 	    GetEnvironmentVariableW(L"SableAttachmentSaveTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -2126,7 +2340,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->printOnly || state->finishOnly || state->editOnly ||
 	    state->musicOnly || state->selectionOnly || state->findOnly ||
 	    state->outlineOnly || state->attachmentsOnly ||
-	    state->attachmentSaveOnly) {
+	    state->attachmentSaveOnly || state->commentsOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -2181,6 +2395,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
+	} else if (state->commentsOnly) {
+		window->openDocument(engine, L"tests/fixtures/comments.pdf", 1);
 	} else if (state->selectionOnly || state->findOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->editOnly) {
