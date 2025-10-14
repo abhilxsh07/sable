@@ -134,6 +134,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
+		<Border x:Name="CommentsPanel" Grid.Row="1" Grid.Column="1" Width="260"
+			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
+			BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="1,0,0,0" CornerRadius="8">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+					<RowDefinition Height="Auto" />
+				</Grid.RowDefinitions>
+				<TextBlock Text="Comments" Margin="12,12,12,8" FontSize="13"
+					FontWeight="SemiBold" />
+				<TextBlock x:Name="CommentsStatus" Grid.Row="1" Margin="12,4,12,12"
+					TextWrapping="Wrap" Foreground="{ThemeResource SableTextSecondaryBrush}"
+					AutomationProperties.LiveSetting="Polite" />
+				<ListView x:Name="CommentsList" Grid.Row="2" SelectionMode="Single"
+					IsItemClickEnabled="True" AutomationProperties.Name="Comments"
+					ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+				<Button x:Name="CommentsRetry" Grid.Row="3" Content="Retry" Margin="12"
+					Visibility="Collapsed" HorizontalAlignment="Left" />
+			</Grid>
+		</Border>
+
 		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
@@ -164,6 +188,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						ToolTipService.ToolTip="Show Document Outline"
 						AutomationProperties.Name="Show Document Outline">
 						<FontIcon Glyph="&#xE8A4;" FontSize="14" />
+					</ToggleButton>
+					<ToggleButton x:Name="CommentsButton" Style="{StaticResource SableRailToggleButtonStyle}"
+						ToolTipService.ToolTip="Show Comments"
+						AutomationProperties.Name="Show Comments">
+						<FontIcon Glyph="&#xE90A;" FontSize="14" />
 					</ToggleButton>
 					<ToggleButton x:Name="AttachmentButton" Style="{StaticResource SableRailToggleButtonStyle}"
 						ToolTipService.ToolTip="Show Attachments"

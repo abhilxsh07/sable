@@ -69,6 +69,7 @@ void ViewerPage::setAttachmentsOpen(bool open) {
 	if (open) {
 		setThumbnailsOpen(false);
 		setOutlineOpen(false);
+		setCommentsOpen(false);
 		m_sidebar = Sidebar::Attachments;
 	} else if (attachmentsHasFocus()) {
 		Scroller().Focus(FocusState::Programmatic);

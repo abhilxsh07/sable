@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Read-only Comments sidebar (2026-10-22)
+
+Comments opens from the right rail beside the other document panels. It
+loads one page at a time only while visible, shows page/type/author/text,
+and navigates to the row's page. Loading, empty, retry and limited results
+stay distinct. Cached rows survive hiding and retries without duplicates.
+
+I watch the viewer and rail visibility: tab changes and presentation pause
+the scan, and showing the panel resumes its next unfinished page. Closing
+unregisters those callbacks and clears the list. Replies check the weak
+viewer, session, request version, requested page and visibility before use.
+Editing, saving and precise annotation-position navigation come later.
+
 ## Comments list scan (2026-10-22)
 
 The comments list walks the document one page at a time. I keep up to 2,000

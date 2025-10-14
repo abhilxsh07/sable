@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/navigation.h"
 #include "helpers/sliders.h"
 #include "helpers/thumbnails.h"
+#include "helpers/comments.h"
 #include "helpers/zoom.h"
 #include "pdf/page_cache.h"
 #include "pdf/text.h"
@@ -140,6 +141,18 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void startOpen(const std::string& password);
 	void setupSelection();
 	void setupOutline();
+	void setupComments();
+	void closeComments();
+	void pauseComments();
+	void showComments();
+	void requestComments();
+	void setCommentsOpen(bool open);
+	bool commentsOpen();
+	bool commentsHasFocus();
+	helpers::CommentScan m_commentScan;
+	std::uint64_t m_commentVersion = 0;
+	bool m_commentsPending = false;
+	std::optional<std::int64_t> m_commentVisibility, m_commentRailVisibility;
 	void setupAttachments();
 	void setupAttachmentSaving();
 	winrt::fire_and_forget saveAttachment(int index);
@@ -163,7 +176,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool outlineHasFocus();
 	void setOutlineOpen(bool open);
 	void toggleSidebar();
-	enum class Sidebar { Thumbnails, Outline, Attachments };
+	enum class Sidebar { Thumbnails, Outline, Attachments, Comments };
 	Sidebar m_sidebar = Sidebar::Thumbnails;
 	std::optional<pdf::Outline> m_outline;
 	std::vector<winrt::Microsoft::UI::Xaml::Controls::TreeViewNode>

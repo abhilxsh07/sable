@@ -200,6 +200,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="ViewerFind.cpp" />
 		<ClCompile Include="ViewerOutline.cpp" />
 		<ClCompile Include="ViewerAttachments.cpp" />
+		<ClCompile Include="ViewerComments.cpp" />
 		<ClCompile Include="ViewerAttachmentSave.cpp" />
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
