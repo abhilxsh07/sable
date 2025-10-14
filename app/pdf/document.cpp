@@ -548,6 +548,15 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 	Annotations result;
 	result.page = index;
 	result.limited = count > 4096;
+	FS_RECTF pageBox{};
+	const float width = FPDF_GetPageWidthF(page.get());
+	const float height = FPDF_GetPageHeightF(page.get());
+	const bool usablePage =
+	    std::isfinite(width) && width > 0 && std::isfinite(height) &&
+	    height > 0 && FPDF_GetPageBoundingBox(page.get(), &pageBox) &&
+	    std::isfinite(pageBox.left) && std::isfinite(pageBox.right) &&
+	    std::isfinite(pageBox.bottom) && std::isfinite(pageBox.top) &&
+	    pageBox.left < pageBox.right && pageBox.bottom < pageBox.top;
 	std::size_t total = 0;
 	const auto text = [&](FPDF_ANNOTATION annotation, const char* key) {
 		std::string value;
@@ -593,6 +602,33 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 		    rect.left <= rect.right && rect.bottom <= rect.top) {
 			annotation.bounds =
 			    AnnotationBounds{rect.left, rect.bottom, rect.right, rect.top};
+			if (usablePage) {
+				auto visible = rect;
+				if (annotation.subtype == "Text" &&
+				    FPDFAnnot_GetValueType(handle.get(), "AP") !=
+				        FPDF_OBJECT_DICTIONARY) {
+					// i target the 20-point icon PDFium generates for a note.
+					visible.right = visible.left + 20;
+					visible.top = visible.bottom + 20;
+				}
+				const double left = (std::max)(visible.left, pageBox.left);
+				const double right = (std::min)(visible.right, pageBox.right);
+				const double bottom =
+				    (std::max)(visible.bottom, pageBox.bottom);
+				const double top = (std::min)(visible.top, pageBox.top);
+				constexpr int grid = 1 << 20;
+				int x = 0, y = 0;
+				// i clip before conversion so remote bounds stay in range.
+				if (rect.left < rect.right && rect.bottom < rect.top &&
+				    left < right && bottom < top &&
+				    FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0,
+				                      left + (right - left) / 2,
+				                      bottom + (top - bottom) / 2, &x, &y)) {
+					annotation.position =
+					    AnnotationPoint{std::clamp(x / double(grid), 0., 1.),
+					                    std::clamp(y / double(grid), 0., 1.)};
+				}
+			}
 		}
 		result.entries.push_back(std::move(annotation));
 	}

@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../pdf/annotations.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ namespace helpers {
 struct CommentRow {
 	int page = 0, index = 0;
 	std::string subtype, author, text;
+	std::optional<pdf::AnnotationPoint> position;
 };
 
 // i keep at most 2000 rows and 4 MiB of their stored text.

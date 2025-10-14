@@ -1,0 +1,92 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 40 220 340] /CropBox [10 20 240 360] /Rotate 0 /Annots [8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 17 0 R 19 0 R] >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 40 220 340] /CropBox [10 20 240 360] /Rotate 90 /Annots [8 0 R] >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 40 220 340] /CropBox [10 20 240 360] /Rotate 180 /Annots [8 0 R] >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 40 220 340] /CropBox [10 20 240 360] /Rotate 270 /Annots [8 0 R] >>
+endobj
+7 0 obj
+<< /Title (Sable comment locations) >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Text /Rect [50 100 70 130]  /AP << /N 16 0 R >> /Contents (Location 1) >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Text /Rect [170 250 190 280]  /AP << /N 16 0 R >> /Contents (Location 2) >>
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Text /Rect [0 10 60 100]  /AP << /N 16 0 R >> /Contents (Location 3) >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Text /Rect [250 40 270 60]  /AP << /N 16 0 R >> /Contents (Location 4) >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Text /Rect [60 80 60 120]  /AP << /N 16 0 R >> /Contents (Location 5) >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Text /Rect (broken)  /AP << /N 16 0 R >> /Contents (Location 6) >>
+endobj
+14 0 obj
+<< /Type /Annot /Subtype /Text /Rect [-1000000000000000000000000000000.0 -1000000000000000000000000000000.0 1000000000000000000000000000000.0 1000000000000000000000000000000.0] /F 2 /AP << /N 16 0 R >> /Contents (Location 7) >>
+endobj
+15 0 obj
+<< /Type /Annot /Subtype /Text   /AP << /N 16 0 R >> /Contents (Location 8) >>
+endobj
+16 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 20 30] /Resources << >> /Length 29 >>
+stream
+0.2 0.4 0.8 rg 0 0 20 30 re f
+endstream
+endobj
+17 0 obj
+<< /Type /Annot /Subtype /Text /Rect [50 100 250 300] /Contents (Generated appearance) >>
+endobj
+18 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >> /Length 0 >>
+stream
+
+endstream
+endobj
+19 0 obj
+<< /Type /Annot /Subtype /Text /Rect [50 100 190 280] /AP << /N 18 0 R >> /Contents (Empty appearance) >>
+endobj
+xref
+0 20
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000139 00000 n 
+0000000325 00000 n 
+0000000450 00000 n 
+0000000576 00000 n 
+0000000702 00000 n 
+0000000756 00000 n 
+0000000871 00000 n 
+0000000988 00000 n 
+0000001102 00000 n 
+0000001218 00000 n 
+0000001333 00000 n 
+0000001442 00000 n 
+0000001686 00000 n 
+0000001781 00000 n 
+0000001926 00000 n 
+0000002032 00000 n 
+0000002145 00000 n 
+trailer
+<< /Size 20 /Root 1 0 R /Info 7 0 R /ID [<74f78271f15c7a11f8b74f3c33ea33ce> <74f78271f15c7a11f8b74f3c33ea33ce>] >>
+startxref
+2267
+%%EOF

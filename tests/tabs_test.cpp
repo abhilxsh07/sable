@@ -68,6 +68,10 @@ struct TabsTest {
 	bool findOnly = false;
 	bool outlineOnly = false;
 	bool commentsOnly = false;
+	bool commentLocationsOnly = false;
+	bool commentFactorStarted = false, commentFactorSeen = false;
+	bool commentFactorCorrect = false;
+	ScrollViewer::ViewChanged_revoker commentFactorChanged;
 	std::uint64_t commentVersion = 0;
 	bool attachmentsOnly = false;
 	bool attachmentSaveOnly = false;
@@ -1077,6 +1081,146 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void commentLocationsTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || ticks < 3 || v.m_commentsPending) {
+			return;
+		}
+		if (step == 0) {
+			owner.AppWindow().Resize({1000, 700});
+			v.zoomTo(4, {0, 0});
+			v.setCommentsOpen(true);
+			++step;
+			ticks = 0;
+			return;
+		}
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(v.CommentsList().Items().Size() == 13, "location row count");
+		constexpr int rows[] = {0, 1, 10, 11, 12, 3};
+		constexpr int pages[] = {0, 0, 1, 2, 3, 0};
+		constexpr double points[][2] = {
+		    {.2, .75}, {.8, .25}, {.25, .2}, {.8, .25}, {.75, .8}};
+		const int round = (step - 1) / 2;
+		if (round == 6) {
+			if (!commentFactorStarted) {
+				commentFactorStarted = true;
+				v.Scroller().ZoomMode(ZoomMode::Enabled);
+				commentFactorChanged = v.Scroller().ViewChanged(
+				    auto_revoke, [this, weak = v.get_weak()](auto&&, auto&&) {
+					    const auto self = weak.get();
+					    if (!self || commentFactorSeen ||
+					        self->Scroller().ZoomFactor() < 1.1f) {
+						    return;
+					    }
+					    commentFactorSeen = true;
+					    const auto scroll = self->Scroller();
+					    const auto& rect = self->m_layout->pages()[0];
+					    const double factor = scroll.ZoomFactor();
+					    const double y = std::clamp(
+					        (rect.y + .75 * rect.height) * factor -
+					            scroll.ViewportHeight() / 2,
+					        0.,
+					        (std::max)(0., self->Pages().Height() * factor -
+					                           scroll.ViewportHeight()));
+					    self->followComment(0);
+					    const double actual = self->m_landingAt
+					                              ? self->m_landingAt->second
+					                              : scroll.VerticalOffset();
+					    commentFactorCorrect = std::abs(actual - y) < 1.5;
+				    });
+				v.Scroller().ChangeView(nullptr, nullptr, 1.5f, true);
+				ticks = 0;
+				return;
+			}
+			if (!commentFactorSeen) {
+				check(ticks < 30, "comment native scale did not apply");
+				return;
+			}
+			commentFactorChanged.revoke();
+			check(commentFactorCorrect, "comment ignored native zoom factor");
+			const auto scroll = v.Scroller();
+			const auto& rect = v.m_layout->pages()[0];
+			const double factor = scroll.ZoomFactor();
+			const double centered =
+			    std::clamp((rect.y + .75 * rect.height) * factor -
+			                   scroll.ViewportHeight() / 2,
+			               0.,
+			               (std::max)(0., v.Pages().Height() * factor -
+			                                  scroll.ViewportHeight()));
+			check(std::abs(scroll.VerticalOffset() - centered) < 1.5,
+			      "native zoom completion lost the comment center");
+			const auto page = v.m_current;
+			const auto offset = v.Scroller().VerticalOffset();
+			v.followComment(-1);
+			v.followComment(2000);
+			check(v.m_current == page &&
+			          v.Scroller().VerticalOffset() == offset,
+			      "invalid comment row moved the view");
+			status.Text(L"PASS: comment centers, row identity, crop, "
+			            L"rotation, unchanged zoom and missing bounds");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		if (step % 2) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			const auto item =
+			    v.CommentsList().Items().GetAt(rows[round]).as<ListViewItem>();
+			check(unbox_value<int>(item.Tag()) == rows[round],
+			      "comment tag lost its row identity");
+			v.CommentsList().ScrollIntoView(item);
+			v.CommentsList().UpdateLayout();
+			const auto peer =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        item);
+			const auto action =
+			    peer ? peer.GetPattern(Peers::PatternInterface::Invoke)
+			               .try_as<Provider::IInvokeProvider>()
+			         : nullptr;
+			if (!action) {
+				check(ticks < 30, "comment location has no Invoke");
+				return;
+			}
+			action.Invoke();
+		} else {
+			check(v.m_current == static_cast<std::size_t>(pages[round]),
+			      "comment location reached another page");
+			check(std::abs(v.m_zoom - 4) < 1e-6, "comment changed zoom");
+			if (round < 5) {
+				const auto& rect = v.m_layout->pages()[pages[round]];
+				const auto scroll = v.Scroller();
+				const double x = std::clamp(
+				    v.imageLeft() + rect.x + points[round][0] * rect.width -
+				        scroll.ViewportWidth() / 2,
+				    0.,
+				    (std::max)(0., v.Pages().Width() - scroll.ViewportWidth()));
+				const double y =
+				    std::clamp(rect.y + points[round][1] * rect.height -
+				                   scroll.ViewportHeight() / 2,
+				               0.,
+				               (std::max)(0., v.Pages().Height() -
+				                                  scroll.ViewportHeight()));
+				check(std::abs(scroll.HorizontalOffset() - x) < 1.5 &&
+				          std::abs(scroll.VerticalOffset() - y) < 1.5,
+				      "comment position was not centered: actual " +
+				          std::to_string(scroll.HorizontalOffset()) + "," +
+				          std::to_string(scroll.VerticalOffset()) +
+				          " expected " + std::to_string(x) + "," +
+				          std::to_string(y) + " factor " +
+				          std::to_string(scroll.ZoomFactor()) + " size " +
+				          std::to_string(rect.width) + "," +
+				          std::to_string(rect.height));
+			}
+		}
+		++step;
+		ticks = 0;
+	}
 	void commentsTick(MainWindow& owner) {
 		if (step == 11) {
 			check(first && first->m_closed && !first->m_commentsPending &&
@@ -1828,7 +1972,11 @@ struct TabsTest {
 				return;
 			}
 			if (commentsOnly) {
-				commentsTick(*self);
+				if (commentLocationsOnly) {
+					commentLocationsTick(*self);
+				} else {
+					commentsTick(*self);
+				}
 				return;
 			}
 			if (outlineOnly) {
@@ -2326,6 +2474,10 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->commentLocationsOnly =
+	    GetEnvironmentVariableW(L"SableCommentLocationsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->commentsOnly = state->commentsOnly || state->commentLocationsOnly;
 	state->attachmentSaveOnly =
 	    GetEnvironmentVariableW(L"SableAttachmentSaveTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -2396,7 +2548,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
 	} else if (state->commentsOnly) {
-		window->openDocument(engine, L"tests/fixtures/comments.pdf", 1);
+		window->openDocument(engine,
+		                     state->commentLocationsOnly
+		                         ? L"tests/fixtures/comment_locations.pdf"
+		                         : L"tests/fixtures/comments.pdf",
+		                     1);
 	} else if (state->selectionOnly || state->findOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->editOnly) {

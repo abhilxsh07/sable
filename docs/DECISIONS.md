@@ -2,6 +2,29 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Comment locations (2026-10-23)
+
+I keep an optional displayed-page position with each annotation snapshot.
+I clip the rectangle to the media/crop intersection, then ask PDFium to
+convert its center on the engine thread, including the page's intrinsic
+rotation. Raw PDF bounds stay intact. Missing, empty or off-page rectangles
+have no target.
+
+For a Text note with no appearance dictionary I use PDFium's generated
+20-point icon bounds for its target. This keeps a cached target stable if
+rendering later creates the icon; the snapshot keeps the raw bounds it read.
+Existing appearance dictionaries keep their supplied rectangles, including
+empty or incomplete containers. I don't decode appearance streams to list
+comments.
+// see: https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
+
+Comment items carry row indices: two notes on the same page can have
+different targets. Clicking uses the existing destination path, with the
+current view rotation applied once, and centers the target within scroll
+limits. It keeps the zoom policy and accounts for a temporary native zoom
+factor. Unusable positions still navigate to the page. Ordinary links keep
+their existing alignment; this adds no editing or saving behavior.
+
 ## Read-only Comments sidebar (2026-10-22)
 
 Comments opens from the right rail beside the other document panels. It

@@ -19,6 +19,7 @@
 # Writes the PDFs the tests open, next to this script:
 #   annotations.pdf Unicode comments, unknown types, damaged fields and limits
 #   comments.pdf    three pages of small comments for native sidebar checks
+#   comment_locations.pdf crop, intrinsic rotations and unusable comment bounds
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
@@ -475,6 +476,40 @@ def comments_pdf() -> bytes:
     return w.finish(1, 6)
 
 
+def comment_locations_pdf() -> bytes:
+    w = Writer(md5(b"sable comment locations"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>")
+    for i in range(4):
+        refs = (" ".join(f"{n} 0 R" for n in range(8, 16)) + " 17 0 R 19 0 R"
+                if i == 0 else "8 0 R")
+        w.add(i + 3, "<< /Type /Page /Parent 2 0 R "
+              "/MediaBox [20 40 220 340] /CropBox [10 20 240 360] "
+              f"/Rotate {i * 90} /Annots [{refs}] >>")
+    w.add(7, "<< /Title (Sable comment locations) >>")
+    huge = "1" + "0" * 30 + ".0"
+    rectangles = ["[50 100 70 130]", "[170 250 190 280]", "[0 10 60 100]",
+                  "[250 40 270 60]", "[60 80 60 120]", "(broken)",
+                  f"[-{huge} -{huge} {huge} {huge}]", None]
+    for i, rect in enumerate(rectangles):
+        bounds = f"/Rect {rect}" if rect is not None else ""
+        flags = "/F 2" if i == 6 else ""
+        w.add(8 + i, "<< /Type /Annot /Subtype /Text "
+              f"{bounds} {flags} /AP << /N 16 0 R >> "
+              f"/Contents (Location {i + 1}) >>")
+    data = content("0.2 0.4 0.8 rg 0 0 20 30 re f")
+    w.add(16, "<< /Type /XObject /Subtype /Form /BBox [0 0 20 30] "
+          f"/Resources << >> /Length {len(data)} >>\nstream\n"
+          + data.decode("latin-1") + "\nendstream")
+    w.add(17, "<< /Type /Annot /Subtype /Text /Rect [50 100 250 300] "
+          "/Contents (Generated appearance) >>")
+    w.add(18, "<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] "
+          "/Resources << >> /Length 0 >>\nstream\n\nendstream")
+    w.add(19, "<< /Type /Annot /Subtype /Text /Rect [50 100 190 280] "
+          "/AP << /N 18 0 R >> /Contents (Empty appearance) >>")
+    return w.finish(1, 7)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -487,6 +522,7 @@ def main() -> None:
     files = {
         "annotations.pdf": annotations_pdf(),
         "comments.pdf": comments_pdf(),
+        "comment_locations.pdf": comment_locations_pdf(),
         "attachments.pdf": attachments_pdf(),
         "outline.pdf": outline_pdf(),
         "outline_cycle.pdf": outline_pdf(True),
