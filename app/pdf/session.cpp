@@ -177,6 +177,7 @@ bool Session::open(const std::filesystem::path& path,
 					info.error = opened.error;
 					if (opened.document) {
 						info.canCopy = opened.document->canCopy();
+						info.canAnnotate = opened.document->canAnnotate();
 						const int count = opened.document->pageCount();
 						for (int page = 0; page < count && !state->closed();
 						     ++page) {
@@ -200,6 +201,7 @@ bool Session::open(const std::filesystem::path& path,
 				if (info.canceled || info.error != Error::None) {
 					info.pages.clear();
 					info.labels.clear();
+					info.canAnnotate = false;
 				} else {
 					state->m_document = std::move(opened.document);
 					state->m_ready = state->m_document != nullptr;
@@ -414,6 +416,39 @@ bool Session::annotations(int page,
 void Session::cancelAnnotations() {
 	std::lock_guard lock(m_state->m_mutex);
 	++m_state->m_annotationGeneration;
+}
+
+bool Session::addTextNote(int page, float x, float y, std::u16string contents,
+                          std::u16string author,
+                          std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    contents.size() > 32767 || author.size() > 32767) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, x, y, contents = std::move(contents),
+	                      author = std::move(author),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = page;
+		// this is the boundary: close can discard a queued write, but not
+		// turn an edit that has already started into a canceled reply.
+		result.canceled = state->closed();
+		try {
+			if (!result.canceled) {
+				result.index = state->m_document->addTextNote(page, x, y,
+				                                              contents, author);
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't add a PDF text note.");
+		}
+		callback(std::move(result));
+	});
+	return true;
 }
 
 bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
