@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <memory>
 #include <set>
 #include <system_error>
+#include <stdexcept>
 
 #include <fpdf_doc.h>
 #include <fpdf_attachment.h>
@@ -296,6 +297,81 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 
 bool Document::canCopy() const {
 	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x10) != 0;
+}
+
+bool Document::canAnnotate() const {
+	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x20) != 0;
+}
+
+std::optional<int> Document::addTextNote(int index, float x, float y,
+                                         std::u16string_view contents,
+                                         std::u16string_view author) {
+	const auto validText = [](std::u16string_view text) {
+		// i keep new fields within the snapshot reader's 64 KiB limit.
+		if (text.size() > 32767) {
+			return false;
+		}
+		for (std::size_t i = 0; i < text.size(); ++i) {
+			const auto unit = text[i];
+			if (unit == 0 || (unit >= 0xDC00 && unit <= 0xDFFF)) {
+				return false;
+			}
+			if (unit >= 0xD800 && unit <= 0xDBFF) {
+				if (++i == text.size() || text[i] < 0xDC00 ||
+				    text[i] > 0xDFFF) {
+					return false;
+				}
+			}
+		}
+		return true;
+	};
+	if (offThread() || index < 0 || index >= pageCount() || !canAnnotate() ||
+	    contents.empty() || !validText(contents) || !validText(author) ||
+	    !std::isfinite(x) || !std::isfinite(y)) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	FS_RECTF box{};
+	FS_RECTF rect{x, y + 20, x + 20, y};
+	if (!page || !FPDF_GetPageBoundingBox(page.get(), &box) ||
+	    !std::isfinite(box.left) || !std::isfinite(box.right) ||
+	    !std::isfinite(box.bottom) || !std::isfinite(box.top) ||
+	    !std::isfinite(rect.right) || !std::isfinite(rect.top) ||
+	    rect.left >= rect.right || rect.bottom >= rect.top ||
+	    rect.left < box.left || rect.bottom < box.bottom ||
+	    rect.right > box.right || rect.top > box.top) {
+		return {};
+	}
+	const int count = FPDFPage_GetAnnotCount(page.get());
+	if (count < 0 || count >= 4096) {
+		return {};
+	}
+	// i allocate terminated strings before changing the document.
+	const std::u16string text(contents), name(author);
+	AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_TEXT));
+	if (!note) {
+		return {};
+	}
+	// PDFium generates a 20-point Text icon from the rectangle's lower left.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
+	const bool complete =
+	    FPDFAnnot_SetRect(note.get(), &rect) &&
+	    FPDFAnnot_SetStringValue(
+	        note.get(), "Contents",
+	        reinterpret_cast<FPDF_WIDESTRING>(text.c_str())) &&
+	    FPDFAnnot_SetStringValue(
+	        note.get(), "T", reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) &&
+	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT);
+	note.reset();
+	if (!complete) {
+		// i remove only the appended note if a setter failed.
+		if (!FPDFPage_RemoveAnnot(page.get(), count)) {
+			throw std::runtime_error("Couldn't roll back the new note.");
+		}
+		return {};
+	}
+	return count;
 }
 
 std::optional<FindPage>
