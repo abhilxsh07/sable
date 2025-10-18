@@ -25,6 +25,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/engine.h"
 #include "pdf_test_files.h"
 
+namespace {
+std::vector<std::uint8_t> annotationBytes(const char* name) {
+	std::ifstream file(fixturePath(name), std::ios::binary);
+	return {std::istreambuf_iterator<char>(file), {}};
+}
+} // namespace
+
 TEST(Annotations, SnapshotsOutliveTheDocumentAndEngine) {
 	std::optional<pdf::Annotations> result;
 	{
@@ -429,6 +436,248 @@ TEST(Annotations, NewNotesStayWithinSnapshotFieldAndCountLimits) {
 		    ASSERT_TRUE(full);
 		    EXPECT_EQ(full->entries.size(), 4096u);
 		    EXPECT_FALSE(full->limited);
+	    })
+	    .get();
+}
+
+TEST(Annotations, UntouchedSerializationKeepsExactOwnedBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto name : {"attachments.pdf", "comment_locations.pdf",
+		                            "password.pdf", "restricted.pdf"}) {
+			    SCOPED_TRACE(name);
+			    const auto original = annotationBytes(name);
+			    ASSERT_FALSE(original.empty());
+			    const auto opened = pdf::openDocument(
+			        original,
+			        std::string_view(name) == "password.pdf" ? "sable" : "");
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_TRUE(opened.document->render(0, 100, 100));
+			    auto bytes = opened.document->serialize(original.size());
+			    ASSERT_TRUE(bytes);
+			    EXPECT_EQ(*bytes, original);
+			    bytes->at(0) = 0;
+			    EXPECT_EQ(opened.document->serialize(original.size()),
+			              original);
+			    EXPECT_FALSE(opened.document->serialize(original.size() - 1));
+			    EXPECT_FALSE(opened.document->modified());
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, SerializationKeepsNewNotesBeforeAnyRendering) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    ASSERT_EQ(document.addTextNote(
+		                  1, 40, 50, u"Saved \u03a9\U0001f600\nsecond line",
+		                  u"Abhilash \u03a9"),
+		              0);
+		    EXPECT_TRUE(document.modified());
+		    const auto before = document.annotations(1);
+		    ASSERT_TRUE(before);
+		    ASSERT_EQ(before->entries.size(), 1u);
+		    ASSERT_TRUE(before->entries[0].position);
+		    const auto bytes = document.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_NE(*bytes, original);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    EXPECT_FALSE(reopened.document->modified());
+		    EXPECT_EQ(reopened.document->pageCount(), document.pageCount());
+		    const auto notes = reopened.document->annotations(1);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    const auto& note = notes->entries[0];
+		    EXPECT_EQ(note.contents, "Saved \u03a9\U0001f600\nsecond line");
+		    EXPECT_EQ(note.author, "Abhilash \u03a9");
+		    EXPECT_EQ(note.subtype, "Text");
+		    EXPECT_EQ(note.flags, 4);
+		    ASSERT_TRUE(note.position);
+		    EXPECT_NEAR(note.position->x, before->entries[0].position->x, 1e-6);
+		    EXPECT_NEAR(note.position->y, before->entries[0].position->y, 1e-6);
+		    EXPECT_TRUE(reopened.document->render(1, 360, 280));
+		    const auto existing = reopened.document->annotations(0);
+		    ASSERT_TRUE(existing);
+		    EXPECT_TRUE(existing->entries.empty());
+		    EXPECT_TRUE(document.modified());
+		    EXPECT_EQ(annotationBytes("pages.pdf"), original);
+		    ASSERT_EQ(document.addTextNote(1, 80, 100, u"Later"), 1);
+		    const auto newer = document.serialize(1024 * 1024);
+		    ASSERT_TRUE(newer);
+		    const auto latest = pdf::openDocument(*newer);
+		    ASSERT_TRUE(latest.document);
+		    const auto both = latest.document->annotations(1);
+		    ASSERT_TRUE(both);
+		    EXPECT_EQ(both->entries.size(), 2u);
+	    })
+	    .get();
+}
+
+TEST(Annotations, SerializationRetainsEncryptionAndUserPermissions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto name :
+		         {"password.pdf", "notes_allowed.pdf", "restricted.pdf"}) {
+			    SCOPED_TRACE(name);
+			    const std::string user =
+			        std::string_view(name) == "password.pdf" ? "sable" : "";
+			    const auto original = annotationBytes(name);
+			    const auto access = pdf::openDocument(original, user);
+			    const auto opened = pdf::openDocument(
+			        original, std::string_view(name) == "restricted.pdf"
+			                      ? "nightpdf"
+			                      : user);
+			    ASSERT_TRUE(access.document && opened.document);
+			    ASSERT_EQ(opened.document->addTextNote(0, 40, 50, u"Saved"), 0);
+			    const auto bytes = opened.document->serialize(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    if (!user.empty()) {
+				    EXPECT_EQ(pdf::openDocument(*bytes).error,
+				              pdf::Error::PasswordRequired);
+				    EXPECT_EQ(pdf::openDocument(*bytes, "wrong").error,
+				              pdf::Error::WrongPassword);
+			    }
+			    const auto reopened = pdf::openDocument(*bytes, user);
+			    ASSERT_TRUE(reopened.document);
+			    EXPECT_EQ(reopened.document->canCopy(),
+			              access.document->canCopy());
+			    EXPECT_EQ(reopened.document->canAnnotate(),
+			              access.document->canAnnotate());
+			    const auto notes = reopened.document->annotations(0);
+			    ASSERT_TRUE(notes);
+			    ASSERT_EQ(notes->entries.size(), 1u);
+			    EXPECT_EQ(notes->entries[0].contents, "Saved");
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, SerializationDiscardsLimitedCanceledAndThrowingWrites) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("comments.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    ASSERT_TRUE(document.addTextNote(0, 40, 50, u"Saved"));
+		    const auto full = document.serialize(1024 * 1024);
+		    ASSERT_TRUE(full && !full->empty());
+		    EXPECT_FALSE(document.serialize(0));
+		    EXPECT_FALSE(document.serialize(full->size() - 1));
+		    EXPECT_TRUE(document.serialize(full->size()));
+		    EXPECT_FALSE(document.serialize(1024 * 1024, [] { return true; }));
+		    for (const int stop : {2, 3}) {
+			    int checks = 0;
+			    EXPECT_FALSE(document.serialize(
+			        1024 * 1024, [&] { return ++checks >= stop; }));
+			    EXPECT_GE(checks, stop);
+		    }
+		    int checks = 0;
+		    EXPECT_FALSE(document.serialize(1024 * 1024, [&]() -> bool {
+			    if (++checks == 2) {
+				    throw 1;
+			    }
+			    return false;
+		    }));
+		    EXPECT_TRUE(document.modified());
+		    EXPECT_TRUE(document.serialize(1024 * 1024));
+		    EXPECT_TRUE(document.render(0, 100, 100));
+	    })
+	    .get();
+}
+
+TEST(Annotations, RejectedNotesLeaveSerializationOnTheExactBytePath) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto name : {"annotations.pdf", "notes_denied.pdf"}) {
+			    const auto original = annotationBytes(name);
+			    const auto opened = pdf::openDocument(original);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(
+			        opened.document->addTextNote(0, -1, -1, u"Outside"));
+			    if (std::string_view(name) == "notes_denied.pdf") {
+				    EXPECT_FALSE(
+				        opened.document->addTextNote(0, 40, 50, u"Denied"));
+			    }
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->serialize(original.size()),
+			              original);
+			    int checks = 0;
+			    EXPECT_FALSE(opened.document->serialize(
+			        original.size(), [&] { return ++checks == 2; }));
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, EditedAttachmentsRefuseSerializationWithoutLosingNotes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("attachments.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    ASSERT_TRUE(opened.document->addTextNote(0, 40, 50, u"Saved"));
+		    EXPECT_FALSE(opened.document->serialize(1024 * 1024));
+		    EXPECT_TRUE(opened.document->modified());
+		    const auto notes = opened.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    EXPECT_EQ(notes->entries[0].contents, "Saved");
+		    EXPECT_EQ(opened.document->attachment(1),
+		              std::vector<std::uint8_t>{});
+		    EXPECT_EQ(annotationBytes("attachments.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, SerializationAlsoRejectsAnnotationOnlyAttachments) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("note_attachment.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    const auto files = opened.document->attachments();
+		    ASSERT_TRUE(files);
+		    EXPECT_TRUE(files->entries.empty());
+		    EXPECT_EQ(opened.document->serialize(original.size()), original);
+		    ASSERT_EQ(opened.document->addTextNote(0, 80, 100, u"Keep me"), 1);
+		    EXPECT_FALSE(opened.document->serialize(1024 * 1024));
+		    EXPECT_TRUE(opened.document->modified());
+		    const auto notes = opened.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 2u);
+		    EXPECT_EQ(notes->entries[0].subtype, "FileAttachment");
+		    EXPECT_EQ(notes->entries[1].contents, "Keep me");
+		    EXPECT_EQ(annotationBytes("note_attachment.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, SerializationRefusesOversizedAnnotationInventories) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("annotations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    ASSERT_EQ(opened.document->addTextNote(1, 40, 50, u"Keep me"), 0);
+		    EXPECT_FALSE(opened.document->serialize(1024 * 1024));
+		    const auto notes = opened.document->annotations(1);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    EXPECT_EQ(notes->entries[0].contents, "Keep me");
+		    EXPECT_TRUE(opened.document->modified());
 	    })
 	    .get();
 }

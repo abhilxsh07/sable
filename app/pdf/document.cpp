@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fpdf_attachment.h>
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
+#include <fpdf_save.h>
 #include <fpdf_text.h>
 #include <fpdfview.h>
 
@@ -348,10 +349,12 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	}
 	// i allocate terminated strings before changing the document.
 	const std::u16string text(contents), name(author);
+	const bool wasModified = m_modified;
 	AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_TEXT));
 	if (!note) {
 		return {};
 	}
+	m_modified = true;
 	// PDFium generates a 20-point Text icon from the rectangle's lower left.
 	// see:
 	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
@@ -369,9 +372,103 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 		if (!FPDFPage_RemoveAnnot(page.get(), count)) {
 			throw std::runtime_error("Couldn't roll back the new note.");
 		}
+		m_modified = wasModified;
 		return {};
 	}
 	return count;
+}
+
+bool Document::modified() const {
+	return !offThread() && m_modified;
+}
+
+std::optional<std::vector<std::uint8_t>>
+Document::serialize(std::size_t limit,
+                    const std::function<bool()>& canceled) const {
+	if (offThread()) {
+		return {};
+	}
+	struct Writer : FPDF_FILEWRITE {
+		Writer(std::size_t bound, const std::function<bool()>& cancel)
+		    : FPDF_FILEWRITE{1, &write}, limit(bound), canceled(cancel) {}
+		bool stopped() noexcept {
+			try {
+				failed = failed || (canceled && canceled());
+			} catch (...) {
+				failed = true;
+			}
+			return failed;
+		}
+		static int write(FPDF_FILEWRITE* base, const void* data,
+		                 unsigned long size) noexcept {
+			auto& self = *static_cast<Writer*>(base);
+			if (self.stopped()) {
+				return 0;
+			}
+			try {
+				if (size > self.limit - self.bytes.size() || (size && !data)) {
+					self.failed = true;
+					return 0;
+				}
+				if (size) {
+					const auto first = static_cast<const std::uint8_t*>(data);
+					self.bytes.insert(self.bytes.end(), first, first + size);
+				}
+				return 1;
+			} catch (...) {
+				self.failed = true;
+				return 0;
+			}
+		}
+		std::size_t limit;
+		const std::function<bool()>& canceled;
+		std::vector<std::uint8_t> bytes;
+		bool failed = false;
+	} writer(limit, canceled);
+	if (writer.stopped()) {
+		return {};
+	}
+	if (!m_modified) {
+		if (m_data.size() > limit) {
+			return {};
+		}
+		writer.bytes = m_data;
+	} else {
+		// @todo: preserve empty attachment streams before allowing rewrites.
+		if (FPDFDoc_GetAttachmentCount(m_handle) != 0) {
+			return {};
+		}
+		for (int index = 0; index < pageCount(); ++index) {
+			if (writer.stopped()) {
+				return {};
+			}
+			PagePtr page(FPDF_LoadPage(m_handle, index));
+			const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
+			if (count < 0 || count > 4096) {
+				return {};
+			}
+			for (int i = 0; i < count; ++i) {
+				if (writer.stopped()) {
+					return {};
+				}
+				AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
+				if (!note || FPDFAnnot_GetSubtype(note.get()) ==
+				                 FPDF_ANNOT_FILEATTACHMENT) {
+					return {};
+				}
+			}
+		}
+		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
+			return {};
+		}
+	}
+	// i keep callback failure sticky, including PDFium's final flush.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/core/fpdfapi/edit/cpdf_creator.cpp
+	if (writer.stopped()) {
+		return {};
+	}
+	return std::move(writer.bytes);
 }
 
 std::optional<FindPage>
