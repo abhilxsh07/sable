@@ -20,9 +20,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 namespace helpers {
+enum class FileSaveResult { Saved, Canceled, Failed, Source };
+// A different destination is replaced only after the whole file is flushed.
+FileSaveResult saveFile(const std::filesystem::path& destination,
+                        const std::filesystem::path& source,
+                        const std::vector<std::uint8_t>& bytes,
+                        const std::function<bool()>& canceled = {});
 std::string attachmentFilename(std::string name);
 bool saveAttachment(const std::filesystem::path& destination,
                     const std::filesystem::path& source,

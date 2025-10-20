@@ -2,6 +2,17 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Atomic file writes (2026-10-24)
+
+I share the attachment writer's temporary-file and replacement path with
+document saves. FileSaveResult distinguishes saved, canceled, failed and
+source-alias results. The attachment wrapper keeps its 128 MiB limit.
+
+Writes use 1 MiB chunks, flush and close before replacing the destination.
+Cancellation and predicate exceptions discard the temporary output. I
+recheck source aliases after flushing and never query cancellation after a
+successful replacement. A failed CREATE_NEW never removes an unowned file.
+
 ## Edited document bytes (2026-10-24)
 
 I serialize on the engine thread into an owned, bounded byte buffer.
