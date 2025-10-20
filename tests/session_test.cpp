@@ -141,6 +141,10 @@ class SessionTest : public ::testing::Test {
 		out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 		return path;
 	}
+	std::vector<std::uint8_t> readFile(const fs::path& path) {
+		std::ifstream in(path, std::ios::binary);
+		return {std::istreambuf_iterator<char>(in), {}};
+	}
 
 	fs::path tempDir() {
 		m_dirs.push_back(makeTempDir("session"));
@@ -880,6 +884,170 @@ TEST_F(SessionTest, ThrowingNoteCallbacksDoNotUndoOrRepeatTheEdit) {
 	ASSERT_TRUE(survived);
 	EXPECT_FALSE(survived->canceled);
 	EXPECT_EQ(survived->index, 1);
+}
+
+TEST_F(SessionTest, EditedSavesWriteNotesAndProtectSourcesAndFailedTargets) {
+	pdf::Session session(engine);
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	const auto target = writeTemp("edited.pdf", "previous");
+	Reply<pdf::SaveResult> unused;
+	EXPECT_FALSE(
+	    session.saveEdits(target, source, 1024 * 1024, {}, unused.callback()));
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(session.addTextNote(1, 40, 50, u"Saved \u03a9\U0001f600", {},
+	                                note.callback()));
+	const auto added = note.wait();
+	ASSERT_TRUE(added && added->index);
+	EXPECT_FALSE(session.saveEdits(target, source, 1024 * 1024, {}, {}));
+	Reply<pdf::SaveResult> limited;
+	const auto previous = readFile(target);
+	ASSERT_TRUE(session.saveEdits(target, source, 0, {}, limited.callback()));
+	EXPECT_EQ(limited.wait(), pdf::SaveResult::Failed);
+	EXPECT_EQ(readFile(target), previous);
+	Reply<pdf::SaveResult> protectedSource;
+	ASSERT_TRUE(session.saveEdits(source, source, 1024 * 1024, {},
+	                              protectedSource.callback()));
+	EXPECT_EQ(protectedSource.wait(), pdf::SaveResult::Source);
+	Reply<pdf::SaveResult> saved;
+	const auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(
+	    session.saveEdits(target, source, 1024 * 1024, {},
+	                      [onThread, cb = saved.callback()](auto result) {
+		                      *onThread = pdf::Engine::onThread();
+		                      cb(result);
+	                      }));
+	EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	EXPECT_TRUE(*onThread);
+	EXPECT_EQ(readFile(source), original);
+	engine
+	    .run([&] {
+		    const auto reopened = pdf::openFile(target);
+		    ASSERT_TRUE(reopened.document);
+		    const auto notes = reopened.document->annotations(1);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    EXPECT_EQ(notes->entries[0].contents, "Saved \u03a9\U0001f600");
+	    })
+	    .get();
+	pdf::Session attachment(engine);
+	const auto attachedSource = fixturePath("attachments.pdf");
+	ASSERT_EQ(open(attachment, attachedSource).error, pdf::Error::None);
+	Reply<pdf::NoteResult> attached;
+	ASSERT_TRUE(
+	    attachment.addTextNote(0, 40, 50, u"Retain", {}, attached.callback()));
+	ASSERT_TRUE(attached.wait());
+	const auto beforeRefusal = readFile(target);
+	Reply<pdf::SaveResult> refused;
+	ASSERT_TRUE(attachment.saveEdits(target, attachedSource, 1024 * 1024, {},
+	                                 refused.callback()));
+	EXPECT_EQ(refused.wait(), pdf::SaveResult::Failed);
+	EXPECT_EQ(readFile(target), beforeRefusal);
+}
+
+TEST_F(SessionTest, SavingEditsKeepsTheOriginalDocumentModified) {
+	const auto source = fixturePath("pages.pdf"),
+	           target = tempDir() / "edited.pdf";
+	const auto original = readFile(source);
+	engine
+	    .run([&] {
+		    const auto opened = pdf::openFile(source);
+		    ASSERT_TRUE(opened.document);
+		    ASSERT_TRUE(
+		        opened.document->addTextNote(1, 40, 50, u"Still modified"));
+		    EXPECT_EQ(opened.document->saveEdits(target, source, 1024 * 1024),
+		              pdf::SaveResult::Saved);
+		    EXPECT_TRUE(opened.document->modified());
+	    })
+	    .get();
+	EXPECT_EQ(readFile(source), original);
+}
+
+TEST_F(SessionTest, EditedSavesUseOneSlotAndKeepCancellationSticky) {
+	pdf::Session session(engine);
+	const auto source = fixturePath("pages.pdf");
+	const auto target = writeTemp("edited.pdf", "previous");
+	const auto previous = readFile(target);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	Gate gate(engine);
+	Reply<pdf::SaveResult> first, busy;
+	const auto checks = std::make_shared<std::atomic<int>>(0);
+	ASSERT_TRUE(session.saveEdits(
+	    target, source, 1024 * 1024, [checks] { return ++*checks == 2; },
+	    first.callback()));
+	EXPECT_FALSE(
+	    session.saveEdits(target, source, 1024 * 1024, {}, busy.callback()));
+	session.cancelRender();
+	session.cancelAnnotations();
+	session.cancelSearch();
+	gate.open();
+	EXPECT_EQ(first.wait(), pdf::SaveResult::Canceled);
+	EXPECT_EQ(readFile(target), previous);
+	Reply<pdf::SaveResult> retry;
+	ASSERT_TRUE(
+	    session.saveEdits(target, source, 1024 * 1024, {}, retry.callback()));
+	EXPECT_EQ(retry.wait(), pdf::SaveResult::Saved);
+	EXPECT_EQ(readFile(target), readFile(source));
+}
+
+TEST_F(SessionTest, CloseAndDestructionCancelQueuedEditSavesOnce) {
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		const auto source = fixturePath("pages.pdf");
+		const auto target = writeTemp("edited.pdf", "previous");
+		const auto previous = readFile(target);
+		ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+		Gate gate(engine);
+		Reply<pdf::SaveResult> pending;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		ASSERT_TRUE(
+		    session->saveEdits(target, source, 1024 * 1024, {},
+		                       [calls, cb = pending.callback()](auto result) {
+			                       ++*calls;
+			                       cb(result);
+		                       }));
+		if (destroy) {
+			session.reset();
+		} else {
+			session->close();
+			EXPECT_FALSE(session->saveEdits(target, source, 1024 * 1024, {},
+			                                pending.callback()));
+		}
+		gate.open();
+		EXPECT_EQ(pending.wait(), pdf::SaveResult::Canceled);
+		EXPECT_EQ(readFile(target), previous);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+}
+
+TEST_F(SessionTest, EditSaveCallbacksCanQueueSavesThrowAndClose) {
+	pdf::Session session(engine);
+	const auto source = fixturePath("pages.pdf");
+	const auto target = tempDir() / "first.pdf", next = tempDir() / "next.pdf";
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	Reply<pdf::SaveResult> reply;
+	const auto queued = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.saveEdits(
+	    target, source, 1024 * 1024, {},
+	    [&session, source, next, queued, cb = reply.callback()](auto first) {
+		    if (first != pdf::SaveResult::Saved) {
+			    cb(first);
+			    return;
+		    }
+		    *queued = session.saveEdits(next, source, 1024 * 1024, {},
+		                                [&session, cb](auto result) {
+			                                session.close();
+			                                cb(result);
+		                                });
+		    throw 1;
+	    }));
+	EXPECT_EQ(reply.wait(), pdf::SaveResult::Saved);
+	EXPECT_TRUE(*queued);
+	EXPECT_EQ(readFile(target), readFile(source));
+	EXPECT_EQ(readFile(next), readFile(source));
+	engine.run([] {}).get();
 }
 
 TEST_F(SessionTest, AnnotationsReturnPageSnapshotsOnTheEngineThread) {

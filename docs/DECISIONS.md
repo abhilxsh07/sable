@@ -2,6 +2,21 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Edited file saves (2026-10-24)
+
+Document saveEdits serializes owned bytes, then uses the atomic file writer.
+It refuses the source and aliases, keeps the loaded backing bytes and leaves
+the modified flag set. The current tab still refers to its original file.
+Unsupported serialization and failed writes leave an existing target alone.
+Cancellation stays latched across serialization and writing.
+
+Session saveEdits shares the save slot with Save a Copy, without involving
+render, Find or annotation-read generations. Work and callbacks run on the
+engine thread; no session lock stays held through PDFium or file I/O. Close
+is checked before replacement; successful writes keep Saved after a later
+close. Callbacks may queue another save or throw.
+Creation UI, cache refresh and close/unsaved-state handling follow.
+
 ## Atomic file writes (2026-10-24)
 
 I share the attachment writer's temporary-file and replacement path with
