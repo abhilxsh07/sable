@@ -142,6 +142,16 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setupSelection();
 	void setupOutline();
 	void setupComments();
+	winrt::fire_and_forget editNote();
+	void submitNote(int page, std::u16string text, std::u16string author);
+	void refreshNotes();
+	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
+	     m_noteSaving = false;
+	std::uint64_t m_renderVersion = 0;
+	winrt::hstring m_noteDraft, m_noteAuthor;
+	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_noteDialog{nullptr};
+	std::function<void()> m_saveNotes;
+	std::function<bool()> m_notesAvailable;
 	void followComment(int index);
 	void closeComments();
 	void pauseComments();

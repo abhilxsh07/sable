@@ -127,6 +127,15 @@ struct MainWindow : MainWindowT<MainWindow> {
 	int m_editSelectionLength = 0;
 	void selectTab();
 	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	winrt::Windows::Foundation::IAsyncOperation<bool>
+	saveNotes(winrt::Sable::ViewerPage document);
+	bool m_notesSaving = false;
+#ifdef SABLE_SURFACE_TEST
+	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
+	    winrt::hstring)>
+	    m_notesPicker;
+
+#endif
 	void reopenTab();
 	void selectTabPosition(int index);
 	void moveTab(int index);
