@@ -1050,6 +1050,32 @@ TEST_F(SessionTest, EditSaveCallbacksCanQueueSavesThrowAndClose) {
 	engine.run([] {}).get();
 }
 
+TEST_F(SessionTest, CenteredNotesReportModificationAndProtectAttachments) {
+	for (const auto name :
+	     {"comment_locations.pdf", "attachments.pdf", "notes_denied.pdf"}) {
+		pdf::Session session(engine);
+		ASSERT_EQ(open(session, fixturePath(name)).error, pdf::Error::None);
+		Reply<pdf::NoteResult> reply;
+		ASSERT_TRUE(
+		    session.addCenteredTextNote(0, u"Center", {}, reply.callback()));
+		const auto result = reply.wait();
+		ASSERT_TRUE(result);
+		const bool allowed = std::string_view(name) == "comment_locations.pdf";
+		EXPECT_EQ(result->index.has_value(), allowed);
+		EXPECT_EQ(result->changed, allowed);
+		EXPECT_FALSE(result->canceled);
+		if (allowed) {
+			Reply<pdf::NoteResult> refused;
+			ASSERT_TRUE(session.addCenteredTextNote(-1, u"Rejected", {},
+			                                        refused.callback()));
+			const auto unchanged = refused.wait();
+			ASSERT_TRUE(unchanged);
+			EXPECT_FALSE(unchanged->changed);
+			EXPECT_FALSE(unchanged->index);
+		}
+	}
+}
+
 TEST_F(SessionTest, AnnotationsReturnPageSnapshotsOnTheEngineThread) {
 	pdf::Session session(engine);
 	Reply<pdf::AnnotationsResult> unopened;
