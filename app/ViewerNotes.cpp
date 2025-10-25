@@ -32,12 +32,11 @@ fire_and_forget ViewerPage::editNote() {
 	try {
 		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
 		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
-		    m_propertiesDialog || !XamlRoot() ||
+		    !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {
 			co_return;
 		}
-		stopPan();
 		leavePageBox();
 		const int page = static_cast<int>(m_current);
 		ContentDialog dialog;
@@ -171,9 +170,6 @@ void ViewerPage::refreshNotes() {
 	pauseComments();
 	m_commentScan.reset(static_cast<int>(m_sizes.size()));
 	CommentsList().Items().Clear();
-	m_properties.reset();
-	++m_propertiesVersion;
-	m_propertiesPending = false;
 	for (std::size_t page = 0; page < m_sizes.size(); ++page) {
 		invalidate(page);
 	}

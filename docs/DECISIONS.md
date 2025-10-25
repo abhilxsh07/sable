@@ -14,7 +14,6 @@ Window review holds tab removal, document opening and new edits while it
 checks each document. Discard choices do not clear notes in tabs retained
 when a later document cancels the window close.
 
-
 ## Text note editor and saves (2026-10-24)
 
 Comments now has Add note and Save notes under the approved reader scope.
@@ -27,9 +26,8 @@ Save a Copy keeps its original-byte behavior. The UI tracks unsaved notes
 separately from PDFium's persistent modified flag, and holds further edits
 until a save finishes. Cancel and failure keep the unsaved state. Failed
 creation retains the editor text for another attempt. A document revision
-rejects old render replies before refreshing page and thumbnail caches,
-comments and properties. The temporary edited-file limit is 1 GiB.
-
+rejects old render replies before refreshing page and thumbnail caches
+and comments. The temporary edited-file limit is 1 GiB.
 
 ## Centered note requests (2026-10-24)
 

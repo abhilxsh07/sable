@@ -67,6 +67,15 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool notesOnly = false;
+	bool notesRefusalTried = false;
+	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
+	std::filesystem::path notesPath;
+	std::shared_ptr<std::promise<void>> notesGate;
+	static Windows::Foundation::IAsyncOperation<ContentDialogResult>
+	notesChoice(ContentDialogResult choice) {
+		co_return choice;
+	}
 	bool commentsOnly = false;
 	bool commentLocationsOnly = false;
 	bool commentFactorStarted = false, commentFactorSeen = false;
@@ -1221,6 +1230,228 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void notesTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		const auto choose = [&](ContentDialogResult choice) {
+			owner.m_notesChoice = [choice] { return notesChoice(choice); };
+		};
+		const auto pick = [&](const std::filesystem::path& path) {
+			owner.m_notesPicker = [value = hstring(path.wstring())](hstring) {
+				return attachmentChoice(value, {});
+			};
+		};
+		switch (step) {
+		case 0:
+			v.setCommentsOpen(true);
+			check(v.AddNoteButton().IsEnabled(), "note creation disabled");
+			v.editNote();
+			break;
+		case 1: {
+			check(v.m_noteDialog != nullptr, "note editor did not open");
+			const auto fields = v.m_noteDialog.Content().as<StackPanel>();
+			if (fields.Children().GetAt(2).as<TextBox>().Text().empty()) {
+				check(!v.m_noteDialog.IsPrimaryButtonEnabled(),
+				      "empty note could be submitted");
+				fields.Children().GetAt(1).as<TextBox>().Text(L"Abhilash");
+				fields.Children().GetAt(2).as<TextBox>().Text(
+				    L"Native \u03a9\U0001f600");
+				return;
+			}
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& element) -> Button {
+				if (const auto button = element.try_as<Button>();
+				    button && button.Name() == L"PrimaryButton") {
+					return button;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(element);
+				     ++i) {
+					if (const auto button = find(
+					        Media::VisualTreeHelper::GetChild(element, i))) {
+						return button;
+					}
+				}
+				return nullptr;
+			};
+			const auto button = find(v.m_noteDialog);
+			check(button != nullptr, "editor Add button missing");
+			check(button.IsEnabled(), "editor Add button still disabled");
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+			break;
+		}
+		case 2:
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && v.m_renderVersion > 0 &&
+			          v.SaveNotesButton().IsEnabled() &&
+			          v.NotesState().Text() == L"Unsaved notes",
+			      "completed note did not mark unsaved state");
+			check(std::any_of(v.m_commentScan.rows().begin(),
+			                  v.m_commentScan.rows().end(),
+			                  [](const auto& row) {
+				                  return row.text ==
+				                             "Native \u03a9\U0001f600" &&
+				                         row.author == "Abhilash";
+			                  }),
+			      "new note missing from refreshed comments");
+			choose(ContentDialogResult::None);
+			owner.closeTab(owner.m_tabs.front().tab);
+			break;
+		case 3: {
+			check(owner.m_tabs.size() == 1 && v.m_notesDirty,
+			      "Cancel lost the edited tab");
+			HWND handle{};
+			check_hresult(
+			    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
+			SendMessageW(handle, WM_CLOSE, 0, 0);
+			check(!owner.m_closing, "native close bypassed unsaved prompt");
+			pick({});
+			notesSave = owner.saveNotes(current);
+			break;
+		}
+		case 4:
+			check(!notesSave.GetResults() && v.m_notesDirty,
+			      "canceled picker cleared notes");
+			pick(v.m_path);
+			notesSave = owner.saveNotes(current);
+			break;
+		case 5:
+			check(!notesSave.GetResults() && v.m_notesDirty,
+			      "source destination accepted or cleared notes");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_notes_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			pick(notesPath);
+			notesSave = owner.saveNotes(current);
+			break;
+		case 6:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "successful save did not clear the UI savepoint");
+			if (!notesRefusalTried) {
+				notesRefusalTried = true;
+				v.submitNote(-1, u"Rejected after save", {});
+				return;
+			}
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          return saved.document &&
+				                 saved.document->annotations(0)
+				                         ->entries.back()
+				                         .contents == "Native \u03a9\U0001f600";
+			          })
+			          .get(),
+			      "saved copy lost Unicode note");
+			notesGate = std::make_shared<std::promise<void>>();
+			engine.post(
+			    [wait = notesGate->get_future().share()] { wait.wait(); });
+			v.submitNote(0, u"Second", {});
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1 && v.m_noteBusy,
+			      "pending edit was closed");
+			notesGate->set_value();
+			notesGate.reset();
+			break;
+		case 7:
+			check(v.m_notesDirty, "later note did not mark unsaved state");
+			pick(notesPath / L"missing" / L"notes.pdf");
+			choose(ContentDialogResult::Primary);
+			owner.closeTab(owner.m_tabs.front().tab);
+			break;
+		case 8:
+			if (owner.m_closePending) {
+				return;
+			}
+			check(owner.m_tabs.size() == 1 && v.m_notesDirty,
+			      "failed save closed the edited tab");
+			choose(ContentDialogResult::Secondary);
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.empty(), "Discard did not close tab");
+			owner.openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
+			break;
+		case 9:
+			v.submitNote(0, u"Must not lose attachments", {});
+			break;
+		case 10:
+			check(!v.m_notesDirty, "attachment refusal changed the document");
+			owner.closeTab(owner.m_tabs.front().tab);
+			owner.openDocument(engine, L"tests/fixtures/notes_denied.pdf", 1);
+			break;
+		case 11:
+			v.setCommentsOpen(true);
+			check(!v.AddNoteButton().IsEnabled(), "denied PDF enabled notes");
+			v.editNote();
+			check(!v.m_noteDialog, "denied PDF opened editor");
+			peerWindow = make_self<MainWindow>(owner.m_settings);
+			peerWindow->setEngine(engine);
+			peerWindow->openDocument(
+			    engine, L"tests/fixtures/comment_locations.pdf", 1);
+			peerWindow->Activate();
+			break;
+		case 12: {
+			const auto peer = peerWindow->Viewer();
+			if (!peer || !ready(*get_self<ViewerPage>(peer))) {
+				return;
+			}
+			get_self<ViewerPage>(peer)->submitNote(0, u"Window close", {});
+			break;
+		}
+		case 13: {
+			const auto pdf = get_self<ViewerPage>(peerWindow->Viewer());
+			if (pdf->m_noteBusy) {
+				return;
+			}
+			check(pdf->m_notesDirty, "peer window note missing");
+			peerWindow->m_notesChoice = [] {
+				return notesChoice(ContentDialogResult::None);
+			};
+			HWND handle{};
+			check_hresult(
+			    peerWindow->try_as<::IWindowNative>()->get_WindowHandle(
+			        &handle));
+			SendMessageW(handle, WM_SYSCOMMAND, SC_CLOSE, 0);
+			check(!peerWindow->m_closing, "system close ignored Cancel");
+			peerWindow->m_notesChoice = [] {
+				return notesChoice(ContentDialogResult::Primary);
+			};
+			peerWindow->m_notesPicker =
+			    [path = hstring(notesPath.wstring())](hstring) {
+				    return attachmentChoice(path, {});
+			    };
+			SendMessageW(handle, WM_CLOSE, 0, 0);
+			break;
+		}
+		case 14:
+			if (peerWindow->m_closePending) {
+				return;
+			}
+			check(peerWindow->m_closing, "saved window did not close");
+			peerWindow = nullptr;
+			std::filesystem::remove(notesPath);
+			status.Text(
+			    L"PASS: note editor, refresh, Unicode save/reopen, "
+			    L"source protection, unsaved close, pending edit and refusals");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void commentsTick(MainWindow& owner) {
 		if (step == 11) {
 			check(first && first->m_closed && !first->m_commentsPending &&
@@ -1971,6 +2202,10 @@ struct TabsTest {
 				attachmentsTick(*self);
 				return;
 			}
+			if (notesOnly) {
+				notesTick(*self);
+				return;
+			}
 			if (commentsOnly) {
 				if (commentLocationsOnly) {
 					commentLocationsTick(*self);
@@ -2471,13 +2706,16 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->commentLocationsOnly =
 	    GetEnvironmentVariableW(L"SableCommentLocationsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
-	state->commentsOnly = state->commentsOnly || state->commentLocationsOnly;
+	state->commentsOnly =
+	    state->commentsOnly || state->commentLocationsOnly || state->notesOnly;
 	state->attachmentSaveOnly =
 	    GetEnvironmentVariableW(L"SableAttachmentSaveTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -2547,6 +2785,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
+	} else if (state->notesOnly) {
+		window->openDocument(engine, L"tests/fixtures/comment_locations.pdf",
+		                     1);
 	} else if (state->commentsOnly) {
 		window->openDocument(engine,
 		                     state->commentLocationsOnly
