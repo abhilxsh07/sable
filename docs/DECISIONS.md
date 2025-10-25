@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Unsaved note close handling (2026-10-24)
+
+I review unsaved notes before removing a tab or accepting a native window
+close. Save notes writes a separate PDF, Discard closes without writing,
+and Cancel keeps the document open. A canceled picker or failed save also
+keeps the document open. Pending edits, saves and note dialogs hold closing
+until they finish; other dialogs hold review only when notes are unsaved.
+Clean tab closing keeps its previous dialog-dismissal behavior.
+Window review holds tab removal, document opening and new edits while it
+checks each document. Discard choices do not clear notes in tabs retained
+when a later document cancels the window close.
+
+
 ## Text note editor and saves (2026-10-24)
 
 Comments now has Add note and Save notes under the approved reader scope.

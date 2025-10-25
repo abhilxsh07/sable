@@ -126,15 +126,23 @@ struct MainWindow : MainWindowT<MainWindow> {
 	int m_editSelectionStart = 0;
 	int m_editSelectionLength = 0;
 	void selectTab();
-	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	winrt::fire_and_forget
+	closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	void removeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	winrt::fire_and_forget closeWithNotes();
 	winrt::Windows::Foundation::IAsyncOperation<bool>
 	saveNotes(winrt::Sable::ViewerPage document);
-	bool m_notesSaving = false;
+	winrt::Windows::Foundation::IAsyncOperation<bool>
+	confirmNotes(winrt::Sable::ViewerPage document);
+	bool m_closePending = false, m_allowNoteClose = false,
+	     m_notesSaving = false;
 #ifdef SABLE_SURFACE_TEST
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
 	    winrt::hstring)>
 	    m_notesPicker;
-
+	std::function<winrt::Windows::Foundation::IAsyncOperation<
+	    winrt::Microsoft::UI::Xaml::Controls::ContentDialogResult>()>
+	    m_notesChoice;
 #endif
 	void reopenTab();
 	void selectTabPosition(int index);

@@ -73,6 +73,16 @@ void ViewerPage::setupComments() {
 			self->setCommentsOpen(self->commentsOpen());
 		}
 	});
+	AddNoteButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->editNote();
+		}
+	});
+	SaveNotesButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get(); self && self->m_saveNotes) {
+			self->m_saveNotes();
+		}
+	});
 	CommentsRetry().Click([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->m_commentScan.retry();
@@ -142,6 +152,12 @@ void ViewerPage::showComments() {
 	if (m_closed) {
 		return;
 	}
+	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
+	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving);
+	NotesState().Text(m_noteBusy     ? L"Adding note\u2026"
+	                  : m_noteSaving ? L"Saving notes\u2026"
+	                  : m_notesDirty ? L"Unsaved notes"
+	                                 : L"");
 	const bool visible = commentsOpen() &&
 	                     Visibility() == XVisibility::Visible &&
 	                     Rail().Visibility() == XVisibility::Visible;
