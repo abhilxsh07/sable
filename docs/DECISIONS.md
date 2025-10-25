@@ -2,6 +2,16 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Displayed note positions (2026-10-24)
+
+I convert normalized page positions on the engine thread with PDFium's
+device-to-page transform, including crop, intrinsic rotation and extra
+view rotation. A 20-point icon stays centered on the chosen position until
+an edge needs it clamped inside the visible bounds. Invalid coordinates,
+rotations, undersized bounds and unsafe rewrites refuse before mutation.
+Raw-position and centered APIs retain their existing meaning. The session
+keeps the same owned-text, queue-order and started-edit close boundary.
+
 ## Unsaved note close handling (2026-10-24)
 
 I review unsaved notes before removing a tab or accepting a native window

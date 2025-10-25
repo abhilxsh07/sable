@@ -139,6 +139,10 @@ class Document {
 	                               std::u16string_view contents,
 	                               std::u16string_view author = {});
 	// Serialization does not clear this flag or replace the backing bytes.
+	// x/y are displayed-page fractions; rotation is extra clockwise turns.
+	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,
+	                                 std::u16string_view contents,
+	                                 std::u16string_view author = {});
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,

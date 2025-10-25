@@ -396,6 +396,39 @@ std::optional<int> Document::addCenteredTextNote(int index,
 	return addTextNote(index, x, y, contents, author);
 }
 
+std::optional<int> Document::addTextNoteAt(int index, double x, double y,
+                                           int rotation,
+                                           std::u16string_view contents,
+                                           std::u16string_view author) {
+	if (offThread() || index < 0 || index >= pageCount() || !std::isfinite(x) ||
+	    !std::isfinite(y) || x < 0 || x > 1 || y < 0 || y > 1 || rotation < 0 ||
+	    rotation > 3 || !canAnnotate() || !canSerializeEdits({})) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	FS_RECTF box{};
+	double px = 0, py = 0;
+	constexpr int GRID = 1 << 20;
+	if (!page || !FPDF_GetPageBoundingBox(page.get(), &box) ||
+	    !std::isfinite(box.left) || !std::isfinite(box.right) ||
+	    !std::isfinite(box.bottom) || !std::isfinite(box.top) ||
+	    double(box.right) - box.left < 20 ||
+	    double(box.top) - box.bottom < 20 ||
+	    !FPDF_DeviceToPage(page.get(), 0, 0, GRID, GRID, rotation,
+	                       static_cast<int>(std::lround(x * GRID)),
+	                       static_cast<int>(std::lround(y * GRID)), &px, &py) ||
+	    !std::isfinite(px) || !std::isfinite(py)) {
+		return {};
+	}
+	// i keep the full icon inside the visible page, including edge clicks.
+	const float left = static_cast<float>(
+	    std::clamp(px - 10, double(box.left), double(box.right) - 20));
+	const float bottom = static_cast<float>(
+	    std::clamp(py - 10, double(box.bottom), double(box.top) - 20));
+	page.reset();
+	return addTextNote(index, left, bottom, contents, author);
+}
+
 bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
 	// @todo: preserve empty attachment streams before allowing rewrites.
 	if (offThread() || FPDFDoc_GetAttachmentCount(m_handle) != 0) {

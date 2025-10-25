@@ -354,6 +354,90 @@ TEST(Annotations, CenteredNotesRespectCropRotationAndSaveRestrictions) {
 	    .get();
 }
 
+TEST(Annotations, PlacedNotesMapDisplayedPointsThroughBothRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("comment_locations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    const pdf::AnnotationPoint expected[] = {
+		        {.25, .7}, {.7, .75}, {.75, .3}, {.3, .25}};
+		    for (int page = 0; page < 4; ++page) {
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    ASSERT_TRUE(opened.document->addTextNoteAt(
+				        page, .25, .7, rotation, u"Chosen \u03a9", u"Author"));
+				    const auto notes = opened.document->annotations(page);
+				    ASSERT_TRUE(notes && !notes->entries.empty());
+				    const auto& note = notes->entries.back();
+				    ASSERT_TRUE(note.position);
+				    EXPECT_NEAR(note.position->x, expected[rotation].x, 2e-6);
+				    EXPECT_NEAR(note.position->y, expected[rotation].y, 2e-6);
+				    EXPECT_EQ(note.author, "Author");
+			    }
+		    }
+		    const auto bytes = opened.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto saved = reopened.document->annotations(3);
+		    ASSERT_TRUE(saved && !saved->entries.empty());
+		    EXPECT_EQ(saved->entries.back().contents, "Chosen \u03a9");
+	    })
+	    .get();
+}
+
+TEST(Annotations, PlacedNotesClampEdgesAndRefuseInvalidOrUnsafeRequests) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("comment_locations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    for (int rotation = 0; rotation < 4; ++rotation) {
+			    for (const auto point :
+			         {pdf::AnnotationPoint{0, 0}, {1, 1}, {0, 1}, {1, 0}}) {
+				    ASSERT_TRUE(opened.document->addTextNoteAt(
+				        0, point.x, point.y, rotation, u"Edge"));
+				    const auto notes = opened.document->annotations(0);
+				    ASSERT_TRUE(notes && notes->entries.back().bounds);
+				    const auto box = *notes->entries.back().bounds;
+				    EXPECT_GE(box.left, 20);
+				    EXPECT_LE(box.right, 220);
+				    EXPECT_GE(box.bottom, 40);
+				    EXPECT_LE(box.top, 340);
+				    EXPECT_FLOAT_EQ(box.right - box.left, 20);
+				    EXPECT_FLOAT_EQ(box.top - box.bottom, 20);
+			    }
+		    }
+		    for (const auto name : {"comment_locations.pdf", "attachments.pdf",
+		                            "notes_denied.pdf", "note_offsets.pdf"}) {
+			    const auto clean = pdf::openFile(fixturePath(name));
+			    ASSERT_TRUE(clean.document);
+			    for (const auto point :
+			         {pdf::AnnotationPoint{-.01, .5},
+			          {1.01, .5},
+			          {.5, -1},
+			          {.5, 2},
+			          {std::numeric_limits<double>::quiet_NaN(), .5},
+			          {.5, std::numeric_limits<double>::infinity()}}) {
+				    EXPECT_FALSE(clean.document->addTextNoteAt(
+				        0, point.x, point.y, 0, u"No"));
+			    }
+			    EXPECT_FALSE(
+			        clean.document->addTextNoteAt(0, .5, .5, -1, u"No"));
+			    EXPECT_FALSE(
+			        clean.document->addTextNoteAt(0, .5, .5, 4, u"No"));
+			    if (std::string_view(name) != "comment_locations.pdf") {
+				    EXPECT_FALSE(
+				        clean.document->addTextNoteAt(0, .5, .5, 0, u"No"));
+			    }
+			    EXPECT_FALSE(clean.document->modified());
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, InvalidNotesLeaveThePageUnchanged) {
 	pdf::Engine engine;
 	engine
