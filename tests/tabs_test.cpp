@@ -67,6 +67,7 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool notePlacementOnly = false;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
 	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
@@ -1230,6 +1231,188 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void notePlacementTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [&](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			const auto action =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        element)
+			        .GetPattern(Peers::PatternInterface::Invoke)
+			        .as<Provider::IInvokeProvider>();
+			action.Invoke();
+		};
+		const auto dialogButton = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& element) -> Button {
+				if (const auto button = element.try_as<Button>();
+				    button && button.Name() == name) {
+					return button;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(element);
+				     ++i) {
+					if (const auto button = find(
+					        Media::VisualTreeHelper::GetChild(element, i))) {
+						return button;
+					}
+				}
+				return nullptr;
+			};
+			const auto button = find(v.m_noteDialog);
+			check(button != nullptr && button.IsEnabled(),
+			      "placement editor button unavailable");
+			invoke(button);
+		};
+		const auto choosePoint = [&] {
+			const auto& rect = v.m_layout->pages()[1];
+			return Windows::Foundation::Point{
+			    static_cast<float>(rect.x + .25 * rect.width),
+			    static_cast<float>(rect.y + .7 * rect.height)};
+		};
+		switch (step) {
+		case 0:
+			v.setCommentsOpen(true);
+			invoke(v.PlaceNoteButton());
+			check(v.m_notePlacing && !v.m_notesDirty &&
+			          !v.AddNoteButton().IsEnabled(),
+			      "placement did not arm independently of centered Add");
+			break;
+		case 1: {
+			check(v.placeNote({-1, -1}) && v.m_notePlacing && !v.m_noteDialog,
+			      "page gap opened editor or activated a link");
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1 && v.m_notePlacing,
+			      "close lost armed placement");
+			HWND handle{};
+			check_hresult(
+			    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
+			SendMessageW(handle, WM_CLOSE, 0, 0);
+			check(!owner.m_closing && v.m_notePlacing,
+			      "window close lost placement");
+			invoke(v.PlaceNoteButton());
+			check(!v.m_notePlacing && !v.m_notesDirty,
+			      "Cancel placement changed PDF");
+			v.openFind();
+			v.beginNotePlacement();
+			check(v.cancelNotePlacement() && v.findOpen(),
+			      "placement cancel closed Find");
+			v.closeFind();
+			v.beginNotePlacement();
+			v.Visibility(Visibility::Collapsed);
+			check(!v.m_notePlacing, "hidden viewer kept placement armed");
+			v.Visibility(Visibility::Visible);
+			v.beginNotePlacement();
+			v.setCommentsOpen(false);
+			check(!v.m_notePlacing, "hidden comments kept placement armed");
+			v.setCommentsOpen(true);
+			break;
+		}
+		case 2:
+			v.zoomTo(1.5, {0, 0});
+			v.goToPage(1);
+			invoke(v.PlaceNoteButton());
+			check(v.placeNote(choosePoint()) && v.m_noteDialog &&
+			          !v.m_notePlacing && !v.m_notesDirty,
+			      "chosen location mutated before Add");
+			break;
+		case 3: {
+			const auto fields = v.m_noteDialog.Content().as<StackPanel>();
+			check(fields.Children().GetAt(0).as<TextBlock>().Text() ==
+			          L"Adds a note at the selected position on page 2.",
+			      "wrong placement target in editor");
+			fields.Children().GetAt(1).as<TextBox>().Text(L"Author");
+			fields.Children().GetAt(2).as<TextBox>().Text(
+			    L"Placed native \u03a9");
+			dialogButton(L"CloseButton");
+			break;
+		}
+		case 4:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && v.m_noteDraft == L"Placed native \u03a9",
+			      "editor cancellation wrote or lost draft");
+			v.beginNotePlacement();
+			check(v.placeNote(choosePoint()) && v.m_noteDialog,
+			      "retry target did not open");
+			// i change the reading view after choosing the original location.
+			v.zoomTo(.8, {0, 0});
+			v.goToPage(3);
+			break;
+		case 5:
+			dialogButton(L"PrimaryButton");
+			break;
+		case 6:
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty &&
+			          std::any_of(
+			              v.m_commentScan.rows().begin(),
+			              v.m_commentScan.rows().end(),
+			              [](const auto& row) {
+				              return row.page == 1 &&
+				                     row.text == "Placed native \u03a9" &&
+				                     row.position &&
+				                     std::abs(row.position->x - .25) < 2e-6 &&
+				                     std::abs(row.position->y - .7) < 2e-6;
+			              }),
+			      "saved target followed later navigation or zoom");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_placed_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 7:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "placed note save failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto notes = saved.document->annotations(1);
+				          if (!notes || notes->entries.empty()) {
+					          return false;
+				          }
+				          const auto& note = notes->entries.back();
+				          return note.contents == "Placed native \u03a9" &&
+				                 note.position &&
+				                 std::abs(note.position->x - .25) < 2e-6 &&
+				                 std::abs(note.position->y - .7) < 2e-6;
+			          })
+			          .get(),
+			      "reopened note moved from chosen location");
+			std::filesystem::remove(notesPath);
+			v.beginNotePlacement();
+			v.close();
+			check(!v.m_notePlacing && !v.m_noteDialog,
+			      "forced close kept placement state");
+			status.Text(L"PASS: placement arm/cancel, gap, hidden, close, "
+			            L"editor draft, "
+			            L"immutable target and saved position");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void notesTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -2203,7 +2386,11 @@ struct TabsTest {
 				return;
 			}
 			if (notesOnly) {
-				notesTick(*self);
+				if (notePlacementOnly) {
+					notePlacementTick(*self);
+				} else {
+					notesTick(*self);
+				}
 				return;
 			}
 			if (commentsOnly) {
@@ -2706,8 +2893,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->notePlacementOnly =
+	    GetEnvironmentVariableW(L"SableNotePlacementTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->notesOnly = state->notesOnly || state->notePlacementOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
