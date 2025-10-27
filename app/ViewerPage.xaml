@@ -160,6 +160,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="AddNoteButton" Content="Add note" />
 						<Button x:Name="SaveNotesButton" Content="Save notes" />
 					</StackPanel>
+					<Button x:Name="PlaceNoteButton" Content="Place note on page" />
 					<Button x:Name="CommentsRetry" Content="Retry"
 						Visibility="Collapsed" HorizontalAlignment="Left" />
 				</StackPanel>

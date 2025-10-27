@@ -33,6 +33,7 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	const auto lifetime = get_strong();
 	const auto viewer = get_self<ViewerPage>(document);
 	if (viewer->m_noteBusy || viewer->m_noteSaving || viewer->m_noteDialog ||
+	    viewer->m_notePlacing ||
 	    (viewer->m_notesDirty && viewer->m_passwordDialog)) {
 		viewer->showNotice(L"Finish the open dialog or note operation first.");
 		co_return false;
@@ -110,7 +111,8 @@ fire_and_forget MainWindow::closeWithNotes() {
 		const auto tabs = m_tabs;
 		for (const auto& entry : tabs) {
 			const auto pdf = get_self<ViewerPage>(entry.viewer);
-			if (pdf->m_notesDirty || pdf->m_noteBusy || pdf->m_noteDialog) {
+			if (pdf->m_notesDirty || pdf->m_noteBusy || pdf->m_noteDialog ||
+			    pdf->m_notePlacing) {
 				Tabs().SelectedItem(entry.tab);
 				if (!co_await confirmNotes(entry.viewer)) {
 					m_closePending = false;

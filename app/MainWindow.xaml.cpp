@@ -531,6 +531,13 @@ void MainWindow::setupTabKeys() {
 		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
 		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
 		const auto key = static_cast<unsigned>(args.Key());
+		if (key == VK_ESCAPE && modifiers == 0) {
+			if (const auto viewer = self->Viewer();
+			    viewer && get_self<ViewerPage>(viewer)->cancelNotePlacement()) {
+				args.Handled(true);
+				return;
+			}
+		}
 		const auto focused =
 		    Input::FocusManager::GetFocusedElement(self->RootGrid().XamlRoot());
 		const bool editing = focused.try_as<Controls::TextBox>() ||
@@ -1075,7 +1082,7 @@ void MainWindow::setupWindow() {
 				                const auto pdf =
 				                    get_self<ViewerPage>(entry.viewer);
 				                return pdf->m_notesDirty || pdf->m_noteBusy ||
-				                       pdf->m_noteDialog;
+				                       pdf->m_noteDialog || pdf->m_notePlacing;
 			                });
 			if (needsReview || self->m_closePending) {
 				args.Cancel(true);

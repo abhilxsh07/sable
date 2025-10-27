@@ -142,8 +142,18 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setupSelection();
 	void setupOutline();
 	void setupComments();
-	winrt::fire_and_forget editNote();
-	void submitNote(int page, std::u16string text, std::u16string author);
+	struct NoteTarget {
+		int page;
+		double x, y;
+		int rotation;
+	};
+	void beginNotePlacement();
+	bool cancelNotePlacement();
+	bool placeNote(winrt::Windows::Foundation::Point point);
+	bool m_notePlacing = false;
+	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
+	void submitNote(int page, std::u16string text, std::u16string author,
+	                std::optional<NoteTarget> target = {});
 	void refreshNotes();
 	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
 	     m_noteSaving = false;

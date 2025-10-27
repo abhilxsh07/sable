@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Note placement interaction (2026-10-24)
+
+Place note on page arms a one-shot page tap while centered Add note stays
+available. Choosing a page opens the editor; only Add changes the PDF.
+The target keeps its page, normalized position and render-key rotation
+through later zoom or navigation. Canceling the editor keeps its draft.
+
+Placement taps bypass links and selection. Mouse presses stop the custom
+hand-pan path; touch presses keep native scrolling. Escape or the placement
+button cancels, as does hiding the viewer, Comments or its rail. Saving and
+closing wait for placement to finish or be canceled. This does not add a
+stored setting or change an existing shortcut.
+
 ## Displayed note positions (2026-10-24)
 
 I convert normalized page positions on the engine thread with PDFium's

@@ -598,6 +598,10 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 
 void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
                               const Input::TappedRoutedEventArgs& args) {
+	if (placeNote(args.GetPosition(Pages()))) {
+		args.Handled(true);
+		return;
+	}
 	if (m_ignoreTextTap) {
 		return;
 	}
