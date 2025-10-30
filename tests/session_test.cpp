@@ -1274,3 +1274,79 @@ TEST_F(SessionTest, AnnotationCallbacksCanQueueWorkAndThrowWithoutBlocking) {
 	ASSERT_TRUE(survived && survived->annotations);
 	EXPECT_FALSE(survived->canceled);
 }
+
+TEST_F(SessionTest, ExistingNoteEditsOwnTextAndKeepNoOpAndStaleOutcomes) {
+	pdf::Session session(engine);
+	Reply<pdf::TextNoteResult> read;
+	Reply<pdf::NoteResult> unused;
+	EXPECT_FALSE(session.textNote(0, 0, read.callback()));
+	EXPECT_FALSE(
+	    session.updateTextNote(0, 0, u"Old", u"New", unused.callback()));
+	ASSERT_EQ(open(session, fixturePath("comment_locations.pdf")).error,
+	          pdf::Error::None);
+	EXPECT_FALSE(session.textNote(0, 0, {}));
+	EXPECT_FALSE(session.updateTextNote(0, 0, u"Old", u"New", {}));
+	EXPECT_FALSE(session.updateTextNote(0, 0, std::u16string(32768, u'a'),
+	                                    u"New", unused.callback()));
+	ASSERT_TRUE(session.textNote(0, 0, read.callback()));
+	const auto snapshot = read.wait();
+	ASSERT_TRUE(snapshot && snapshot->contents);
+	EXPECT_EQ(snapshot->page, 0);
+	EXPECT_EQ(snapshot->index, 0);
+	EXPECT_FALSE(snapshot->canceled);
+	EXPECT_EQ(*snapshot->contents, u"Location 1");
+	Gate gate(engine);
+	Reply<pdf::NoteResult> same, changed, stale;
+	ASSERT_TRUE(session.updateTextNote(0, 0, *snapshot->contents,
+	                                   *snapshot->contents, same.callback()));
+	std::u16string expected = *snapshot->contents,
+	               replacement = u"Changed \u03a9";
+	ASSERT_TRUE(session.updateTextNote(0, 0, expected, replacement,
+	                                   changed.callback()));
+	expected.clear();
+	replacement.clear();
+	ASSERT_TRUE(session.updateTextNote(0, 0, *snapshot->contents, u"Stale",
+	                                   stale.callback()));
+	session.cancelAnnotations();
+	session.cancelSearch();
+	session.cancelRender();
+	gate.open();
+	const auto a = same.wait(), b = changed.wait(), c = stale.wait();
+	ASSERT_TRUE(a && b && c);
+	EXPECT_EQ(a->index, 0);
+	EXPECT_FALSE(a->changed);
+	EXPECT_EQ(b->index, 0);
+	EXPECT_TRUE(b->changed);
+	EXPECT_FALSE(c->index);
+	EXPECT_FALSE(c->changed);
+	Reply<pdf::TextNoteResult> final;
+	ASSERT_TRUE(session.textNote(0, 0, final.callback()));
+	const auto result = final.wait();
+	ASSERT_TRUE(result);
+	EXPECT_EQ(result->contents, u"Changed \u03a9");
+}
+
+TEST_F(SessionTest, ExistingNoteCloseCancelsQueuedReadsAndEdits) {
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, fixturePath("comment_locations.pdf")).error,
+		          pdf::Error::None);
+		Gate gate(engine);
+		Reply<pdf::TextNoteResult> read;
+		Reply<pdf::NoteResult> edit;
+		ASSERT_TRUE(session->textNote(0, 0, read.callback()));
+		ASSERT_TRUE(session->updateTextNote(0, 0, u"Location 1", u"Closed",
+		                                    edit.callback()));
+		if (destroy) {
+			session.reset();
+		} else {
+			session->close();
+		}
+		gate.open();
+		const auto a = read.wait();
+		const auto b = edit.wait();
+		ASSERT_TRUE(a && b);
+		EXPECT_TRUE(a->canceled && b->canceled);
+		EXPECT_FALSE(a->contents || b->index || b->changed);
+	}
+}
