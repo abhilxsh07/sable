@@ -114,6 +114,25 @@ void appendUtf8(std::string& out, char32_t c) {
 	}
 }
 
+bool validNoteText(std::u16string_view text) {
+	// i keep new fields within the snapshot reader's 64 KiB limit.
+	if (text.size() > 32767) {
+		return false;
+	}
+	for (std::size_t i = 0; i < text.size(); ++i) {
+		const auto unit = text[i];
+		if (unit == 0 || (unit >= 0xDC00 && unit <= 0xDFFF)) {
+			return false;
+		}
+		if (unit >= 0xD800 && unit <= 0xDBFF) {
+			if (++i == text.size() || text[i] < 0xDC00 || text[i] > 0xDFFF) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 // PDFium hands text out as UTF-16LE bytes
 std::string utf16ToUtf8(const std::vector<unsigned char>& bytes) {
 	std::string out;
@@ -307,28 +326,9 @@ bool Document::canAnnotate() const {
 std::optional<int> Document::addTextNote(int index, float x, float y,
                                          std::u16string_view contents,
                                          std::u16string_view author) {
-	const auto validText = [](std::u16string_view text) {
-		// i keep new fields within the snapshot reader's 64 KiB limit.
-		if (text.size() > 32767) {
-			return false;
-		}
-		for (std::size_t i = 0; i < text.size(); ++i) {
-			const auto unit = text[i];
-			if (unit == 0 || (unit >= 0xDC00 && unit <= 0xDFFF)) {
-				return false;
-			}
-			if (unit >= 0xD800 && unit <= 0xDBFF) {
-				if (++i == text.size() || text[i] < 0xDC00 ||
-				    text[i] > 0xDFFF) {
-					return false;
-				}
-			}
-		}
-		return true;
-	};
 	if (offThread() || index < 0 || index >= pageCount() || !canAnnotate() ||
-	    contents.empty() || !validText(contents) || !validText(author) ||
-	    !std::isfinite(x) || !std::isfinite(y)) {
+	    contents.empty() || !validNoteText(contents) ||
+	    !validNoteText(author) || !std::isfinite(x) || !std::isfinite(y)) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, index));
@@ -376,6 +376,82 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 		return {};
 	}
 	return count;
+}
+
+std::optional<std::u16string> Document::textNote(int index,
+                                                 int noteIndex) const {
+	if (offThread() || index < 0 || index >= pageCount() || noteIndex < 0 ||
+	    !canAnnotate() || !canSerializeEdits({})) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page || noteIndex >= FPDFPage_GetAnnotCount(page.get())) {
+		return {};
+	}
+	AnnotationPtr note(FPDFPage_GetAnnot(page.get(), noteIndex));
+	// Locked protects properties; LockedContents also protects the text.
+	// see:
+	// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdflsdk/apireference/PD_Layer/PDAnnot.html
+	constexpr int LOCKED_CONTENTS = 0x200;
+	if (!note || FPDFAnnot_GetSubtype(note.get()) != FPDF_ANNOT_TEXT ||
+	    (FPDFAnnot_GetFlags(note.get()) &
+	     (FPDF_ANNOT_FLAG_READONLY | LOCKED_CONTENTS)) != 0 ||
+	    FPDFAnnot_HasKey(note.get(), "RC") ||
+	    FPDFAnnot_GetValueType(note.get(), "Contents") != FPDF_OBJECT_STRING) {
+		return {};
+	}
+	const auto bytes =
+	    FPDFAnnot_GetStringValue(note.get(), "Contents", nullptr, 0);
+	if (bytes < 2 || bytes > 65536 || bytes % 2 != 0) {
+		return {};
+	}
+	std::vector<FPDF_WCHAR> buffer(bytes / 2);
+	if (FPDFAnnot_GetStringValue(note.get(), "Contents", buffer.data(),
+	                             bytes) != bytes ||
+	    buffer.back() != 0) {
+		return {};
+	}
+	std::u16string contents(buffer.begin(), buffer.end() - 1);
+	return validNoteText(contents) ? std::optional(std::move(contents))
+	                               : std::nullopt;
+}
+
+std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
+                                             std::u16string_view expected,
+                                             std::u16string_view contents) {
+	if (offThread() || contents.empty() || !validNoteText(contents) ||
+	    !validNoteText(expected)) {
+		return {};
+	}
+	const auto previous = textNote(pageIndex, noteIndex);
+	if (!previous || *previous != expected) {
+		return {};
+	}
+	if (*previous == contents) {
+		return false;
+	}
+	// i allocate the replacement before touching the existing dictionary.
+	const std::u16string replacement(contents);
+	PagePtr page(FPDF_LoadPage(m_handle, pageIndex));
+	AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), noteIndex)
+	                        : nullptr);
+	if (!note) {
+		return {};
+	}
+	const bool wasModified = m_modified;
+	m_modified = true;
+	if (!FPDFAnnot_SetStringValue(
+	        note.get(), "Contents",
+	        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()))) {
+		if (!FPDFAnnot_SetStringValue(
+		        note.get(), "Contents",
+		        reinterpret_cast<FPDF_WIDESTRING>(previous->c_str()))) {
+			throw std::runtime_error("Couldn't restore the note contents.");
+		}
+		m_modified = wasModified;
+		return {};
+	}
+	return true;
 }
 
 std::optional<int> Document::addCenteredTextNote(int index,

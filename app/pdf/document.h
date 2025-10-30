@@ -143,6 +143,12 @@ class Document {
 	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,
 	                                 std::u16string_view contents,
 	                                 std::u16string_view author = {});
+	// Exact plain contents for an editable Text note, within 64 KiB.
+	std::optional<std::u16string> textNote(int page, int index) const;
+	// nullopt refuses; false accepts unchanged contents; true changed them.
+	std::optional<bool> updateTextNote(int page, int index,
+	                                   std::u16string_view expected,
+	                                   std::u16string_view contents);
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,

@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <limits>
 #include "pdf/document.h"
@@ -29,6 +30,31 @@ namespace {
 std::vector<std::uint8_t> annotationBytes(const char* name) {
 	std::ifstream file(fixturePath(name), std::ios::binary);
 	return {std::istreambuf_iterator<char>(file), {}};
+}
+std::vector<std::uint8_t> editableNoteBytes(const std::string& fields) {
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& body : std::vector<std::string>{
+	         "<< /Type /Catalog /Pages 2 0 R >>",
+	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
+	         "/Annots [4 0 R] >>",
+	         "<< /Type /Annot /Subtype /Text /Rect [40 50 60 70] " + fields +
+	             " >>"}) {
+		offsets.push_back(data.size());
+		data +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data += "xref\n0 5\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		data += line;
+	}
+	data += "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" +
+	        std::to_string(xref) + "\n%%EOF\n";
+	return {data.begin(), data.end()};
 }
 } // namespace
 
@@ -796,6 +822,117 @@ TEST(Annotations, SerializationRefusesOversizedAnnotationInventories) {
 		    ASSERT_EQ(notes->entries.size(), 1u);
 		    EXPECT_EQ(notes->entries[0].contents, "Keep me");
 		    EXPECT_TRUE(opened.document->modified());
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExistingNotesKeepExactContentsAndRejectStaleEdits) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = editableNoteBytes(
+		        "/Contents <FEFF0041000D000A000900420001> /T (Author) /F 132");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const std::u16string original = u"A\r\n\tB\x01";
+		    EXPECT_EQ(doc.textNote(0, 0), original);
+		    EXPECT_EQ(doc.updateTextNote(0, 0, original, original), false);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+		    EXPECT_FALSE(doc.updateTextNote(0, 0, u"A\n B ", u"Wrong"));
+		    EXPECT_FALSE(doc.modified());
+		    const std::u16string changed =
+		        u"Edited \u03a9\U0001f600\nsecond line";
+		    ASSERT_EQ(doc.updateTextNote(0, 0, original, changed), true);
+		    EXPECT_TRUE(doc.modified());
+		    EXPECT_FALSE(doc.updateTextNote(0, 0, original, u"Stale"));
+		    EXPECT_EQ(doc.textNote(0, 0), changed);
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    EXPECT_EQ(reopened.document->textNote(0, 0), changed);
+		    const auto notes = reopened.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    const auto& note = notes->entries[0];
+		    EXPECT_EQ(note.flags, 132);
+		    EXPECT_EQ(note.author, "Author");
+		    ASSERT_TRUE(note.bounds);
+		    EXPECT_FLOAT_EQ(note.bounds->left, 40);
+		    EXPECT_FLOAT_EQ(note.bounds->bottom, 50);
+		    EXPECT_FLOAT_EQ(note.bounds->right, 60);
+		    EXPECT_FLOAT_EQ(note.bounds->top, 70);
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExistingNotesRefuseProtectedRichMalformedAndUnsafeContents) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto* fields :
+		         {"/Contents (Note) /F 64", "/Contents (Note) /F 512",
+		          "/Contents (Note) /RC (Rich)", "/Contents /Note", "",
+		          "/Contents <FEFFD800>", "/Contents <FEFF004100000042>"}) {
+			    const auto source = editableNoteBytes(fields);
+			    const auto opened = pdf::openDocument(source);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(opened.document->textNote(0, 0));
+			    EXPECT_FALSE(
+			        opened.document->updateTextNote(0, 0, u"Note", u"Edit"));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), source);
+		    }
+		    const auto opened =
+		        pdf::openDocument(editableNoteBytes("/Contents ()"));
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_EQ(opened.document->textNote(0, 0), u"");
+		    EXPECT_EQ(opened.document->updateTextNote(0, 0, u"", u"Now filled"),
+		              true);
+		    for (const auto& text :
+		         {std::u16string{}, std::u16string(32768, u'a'),
+		          std::u16string(1, 0xD800), std::u16string(u"A\0B", 3)}) {
+			    EXPECT_FALSE(
+			        opened.document->updateTextNote(0, 0, u"Now filled", text));
+		    }
+		    for (const auto* file : {"annotations.pdf", "note_attachment.pdf",
+		                             "notes_denied.pdf"}) {
+			    const auto unsafe = pdf::openFile(fixturePath(file));
+			    ASSERT_TRUE(unsafe.document);
+			    EXPECT_FALSE(unsafe.document->textNote(0, 0));
+			    EXPECT_FALSE(
+			        unsafe.document->updateTextNote(0, 0, u"Note", u"Edit"));
+			    EXPECT_FALSE(unsafe.document->modified());
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations,
+     ExistingNoteEditsPreserveCustomAppearanceAndOtherAnnotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("comment_locations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.render(0, 200, 300);
+		    ASSERT_TRUE(before);
+		    EXPECT_FALSE(doc.textNote(-1, 0));
+		    EXPECT_FALSE(doc.textNote(0, -1));
+		    EXPECT_FALSE(doc.textNote(0, 99));
+		    ASSERT_EQ(doc.updateTextNote(0, 0, u"Location 1", u"Edited"), true);
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    EXPECT_EQ(saved.document->textNote(0, 0), u"Edited");
+		    EXPECT_EQ(saved.document->textNote(0, 1), u"Location 2");
+		    const auto after = saved.document->render(0, 200, 300);
+		    ASSERT_TRUE(after);
+		    EXPECT_EQ(before->pixels, after->pixels);
 	    })
 	    .get();
 }
