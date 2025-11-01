@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Existing-note editor (2026-10-24)
+
+I edit the selected Text note's contents from Comments. Author, position
+and flags stay as they were. The editor reads exact UTF-16 from the engine;
+the cleaned Comments text is only for display. If the text box normalizes
+line endings, applying an untouched field keeps the original contents.
+
+Apply holds the dialog while the engine works. A refusal leaves the text
+editable with an inline error; a successful change refreshes comments,
+pages and thumbnails and uses the existing Save notes and close review.
+An unchanged edit keeps the current savepoint. Cancel discards this edit.
+
 ## Existing text-note contents (2026-10-24)
 
 I update only the Contents string of an existing Text annotation. Each

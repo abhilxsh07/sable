@@ -78,6 +78,16 @@ void ViewerPage::setupComments() {
 			self->editNote();
 		}
 	});
+	EditNoteButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNoteEdit();
+		}
+	});
+	CommentsList().SelectionChanged([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->showComments();
+		}
+	});
 	PlaceNoteButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement();
@@ -169,9 +179,16 @@ void ViewerPage::showComments() {
 	                          !m_notePlacing);
 	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
 	                            !m_notePlacing);
+	const auto selected = CommentsList().SelectedIndex();
+	const auto& notes = m_commentScan.rows();
+	EditNoteButton().IsEnabled(
+	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
+	    !m_notePlacing && selected >= 0 &&
+	    static_cast<std::size_t>(selected) < notes.size() &&
+	    notes[selected].subtype == "Text");
 	NotesState().Text(m_notePlacing
 	                      ? L"Click a page to place a note. Esc cancels."
-	                  : m_noteBusy   ? L"Adding note\u2026"
+	                  : m_noteBusy   ? L"Updating note\u2026"
 	                  : m_noteSaving ? L"Saving notes\u2026"
 	                  : m_notesDirty ? L"Unsaved notes"
 	                                 : L"");
