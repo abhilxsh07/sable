@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Highlight selection action (2026-10-25)
+
+I add Highlight to the text selection menu. It captures the current PDFium
+text indices and holds the existing note write/save/close guards while the
+engine works. A completed write stays dirty even if its viewer was hidden.
+I clear only the selection that submitted a successful write; a newer or
+refused selection stays available.
+
+Highlights refresh the existing page, thumbnail and Comments caches and
+use Save notes and its unsaved-close review. The plain Text-note editor
+stays limited to Text annotations. Colour controls, extracted comment text
+and other markup tools can follow separately.
+
 ## Persistent selection highlights (2026-10-25)
 
 I derive highlight quads from the selected PDFium text indices on the

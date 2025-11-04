@@ -135,11 +135,20 @@ void ViewerPage::setupSelection() {
 			self->selectAllText();
 		}
 	});
+	m_textHighlight = MenuFlyoutItem();
+	m_textHighlight.Text(L"Highlight");
+	m_textHighlight.Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->highlightSelection();
+		}
+	});
+	m_textMenu.Items().Append(m_textHighlight);
 	m_textMenu.Items().Append(m_textCopy);
 	m_textMenu.Items().Append(all);
 	m_textMenu.Opening([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->m_textCopy.IsEnabled(self->canCopySelection());
+			self->m_textHighlight.IsEnabled(self->canHighlightSelection());
 		}
 	});
 	Pages().ContextFlyout(m_textMenu);

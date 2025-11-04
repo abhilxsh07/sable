@@ -154,6 +154,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});
+	bool canHighlightSelection() const;
+	void highlightSelection();
 	void beginNoteEdit();
 	winrt::fire_and_forget editExistingNote(int page, int index,
 	                                        std::u16string expected);
@@ -256,6 +258,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_textMenu{nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textCopy{nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textHighlight{
+	    nullptr};
 	winrt::fire_and_forget askPassword(bool incorrect);
 	void opened(pdf::SessionInfo info);
 	bool relayout(double zoom);
