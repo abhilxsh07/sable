@@ -2,6 +2,27 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Persistent selection highlights (2026-10-25)
+
+I derive highlight quads from the selected PDFium text indices on the
+engine thread, clip them to the media/crop intersection and add one
+printable Highlight per page with visible rectangles. PDFium supplies its
+default yellow and multiply-blended appearance. I omit extracted Contents
+so highlighting depends on annotation permission alone.
+
+I preflight the complete selection and refuse unsafe attachment rewrites.
+The bounded transaction accepts at most 128 pages, 200,000 text indices
+per page, 1,000,000 selected indices and 4,096 quads in all. Each page keeps
+the existing 4,096-annotation limit. Empty/outside rectangles are skipped;
+a selection with no visible rectangle refuses without an edit.
+
+I verify every page's expected annotation count before accepting the
+appends. Shared annotation arrays that change another page force reverse
+rollback, as do failed setters. Successful rollback restores the earlier
+modified flag; incomplete rollback keeps the document dirty. I apply the
+same count guard to new Text notes so raw, centered and placed notes stay
+on their chosen page too.
+
 ## Existing-note editor (2026-10-24)
 
 I edit the selected Text note's contents from Comments. Author, position

@@ -18,6 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
+#include <fpdf_annot.h>
+#include <fpdfview.h>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -933,6 +935,82 @@ TEST(Annotations,
 		    const auto after = saved.document->render(0, 200, 300);
 		    ASSERT_TRUE(after);
 		    EXPECT_EQ(before->pixels, after->pixels);
+	    })
+	    .get();
+}
+
+TEST(Annotations, HighlightsPersistTextQuadsAcrossCropAndPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = annotationBytes("text.pdf");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.render(0, 360, 240);
+		    ASSERT_TRUE(before);
+		    EXPECT_EQ(doc.highlightText({{3, INT_MAX}, {0, 0}}), 4);
+		    EXPECT_TRUE(doc.modified());
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    std::unique_ptr<fpdf_document_t__, decltype(&FPDF_CloseDocument)>
+		        raw(FPDF_LoadMemDocument64(bytes->data(), bytes->size(),
+		                                   nullptr),
+		            &FPDF_CloseDocument);
+		    ASSERT_TRUE(raw);
+		    for (int index = 0; index < 4; ++index) {
+			    std::unique_ptr<fpdf_page_t__, decltype(&FPDF_ClosePage)> page(
+			        FPDF_LoadPage(raw.get(), index), &FPDF_ClosePage);
+			    ASSERT_TRUE(page);
+			    EXPECT_EQ(FPDFPage_GetAnnotCount(page.get()), 1);
+			    std::unique_ptr<fpdf_annotation_t__,
+			                    decltype(&FPDFPage_CloseAnnot)>
+			        annot(FPDFPage_GetAnnot(page.get(), 0),
+			              &FPDFPage_CloseAnnot);
+			    ASSERT_TRUE(annot);
+			    EXPECT_EQ(FPDFAnnot_GetSubtype(annot.get()),
+			              FPDF_ANNOT_HIGHLIGHT);
+			    EXPECT_EQ(FPDFAnnot_GetFlags(annot.get()),
+			              FPDF_ANNOT_FLAG_PRINT);
+			    ASSERT_EQ(FPDFAnnot_CountAttachmentPoints(annot.get()), 2u);
+			    for (std::size_t quad = 0; quad < 2; ++quad) {
+				    FS_QUADPOINTSF points{};
+				    ASSERT_TRUE(FPDFAnnot_GetAttachmentPoints(annot.get(), quad,
+				                                              &points));
+				    EXPECT_EQ(points.x1, points.x3);
+				    EXPECT_EQ(points.x2, points.x4);
+				    EXPECT_EQ(points.y1, points.y2);
+				    EXPECT_EQ(points.y3, points.y4);
+				    EXPECT_GE(points.x1, 20);
+				    EXPECT_LE(points.x2, 380);
+				    EXPECT_GE(points.y3, 30);
+				    EXPECT_LE(points.y1, 270);
+				    EXPECT_LT(points.x1, points.x2);
+				    EXPECT_LT(points.y3, points.y1);
+			    }
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    const auto a = doc.render(index, 360, 240, rotation);
+				    const auto b =
+				        saved.document->render(index, 360, 240, rotation);
+				    ASSERT_TRUE(a && b);
+				    EXPECT_EQ(a->pixels, b->pixels);
+			    }
+		    }
+		    const auto after = saved.document->render(0, 360, 240);
+		    ASSERT_TRUE(after);
+		    EXPECT_NE(before->pixels, after->pixels);
+		    bool yellow = false;
+		    for (std::size_t i = 0; i < after->pixels.size(); i += 4) {
+			    yellow = yellow ||
+			             (after->pixels[i] < 30 && after->pixels[i + 1] > 220 &&
+			              after->pixels[i + 2] > 220);
+		    }
+		    EXPECT_TRUE(yellow);
+		    EXPECT_TRUE(saved.document->annotations(4)->entries.empty());
+		    EXPECT_EQ(doc.highlightText({{4, 0}, {4, INT_MAX}}), 1);
+		    EXPECT_EQ(annotationBytes("text.pdf"), source);
 	    })
 	    .get();
 }

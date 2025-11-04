@@ -149,6 +149,9 @@ class Document {
 	std::optional<bool> updateTextNote(int page, int index,
 	                                   std::u16string_view expected,
 	                                   std::u16string_view contents);
+	// One Highlight per visible selected page; all pages preflight first.
+	// Returns the number added, or nullopt. Failed rollback throws.
+	std::optional<int> highlightText(TextSelection selection);
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,

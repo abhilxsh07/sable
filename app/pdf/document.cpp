@@ -80,6 +80,43 @@ bool offThread() {
 	return true;
 }
 
+std::optional<std::vector<int>> annotationCounts(FPDF_DOCUMENT document) {
+	if (offThread()) {
+		return {};
+	}
+	const int pages = FPDF_GetPageCount(document);
+	if (pages < 0) {
+		return {};
+	}
+	std::vector<int> counts(pages);
+	for (int index = 0; index < pages; ++index) {
+		PagePtr page(FPDF_LoadPage(document, index));
+		if (!page) {
+			return {};
+		}
+		counts[index] = FPDFPage_GetAnnotCount(page.get());
+		if (counts[index] < 0) {
+			return {};
+		}
+	}
+	return counts;
+}
+
+bool matchesAnnotationCounts(FPDF_DOCUMENT document,
+                             const std::vector<int>& expected) {
+	if (offThread() ||
+	    FPDF_GetPageCount(document) != static_cast<int>(expected.size())) {
+		return false;
+	}
+	for (int index = 0; index < static_cast<int>(expected.size()); ++index) {
+		PagePtr page(FPDF_LoadPage(document, index));
+		if (!page || FPDFPage_GetAnnotCount(page.get()) != expected[index]) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // FPDF_ERR_PASSWORD covers both "needs one" and "that wasn't it"
 Error fromPdfium(unsigned long code, bool gavePassword) {
 	switch (code) {
@@ -347,6 +384,11 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	if (count < 0 || count >= 4096) {
 		return {};
 	}
+	auto expected = annotationCounts(m_handle);
+	if (!expected || (*expected)[index] != count) {
+		return {};
+	}
+	++(*expected)[index];
 	// i allocate terminated strings before changing the document.
 	const std::u16string text(contents), name(author);
 	const bool wasModified = m_modified;
@@ -365,7 +407,8 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	        reinterpret_cast<FPDF_WIDESTRING>(text.c_str())) &&
 	    FPDFAnnot_SetStringValue(
 	        note.get(), "T", reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) &&
-	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT);
+	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) &&
+	    matchesAnnotationCounts(m_handle, *expected);
 	note.reset();
 	if (!complete) {
 		// i remove only the appended note if a setter failed.
@@ -452,6 +495,165 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 		return {};
 	}
 	return true;
+}
+
+std::optional<int> Document::highlightText(TextSelection selection) {
+	if (offThread() || !canAnnotate()) {
+		return {};
+	}
+	const auto [first, last] = ordered(selection);
+	if (first.page < 0 || first.index < 0 || last.index < 0 ||
+	    last.page >= pageCount() || last.page - first.page >= 128 ||
+	    !canSerializeEdits({})) {
+		return {};
+	}
+	struct Target {
+		PagePtr page;
+		int pageIndex = 0, index = 0;
+		std::vector<FS_QUADPOINTSF> quads;
+		FS_RECTF bounds{};
+	};
+	std::vector<Target> targets;
+	targets.reserve(last.page - first.page + 1);
+	std::size_t totalQuads = 0;
+	int totalChars = 0;
+	for (int index = first.page; index <= last.page; ++index) {
+		Target target;
+		target.pageIndex = index;
+		target.page.reset(FPDF_LoadPage(m_handle, index));
+		if (!target.page) {
+			return {};
+		}
+		TextPtr text(FPDFText_LoadPage(target.page.get()));
+		if (!text) {
+			return {};
+		}
+		const int chars = FPDFText_CountChars(text.get());
+		if (chars < 0 || chars > 200'000 ||
+		    (index == first.page && first.index > chars)) {
+			return {};
+		}
+		const auto [begin, end] = textSpan(selection, index, chars);
+		totalChars += end - begin;
+		if (totalChars > 1'000'000) {
+			return {};
+		}
+		if (begin == end) {
+			continue;
+		}
+		FS_RECTF box{};
+		target.index = FPDFPage_GetAnnotCount(target.page.get());
+		if (target.index < 0 || target.index >= 4096 ||
+		    !FPDF_GetPageBoundingBox(target.page.get(), &box) ||
+		    !std::isfinite(box.left) || !std::isfinite(box.right) ||
+		    !std::isfinite(box.top) || !std::isfinite(box.bottom) ||
+		    box.left >= box.right || box.bottom >= box.top) {
+			return {};
+		}
+		const int count = FPDFText_CountRects(text.get(), begin, end - begin);
+		if (count < 0 || static_cast<std::size_t>(count) > 4096 - totalQuads) {
+			return {};
+		}
+		target.quads.reserve(count);
+		for (int rect = 0; rect < count; ++rect) {
+			double left = 0, top = 0, right = 0, bottom = 0;
+			if (!FPDFText_GetRect(text.get(), rect, &left, &top, &right,
+			                      &bottom) ||
+			    !std::isfinite(left) || !std::isfinite(top) ||
+			    !std::isfinite(right) || !std::isfinite(bottom)) {
+				return {};
+			}
+			FS_RECTF clipped{
+			    static_cast<float>(
+			        std::clamp(left, double(box.left), double(box.right))),
+			    static_cast<float>(
+			        std::clamp(top, double(box.bottom), double(box.top))),
+			    static_cast<float>(
+			        std::clamp(right, double(box.left), double(box.right))),
+			    static_cast<float>(
+			        std::clamp(bottom, double(box.bottom), double(box.top)))};
+			if (clipped.left >= clipped.right ||
+			    clipped.bottom >= clipped.top) {
+				continue;
+			}
+			if (target.quads.empty()) {
+				target.bounds = clipped;
+			} else {
+				target.bounds.left =
+				    (std::min)(target.bounds.left, clipped.left);
+				target.bounds.right =
+				    (std::max)(target.bounds.right, clipped.right);
+				target.bounds.bottom =
+				    (std::min)(target.bounds.bottom, clipped.bottom);
+				target.bounds.top = (std::max)(target.bounds.top, clipped.top);
+			}
+			target.quads.push_back({clipped.left, clipped.top, clipped.right,
+			                        clipped.top, clipped.left, clipped.bottom,
+			                        clipped.right, clipped.bottom});
+		}
+		totalQuads += target.quads.size();
+		if (!target.quads.empty()) {
+			targets.push_back(std::move(target));
+		}
+	}
+	if (targets.empty()) {
+		return {};
+	}
+	auto expected = annotationCounts(m_handle);
+	if (!expected) {
+		return {};
+	}
+	for (const auto& target : targets) {
+		++(*expected)[target.pageIndex];
+	}
+	const bool wasModified = m_modified;
+	std::size_t added = 0;
+	const auto rollback = [&]() -> std::optional<int> {
+		bool restored = true;
+		while (added > 0) {
+			const auto& previous = targets[--added];
+			if (!FPDFPage_RemoveAnnot(previous.page.get(), previous.index)) {
+				restored = false;
+			}
+		}
+		if (!restored) {
+			throw std::runtime_error("Couldn't roll back the text highlights.");
+		}
+		m_modified = wasModified;
+		return {};
+	};
+	for (auto& target : targets) {
+		target.index = FPDFPage_GetAnnotCount(target.page.get());
+		AnnotationPtr note(
+		    target.index >= 0 && target.index < 4096
+		        ? FPDFPage_CreateAnnot(target.page.get(), FPDF_ANNOT_HIGHLIGHT)
+		        : nullptr);
+		bool complete = note != nullptr;
+		if (note) {
+			++added;
+			m_modified = true;
+			complete = FPDFAnnot_SetRect(note.get(), &target.bounds) &&
+			           FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT);
+			for (const auto& quad : target.quads) {
+				if (!complete ||
+				    !FPDFAnnot_AppendAttachmentPoints(note.get(), &quad)) {
+					complete = false;
+					break;
+				}
+			}
+		}
+		if (!complete) {
+			note.reset();
+			return rollback();
+		}
+	}
+	if (!matchesAnnotationCounts(m_handle, *expected)) {
+		return rollback();
+	}
+	// i use PDFium's default yellow and multiply-blended highlight appearance.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
+	return static_cast<int>(added);
 }
 
 std::optional<int> Document::addCenteredTextNote(int index,
