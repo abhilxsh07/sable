@@ -58,6 +58,48 @@ std::vector<std::uint8_t> editableNoteBytes(const std::string& fields) {
 	        std::to_string(xref) + "\n%%EOF\n";
 	return {data.begin(), data.end()};
 }
+std::vector<std::uint8_t>
+sharedHighlightBytes(int count, std::string_view secondBox = "0 0 200 300",
+                     bool shared = true) {
+	const std::string contents = "BT /F1 20 Tf 40 230 Td (Alpha beta) Tj ET";
+	std::string refs = "[";
+	for (int i = 0; i < count; ++i) {
+		refs += "8 0 R ";
+	}
+	refs += "]";
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& body : std::vector<std::string>{
+	         "<< /Type /Catalog /Pages 2 0 R >>",
+	         "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
+	         "/Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R /Annots " +
+	             std::string(shared ? "7 0 R" : "[]") + " >>",
+	         "<< /Type /Page /Parent 2 0 R /MediaBox [" +
+	             std::string(secondBox) +
+	             "] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R "
+	             "/Annots 7 0 R >>",
+	         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+	         "<< /Length " + std::to_string(contents.size()) + " >>\nstream\n" +
+	             contents + "\nendstream",
+	         refs,
+	         "<< /Type /Annot /Subtype /Text /Rect [100 100 120 120] /Contents "
+	         "(Existing) >>"}) {
+		offsets.push_back(data.size());
+		data +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data += "xref\n0 9\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		data += line;
+	}
+	data += "trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n" +
+	        std::to_string(xref) + "\n%%EOF\n";
+	return {data.begin(), data.end()};
+}
 } // namespace
 
 TEST(Annotations, SnapshotsOutliveTheDocumentAndEngine) {
@@ -1011,6 +1053,171 @@ TEST(Annotations, HighlightsPersistTextQuadsAcrossCropAndPageRotations) {
 		    EXPECT_TRUE(saved.document->annotations(4)->entries.empty());
 		    EXPECT_EQ(doc.highlightText({{4, 0}, {4, INT_MAX}}), 1);
 		    EXPECT_EQ(annotationBytes("text.pdf"), source);
+	    })
+	    .get();
+}
+
+TEST(Annotations, HighlightFailuresPreflightAndRollBackSharedArrays) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bad = sharedHighlightBytes(4096, "0 0 200 300", false);
+		    const auto invalid = pdf::openDocument(bad);
+		    ASSERT_TRUE(invalid.document);
+		    EXPECT_FALSE(invalid.document->highlightText({{0, 0}, {1, 4}}));
+		    EXPECT_FALSE(invalid.document->modified());
+		    EXPECT_EQ(invalid.document->serialize(1024 * 1024), bad);
+		    for (const int count : {0, 1, 4095}) {
+			    for (const bool dirty : {false, true}) {
+				    if (dirty && count == 0) {
+					    continue;
+				    }
+				    const auto source = sharedHighlightBytes(count);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    if (dirty) {
+					    ASSERT_EQ(
+					        doc.updateTextNote(0, 0, u"Existing", u"Changed"),
+					        true);
+				    }
+				    // i undo appends that would also appear on an unselected
+				    // page.
+				    EXPECT_FALSE(doc.highlightText({{0, 0}, {0, 4}}));
+				    EXPECT_FALSE(doc.highlightText({{0, 0}, {1, 4}}));
+				    EXPECT_EQ(doc.modified(), dirty);
+				    for (int page = 0; page < 2; ++page) {
+					    const auto notes = doc.annotations(page);
+					    ASSERT_TRUE(notes);
+					    ASSERT_EQ(notes->entries.size(),
+					              static_cast<std::size_t>(count));
+					    if (count > 0) {
+						    EXPECT_EQ(notes->entries.back().subtype, "Text");
+						    EXPECT_EQ(notes->entries.front().contents,
+						              dirty ? "Changed" : "Existing");
+					    }
+				    }
+				    if (!dirty) {
+					    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+				    }
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations,
+     HighlightPermissionsAreIndependentOfCopyAndRefuseUnsafeFiles) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto allowed =
+		        pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(allowed.document);
+		    EXPECT_TRUE(allowed.document->canAnnotate());
+		    EXPECT_FALSE(allowed.document->canCopy());
+		    EXPECT_EQ(allowed.document->highlightText({{0, 0}, {0, 4}}), 1);
+		    const auto bytes = allowed.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    EXPECT_FALSE(saved.document->canCopy());
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    EXPECT_TRUE(notes->entries[0].contents.empty());
+		    for (const auto* file :
+		         {"notes_denied.pdf", "restricted.pdf", "annotations.pdf",
+		          "note_attachment.pdf"}) {
+			    const auto opened = pdf::openFile(fixturePath(file));
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(opened.document->highlightText({{0, 0}, {0, 4}}));
+			    EXPECT_FALSE(opened.document->modified());
+		    }
+		    const auto opened = pdf::openFile(fixturePath("text.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    for (const auto& selection :
+		         std::vector<pdf::TextSelection>{{{-1, 0}, {0, 1}},
+		                                         {{0, -1}, {0, 1}},
+		                                         {{0, 1}, {9, 1}},
+		                                         {{0, 9999}, {1, 1}},
+		                                         {{0, 10}, {0, 11}}}) {
+			    EXPECT_FALSE(opened.document->highlightText(selection));
+			    EXPECT_FALSE(opened.document->modified());
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, HighlightsClipGlyphsAndKeepCharacterIndexSemantics) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openDocument(sharedHighlightBytes(0, "0 0 50 300", false));
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_EQ(opened.document->highlightText({{0, 0}, {1, INT_MAX}}),
+		              2);
+		    const auto notes = opened.document->annotations(1);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1 &&
+		                notes->entries[0].bounds);
+		    EXPECT_FLOAT_EQ(notes->entries[0].bounds->right, 50);
+		    EXPECT_GE(notes->entries[0].bounds->left, 40);
+		    const auto unicode = pdf::openFile(fixturePath("text.pdf"));
+		    ASSERT_TRUE(unicode.document);
+		    const auto text = unicode.document->textPage(4);
+		    ASSERT_TRUE(text && text->characters.size() >= 4);
+		    EXPECT_EQ(text->characters[1].unicode, 0xD83Du);
+		    EXPECT_EQ(text->characters[2].unicode, 0xDE00u);
+		    EXPECT_EQ(unicode.document->highlightText({{4, 1}, {4, 2}}), 1);
+		    const auto selection = unicode.document->annotations(4);
+		    ASSERT_TRUE(selection && selection->entries.size() == 1 &&
+		                selection->entries[0].position);
+		    const auto& box = text->characters[1].box;
+		    EXPECT_GE(selection->entries[0].position->x, box.left);
+		    EXPECT_LE(selection->entries[0].position->x, box.right);
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewTextNotesRefuseSharedArraysWithoutSpreadingEdits) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const int count : {0, 1, 4095}) {
+			    for (const bool dirty : {false, true}) {
+				    if (dirty && count == 0) {
+					    continue;
+				    }
+				    const auto source = sharedHighlightBytes(count);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    if (dirty) {
+					    ASSERT_EQ(
+					        doc.updateTextNote(0, 0, u"Existing", u"Changed"),
+					        true);
+				    }
+				    for (int page = 0; page < 2; ++page) {
+					    EXPECT_FALSE(doc.addTextNote(page, 40, 50, u"Raw"));
+					    EXPECT_FALSE(
+					        doc.addCenteredTextNote(page, u"Centered"));
+					    EXPECT_FALSE(
+					        doc.addTextNoteAt(page, .4, .6, 3, u"Placed"));
+					    EXPECT_EQ(doc.modified(), dirty);
+					    const auto notes = doc.annotations(page);
+					    ASSERT_TRUE(notes &&
+					                notes->entries.size() ==
+					                    static_cast<std::size_t>(count));
+					    if (count > 0) {
+						    EXPECT_EQ(notes->entries.back().contents,
+						              dirty ? "Changed" : "Existing");
+					    }
+				    }
+				    if (!dirty) {
+					    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+				    }
+			    }
+		    }
 	    })
 	    .get();
 }
