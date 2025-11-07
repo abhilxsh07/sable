@@ -46,6 +46,7 @@ enum class Error {
 };
 
 using SaveResult = helpers::FileSaveResult;
+enum class TextMarkup { Highlight, Underline, StrikeOut };
 
 // what to tell the user, in plain words ("" for None)
 std::string_view errorMessage(Error error);
@@ -152,6 +153,8 @@ class Document {
 	// One Highlight per visible selected page; all pages preflight first.
 	// Returns the number added, or nullopt. Failed rollback throws.
 	std::optional<int> highlightText(TextSelection selection);
+	// i use the same page transaction for all three text markup types.
+	std::optional<int> markText(TextSelection selection, TextMarkup markup);
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,

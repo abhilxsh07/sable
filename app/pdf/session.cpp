@@ -491,6 +491,11 @@ bool Session::writeTextNote(int page,
 
 bool Session::highlightText(TextSelection selection,
                             std::function<void(HighlightResult)> callback) {
+	return markText(selection, TextMarkup::Highlight, std::move(callback));
+}
+
+bool Session::markText(TextSelection selection, TextMarkup markup,
+                       std::function<void(MarkupResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -498,13 +503,14 @@ bool Session::highlightText(TextSelection selection,
 			return false;
 		}
 	}
-	state->m_engine.post([state, selection, callback = std::move(callback)] {
-		HighlightResult result;
+	state->m_engine.post([state, selection, markup,
+	                      callback = std::move(callback)] {
+		MarkupResult result;
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
 				if (const auto added =
-				        state->m_document->highlightText(selection)) {
+				        state->m_document->markText(selection, markup)) {
 					result.count = *added;
 					result.changed = *added > 0;
 				}
@@ -512,7 +518,7 @@ bool Session::highlightText(TextSelection selection,
 		} catch (...) {
 			result.changed = state->m_document && state->m_document->modified();
 			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't highlight PDF text.");
+			                   "Couldn't mark PDF text.");
 		}
 		callback(std::move(result));
 	});

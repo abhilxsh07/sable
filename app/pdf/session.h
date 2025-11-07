@@ -68,10 +68,11 @@ struct AnnotationsResult {
 	std::optional<Annotations> annotations;
 	bool canceled = false;
 };
-struct HighlightResult {
+struct MarkupResult {
 	int count = 0;
 	bool changed = false, canceled = false;
 };
+using HighlightResult = MarkupResult;
 struct TextNoteResult {
 	int page = 0, index = 0;
 	std::optional<std::u16string> contents;
@@ -137,6 +138,8 @@ class Session {
 	                   std::function<void(NoteResult)> callback);
 	bool highlightText(TextSelection selection,
 	                   std::function<void(HighlightResult)> callback);
+	bool markText(TextSelection selection, TextMarkup markup,
+	              std::function<void(MarkupResult)> callback);
 	bool textNote(int page, int index,
 	              std::function<void(TextNoteResult)> callback);
 	bool updateTextNote(int page, int index, std::u16string expected,
