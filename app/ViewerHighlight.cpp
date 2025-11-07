@@ -24,15 +24,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 using namespace winrt;
 namespace winrt::Sable::implementation {
-bool ViewerPage::canHighlightSelection() const {
+bool ViewerPage::canMarkSelection() const {
 	return hasTextSelection() && m_session && m_noteAllowed && !m_noteBusy &&
 	       !m_noteSaving && !m_noteDialog && !m_notePlacing &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());
 }
 
-void ViewerPage::highlightSelection() {
-	if (!canHighlightSelection()) {
+void ViewerPage::markSelection(pdf::TextMarkup markup) {
+	if (!canMarkSelection()) {
 		return;
 	}
 	cancelSelectionDrag();
@@ -40,42 +40,45 @@ void ViewerPage::highlightSelection() {
 	const auto version = m_selectionVersion;
 	m_noteBusy = true;
 	try {
-		if (m_session->highlightText(selection, [weak = get_weak(),
-		                                         queue = DispatcherQueue(),
-		                                         version](pdf::HighlightResult
-		                                                      result) {
-			    queue.TryEnqueue([weak, version, result] {
-				    const auto self = weak.get();
-				    if (!self || self->m_closed) {
-					    return;
-				    }
-				    self->m_noteBusy = false;
-				    self->m_notesDirty = self->m_notesDirty || result.changed;
-				    try {
-					    if (result.count > 0 &&
-					        self->m_selectionVersion == version) {
-						    self->clearTextSelection();
-					    }
-					    if (result.changed) {
-						    self->refreshNotes();
-					    }
-					    if (result.count == 0) {
-						    self->showNotice(
-						        L"Couldn't highlight this selection. The PDF "
-						        L"may "
-						        L"restrict comments or contain attachments, or "
-						        L"the "
-						        L"selection may be empty or too large. Your "
-						        L"selection is still available.");
-					    }
-					    self->showComments();
-				    } catch (...) {
-					    diagnostics::write(
-					        diagnostics::Level::Error,
-					        "Couldn't refresh the highlighted PDF.");
-				    }
-			    });
-		    })) {
+		if (m_session->markText(
+		        selection, markup,
+		        [weak = get_weak(), queue = DispatcherQueue(),
+		         version](pdf::MarkupResult result) {
+			        queue.TryEnqueue([weak, version, result] {
+				        const auto self = weak.get();
+				        if (!self || self->m_closed) {
+					        return;
+				        }
+				        self->m_noteBusy = false;
+				        self->m_notesDirty =
+				            self->m_notesDirty || result.changed;
+				        try {
+					        if (result.count > 0 &&
+					            self->m_selectionVersion == version) {
+						        self->clearTextSelection();
+					        }
+					        if (result.changed) {
+						        self->refreshNotes();
+					        }
+					        if (result.count == 0) {
+						        self->showNotice(
+						            L"Couldn't mark this selection. The PDF "
+						            L"may "
+						            L"restrict comments or contain "
+						            L"attachments, or "
+						            L"the "
+						            L"selection may be empty or too large. "
+						            L"Your "
+						            L"selection is still available.");
+					        }
+					        self->showComments();
+				        } catch (...) {
+					        diagnostics::write(
+					            diagnostics::Level::Error,
+					            "Couldn't refresh the marked PDF.");
+				        }
+			        });
+		        })) {
 			showComments();
 			return;
 		}
@@ -84,6 +87,6 @@ void ViewerPage::highlightSelection() {
 	m_noteBusy = false;
 	showComments();
 	showNotice(
-	    L"Couldn't queue the highlight. Your selection is still available.");
+	    L"Couldn't queue the text markup. Your selection is still available.");
 }
 } // namespace winrt::Sable::implementation
