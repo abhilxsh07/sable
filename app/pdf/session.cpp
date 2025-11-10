@@ -590,6 +590,78 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 	return true;
 }
 
+bool Session::markupComment(int page, int index, TextMarkup markup,
+                            std::function<void(TextNoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, index, markup,
+	                      callback = std::move(callback)] {
+		TextNoteResult result;
+		result.page = page;
+		result.index = index;
+		try {
+			if (!state->closed()) {
+				if (auto value =
+				        state->m_document->markupComment(page, index, markup)) {
+					result.contents = std::move(value->text);
+					result.contentsPresent = value->present;
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't read a PDF markup comment.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.contents.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
+                                  CommentContents expected,
+                                  std::u16string contents,
+                                  std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    expected.text.size() > 32767 || contents.size() > 32767) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, index, markup,
+	                      expected = std::move(expected),
+	                      contents = std::move(contents),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = page;
+		result.canceled = state->closed();
+		try {
+			if (!result.canceled) {
+				if (const auto changed = state->m_document->updateMarkupComment(
+				        page, index, markup, expected, contents)) {
+					result.index = index;
+					result.changed = *changed;
+				}
+			}
+		} catch (...) {
+			result.changed = state->m_document && state->m_document->modified();
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't update a PDF markup comment.");
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::saveEdits(const std::filesystem::path& destination,
                         const std::filesystem::path& source, std::size_t limit,
                         std::function<bool()> canceled,

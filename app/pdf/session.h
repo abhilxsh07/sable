@@ -77,6 +77,7 @@ struct TextNoteResult {
 	int page = 0, index = 0;
 	std::optional<std::u16string> contents;
 	bool canceled = false;
+	bool contentsPresent = true;
 };
 struct NoteResult {
 	int page = 0;
@@ -145,6 +146,11 @@ class Session {
 	bool updateTextNote(int page, int index, std::u16string expected,
 	                    std::u16string contents,
 	                    std::function<void(NoteResult)> callback);
+	bool markupComment(int page, int index, TextMarkup markup,
+	                   std::function<void(TextNoteResult)> callback);
+	bool updateMarkupComment(int page, int index, TextMarkup markup,
+	                         CommentContents expected, std::u16string contents,
+	                         std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,

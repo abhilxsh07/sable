@@ -1485,3 +1485,61 @@ TEST_F(SessionTest, LineMarkupOwnsItsTypeAndKeepsWriteAndCloseOrder) {
 		EXPECT_EQ(closed->count, 0);
 	}
 }
+
+TEST_F(SessionTest, MarkupCommentRequestsOwnSnapshotsAndKeepCloseOrder) {
+	for (auto type : {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+	                  pdf::TextMarkup::StrikeOut}) {
+		pdf::Session session(engine);
+		Reply<pdf::TextNoteResult> read;
+		EXPECT_FALSE(session.markupComment(0, 0, type, read.callback()));
+		ASSERT_EQ(open(session, fixturePath("text.pdf")).error,
+		          pdf::Error::None);
+		Reply<pdf::MarkupResult> mark;
+		ASSERT_TRUE(session.markText({{0, 0}, {0, 4}}, type, mark.callback()));
+		const auto marked = mark.wait();
+		ASSERT_TRUE(marked && marked->changed);
+		ASSERT_TRUE(session.markupComment(0, 0, type, read.callback()));
+		const auto initial = read.wait();
+		ASSERT_TRUE(initial && initial->contents);
+		EXPECT_FALSE(initial->contentsPresent);
+		Gate gate(engine);
+		Reply<pdf::NoteResult> changed, stale;
+		pdf::CommentContents expected{*initial->contents,
+		                              initial->contentsPresent};
+		std::u16string text = u"Queued \u03a9\U0001f600\r\ncomment";
+		ASSERT_TRUE(session.updateMarkupComment(0, 0, type, expected, text,
+		                                        changed.callback()));
+		expected = {u"Later", true};
+		text.clear();
+		ASSERT_TRUE(session.updateMarkupComment(0, 0, type, {{}, false},
+		                                        u"Stale", stale.callback()));
+		session.cancelAnnotations();
+		session.cancelRender();
+		session.cancelSearch();
+		gate.open();
+		const auto a = changed.wait(), b = stale.wait();
+		ASSERT_TRUE(a && b);
+		EXPECT_TRUE(a->changed && a->index == 0);
+		EXPECT_FALSE(b->changed || b->index || b->canceled);
+		Reply<pdf::TextNoteResult> current;
+		ASSERT_TRUE(session.markupComment(0, 0, type, current.callback()));
+		const auto contents = current.wait();
+		ASSERT_TRUE(contents && contents->contents);
+		EXPECT_TRUE(contents->contentsPresent);
+		EXPECT_EQ(*contents->contents, u"Queued \u03a9\U0001f600\r\ncomment");
+		Gate closeGate(engine);
+		Reply<pdf::NoteResult> canceled;
+		Reply<pdf::TextNoteResult> closed;
+		ASSERT_TRUE(
+		    session.updateMarkupComment(0, 0, type, {*contents->contents, true},
+		                                u"Closed", canceled.callback()));
+		ASSERT_TRUE(session.markupComment(0, 0, type, closed.callback()));
+		session.close();
+		closeGate.open();
+		const auto c = canceled.wait();
+		const auto d = closed.wait();
+		ASSERT_TRUE(c && d);
+		EXPECT_TRUE(c->canceled && d->canceled);
+		EXPECT_FALSE(c->changed || c->index || d->contents);
+	}
+}
