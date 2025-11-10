@@ -59,6 +59,7 @@ struct PrintDialogResult;
 } // namespace pdf
 
 namespace winrt::Sable::implementation {
+struct MainWindow;
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -124,6 +125,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                       const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
+	friend struct MainWindow;
 #ifdef SABLE_SURFACE_TEST
 	friend struct TabsTest;
 	friend struct ScaleTest;
