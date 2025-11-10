@@ -35,38 +35,50 @@ void ViewerPage::beginNoteEdit() {
 	    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable()) || selected < 0 ||
 	    static_cast<std::size_t>(selected) >= rows.size() ||
-	    rows[selected].subtype != "Text") {
+	    (rows[selected].subtype != "Text" &&
+	     rows[selected].subtype != "Highlight" &&
+	     rows[selected].subtype != "Underline" &&
+	     rows[selected].subtype != "StrikeOut")) {
 		return;
 	}
 	const auto page = rows[selected].page, index = rows[selected].index;
+	std::optional<pdf::TextMarkup> markup;
+	if (rows[selected].subtype == "Highlight") {
+		markup = pdf::TextMarkup::Highlight;
+	} else if (rows[selected].subtype == "Underline") {
+		markup = pdf::TextMarkup::Underline;
+	} else if (rows[selected].subtype == "StrikeOut") {
+		markup = pdf::TextMarkup::StrikeOut;
+	}
 	m_noteBusy = true;
 	try {
 		const auto session = m_session.get();
-		if (session->textNote(
-		        page, index,
-		        [weak = get_weak(), queue = DispatcherQueue(),
-		         session](pdf::TextNoteResult result) {
-			        queue.TryEnqueue([weak, session,
-			                          result = std::move(result)] {
-				        const auto self = weak.get();
-				        if (!self || self->m_closed ||
-				            self->m_session.get() != session) {
-					        return;
-				        }
-				        self->m_noteBusy = false;
-				        self->showComments();
-				        if (result.contents && !result.canceled) {
-					        self->editExistingNote(result.page, result.index,
-					                               std::move(*result.contents));
-				        } else {
-					        self->showNotice(L"Couldn't edit this note. It may "
-					                         L"be protected, "
-					                         L"use rich text, or belong to a "
-					                         L"PDF whose edits "
-					                         L"cannot be saved safely.");
-				        }
-			        });
-		        })) {
+		const auto reply = [weak = get_weak(), queue = DispatcherQueue(),
+		                    session, markup](pdf::TextNoteResult result) {
+			queue.TryEnqueue(
+			    [weak, session, markup, result = std::move(result)] {
+				    const auto self = weak.get();
+				    if (!self || self->m_closed ||
+				        self->m_session.get() != session) {
+					    return;
+				    }
+				    self->m_noteBusy = false;
+				    self->showComments();
+				    if (result.contents && !result.canceled) {
+					    self->editExistingNote(result.page, result.index,
+					                           std::move(*result.contents),
+					                           markup, result.contentsPresent);
+				    } else {
+					    self->showNotice(L"Couldn't edit this note. It may "
+					                     L"be protected, "
+					                     L"use rich text, or belong to a "
+					                     L"PDF whose edits "
+					                     L"cannot be saved safely.");
+				    }
+			    });
+		};
+		if (markup ? session->markupComment(page, index, *markup, reply)
+		           : session->textNote(page, index, reply)) {
 			showComments();
 			return;
 		}
@@ -77,8 +89,10 @@ void ViewerPage::beginNoteEdit() {
 	showNotice(L"Couldn't queue the note editor. Try again.");
 }
 
-fire_and_forget ViewerPage::editExistingNote(int page, int index,
-                                             std::u16string expected) {
+fire_and_forget
+ViewerPage::editExistingNote(int page, int index, std::u16string expected,
+                             std::optional<pdf::TextMarkup> markup,
+                             bool contentsPresent) {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_session || !m_noteAllowed || m_noteBusy ||
@@ -92,19 +106,20 @@ fire_and_forget ViewerPage::editExistingNote(int page, int index,
 		leavePageBox();
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Edit note"));
+		dialog.Title(box_value(markup ? L"Edit comment" : L"Edit note"));
 		dialog.PrimaryButtonText(L"Apply");
 		dialog.CloseButtonText(L"Cancel");
 		dialog.DefaultButton(ContentDialogButton::None);
 		StackPanel fields;
 		fields.Spacing(12);
 		TextBlock location;
-		location.Text(L"Changes the note contents on page " +
+		location.Text((markup ? L"Changes the markup comment on page "
+		                      : L"Changes the note contents on page ") +
 		              to_hstring(page + 1) + L".");
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
 		TextBox contents;
-		contents.Header(box_value(L"Note"));
+		contents.Header(box_value(markup ? L"Comment" : L"Note"));
 		contents.AcceptsReturn(true);
 		contents.TextWrapping(TextWrapping::Wrap);
 		contents.MinHeight(100);
@@ -143,87 +158,93 @@ fire_and_forget ViewerPage::editExistingNote(int page, int index,
 				    args.Cancel(true);
 			    }
 		    });
-		dialog.PrimaryButtonClick([weak = get_weak(),
-		                           prompt = make_weak(dialog),
-		                           text = make_weak(contents),
-		                           failure = make_weak(error), initial, page,
-		                           index, expected = std::move(expected)](
-		                              auto&&,
-		                              const ContentDialogButtonClickEventArgs&
-		                                  args) {
-			args.Cancel(true);
-			const auto self = weak.get();
-			const auto view = prompt.get();
-			const auto field = text.get();
-			const auto message = failure.get();
-			if (!self || self->m_closed || self->m_noteBusy || !view ||
-			    !field || !message || field.Text().empty()) {
-				return;
-			}
-			const auto value = field.Text();
-			const auto replacement =
-			    value == *initial ? expected
-			                      : std::u16string(value.begin(), value.end());
-			self->m_noteBusy = true;
-			view.IsPrimaryButtonEnabled(false);
-			field.IsReadOnly(true);
-			message.Text(L"Applying note changes\u2026");
-			try {
-				if (self->m_session->updateTextNote(
-				        page, index, expected, replacement,
-				        [weak, prompt, text, failure,
-				         queue = self->DispatcherQueue()](auto result) {
-					        queue.TryEnqueue([weak, prompt, text, failure,
-					                          result] {
-						        const auto owner = weak.get();
-						        if (!owner || owner->m_closed) {
-							        return;
-						        }
-						        owner->m_noteBusy = false;
-						        owner->m_notesDirty =
-						            owner->m_notesDirty || result.changed;
-						        try {
-							        if (const auto dialog = prompt.get()) {
-								        if (result.index) {
-									        dialog.Hide();
-								        } else {
-									        if (const auto field = text.get()) {
-										        field.IsReadOnly(false);
-										        dialog.IsPrimaryButtonEnabled(
-										            !field.Text().empty());
-									        }
-									        if (const auto message =
-									                failure.get()) {
-										        message.Text(
-										            L"Couldn't apply this "
-										            L"edit. The note may have "
-										            L"changed. Your text is "
-										            L"still here.");
-									        }
-								        }
-							        }
-							        if (result.changed) {
-								        owner->refreshNotes();
-							        }
-							        owner->showComments();
-						        } catch (...) {
-							        diagnostics::write(
-							            diagnostics::Level::Error,
-							            "Couldn't refresh the edited note.");
-						        }
-					        });
-				        })) {
-					self->showComments();
-					return;
-				}
-			} catch (...) {
-			}
-			self->m_noteBusy = false;
-			field.IsReadOnly(false);
-			view.IsPrimaryButtonEnabled(true);
-			message.Text(L"Couldn't queue this edit. Your text is still here.");
-			self->showComments();
-		});
+		dialog.PrimaryButtonClick(
+		    [weak = get_weak(), prompt = make_weak(dialog),
+		     text = make_weak(contents), failure = make_weak(error), initial,
+		     page, index, markup, contentsPresent,
+		     expected = std::move(expected)](
+		        auto&&, const ContentDialogButtonClickEventArgs& args) {
+			    args.Cancel(true);
+			    const auto self = weak.get();
+			    const auto view = prompt.get();
+			    const auto field = text.get();
+			    const auto message = failure.get();
+			    if (!self || self->m_closed || self->m_noteBusy || !view ||
+			        !field || !message || field.Text().empty()) {
+				    return;
+			    }
+			    const auto value = field.Text();
+			    const auto replacement =
+			        value == *initial
+			            ? expected
+			            : std::u16string(value.begin(), value.end());
+			    self->m_noteBusy = true;
+			    view.IsPrimaryButtonEnabled(false);
+			    field.IsReadOnly(true);
+			    message.Text(L"Applying note changes\u2026");
+			    try {
+				    const auto reply = [weak, prompt, text, failure,
+				                        queue = self->DispatcherQueue()](
+				                           auto result) {
+					    queue.TryEnqueue([weak, prompt, text, failure, result] {
+						    const auto owner = weak.get();
+						    if (!owner || owner->m_closed) {
+							    return;
+						    }
+						    owner->m_noteBusy = false;
+						    owner->m_notesDirty =
+						        owner->m_notesDirty || result.changed;
+						    try {
+							    if (const auto dialog = prompt.get()) {
+								    if (result.index) {
+									    dialog.Hide();
+								    } else {
+									    if (const auto field = text.get()) {
+										    field.IsReadOnly(false);
+										    dialog.IsPrimaryButtonEnabled(
+										        !field.Text().empty());
+									    }
+									    if (const auto message =
+									            failure.get()) {
+										    message.Text(
+										        L"Couldn't apply this "
+										        L"edit. The note may have "
+										        L"changed. Your text is "
+										        L"still here.");
+									    }
+								    }
+							    }
+							    if (result.changed) {
+								    owner->refreshNotes();
+							    }
+							    owner->showComments();
+						    } catch (...) {
+							    diagnostics::write(
+							        diagnostics::Level::Error,
+							        "Couldn't refresh the edited note.");
+						    }
+					    });
+				    };
+				    if (markup
+				            ? self->m_session->updateMarkupComment(
+				                  page, index, *markup,
+				                  pdf::CommentContents{expected,
+				                                       contentsPresent},
+				                  replacement, reply)
+				            : self->m_session->updateTextNote(
+				                  page, index, expected, replacement, reply)) {
+					    self->showComments();
+					    return;
+				    }
+			    } catch (...) {
+			    }
+			    self->m_noteBusy = false;
+			    field.IsReadOnly(false);
+			    view.IsPrimaryButtonEnabled(true);
+			    message.Text(
+			        L"Couldn't queue this edit. Your text is still here.");
+			    self->showComments();
+		    });
 		m_noteDialog = dialog;
 		co_await dialog.ShowAsync();
 		if (m_noteDialog == dialog) {

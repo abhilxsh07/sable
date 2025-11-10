@@ -181,11 +181,18 @@ void ViewerPage::showComments() {
 	                            !m_notePlacing);
 	const auto selected = CommentsList().SelectedIndex();
 	const auto& notes = m_commentScan.rows();
+	const bool selectedMarkup =
+	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	    (notes[selected].subtype == "Highlight" ||
+	     notes[selected].subtype == "Underline" ||
+	     notes[selected].subtype == "StrikeOut");
+	EditNoteButton().Content(box_value(selectedMarkup ? L"Edit selected comment"
+	                                                  : L"Edit selected note"));
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !m_notePlacing && selected >= 0 &&
 	    static_cast<std::size_t>(selected) < notes.size() &&
-	    notes[selected].subtype == "Text");
+	    (notes[selected].subtype == "Text" || selectedMarkup));
 	NotesState().Text(m_notePlacing
 	                      ? L"Click a page to place a note. Esc cancels."
 	                  : m_noteBusy   ? L"Updating note\u2026"

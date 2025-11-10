@@ -71,6 +71,7 @@ struct TabsTest {
 	pdf::TextMarkup selectionMarkup = pdf::TextMarkup::Highlight;
 	std::string markupSubtype = "Highlight";
 	bool noteEditOnly = false;
+	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
@@ -1361,8 +1362,8 @@ struct TabsTest {
 			        v.m_commentScan.rows().size() == 3,
 			    "successful highlight kept old selection or lost dirty state");
 			v.CommentsList().SelectedIndex(2);
-			check(!v.EditNoteButton().IsEnabled(),
-			      "Text markup opened the plain Text editor");
+			check(v.EditNoteButton().IsEnabled(),
+			      "Text markup comment editor unavailable");
 			v.followComment(2);
 			notesSave = owner.saveNotes(current);
 			break;
@@ -1442,9 +1443,20 @@ struct TabsTest {
 			const auto reply =
 			    std::make_shared<std::promise<pdf::NoteResult>>();
 			auto future = reply->get_future();
-			check(v.m_session->updateTextNote(
-			          0, 0, std::move(oldText), std::move(newText),
-			          [reply](auto result) { reply->set_value(result); }),
+			const auto callback = [reply](auto result) {
+				reply->set_value(result);
+			};
+			bool present = true;
+			if (markupCommentOnly && oldText == u"Location 1") {
+				oldText.clear();
+				present = false;
+			}
+			check(markupCommentOnly
+			          ? v.m_session->updateMarkupComment(0, 0, selectionMarkup,
+			                                             {oldText, present},
+			                                             newText, callback)
+			          : v.m_session->updateTextNote(0, 0, oldText, newText,
+			                                        callback),
 			      "external edit not queued");
 			check(future.wait_for(std::chrono::seconds(10)) ==
 			          std::future_status::ready,
@@ -1459,7 +1471,30 @@ struct TabsTest {
 				return;
 			}
 			check(!v.EditNoteButton().IsEnabled(), "unselected note editable");
-			change(u"Location 1", raw);
+			if (markupCommentOnly && !commentFactorStarted) {
+				commentFactorStarted = true;
+				const auto reply =
+				    std::make_shared<std::promise<pdf::MarkupResult>>();
+				auto future = reply->get_future();
+				check(v.m_session->markText(
+				          {{0, 0}, {0, 4}}, selectionMarkup,
+				          [reply](auto r) { reply->set_value(r); }),
+				      "markup setup not queued");
+				check(future.wait_for(std::chrono::seconds(10)) ==
+				              std::future_status::ready &&
+				          future.get().changed,
+				      "markup setup failed");
+				v.refreshNotes();
+			}
+			if (!markupCommentOnly || !commentFactorSeen) {
+				change(u"Location 1", raw);
+				commentFactorSeen = true;
+				if (markupCommentOnly) {
+					v.refreshNotes();
+					v.setCommentsOpen(true);
+					return;
+				}
+			}
 			v.CommentsList().SelectedIndex(0);
 			check(v.EditNoteButton().IsEnabled(),
 			      "selected Text note disabled");
@@ -1469,7 +1504,8 @@ struct TabsTest {
 			if (!v.m_noteDialog) {
 				return;
 			}
-			check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Edit note",
+			check(unbox_value<hstring>(v.m_noteDialog.Title()) ==
+			          (markupCommentOnly ? L"Edit comment" : L"Edit note"),
 			      "wrong editor");
 			owner.closeTab(owner.m_tabs.front().tab);
 			check(owner.m_tabs.size() == 1,
@@ -1485,8 +1521,12 @@ struct TabsTest {
 			const auto reply =
 			    std::make_shared<std::promise<pdf::TextNoteResult>>();
 			auto future = reply->get_future();
-			check(v.m_session->textNote(
-			          0, 0, [reply](auto result) { reply->set_value(result); }),
+			const auto callback = [reply](auto result) {
+				reply->set_value(result);
+			};
+			check(markupCommentOnly ? v.m_session->markupComment(
+			                              0, 0, selectionMarkup, callback)
+			                        : v.m_session->textNote(0, 0, callback),
 			      "raw note read not queued");
 			check(future.wait_for(std::chrono::seconds(10)) ==
 			          std::future_status::ready,
@@ -1547,11 +1587,21 @@ struct TabsTest {
 			check(notesSave.GetResults() && !v.m_notesDirty,
 			      "edited note save failed");
 			check(engine
-			          .run([path = notesPath] {
+			          .run([path = notesPath, markup = markupCommentOnly,
+			                type = selectionMarkup] {
 				          const auto saved = pdf::openFile(path);
-				          return saved.document &&
-				                 saved.document->textNote(0, 0) ==
-				                     u"Edited native \u03a9\U0001f600";
+				          if (!saved.document) {
+					          return false;
+				          }
+				          if (markup) {
+					          const auto value =
+					              saved.document->markupComment(0, 0, type);
+					          return value && value->present &&
+					                 value->text ==
+					                     u"Edited native \u03a9\U0001f600";
+				          }
+				          return saved.document->textNote(0, 0) ==
+				                 u"Edited native \u03a9\U0001f600";
 			          })
 			          .get(),
 			      "reopened note edit missing");
@@ -3287,6 +3337,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->noteEditOnly =
 	    GetEnvironmentVariableW(L"SableNoteEditTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	if (GetEnvironmentVariableW(L"SableMarkupCommentTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true") {
+		state->markupCommentOnly = true;
+		state->noteEditOnly = true;
+		state->highlightOnly = false;
+	}
 	state->notePlacementOnly =
 	    GetEnvironmentVariableW(L"SableNotePlacementTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -3371,7 +3427,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
-	} else if (state->highlightOnly) {
+	} else if (state->highlightOnly || state->markupCommentOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->notesOnly) {
 		window->openDocument(engine, L"tests/fixtures/comment_locations.pdf",
