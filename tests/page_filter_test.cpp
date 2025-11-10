@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "filter.h"
 #include "pdf/page_filter.h"
+#include "pdf_test_files.h"
 
 namespace {
 class PageFilterTest : public testing::Test {
@@ -138,8 +139,10 @@ TEST_F(PageFilterTest, CanReplaceThePageWithoutRebuildingTheChain) {
 }
 
 TEST_F(PageFilterTest, PresetChangesMatchChromiumWithoutUploadingAgain) {
-	std::ifstream file("tests/golden/filter_expected.json");
-	ASSERT_TRUE(file.is_open());
+	const auto path = goldenPath();
+	ASSERT_FALSE(path.empty()) << "tests/golden/filter_expected.json not found";
+	std::ifstream file(path);
+	ASSERT_TRUE(file.is_open()) << path;
 	const auto golden = nlohmann::json::parse(file);
 	ASSERT_EQ(golden.size(), 8);
 	std::vector<helpers::Rgb8> colors;

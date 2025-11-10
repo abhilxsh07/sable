@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
 
+#include <cstdio>
+#include <string>
+
 #include "helpers/logging.h"
 
 namespace notices {
@@ -67,6 +70,15 @@ bool Service::initialize(std::function<void()> activated) noexcept {
 			m_registered = true;
 		}
 		return true;
+	} catch (const winrt::hresult_error& error) {
+		// the code is the only clue to why Windows said no
+		char code[11];
+		std::snprintf(code, sizeof code, "0x%08X",
+		              static_cast<unsigned>(error.code().value));
+		diagnostics::write(
+		    diagnostics::Level::Warning,
+		    std::string("Couldn't register app notifications (") + code + ")");
+		return false;
 	} catch (...) {
 		diagnostics::write(diagnostics::Level::Warning,
 		                   "Couldn't register app notifications");

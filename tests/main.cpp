@@ -18,8 +18,15 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
+#include <winrt/base.h>
 
 int main(int argc, char** argv) {
+	// Cached WinRT factories must not outlive a temporary test apartment.
+	// see: https://devblogs.microsoft.com/oldnewthing/20211105-00/?p=105878
+	winrt::init_apartment(winrt::apartment_type::multi_threaded);
 	testing::InitGoogleTest(&argc, argv);
-	return RUN_ALL_TESTS();
+	const int result = RUN_ALL_TESTS();
+	winrt::clear_factory_cache();
+	winrt::uninit_apartment();
+	return result;
 }
