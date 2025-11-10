@@ -47,6 +47,11 @@ enum class Error {
 
 using SaveResult = helpers::FileSaveResult;
 enum class TextMarkup { Highlight, Underline, StrikeOut };
+struct CommentContents {
+	std::u16string text;
+	bool present = false;
+	bool operator==(const CommentContents&) const = default;
+};
 
 // what to tell the user, in plain words ("" for None)
 std::string_view errorMessage(Error error);
@@ -155,6 +160,12 @@ class Document {
 	std::optional<int> highlightText(TextSelection selection);
 	// i use the same page transaction for all three text markup types.
 	std::optional<int> markText(TextSelection selection, TextMarkup markup);
+	std::optional<CommentContents> markupComment(int page, int index,
+	                                             TextMarkup markup) const;
+	std::optional<bool> updateMarkupComment(int page, int index,
+	                                        TextMarkup markup,
+	                                        const CommentContents& expected,
+	                                        std::u16string_view contents);
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,
