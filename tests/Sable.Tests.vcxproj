@@ -99,6 +99,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="text_test.cpp" />
 		<ClCompile Include="search_test.cpp" />
 		<ClCompile Include="layout_test.cpp" />
+		<ClCompile Include="rotation_test.cpp" />
+		<ClCompile Include="pan_test.cpp" />
 		<ClCompile Include="zoom_test.cpp" />
 		<ClCompile Include="navigation_test.cpp" />
 		<ClCompile Include="thumbnails_test.cpp" />
@@ -131,6 +133,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\app\helpers\version.cpp" />
 		<ClInclude Include="..\app\helpers\layout.h" />
 		<ClCompile Include="..\app\helpers\layout.cpp" />
+		<ClInclude Include="..\app\helpers\rotation.h" />
+		<ClInclude Include="..\app\helpers\pan.h" />
+		<ClCompile Include="..\app\helpers\rotation.cpp" />
+		<ClCompile Include="..\app\helpers\pan.cpp" />
 		<ClInclude Include="..\app\helpers\zoom.h" />
 		<ClCompile Include="..\app\helpers\zoom.cpp" />
 		<ClInclude Include="..\app\helpers\navigation.h" />
