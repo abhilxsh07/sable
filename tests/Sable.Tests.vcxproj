@@ -117,6 +117,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="surface_util_test.cpp" />
 		<ClCompile Include="sliders_test.cpp" />
 		<ClCompile Include="settings_test.cpp" />
+		<ClCompile Include="properties_test.cpp" />
 		<ClCompile Include="annotations_test.cpp" />
 		<ClCompile Include="comments_test.cpp" />
 		<ClCompile Include="keybinds_test.cpp" />
@@ -135,6 +136,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\app\helpers\layout.cpp" />
 		<ClInclude Include="..\app\helpers\rotation.h" />
 		<ClInclude Include="..\app\helpers\pan.h" />
+		<ClCompile Include="..\app\helpers\properties.cpp" />
 		<ClCompile Include="..\app\helpers\rotation.cpp" />
 		<ClCompile Include="..\app\helpers\pan.cpp" />
 		<ClInclude Include="..\app\helpers\zoom.h" />
@@ -146,7 +148,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\app\helpers\comments.cpp" />
 		<ClCompile Include="..\app\helpers\thumbnails.cpp" />
 		<ClInclude Include="..\app\pdf\document.h" />
+		<ClInclude Include="..\app\pdf\properties.h" />
 		<ClInclude Include="..\app\pdf\annotations.h" />
+		<ClInclude Include="..\app\helpers\properties.h" />
 		<ClInclude Include="..\app\pdf\text.h" />
 		<ClInclude Include="..\app\pdf\search.h" />
 		<ClCompile Include="..\app\pdf\text.cpp" />
