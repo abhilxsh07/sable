@@ -44,6 +44,21 @@ struct PageRange {
 	bool operator==(const PageRange&) const = default;
 };
 
+enum class ScrollMode { Vertical, Horizontal, Wrapped, Page };
+enum class SpreadMode { None, Odd, Even };
+struct LayoutOptions {
+	ScrollMode scroll = ScrollMode::Vertical;
+	SpreadMode spread = SpreadMode::None;
+	std::size_t current = 0;
+	// the width the reader shows, pdf.js's clientWidth. Rows centre in it,
+	// and one that doesn't fit starts at the left. 0 means the viewport
+	// width given to the layout, or the widest row when that's 0 too.
+	double visibleWidth = 0;
+};
+PageRange spreadPages(std::size_t count, std::size_t page, SpreadMode spread);
+PageSize spreadSize(std::span<const PageSize> sizes, std::size_t page,
+                    SpreadMode spread);
+
 // a page's bounds in physical pixels
 struct PixelRect {
 	int x = 0;
@@ -76,7 +91,8 @@ class PageLayout {
 	// only the pages scale with zoom. Invalid input throws invalid_argument,
 	// and geometry that can't fit in a double throws overflow_error.
 	PageLayout(std::span<const PageSize> sizes, double zoom,
-	           double viewportWidth, double gap, double margin);
+	           double viewportWidth, double gap, double margin,
+	           LayoutOptions options = {});
 
 	std::span<const PageRect> pages() const {
 		return m_pages;
@@ -88,17 +104,30 @@ class PageLayout {
 		return m_height;
 	}
 
-	// vertical viewport in DIPs. Touching a page edge isn't an intersection.
+	// Legacy vertical viewport, or a full two-dimensional viewport in DIPs.
+	// Ranges conservatively include a whole row/spread. Page mode restricts
+	// them to the active spread; hidden pages retain valid raster sizes.
+	// Touching a row edge isn't an intersection.
 	// Overscan adds neighbours, including either side of a gap. A viewport
 	// outside the document or with invalid dimensions returns an empty range.
 	PageRange visiblePages(double top, double height,
 	                       std::size_t overscan = 1) const;
+	PageRange visiblePages(PageRect viewport, std::size_t overscan = 1) const;
 	// the page at y, or the next one down when y is in a gap or the top
 	// margin, or the last page past the end. Needs at least one page.
 	std::size_t pageAt(double y) const;
+	std::size_t pageAt(double x, double y) const;
+	bool contains(std::size_t page) const;
+	PageRange rowPages(std::size_t page) const;
 
   private:
 	std::vector<PageRect> m_pages;
+	struct Band {
+		double start, end;
+		PageRange pages;
+	};
+	std::vector<Band> m_bands;
+	bool m_horizontal = false;
 	double m_width = 0;
 	double m_height = 0;
 };
