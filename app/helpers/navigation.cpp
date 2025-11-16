@@ -189,7 +189,8 @@ std::size_t currentPage(const PageLayout& layout, const Viewport& view,
 	const double top = std::round(view.top);
 	const double right = std::round(view.left + view.width);
 	const double bottom = std::round(view.top + view.height);
-	const auto range = layout.visiblePages(top, bottom - top, 0);
+	const auto range =
+	    layout.visiblePages({left, top, right - left, bottom - top}, 0);
 	for (auto page = range.first; page < range.end; ++page) {
 		const auto& rect = layout.pages()[page];
 		const double pageLeft = std::round(rect.x);
@@ -231,6 +232,9 @@ std::size_t currentPage(const PageLayout& layout, const Viewport& view,
 
 NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
                     const NavState& state) {
+	if (modifiers.windows) {
+		return NavAction::None;
+	}
 	const bool hasPrevious = state.page > 0;
 	const bool hasNext = state.page + 1 < state.count;
 	// Ctrl, with or without Shift, works even in the page box (app.js
@@ -259,12 +263,23 @@ NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
 	if (modifiers.alt) {
 		return NavAction::None;
 	}
+	// app.js webViewerKeyDown uses R and Shift+R outside text fields
+	if (key == NavKey::R) {
+		return modifiers.shift ? NavAction::RotateCounterClockwise
+		                       : NavAction::RotateClockwise;
+	}
 	// Shift+Space and Shift+Enter go back a page only in page-fit
 	// (L3153-3166)
 	if (modifiers.shift) {
 		return (key == NavKey::Enter || key == NavKey::Space) && state.pageFit
 		           ? NavAction::Previous
 		           : NavAction::None;
+	}
+	if (key == NavKey::H) {
+		return NavAction::HandTool;
+	}
+	if (key == NavKey::S) {
+		return NavAction::SelectTool;
 	}
 	// no modifiers (L3014-3151). The scrolling keys only turn pages when
 	// there's nothing to scroll that way, or in page-fit.

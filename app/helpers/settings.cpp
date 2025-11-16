@@ -283,10 +283,19 @@ void to_json(Json& j, const GeneralSettings& general) {
 	j = Json::object();
 	j["MaximizeOnOpen"] = general.MaximizeOnOpen;
 	j["DisplayThumbs"] = general.DisplayThumbs;
+	// Keep the upstream shape for the default appearance.
+	if (general.Theme != "dark") {
+		j["Theme"] = general.Theme;
+	}
 }
 
 // a key that isn't there keeps whatever the struct had
 void from_json(const Json& j, GeneralSettings& general) {
+	general.Theme = "dark";
+	if (const auto theme = j.find("Theme");
+	    theme != j.end() && theme->is_string() && *theme == "obsidian") {
+		general.Theme = "obsidian";
+	}
 	if (j.contains("MaximizeOnOpen")) {
 		general.MaximizeOnOpen = j.at("MaximizeOnOpen").get<bool>();
 	}
@@ -573,6 +582,19 @@ bool saveSettings(const fs::path& path, const NightPDFSettings& settings) {
 
 SettingsStore::SettingsStore(fs::path path, const std::string& version)
     : m_path(std::move(path)), m_settings(loadSettings(m_path, version)) {}
+
+bool SettingsStore::setTheme(const std::string& theme) {
+	if (theme != "dark" && theme != "obsidian") {
+		return false;
+	}
+	auto settings = m_settings;
+	settings.general.Theme = theme;
+	if (!saveSettings(m_path, settings)) {
+		return false;
+	}
+	m_settings = std::move(settings);
+	return true;
+}
 
 bool SettingsStore::setGeneral(const std::string& key, bool value) {
 	auto settings = m_settings;
