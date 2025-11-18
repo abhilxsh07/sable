@@ -705,6 +705,34 @@ bool Session::saveEdits(const std::filesystem::path& destination,
 	return true;
 }
 
+bool Session::properties(std::function<void(PropertiesResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, callback = std::move(callback)] {
+		PropertiesResult result;
+		try {
+			if (!state->closed()) {
+				result.properties = state->m_document->properties(
+				    [state] { return state->closed(); });
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't read PDF document properties.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.properties.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
 	const auto state = m_state;
 	{

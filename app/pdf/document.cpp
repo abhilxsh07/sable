@@ -30,6 +30,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdexcept>
 
 #include <fpdf_doc.h>
+#include <fpdf_dataavail.h>
+#include <cstring>
+#include <limits>
 #include <fpdf_attachment.h>
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
@@ -1481,3 +1484,82 @@ std::optional<Link> Document::linkAt(int index, double x, double y) const {
 	                   FPDFLink_GetAction(link));
 }
 } // namespace pdf
+
+std::optional<pdf::Properties>
+pdf::Document::properties(const std::function<bool()>& canceled) const {
+	if (offThread() || (canceled && canceled())) {
+		return std::nullopt;
+	}
+	Properties result;
+	result.bytes = m_data.size();
+	result.pages = FPDF_GetPageCount(m_handle);
+	result.encrypted = FPDF_GetSecurityHandlerRevision(m_handle) >= 0;
+	int version = 0;
+	if (FPDF_GetFileVersion(m_handle, &version)) {
+		result.version = version;
+	}
+	const std::pair<const char*, std::string*> fields[] = {
+	    {"Title", &result.title},          {"Author", &result.author},
+	    {"Subject", &result.subject},      {"Keywords", &result.keywords},
+	    {"Creator", &result.creator},      {"Producer", &result.producer},
+	    {"CreationDate", &result.created}, {"ModDate", &result.modified}};
+	for (const auto& [tag, value] : fields) {
+		if (canceled && canceled()) {
+			return std::nullopt;
+		}
+		const auto bytes = FPDF_GetMetaText(m_handle, tag, nullptr, 0);
+		if (bytes <= 2) {
+			continue;
+		}
+		if (bytes > 128 * 1024 || bytes % 2) {
+			result.limited = true;
+			continue;
+		}
+		std::vector<unsigned char> buffer(bytes);
+		if (FPDF_GetMetaText(m_handle, tag, buffer.data(), bytes) != bytes) {
+			result.limited = true;
+			continue;
+		}
+		buffer.resize(bytes - 2);
+		*value = utf16ToUtf8(buffer);
+	}
+	// The availability API's file length is 32-bit on Windows. Larger files
+	// still expose their other properties, with unknown linearization.
+	if (m_data.size() <= (std::numeric_limits<unsigned long>::max)()) {
+		struct Available : FX_FILEAVAIL {
+			std::size_t length;
+			explicit Available(std::size_t size) : length(size) {
+				version = 1;
+				IsDataAvail = [](FX_FILEAVAIL* base, std::size_t offset,
+				                 std::size_t count) -> FPDF_BOOL {
+					const auto total = static_cast<Available*>(base)->length;
+					return offset <= total && count <= total - offset;
+				};
+			}
+		} available(m_data.size());
+		FPDF_FILEACCESS file{};
+		file.m_FileLen = static_cast<unsigned long>(m_data.size());
+		file.m_Param = const_cast<std::vector<std::uint8_t>*>(&m_data);
+		file.m_GetBlock = [](void* data, unsigned long offset,
+		                     unsigned char* destination, unsigned long count) {
+			const auto& bytes =
+			    *static_cast<const std::vector<std::uint8_t>*>(data);
+			if (offset > bytes.size() || count > bytes.size() - offset) {
+				return 0;
+			}
+			std::memcpy(destination, bytes.data() + offset, count);
+			return 1;
+		};
+		if (const auto availability = FPDFAvail_Create(&available, &file)) {
+			const auto status = FPDFAvail_IsLinearized(availability);
+			FPDFAvail_Destroy(availability);
+			if (status != PDF_LINEARIZATION_UNKNOWN) {
+				result.linearized = status == PDF_LINEARIZED;
+			}
+		}
+	}
+	if (canceled && canceled()) {
+		return std::nullopt;
+	}
+	return result;
+}
