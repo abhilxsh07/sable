@@ -436,6 +436,44 @@ return, failed-write recovery and owner-window lifetime use the existing
 handlers. No dependency was added. The appearance code is separate from the
 window lifetime and persistence code.
 
+## I12: Native print preview (2026-10-17)
+
+This is the approved third part of the music/print repair. NightPDF hands
+printing to Electron's webContents.print; the first native path used the
+Win32 dialog and couldn't provide a preview. I now use the reader HWND with
+IPrintManagerInterop and supply my own IPrintDocumentPageSource. The old
+dialog remains a fallback for unsupported modern APIs, with the chosen path
+logged. Cancel and ordinary print failures do not open another dialog.
+
+Preview publishes the document's page count again when options change, and
+keeps document page numbers intact so custom ranges are validated against
+the whole PDF. Only requested pages render. A newer page, changed options or
+a closed tab discards old work; repeated requests for the same page work too.
+The preview is an unfiltered PDFium print raster in a DXGI surface, never a
+capture of the dark viewer. Each page fits and centres inside the printer's
+imageable area; PDFium's intrinsic rotation remains in effect.
+
+The final job applies custom ranges once and renders at the reported printer
+DPI in tiles of at most 2048 square pixels. Direct2D records each paper page
+into a command list for ID2D1PrintControl. The system-owned job target carries
+copies and printer settings, so I submit each logical page once. This is
+raster output; the current PDFium path doesn't export Direct2D vectors.
+Workers have their own MTA and GPU resources; all PDFium calls still use the
+one engine thread. Both paths keep P18's original colours and print annotations.
+
+Cancellation skips queued tiles and drops in-flight results. It does not
+interrupt a blocking PDFium tile render or a printer call. The reader remains
+busy until both task submission and the asynchronous writer finish. Closing
+the tab cancels its source before releasing the PDF session. No dependency
+or project optimization setting changes are needed.
+
+The native checks substitute print UI completion and exercise reader state.
+The source checks use DXGI surfaces and real Direct2D output to an in-memory
+XPS package, without contacting a printer. An opt-in SablePrintUiTest request
+also reached the real system preview, supplied a DXGI page and closed after
+canceling; it submits no job. Print to PDF, ranges, landscape, copies and
+driver cancellation still need physical checks.
+
 ## Name: Sable (2026-10-06)
 
 This one wasn't really my call. When NightPDF was archived, its maintainer

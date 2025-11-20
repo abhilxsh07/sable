@@ -240,6 +240,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="pdf\text.h" />
 		<ClInclude Include="pdf\search.h" />
 		<ClInclude Include="pdf\printing.h" />
+		<ClInclude Include="pdf\print_layout.h" />
 		<ClInclude Include="pdf\page_cache.h" />
 		<ClInclude Include="pdf\session.h" />
 		<ClInclude Include="pdf\page_filter.h" />
@@ -303,6 +304,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\printing.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\print_raster.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\print_layout.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\page_cache.cpp">

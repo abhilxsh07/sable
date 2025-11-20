@@ -303,6 +303,38 @@ bool Session::linkAt(int page, double x, double y,
 	return true;
 }
 
+PrintRenderer Session::printRenderer() const {
+	return [state = m_state](
+	           PrintRasterRequest request, std::function<bool()> canceled,
+	           std::function<void(std::optional<Bitmap>)> callback) {
+		{
+			std::lock_guard lock(state->m_mutex);
+			if (!callback || !canceled || !state->m_ready || state->m_closed) {
+				return false;
+			}
+		}
+		state->m_engine.post([state, request, canceled = std::move(canceled),
+		                      callback = std::move(callback)] {
+			std::optional<Bitmap> result;
+			try {
+				if (!state->closed() && !canceled()) {
+					const auto& tile = request.tile;
+					result = state->m_document->printRaster(
+					    request.page, request.width, request.height, tile.x,
+					    tile.y, tile.width, tile.height);
+				}
+				if (state->closed() || canceled()) {
+					result.reset();
+				}
+			} catch (...) {
+				result.reset();
+			}
+			callback(std::move(result));
+		});
+		return true;
+	};
+}
+
 bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
 	const auto state = m_state;
 	{
