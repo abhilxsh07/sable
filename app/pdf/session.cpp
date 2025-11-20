@@ -733,6 +733,49 @@ bool Session::properties(std::function<void(PropertiesResult)> callback) {
 	return true;
 }
 
+bool Session::saveCopy(const std::filesystem::path& destination,
+                       const std::filesystem::path& source,
+                       std::function<bool()> canceled,
+                       std::function<void(SaveResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    state->m_saving) {
+			return false;
+		}
+		state->m_saving = true;
+	}
+	try {
+		state->m_engine.post([state, destination, source,
+		                      canceled = std::move(canceled),
+		                      callback = std::move(callback)] {
+			SaveResult result = SaveResult::Failed;
+			try {
+				const auto stopped = [&] {
+					return state->closed() || (canceled && canceled());
+				};
+				result = stopped() ? SaveResult::Canceled
+				                   : state->m_document->saveCopy(
+				                         destination, source, stopped);
+			} catch (...) {
+				diagnostics::write(diagnostics::Level::Error,
+				                   "Couldn't save a PDF copy.");
+			}
+			{
+				std::lock_guard lock(state->m_mutex);
+				state->m_saving = false;
+			}
+			callback(result);
+		});
+	} catch (...) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_saving = false;
+		throw;
+	}
+	return true;
+}
+
 bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
 	const auto state = m_state;
 	{
