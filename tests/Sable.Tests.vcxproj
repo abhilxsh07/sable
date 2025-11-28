@@ -108,6 +108,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="printing_test.cpp" />
 		<ClCompile Include="print_preview_test.cpp" />
 		<ClCompile Include="print_source_test.cpp" />
+		<ClCompile Include="print_job_test.cpp" />
 		<ClCompile Include="..\app\printing\source.cpp" />
 		<ClCompile Include="..\app\printing\graphics.cpp" />
 		<ClCompile Include="..\app\printing\options.cpp" />
