@@ -134,7 +134,9 @@ void Session::cancelSearch() {
 
 Session::Session(Engine& engine)
     : m_state(new State(engine), [&engine](State* state) {
-	      if (Engine::onThread()) {
+	      // close() drains the PDFium document on its engine. A print source
+	      // can keep the empty state after that engine has been destroyed.
+	      if (Engine::onThread() || !state->m_document) {
 		      delete state;
 	      } else {
 		      // the document can't die off the engine thread, so if this
