@@ -340,6 +340,23 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## Virtual printer verification (2026-10-18)
+
+The installed Microsoft Print to PDF driver can be checked without changing
+the default printer or sending paper jobs. An explicit opt-in test sends
+Sable's real Direct2D/XPS output to that named driver and gives it a new file
+in a unique temp folder. It reopens the result on the PDFium engine thread
+and checks selected pages, portrait/landscape sizes, original colors,
+print-visible annotations and rotated content.
+
+The diagnostic uses the older XPS job API only to supply the output filename.
+That API is deprecated, so its warning is scoped to this test helper. The
+reader still uses the modern Windows print UI; no production printing path
+or dependency changed. The test passes in Debug and Release, and keeps the
+two output files for review. Test-supplied options and an in-memory XPS target
+remain part of this setup, so I am keeping actual dialog input, cancellation,
+physical printers and copies/collation on the desktop checklist.
+
 ## V20: Save a Copy (2026-10-18)
 
 File > Save a copy, or Ctrl+S, opens a save dialog owned by the reading

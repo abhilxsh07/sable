@@ -350,3 +350,195 @@ TEST_F(PrintJobTest, UnsupportedJobTargetFailsBeforeRequestingPdfPixels) {
 // This legacy bridge is confined to the opt-in driver diagnostic below.
 #pragma warning(push)
 #pragma warning(disable : 4995)
+namespace {
+// This diagnostic only sends jobs to the named virtual printer, with an
+// explicit new output file. It never uses the default printer.
+struct VirtualJob {
+	HMODULE module =
+	    LoadLibraryExW(L"XpsPrint.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+	handle completed{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+	com_ptr<IXpsPrintJob> job;
+	com_ptr<IXpsPrintJobStream> document, ticket;
+	~VirtualJob() {
+		if (job) {
+			XPS_JOB_STATUS status{};
+			if (FAILED(job->GetJobStatus(&status)) ||
+			    status.completion == XPS_JOB_IN_PROGRESS) {
+				job->Cancel();
+				if (document) {
+					document->Close();
+				}
+				if (ticket) {
+					ticket->Close();
+				}
+				WaitForSingleObject(completed.get(), 30000);
+			}
+		}
+		document = nullptr;
+		ticket = nullptr;
+		job = nullptr;
+		if (module) {
+			FreeLibrary(module);
+		}
+	}
+};
+void writeVirtualPdf(IStream* input, const std::filesystem::path& output,
+                     bool landscape) {
+	ASSERT_FALSE(std::filesystem::exists(output));
+	VirtualJob printing;
+	ASSERT_NE(printing.module, nullptr);
+	ASSERT_TRUE(printing.completed);
+	const auto start = reinterpret_cast<decltype(&StartXpsPrintJob)>(
+	    GetProcAddress(printing.module, "StartXpsPrintJob"));
+	ASSERT_NE(start, nullptr);
+	// The older XPS entry point is used only to give this diagnostic an
+	// explicit filename. The reader uses the modern Windows print UI.
+	// see:
+	// https://learn.microsoft.com/en-us/windows/win32/api/xpsprint/nf-xpsprint-startxpsprintjob
+	ASSERT_EQ(start(L"Microsoft Print to PDF", L"Sable virtual output check",
+	                output.c_str(), nullptr, printing.completed.get(), nullptr,
+	                0, printing.job.put(), printing.document.put(),
+	                printing.ticket.put()),
+	          S_OK);
+	// see:
+	// https://learn.microsoft.com/en-us/windows/win32/printdocs/pageorientation
+	// see:
+	// https://learn.microsoft.com/en-us/windows/win32/printdocs/pagemediasize
+	const std::string ticket =
+	    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+	    "<psf:PrintTicket version=\"1\" "
+	    "xmlns:psf=\"http://schemas.microsoft.com/windows/2003/08/printing/"
+	    "printschemaframework\" "
+	    "xmlns:psk=\"http://schemas.microsoft.com/windows/2003/08/printing/"
+	    "printschemakeywords\">"
+	    "<psf:Feature name=\"psk:PageMediaSize\">"
+	    "<psf:Option name=\"psk:NorthAmericaLetter\"/></psf:Feature>"
+	    "<psf:Feature name=\"psk:PageOrientation\">"
+	    "<psf:Option name=\"psk:" +
+	    std::string(landscape ? "Landscape" : "Portrait") +
+	    "\"/></psf:Feature></psf:PrintTicket>";
+	ULONG written = 0;
+	ASSERT_EQ(printing.ticket->Write(
+	              ticket.data(), static_cast<ULONG>(ticket.size()), &written),
+	          S_OK);
+	ASSERT_EQ(written, ticket.size());
+	ASSERT_EQ(printing.ticket->Close(), S_OK);
+	ASSERT_EQ(input->Seek({}, STREAM_SEEK_SET, nullptr), S_OK);
+	std::array<std::uint8_t, 65536> buffer{};
+	for (;;) {
+		ULONG read = 0;
+		ASSERT_HRESULT_SUCCEEDED(input->Read(
+		    buffer.data(), static_cast<ULONG>(buffer.size()), &read));
+		if (!read) {
+			break;
+		}
+		ASSERT_EQ(printing.document->Write(buffer.data(), read, &written),
+		          S_OK);
+		ASSERT_EQ(written, read);
+	}
+	ASSERT_EQ(printing.document->Close(), S_OK);
+	ASSERT_EQ(WaitForSingleObject(printing.completed.get(), 30000),
+	          WAIT_OBJECT_0);
+	XPS_JOB_STATUS status{};
+	ASSERT_EQ(printing.job->GetJobStatus(&status), S_OK);
+	ASSERT_EQ(status.completion, XPS_JOB_COMPLETED)
+	    << "driver result: " << std::hex << status.jobStatus;
+	ASSERT_TRUE(std::filesystem::exists(output));
+}
+} // namespace
+#pragma warning(pop)
+
+// Explicit opt-in: this uses the installed Windows PDF driver and keeps the
+// resulting files in the test's unique temp directory for visual review.
+TEST_F(PrintJobTest,
+       DISABLED_MicrosoftPdfOutputKeepsColorsRangesAndOrientation) {
+	const auto directory = makeTempDir("virtual_print");
+	std::wcout << L"Virtual PDF output: " << directory.native() << L'\n';
+	pdf::Engine engine;
+	for (const bool landscape : {false, true}) {
+		pdf::Session session(engine);
+		auto opened = std::make_shared<std::promise<pdf::SessionInfo>>();
+		auto future = opened->get_future();
+		ASSERT_TRUE(session.open(
+		    fixturePath(landscape ? "pages.pdf" : "print.pdf"), {},
+		    [opened](auto info) { opened->set_value(std::move(info)); }));
+		ASSERT_EQ(future.wait_for(std::chrono::seconds(10)),
+		          std::future_status::ready);
+		const auto info = future.get();
+		ASSERT_EQ(info.error, pdf::Error::None);
+		target = make_self<Package>();
+		options->ranges.Clear();
+		const float width = landscape ? 1056.f : 816.f;
+		const float height = landscape ? 816.f : 1056.f;
+		options->description = {
+		    {width, height}, {0, 0, width, height}, 300, 300};
+		if (landscape) {
+			options->ranges.Append(Print::PrintPageRange(2, 3));
+		}
+		ASSERT_EQ(start(session.printRenderer(), info.pages), S_OK);
+		ASSERT_TRUE(target->state->wait());
+		const auto deadline =
+		    std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		while (!source->jobComplete() &&
+		       std::chrono::steady_clock::now() < deadline) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		ASSERT_TRUE(source->jobComplete());
+		ASSERT_FALSE(source->failed());
+		const auto output =
+		    directory / (landscape ? "range.pdf" : "colors.pdf");
+		ASSERT_NO_FATAL_FAILURE(
+		    writeVirtualPdf(target->stream.get(), output, landscape));
+		engine
+		    .run([&] {
+			    const auto reopened = pdf::openFile(output);
+			    ASSERT_TRUE(reopened.document);
+			    ASSERT_EQ(reopened.document->pageCount(), landscape ? 2 : 1);
+			    for (int page = 0; page < reopened.document->pageCount();
+			         ++page) {
+				    const auto size = reopened.document->pageSize(page);
+				    ASSERT_TRUE(size);
+				    EXPECT_NEAR(size->width, width * .75f, 1);
+				    EXPECT_NEAR(size->height, height * .75f, 1);
+				    const auto bitmap =
+				        reopened.document->render(page, static_cast<int>(width),
+				                                  static_cast<int>(height));
+				    ASSERT_TRUE(bitmap);
+				    const int original = landscape ? page + 1 : 0;
+				    const auto layout = pdf::layoutPrint(
+				        info.pages[original],
+				        {width, height, 0, 0, width, height}, 300, 300);
+				    ASSERT_TRUE(layout);
+				    const auto check = [&](double x, double y,
+				                           std::array<int, 3> color) {
+					    const auto column =
+					        static_cast<int>(layout->x + x * layout->width);
+					    const auto row =
+					        static_cast<int>(layout->y + y * layout->height);
+					    const auto at =
+					        static_cast<std::size_t>(row) * bitmap->stride +
+					        column * 4;
+					    for (int channel = 0; channel < 3; ++channel) {
+						    EXPECT_NEAR(bitmap->pixels.at(at + channel),
+						                color[channel], 8)
+						        << "output page " << page << ", point " << x
+						        << ',' << y << ", channel " << channel;
+					    }
+				    };
+				    if (!landscape) {
+					    check(.2, .8, {0, 0, 255});
+					    check(.6, .8, {0, 255, 0});
+					    check(.2, .3, {255, 255, 255});
+				    } else if (page == 0) {
+					    check(200. / 792, 412. / 612, {0, 255, 0});
+				    } else {
+					    check(.5, .2, {0, 0, 0});
+					    check(.5, .8, {255, 255, 255});
+				    }
+			    }
+		    })
+		    .get();
+		source->cancel(false);
+		source = nullptr;
+	}
+}
