@@ -199,6 +199,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="MusicSession.cpp" />
 		<ClCompile Include="MusicPane.cpp" />
 		<ClCompile Include="ViewerSelection.cpp" />
+		<ClCompile Include="ViewerRotation.cpp" />
+		<ClCompile Include="ViewerPan.cpp" />
+		<ClCompile Include="ViewerLayout.cpp" />
+		<ClCompile Include="ViewerPresentation.cpp" />
+		<ClCompile Include="MainPresentation.cpp" />
+		<ClCompile Include="MainSave.cpp" />
+		<ClCompile Include="MainKeyboard.cpp" />
+		<ClCompile Include="ViewerKeyboard.cpp" />
+		<ClCompile Include="ViewerGestures.cpp" />
 		<ClCompile Include="ViewerFind.cpp" />
 		<ClCompile Include="ViewerOutline.cpp" />
 		<ClCompile Include="ViewerAttachments.cpp" />
@@ -208,6 +217,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="ViewerHighlight.cpp" />
 		<ClCompile Include="MainNotes.cpp" />
 		<ClCompile Include="MainNoteClose.cpp" />
+		<ClCompile Include="ViewerProperties.cpp" />
 		<ClCompile Include="ViewerAttachmentSave.cpp" />
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>

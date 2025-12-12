@@ -59,8 +59,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
 								<!-- disabled until a tab is open, like NightPDF -->
+								<MenuFlyoutItem x:Name="SaveCopyItem" Text="Save a copy..." KeyboardAcceleratorTextOverride="Ctrl+S" IsEnabled="False" Click="onSaveCopy">
+									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
+								</MenuFlyoutItem>
 								<MenuFlyoutItem x:Name="PrintItem" Text="Print" KeyboardAcceleratorTextOverride="Ctrl+P" IsEnabled="False" Click="onPrint">
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE749;" /></MenuFlyoutItem.Icon>
+								</MenuFlyoutItem>
+								<MenuFlyoutItem x:Name="PropertiesItem" Text="Document properties" IsEnabled="False" Click="onDocumentProperties">
+								<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
 								<MenuFlyoutItem x:Name="SettingsItem" Text="Settings" KeyboardAcceleratorTextOverride="Alt+S" Click="onOpenSettings">
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
@@ -84,7 +90,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<MenuFlyoutItem x:Name="ZoomInItem" Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Plus" IsEnabled="False" Click="onZoomIn" />
 								<MenuFlyoutItem x:Name="ZoomOutItem" Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" IsEnabled="False" Click="onZoomOut" />
 								<MenuFlyoutSeparator />
+								<MenuFlyoutItem x:Name="RotateClockwiseItem" Text="Rotate Clockwise" Tag="1" KeyboardAcceleratorTextOverride="R" IsEnabled="False" Click="onRotateView" />
+								<MenuFlyoutItem x:Name="RotateCounterClockwiseItem" Text="Rotate Counterclockwise" Tag="-1" KeyboardAcceleratorTextOverride="Shift+R" IsEnabled="False" Click="onRotateView" />
+								<MenuFlyoutSeparator />
+								<MenuFlyoutSubItem x:Name="CursorToolMenu" Text="Cursor tool" IsEnabled="False">
+								<RadioMenuFlyoutItem x:Name="SelectToolItem" Text="Text selection" Tag="select" GroupName="CursorTool" IsChecked="True" KeyboardAcceleratorTextOverride="S" Click="onCursorTool" />
+								<RadioMenuFlyoutItem x:Name="HandToolItem" Text="Hand tool" Tag="hand" GroupName="CursorTool" KeyboardAcceleratorTextOverride="H" Click="onCursorTool" />
+								</MenuFlyoutSubItem>
+								<MenuFlyoutSeparator />
+								<MenuFlyoutSubItem x:Name="ScrollModeMenu" Text="Scrolling" IsEnabled="False">
+									<RadioMenuFlyoutItem x:Name="ScrollVerticalItem" Text="Vertical" Tag="scroll:0" GroupName="ScrollMode" IsChecked="True" Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="ScrollHorizontalItem" Text="Horizontal" Tag="scroll:1" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="ScrollWrappedItem" Text="Wrapped" Tag="scroll:2" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="ScrollPageItem" Text="Page" Tag="scroll:3" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
+								</MenuFlyoutSubItem>
+								<MenuFlyoutSubItem x:Name="SpreadModeMenu" Text="Spreads" IsEnabled="False">
+									<RadioMenuFlyoutItem x:Name="SpreadNoneItem" Text="No spread" Tag="spread:0" GroupName="SpreadMode" IsChecked="True" Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="SpreadOddItem" Text="Odd-page spreads" Tag="spread:1" GroupName="SpreadMode" IsChecked="False" Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="SpreadEvenItem" Text="Even-page spreads" Tag="spread:2" GroupName="SpreadMode" IsChecked="False" Click="onPageLayout" />
+								</MenuFlyoutSubItem>
+								<ToggleMenuFlyoutItem x:Name="ClickSpreadsItem" Text="Click pages to turn spreads"
+									IsChecked="False" IsEnabled="False" Click="onClickSpreads" />
+								<MenuFlyoutSeparator />
 								<MenuFlyoutItem x:Name="FullScreenItem" Text="Toggle Full Screen" KeyboardAcceleratorTextOverride="F11" Click="onToggleFullScreen" />
+								<MenuFlyoutItem x:Name="PresentationItem" Text="Presentation mode" KeyboardAcceleratorTextOverride="Ctrl+Alt+P" IsEnabled="False" Click="onPresentation" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="Window">
 								<MenuFlyoutItem x:Name="MinimizeItem" Text="Minimize" KeyboardAcceleratorTextOverride="Ctrl+M" Click="onMinimize" />
@@ -184,9 +213,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			a small shadow. Lined up under the preset buttons when it opens. -->
 		<Border x:Name="DarkConfigurator" Grid.Row="1" Visibility="Collapsed"
 			HorizontalAlignment="Right" VerticalAlignment="Top" Width="200"
-			MaxHeight="550" Margin="0,0,8,8" Background="#2d2d2d"
+			MaxHeight="550" Margin="0,0,8,8" Background="{ThemeResource SablePopupBrush}"
 			BorderBrush="#666666" BorderThickness="1" Padding="24,16"
-			CornerRadius="4" Translation="0,0,8" Tapped="onKeepConfigurator">
+			CornerRadius="8" Translation="0,0,8" Tapped="onKeepConfigurator">
 			<Border.Shadow>
 				<ThemeShadow />
 			</Border.Shadow>

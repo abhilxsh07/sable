@@ -397,9 +397,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_resettingGesture = false;
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
-	void requestLink(winrt::Windows::Foundation::Point point);
 	void requestLink(winrt::Windows::Foundation::Point point,
-	                 int presentationAdvance);
+	                 int presentationAdvance = 0);
 	void followLink(const pdf::LinkDestination& target, bool center = false);
 	winrt::fire_and_forget openLink(std::string uri);
 	void jumpTo(std::optional<double> x, double y);

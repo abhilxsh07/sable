@@ -610,40 +610,61 @@ void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
 
 // Image-local DIPs already account for scrolling and display scale. Only the
 // fractions within the displayed page cross over to the PDFium thread.
-void ViewerPage::requestLink(Windows::Foundation::Point point) {
+void ViewerPage::requestLink(Windows::Foundation::Point point,
+                             int presentationAdvance) {
 	if (m_closed || m_linkPending || !m_layout || !m_session ||
 	    Visibility() != XVisibility::Visible) {
 		return;
 	}
-	const auto page = m_layout->pageAt(point.Y);
+	const auto page = m_layout->pageAt(point.X, point.Y);
 	const auto& rect = m_layout->pages()[page];
 	const double x = (point.X - rect.x) / rect.width;
 	const double y = (point.Y - rect.y) / rect.height;
 	if (x < 0 || x > 1 || y < 0 || y > 1) {
+		if (presentationAdvance && m_presentation) {
+			advancePage(presentationAdvance);
+		}
 		return;
 	}
 	m_linkPending = true;
+	const auto version = m_rotationVersion;
+	const auto linkVersion = ++m_linkVersion;
+	const auto source = helpers::rotatePoint({x, y}, -m_rotation);
 	try {
 		const auto session = m_session.get();
 		if (session->linkAt(
-		        static_cast<int>(page), x, y,
-		        [weak = get_weak(), queue = DispatcherQueue(),
-		         session](pdf::LinkResult result) {
+		        static_cast<int>(page), source.x, source.y,
+		        [weak = get_weak(), queue = DispatcherQueue(), session, version,
+		         linkVersion, presentationAdvance](pdf::LinkResult result) {
 			        auto reply =
 			            std::make_shared<pdf::LinkResult>(std::move(result));
-			        queue.TryEnqueue([weak, session, reply] {
+			        queue.TryEnqueue([weak, session, reply, version,
+			                          linkVersion, presentationAdvance] {
 				        if (auto self = weak.get()) {
+					        if (self->m_linkVersion != linkVersion) {
+						        return;
+					        }
 					        self->m_linkPending = false;
 					        if (self->m_closed ||
 					            self->m_session.get() != session ||
+					            self->m_rotationVersion != version ||
 					            self->Visibility() != XVisibility::Visible ||
-					            reply->canceled || !reply->link) {
+					            reply->canceled) {
 						        return;
 					        }
-					        if (reply->link->destination) {
+					        if (reply->link && reply->link->destination) {
 						        self->followLink(*reply->link->destination);
-					        } else {
+					        } else if (presentationAdvance &&
+					                   self->m_presentation) {
+						        self->advancePage(presentationAdvance);
+					        } else if (reply->link) {
 						        self->openLink(std::move(reply->link->uri));
+					        } else if (presentationAdvance) {
+						        if (self->m_presentation) {
+							        self->advancePage(presentationAdvance);
+						        } else if (self->m_clickSpreads) {
+							        self->turnSpread(presentationAdvance);
+						        }
 					        }
 				        }
 			        });

@@ -340,6 +340,46 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## Trackpad stability and spread clicks (2026-10-19)
+
+The first gesture pass could stop updating visible pages while waiting for a
+native zoom reset. It also resized the document before removing the native
+scale, temporarily applying both changes to the scroll extent. That left room
+for blank tiles, stale percentages and jumps in long documents.
+
+I now keep rendering through a scaled viewport during the gesture, update the
+percentage from ViewChanging, and wait for direct manipulation to finish.
+The native scale resets before the PDF layout changes. The anchor comes from
+the scroll offsets in document coordinates, with a bounded reset timeout.
+Programmatic jumps use the new document extent and retry after layout so an
+old compositor extent cannot clamp a last-page zoom to an earlier page.
+Nullable link coordinates also carry a pending horizontal position forward
+instead of restoring an older compositor offset.
+
+View > Click pages to turn spreads is an optional choice per document tab.
+It is available in Page scrolling with odd/even spreads and starts off.
+The left page turns back one whole spread; the right page turns forward.
+A lone cover or final page uses its left/right halves. Page margins do not
+turn pages, selection and Hand drags stay intact, and PDF links take priority.
+The choice lasts for that tab; it does not add a saved global preference.
+
+## Trackpad scrolling and pinch zoom (2026-10-19)
+
+I enabled the reader's native ScrollViewer zoom for two-finger trackpad
+pinches and kept scrolling available on both axes without rail locking.
+Windows handles gesture motion and inertia. Once zoom settles, I map the
+viewport center back to its page position, rebuild the PDF layout at that
+scale and reset the native transform and offsets together. This keeps the
+zoom controls, sharp page renders, selection and Find in the same space.
+The relative native limits follow the existing 10–1,000% PDF zoom range.
+
+Ctrl+wheel now uses the same native zoom path, so one wheel event cannot
+apply both Windows' zoom and the old stepped wheel handler. Keyboard and
+button zoom steps keep their existing behavior. Presentation disables
+native zoom and restores it on exit. No new dependency or setting is needed.
+The native probe checks the real transforms and synchronization; physical
+trackpad input still needs a desktop check.
+
 ## Virtual printer verification (2026-10-18)
 
 The installed Microsoft Print to PDF driver can be checked without changing
@@ -356,6 +396,32 @@ or dependency changed. The test passes in Debug and Release, and keeps the
 two output files for review. Test-supplied options and an in-memory XPS target
 remain part of this setup, so I am keeping actual dialog input, cancellation,
 physical printers and copies/collation on the desktop checklist.
+
+## V21: Reader shortcuts (2026-10-18)
+
+I checked the key list against webViewerKeyDown() in NightPDF's bundled PDF.js
+viewer. Window commands now use one route, so page navigation and Ctrl+Alt+G
+also work while a tab header has focus. Text fields keep their editing keys;
+buttons keep Enter and Space. Sidebar lists, zoom selectors and sliders keep
+their own navigation. Properties and password dialogs keep reader commands out
+of the document behind them.
+
+Ctrl with =/+, -, or keypad +/- changes zoom. Ctrl+0 or keypad 0 resets zoom;
+Shift variants work too. Find uses Ctrl+F, Ctrl+G and Ctrl+Shift+G, with F3
+and Shift+F3 retained. R/Shift+R rotates, H/S changes tools, F4 toggles the
+sidebar, and the existing page-turn keys retain PDF.js's page-fit rules.
+Windows-key chords stay with Windows. Configured tab bindings still run ahead
+of document keys, while the fixed menu commands remain fixed.
+
+Ctrl+Alt+P enters presentation mode. Ctrl+Up/Down reaches the first or last
+page there, including with Shift. Open, Print and Save leave presentation
+before opening their dialogs. F11 toggles full screen, with repeat presses
+ignored; Ctrl+M minimizes. Native command checks cover routing and focus, but
+physical key delivery and keyboard-layout checks remain separate. Caret
+browsing and editing shortcuts wait for their corresponding features.
+
+Initial V21 validation used local non-LTO Release builds after temporary-file
+access denials. The later build-host change above restores normal LTO.
 
 ## V20: Save a Copy (2026-10-18)
 
@@ -380,6 +446,91 @@ failures remove only that temporary file. Saving shares the session's engine
 queue and rejects duplicate requests. No dependency or preference was added.
 Actual save-dialog input and overwrite confirmation still need a physical
 check.
+
+## V19: Presentation mode (2026-10-18)
+
+View > Presentation mode, or Ctrl+Alt+P, puts the current document on a black
+canvas with the title bar, rail and side panels hidden. Pages fit the window.
+Equal-sized pages keep their spread setting; mixed sizes use single pages,
+as in the bundled viewer. The normal reading zoom, layout and side panels
+come back on exit, at the page reached during the presentation. Entering
+from an already full-screen window returns to that same window state.
+
+Escape, F11 and the Exit button leave presentation mode. The small page
+controls hide after three idle seconds, unless a control has keyboard focus.
+The usual page-turn keys work, along with click/Shift+click, the wheel and
+single-finger swipes. Internal links still navigate, while other page clicks
+advance instead of opening a browser. Reading zoom, rotation, selection and
+hand dragging stay inactive until exit. Find closes with its query retained;
+selected text clears on entry, matching the bundled viewer.
+
+Changing or closing the tab ends the presentation. Old link replies cannot
+change a later page or a restored reading view. A display change that makes
+the old continuous layout too large falls back to fitted single pages and
+explains why. PDF pages keep their current night filter, and printing is
+unchanged. No dependency or stored preference was added.
+
+## V18: Scroll and spread layouts (2026-10-18)
+
+View > Scrolling offers Vertical, Horizontal, Wrapped and Page. View > Spreads
+pairs odd pages (1-2, 3-4) or even pages (a single cover, then 2-3, 4-5), or
+keeps pages separate. Each tab starts with vertical scrolling and no spread;
+its choices live with that tab. Changing layouts retains the current page,
+selected text, Find matches, rotation, filters and numeric zoom. Fitted presets
+use the combined spread size, including the fixed DIP gap between its pages.
+
+Layout uses ordered rows, or ordered columns in horizontal mode. A row's
+height comes from its tallest page. Wrapped rows pack whole spreads, center
+within the viewport and reflow on resize even at a numeric zoom. Visibility
+uses the scrolling axis; hit testing and zoom anchors use both coordinates.
+Conservative ranges include complete rows/spreads and nearby pages, keeping
+render scheduling bounded without scanning the entire document on a scroll.
+
+Page mode exposes only the current page or spread to rendering and prefetch.
+Other pages retain their raster dimensions for late replies and cached pixels.
+Page-number edits, thumbnails, Find and PDF destinations can change the active
+spread. Layout changes resize/invalidate the surface before committing, cancel
+active drags and reject old link replies. A layout beyond the surface limit
+keeps the readable layout and reports a notice. No dependency was added.
+
+Next/Previous advances across a fitting spread or wrapped row; horizontally it
+advances one page. A spread wider than the viewport advances one page so its
+other page remains reachable. Horizontal mode maps an ordinary wheel to the
+horizontal axis. Page mode turns at vertical wheel boundaries with a short
+repeat guard; zoomed pages can scroll within the spread. Native touch remains
+scrolling within the current surface, with reader buttons for changing pages.
+Physical wheel, keyboard, touch and pointer routing remain owner checks.
+
+## V17: Hand and text-selection tools (2026-10-18)
+
+View > Cursor tool offers Text selection (S) and Hand tool (H), matching the
+bundled viewer's unmodified shortcuts outside text fields. Text selection is
+the default for each new tab; tool choice stays with that tab for its lifetime.
+It does not add a stored preference. Switching tools preserves selected text.
+
+Hand mode captures a left mouse or pen press in the document viewport,
+including its gutters. Motion beyond three DIPs starts a drag. Every update
+uses the original viewport point and scroll offset, clamped to the current
+extent; hitting an edge cannot accumulate drift. Zoom and rotation stay fixed.
+Touch uses native scrolling. Scrollbars and their buttons retain native input.
+The resting cursor uses Windows Hand and a drag uses SizeAll, since the native
+system cursor set has no grab/grabbing pair. Leaving the viewport restores the
+normal inherited cursor.
+
+An unmoved hand tap resolves a PDF link once. A drag suppresses link activation,
+including when it starts over a link. This is a deliberate difference from the
+HTML viewer, which can exclude link elements before starting a drag: this
+raster viewer resolves PDF links asynchronously. Beginning a new gesture
+invalidates older link replies so they cannot navigate during a drag or clear
+a newer pending lookup. Touch link taps retain their normal path.
+
+Capture loss, missing left button, focus loss, deactivation, hidden/closed tabs,
+zoom, rotation, Find and document properties stop the gesture. Text selection
+keeps its existing pointer handling when selected. Helper tests cover threshold,
+clamping, anchor reversal and invalid inputs; the native probe checks both scroll
+axes, selection retention, menus, per-tab tools, links and cancellation. Physical
+pointer/capture and H/S keyboard routing remain owner checks. No dependency was
+added.
 
 ## V16: Document properties (2026-10-18)
 
@@ -452,6 +603,28 @@ still requires one ordinary key with a modifier, and saving, clearing, focus
 return, failed-write recovery and owner-window lifetime use the existing
 handlers. No dependency was added. The appearance code is separate from the
 window lifetime and persistence code.
+
+## V15: View rotation (2026-10-18)
+
+Rotate Clockwise and Rotate Counterclockwise are in View, with R and Shift+R
+outside text fields. Like the bundled viewer, this rotates every page in the
+current tab, reapplies a named zoom mode and restores the current page.
+Numeric zoom stays fixed. A different tab keeps its own rotation; reopening
+a document starts from its PDF rotation. This does not edit or save pages.
+
+I keep PDFium's page sizes and text geometry unchanged. The view swaps sizes
+at odd quarter turns, rotates highlight rectangles and maps text/link hit
+coordinates back before querying the engine. Link and outline destinations
+rotate their optional axes and fit rectangles too. Character selections and
+Find results survive rotation. Raster keys already include extra quarter
+turns; I clear GPU copies and rebuild the thumbnail strip even for a half
+turn or a square page. Late link replies from the old view are discarded.
+
+The new layout, thumbnail geometry and surface bounds are prepared before
+changing the view. A document that exceeds the existing surface limit keeps
+its previous orientation. Printing uses the original page sizes and PDF
+rotation, matching the bundled viewer's separate print-page overview.
+All PDFium work remains on the engine thread; no dependency was added.
 
 ## I12: Native print preview (2026-10-17)
 
