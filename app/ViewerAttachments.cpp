@@ -158,10 +158,16 @@ void ViewerPage::showAttachments() {
 	if (!m_attachmentsBuilt) {
 		AttachmentList().Items().Clear();
 		for (const auto& entry : m_attachments->entries) {
+			// a click reports the row's content rather than the row, so the
+			// name carries the PDF index as well (see setupAttachmentSaving)
+			TextBlock name;
+			name.Text(to_hstring(entry.name));
+			name.Tag(box_value(entry.index));
 			ListViewItem item;
-			item.Content(box_value(to_hstring(entry.name)));
+			item.Content(name);
 			item.Tag(box_value(entry.index));
 			ToolTipService::SetToolTip(item, box_value(L"Save attachment as"));
+			Automation::AutomationProperties::SetName(item, name.Text());
 			Automation::AutomationProperties::SetHelpText(
 			    item, L"Save attachment as");
 			AttachmentList().Items().Append(item);

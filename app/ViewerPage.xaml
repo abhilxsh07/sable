@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:local="using:Sable">
 
-	<Grid Background="{ThemeResource SableViewerBrush}" PreviewKeyDown="onPreviewKeyDown">
+	<Grid Background="{ThemeResource SableViewerBrush}">
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="*" />
@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
 			IsHitTestVisible="False" />
   <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed" Padding="8"
-   Background="{ThemeResource SablePaneBrush}">
+   Background="{ThemeResource SablePaneBrush}" CornerRadius="8">
    <StackPanel Spacing="4">
     <Grid ColumnSpacing="4">
      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -64,7 +64,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
 			rectangle, as it has outline: none. -->
-		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Disabled"
+		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Enabled" Background="Transparent"
+			HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled"
+			IsHorizontalRailEnabled="False" IsVerticalRailEnabled="False"
 			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
 			IsTabStop="True" UseSystemFocusVisuals="False">
 			<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
@@ -83,7 +85,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
 		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200" Visibility="Collapsed"
-			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
+			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0" CornerRadius="8">
 			<ScrollViewer x:Name="ThumbnailScroller" HorizontalScrollBarVisibility="Disabled"
 				VerticalScrollBarVisibility="Auto">
 				<Canvas x:Name="Thumbnails" TabFocusNavigation="Local" />
@@ -93,7 +95,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<Border x:Name="OutlinePanel" Grid.Row="1" Grid.Column="1" Width="200"
 			Visibility="Collapsed" BorderBrush="{ThemeResource SableDividerBrush}"
-			BorderThickness="1,0,0,0">
+			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
 				<Grid.RowDefinitions>
 					<RowDefinition Height="Auto" />
@@ -117,7 +119,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<Border x:Name="AttachmentPanel" Grid.Row="1" Grid.Column="1" Width="200"
 			Visibility="Collapsed" BorderBrush="{ThemeResource SableDividerBrush}"
-			BorderThickness="1,0,0,0">
+			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
 				<Grid.RowDefinitions>
 					<RowDefinition Height="Auto" />
@@ -173,7 +175,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
-			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
+			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0" CornerRadius="8">
 			<Border.Resources>
 				<!-- a disabled button stays flat, only its icon dims -->
 				<SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />

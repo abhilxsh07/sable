@@ -96,9 +96,10 @@ void ViewerPage::setupFind() {
 	showFindCount();
 }
 void ViewerPage::openFind() {
-	if (m_closed || !m_layout || !m_findTimer) {
+	if (m_closed || m_presentation || !m_layout || !m_findTimer) {
 		return;
 	}
+	stopPan();
 	const bool wasOpen = findOpen();
 	FindBar().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 	FindBox().Focus(FocusState::Programmatic);
@@ -320,14 +321,20 @@ void ViewerPage::revealFindMatch() {
 		requestText(match.page);
 		return;
 	}
+	if (!ensurePageLayout(static_cast<std::size_t>(match.page))) {
+		return;
+	}
+	m_current = static_cast<std::size_t>(match.page);
+	showPosition();
 	const auto& page = m_layout->pages()[match.page];
 	double x = page.x, y = page.y;
 	if (found != m_text.end()) {
 		const auto rects = pdf::textRects(*found->second.text, match.first,
 		                                  match.first + match.count);
 		if (!rects.empty()) {
-			x += rects.front().left * page.width;
-			y += rects.front().top * page.height;
+			const auto box = viewBox(rects.front());
+			x += box.left * page.width;
+			y += box.top * page.height;
 		}
 	}
 	m_findNeedsReveal = false;
@@ -352,9 +359,10 @@ void ViewerPage::drawFind(ID2D1DeviceContext& context,
 				continue;
 			}
 			const auto& match = m_findMatches[index];
-			for (const auto& box :
+			for (const auto& original :
 			     pdf::textRects(*text->second.text, match.first,
 			                    match.first + match.count)) {
+				const auto box = viewBox(original);
 				context.FillRectangle(
 				    D2D1::RectF(
 				        static_cast<float>(at.x + box.left * at.width),
