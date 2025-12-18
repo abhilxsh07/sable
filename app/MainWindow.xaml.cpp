@@ -43,6 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/version.h"
 #include "helpers/logging.h"
 #include "SettingsWindow.h"
+#include "Appearance.h"
 #include "Notifications.h"
 #include "MusicPane.h"
 
@@ -170,13 +171,32 @@ MainWindow::MainWindow(helpers::NightPDFSettings settings)
 // needs a named element has to wait until here
 void MainWindow::InitializeComponent() {
 	MainWindowT::InitializeComponent();
+	appearance::initialize(m_settings.general.Theme == "obsidian");
 	setupTitleBar();
 	setupSliders();
+	setupPresentation();
 	setupTabKeys();
-	setupZoomKeys();
 	setupOpen();
 	setupEdit();
 	setupMusic();
+	Activated([weak = get_weak()](auto&&, const WindowActivatedEventArgs& e) {
+		const auto self = weak.get();
+		if (!self) {
+			return;
+		}
+		if (e.WindowActivationState() == WindowActivationState::Deactivated) {
+			for (const auto& entry : self->m_tabs) {
+				get_self<ViewerPage>(entry.viewer)->stopPan(true);
+			}
+			return;
+		}
+		// the focus is put back after this, so look once it has been
+		self->DispatcherQueue().TryEnqueue([weak] {
+			if (const auto window = weak.get()) {
+				window->keepFocus();
+			}
+		});
+	});
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
 	Tabs().SelectionChanged([weak = get_weak()](auto&&, auto&&) {
@@ -232,6 +252,11 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
+		if (m_saveCopyCancel) {
+			m_saveCopyCancel->store(true);
+		}
+		m_presentationViewer = nullptr;
+		m_beforePresentation = nullptr;
 		if (m_music) {
 			m_music->close();
 		}
@@ -270,6 +295,12 @@ void MainWindow::setupOpen() {
 			self->pickDocuments();
 		}
 	});
+	get_self<HomePage>(Home())->OpenFileRequested(
+	    [weak = get_weak()](const std::filesystem::path& path) {
+		    if (auto self = weak.get(); self && self->m_engine) {
+			    self->openDocument(*self->m_engine, path, std::nullopt);
+		    }
+	    });
 	// port of app/render/index.ts splash drop handlers (L436-473)
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/design/input/drag-and-drop
@@ -292,30 +323,6 @@ void MainWindow::setupOpen() {
 			self->dropDocuments(args.DataView());
 		}
 	});
-	for (const auto key :
-	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::S,
-	      Windows::System::VirtualKey::P}) {
-		Input::KeyboardAccelerator accelerator;
-		accelerator.Key(key);
-		const bool settings = key == Windows::System::VirtualKey::S;
-		accelerator.Modifiers(
-		    settings ? Windows::System::VirtualKeyModifiers::Menu
-		             : Windows::System::VirtualKeyModifiers::Control);
-		accelerator.Invoked(
-		    [weak = get_weak(), settings, key](auto&&, const auto& args) {
-			    if (auto self = weak.get()) {
-				    if (settings) {
-					    self->onOpenSettings({}, {});
-				    } else if (key == Windows::System::VirtualKey::P) {
-					    self->onPrint({}, {});
-				    } else {
-					    self->pickDocuments();
-				    }
-				    args.Handled(true);
-			    }
-		    });
-		RootGrid().KeyboardAccelerators().Append(accelerator);
-	}
 }
 
 fire_and_forget MainWindow::pickDocuments() {
@@ -481,6 +488,12 @@ void MainWindow::openDocument(pdf::Engine& engine,
 		}
 	};
 	get_self<ViewerPage>(viewer)->setValues(m_values);
+	// a file only goes into Recent once it has actually opened
+	get_self<ViewerPage>(viewer)->onOpened([weak = get_weak(), resolved] {
+		if (const auto self = weak.get(); self && !self->m_closing) {
+			get_self<HomePage>(self->Home())->Remember(resolved);
+		}
+	});
 	m_tabs.push_back({resolved, tab, viewer, page});
 	Documents().Children().Append(viewer);
 	Tabs().TabItems().Append(tab);
@@ -538,99 +551,11 @@ void MainWindow::setupTabKeys() {
 				return;
 			}
 		}
-		const auto focused =
-		    Input::FocusManager::GetFocusedElement(self->RootGrid().XamlRoot());
-		const bool editing = focused.try_as<Controls::TextBox>() ||
-		                     focused.try_as<Controls::PasswordBox>() ||
-		                     focused.try_as<Controls::RichEditBox>();
-		if (const auto active = self->Viewer()) {
-			const auto pdf = get_self<ViewerPage>(active);
-			if (modifiers == helpers::SHORTCUT_CTRL && key == 'F') {
-				pdf->openFind();
-				args.Handled(true);
-				return;
-			}
-			if ((key == VK_F3 &&
-			     (modifiers == 0 || modifiers == helpers::SHORTCUT_SHIFT)) ||
-			    (key == 'G' && (modifiers == helpers::SHORTCUT_CTRL ||
-			                    modifiers == (helpers::SHORTCUT_CTRL |
-			                                  helpers::SHORTCUT_SHIFT)))) {
-				pdf->navigateFind((modifiers & helpers::SHORTCUT_SHIFT) ? -1
-				                                                        : 1);
-				args.Handled(true);
-				return;
-			}
-			if (key == VK_ESCAPE && modifiers == 0 && pdf->findOpen()) {
-				pdf->closeFind();
-				args.Handled(true);
-				return;
-			}
-		}
-		if (modifiers == helpers::SHORTCUT_CTRL &&
-		    (key == 'Z' || key == 'Y' || key == 'X' || key == 'C' ||
-		     key == 'V' || key == 'A') &&
-		    editing) {
-			// The text field's native edit keys take priority while editing.
-			return;
-		}
-		if (self->m_easterEgg && key == 'T' &&
-		    modifiers == (helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT)) {
-			if (!args.KeyStatus().WasKeyDown) {
-				self->showEasterEgg();
-			}
-			args.Handled(true);
-			return;
-		}
-		if (!editing) {
-			if (const auto active = self->Viewer()) {
-				const auto pdf = get_self<ViewerPage>(active);
-				if (modifiers == helpers::SHORTCUT_CTRL && key == 'A') {
-					pdf->selectAllText();
-					args.Handled(true);
-					return;
-				}
-				if (modifiers == helpers::SHORTCUT_CTRL && key == 'C' &&
-				    pdf->hasTextSelection()) {
-					pdf->copySelection();
-					args.Handled(true);
-					return;
-				}
-				if (modifiers == 0 && key == VK_ESCAPE &&
-				    pdf->hasTextSelection()) {
-					pdf->clearTextSelection();
-					args.Handled(true);
-					return;
-				}
-			}
-		}
-		// these belong to NightPDF's fixed menu, not the settings store
-		if (modifiers == helpers::SHORTCUT_CTRL && key >= '1' && key <= '9') {
-			self->selectTabPosition(
-			    key == '9'
-			        ? static_cast<int>(self->Tabs().TabItems().Size()) - 1
-			        : static_cast<int>(key - '1'));
-			args.Handled(true);
-			return;
-		}
-		if (modifiers == helpers::SHORTCUT_ALT && key == 'S') {
-			self->onOpenSettings({}, {});
-			args.Handled(true);
-			return;
-		}
-		if (modifiers == helpers::SHORTCUT_CTRL && key == 'P') {
-			self->onPrint({}, {});
-			args.Handled(true);
-			return;
-		}
-		if (modifiers == helpers::SHORTCUT_CTRL && key == 'O') {
-			return;
-		}
-		if (const auto* binding =
-		        helpers::matchShortcut(self->m_shortcuts, key, modifiers)) {
-			self->dispatchShortcut(*binding);
-			args.Handled(true);
-		}
+		args.Handled(
+		    self->routeKey(key, modifiers, args.KeyStatus().WasKeyDown));
 	});
+	RootGrid().KeyboardAcceleratorPlacementMode(
+	    Input::KeyboardAcceleratorPlacementMode::Hidden);
 }
 
 void MainWindow::dispatchShortcut(const helpers::Shortcut& shortcut) {
@@ -665,6 +590,12 @@ void MainWindow::selectTab() {
 	}
 	const auto viewer = Viewer();
 	const bool hasDocument = viewer != nullptr;
+	if (m_saveCopyCancel && m_saveCopyViewer.get() != viewer) {
+		m_saveCopyCancel->store(true);
+	}
+	if (m_presentationViewer && m_presentationViewer != viewer) {
+		endPresentation();
+	}
 	Nav().Visibility(hasDocument ? Visibility::Collapsed : Visibility::Visible);
 	Documents().Visibility(hasDocument ? Visibility::Visible
 	                                   : Visibility::Collapsed);
@@ -676,11 +607,22 @@ void MainWindow::selectTab() {
 	FindItem().IsEnabled(hasDocument);
 	ZoomInItem().IsEnabled(hasDocument);
 	ZoomOutItem().IsEnabled(hasDocument);
+	RotateClockwiseItem().IsEnabled(hasDocument);
+	RotateCounterClockwiseItem().IsEnabled(hasDocument);
 	PrintItem().IsEnabled(hasDocument && !m_printing);
+	SaveCopyItem().IsEnabled(hasDocument && !m_saveCopyCancel);
+	PropertiesItem().IsEnabled(hasDocument);
+	PresentationItem().IsEnabled(hasDocument);
+	updateCursorToolMenu();
+	updateLayoutMenu();
 	DarkConfigurator().Visibility(Visibility::Collapsed);
 	updateTitleBar();
 	for (auto& entry : m_tabs) {
 		const bool selected = entry.viewer == viewer;
+		if (!selected) {
+			get_self<ViewerPage>(entry.viewer)->stopPan(true);
+			get_self<ViewerPage>(entry.viewer)->dismissProperties();
+		}
 		entry.viewer.Visibility(selected ? Visibility::Visible
 		                                 : Visibility::Collapsed);
 		if (!entry.viewer.IsLoaded()) {
@@ -715,6 +657,9 @@ void MainWindow::removeTab(Controls::TabViewItem tab) {
 	if (m_closing || found == m_tabs.end()) {
 		return;
 	}
+	if (found->viewer == m_presentationViewer) {
+		endPresentation();
+	}
 	// port of app/helpers/file.ts close handler (L125-132)
 	m_closedTabs.push_back(found->path);
 	get_self<ViewerPage>(found->viewer)->close();
@@ -727,6 +672,31 @@ void MainWindow::removeTab(Controls::TabViewItem tab) {
 		Tabs().TabItems().RemoveAt(index);
 	}
 	selectTab();
+	// the removed viewer may have had the focus
+	DispatcherQueue().TryEnqueue([weak = get_weak()] {
+		if (const auto self = weak.get()) {
+			self->keepFocus();
+		}
+	});
+}
+
+// With nothing focused no key reaches routeKey, so the shortcuts stop until
+// something is clicked. Closing the focused tab leaves it like that when the
+// next tab only shows an error, and so does a window that became active
+// after its document opened. The pages take the focus, or else the tab.
+void MainWindow::keepFocus() {
+	const auto root = RootGrid().XamlRoot();
+	if (m_closing || !root || Input::FocusManager::GetFocusedElement(root)) {
+		return;
+	}
+	if (const auto viewer = Viewer();
+	    viewer && get_self<ViewerPage>(viewer)->takeFocus()) {
+		return;
+	}
+	if (const auto tab =
+	        Tabs().SelectedItem().try_as<Controls::TabViewItem>()) {
+		tab.Focus(FocusState::Programmatic);
+	}
 }
 
 // the history holds paths, not viewers, passwords or old reading positions
@@ -810,6 +780,8 @@ void MainWindow::setupEdit() {
 	MainMenu().Opening([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->beginEditMenu();
+			self->updateCursorToolMenu();
+			self->updateLayoutMenu();
 		}
 	});
 	MainMenu().Closing([weak = get_weak()](auto&&, auto&&) {
@@ -995,21 +967,6 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 
 void MainWindow::setEasterEgg(std::function<void()> notify) {
 	m_easterEgg = std::move(notify);
-	if (m_easterEggInstalled || !m_easterEgg) {
-		return;
-	}
-	m_easterEggInstalled = true;
-	Input::KeyboardAccelerator key;
-	key.Key(Windows::System::VirtualKey::T);
-	key.Modifiers(Windows::System::VirtualKeyModifiers::Shift |
-	              Windows::System::VirtualKeyModifiers::Menu);
-	key.Invoked([weak = get_weak()](auto&&, const auto& args) {
-		if (auto self = weak.get(); self && self->m_easterEgg) {
-			self->showEasterEgg();
-			args.Handled(true);
-		}
-	});
-	RootGrid().KeyboardAccelerators().Append(key);
 }
 
 void MainWindow::showEasterEgg() {
@@ -1246,64 +1203,6 @@ void MainWindow::updateTitleBar() {
 	}
 }
 
-// Electron's resetZoom, zoomIn and zoomOut accelerators, plus the keys
-// pdf.js took: Ctrl (or Ctrl+Shift) with =, numpad +, -, numpad -, 0. They
-// sit on the window's grid, since a closed menu's items aren't in the tree.
-void MainWindow::setupZoomKeys() {
-	using Windows::System::VirtualKey;
-	using Modifiers = Windows::System::VirtualKeyModifiers;
-	using Zoom = void (*)(ViewerPage&);
-	const auto add = [this](VirtualKey key, Controls::MenuFlyoutItem item,
-	                        Zoom zoom) {
-		for (const auto modifiers :
-		     {Modifiers::Control, Modifiers::Control | Modifiers::Shift}) {
-			Input::KeyboardAccelerator accelerator;
-			accelerator.Key(key);
-			accelerator.Modifiers(modifiers);
-			accelerator.Invoked(
-			    [weak = get_weak(), item, zoom](auto&&, const auto& args) {
-				    if (auto self = weak.get(); self && item.IsEnabled()) {
-					    zoom(*get_self<ViewerPage>(self->Viewer()));
-					    args.Handled(true);
-				    }
-			    });
-			RootGrid().KeyboardAccelerators().Append(accelerator);
-		}
-	};
-	// the = and - keys have no names in VirtualKey
-	const Zoom in = [](ViewerPage& viewer) { viewer.zoomIn(); };
-	const Zoom out = [](ViewerPage& viewer) { viewer.zoomOut(); };
-	const Zoom reset = [](ViewerPage& viewer) { viewer.zoomReset(); };
-	add(static_cast<VirtualKey>(VK_OEM_PLUS), ZoomInItem(), in);
-	add(VirtualKey::Add, ZoomInItem(), in);
-	add(static_cast<VirtualKey>(VK_OEM_MINUS), ZoomOutItem(), out);
-	add(VirtualKey::Subtract, ZoomOutItem(), out);
-	add(VirtualKey::Number0, ResetZoomItem(), reset);
-	add(VirtualKey::NumberPad0, ResetZoomItem(), reset);
-	// a TextBox takes Ctrl+- for a soft hyphen before the accelerators see
-	// it, and pdf.js zoomed out from its page box too (app.js L2878-2915),
-	// so this one is caught on the way down
-	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
-		const auto key = args.Key();
-		if (args.Handled() ||
-		    (key != static_cast<VirtualKey>(VK_OEM_MINUS) &&
-		     key != VirtualKey::Subtract) ||
-		    (GetKeyState(VK_CONTROL) & 0x8000) == 0 ||
-		    (GetKeyState(VK_MENU) & 0x8000) != 0 ||
-		    (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
-		    (GetKeyState(VK_RWIN) & 0x8000) != 0) {
-			return;
-		}
-		if (auto self = weak.get(); self && self->ZoomOutItem().IsEnabled()) {
-			get_self<ViewerPage>(self->Viewer())->zoomOut();
-			args.Handled(true);
-		}
-	});
-	// no hint bubbles for these on a grid
-	RootGrid().KeyboardAcceleratorPlacementMode(
-	    Input::KeyboardAcceleratorPlacementMode::Hidden);
-}
-
 void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
                              const RoutedEventArgs&) {
 	commitMenuEdit();
@@ -1341,6 +1240,10 @@ void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
 // View > Toggle Full Screen (Electron's togglefullscreen role)
 void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
                                     const RoutedEventArgs&) {
+	if (m_presentationViewer) {
+		endPresentation();
+		return;
+	}
 	commitMenuEdit();
 	auto appWindow = AppWindow();
 	if (appWindow.Presenter().Kind() == AppWindowPresenterKind::FullScreen) {
