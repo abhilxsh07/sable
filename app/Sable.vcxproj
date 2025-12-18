@@ -194,6 +194,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<DependentUpon>App.xaml</DependentUpon>
 		</ClCompile>
 		<ClCompile Include="SettingsWindow.cpp" />
+		<ClCompile Include="SettingsLayout.cpp" />
 		<ClCompile Include="Appearance.cpp" />
 		<ClCompile Include="Notifications.cpp" />
 		<ClCompile Include="MusicSession.cpp" />

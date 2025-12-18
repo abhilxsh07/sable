@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "helpers/settings.h"
+#include "Appearance.h"
 #include <array>
 #include <memory>
 #include <vector>
@@ -43,6 +44,13 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	void initialize(const winrt::Microsoft::UI::Xaml::Window& owner,
 	                const std::filesystem::path& icon);
 	void select(const std::string& section);
+	void saveTheme();
+	void themeChanged();
+	appearance::Subscription m_themeChanged;
+	winrt::Microsoft::UI::Xaml::Controls::ComboBox m_theme;
+	bool m_restoringTheme = false;
+	winrt::Microsoft::UI::Xaml::Controls::Grid buildLayout();
+	void buildCaptureCard();
 	void save(const winrt::Microsoft::UI::Xaml::Controls::CheckBox& box);
 	void buildKeybinds();
 	void edit(const std::string& action, std::size_t index);
@@ -63,6 +71,11 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	std::array<std::string, 256> m_keyNames;
 	helpers::SettingsStore& m_store;
 	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_version;
+	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_heading, m_description;
+	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_about;
+	winrt::Microsoft::UI::Xaml::Controls::Expander m_buildDetails;
+	winrt::Microsoft::UI::Xaml::Controls::Grid m_shortcuts;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer m_detailScroll;
 	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_general;
 	winrt::Microsoft::UI::Xaml::Controls::InfoBar m_error;
 	std::array<winrt::Microsoft::UI::Xaml::Controls::CheckBox, 2> m_checks;
