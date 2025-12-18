@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cmath>
 #include <format>
 #include <limits>
+#include <tuple>
 
 namespace music {
 Player identify(std::string_view appId) {
@@ -54,17 +55,17 @@ std::string_view playerName(Player player) {
 }
 std::optional<std::size_t> choose(std::span<const Candidate> sessions) {
 	std::optional<std::size_t> best;
-	int score = -1;
+	std::tuple<bool, std::int64_t, bool, bool> score{};
 	for (std::size_t i = 0; i < sessions.size(); ++i) {
 		const auto& session = sessions[i];
 		if (session.player == Player::None ||
 		    session.playback == Playback::Inactive) {
 			continue;
 		}
-		const int rank = (session.current ? 4 : 0) +
-		                 (session.playback == Playback::Playing ? 2 : 0) +
-		                 (session.previous ? 1 : 0);
-		if (rank > score) {
+		const auto rank =
+		    std::tuple{session.playback == Playback::Playing, session.changed,
+		               session.current, session.previous};
+		if (!best || rank > score) {
 			score = rank;
 			best = i;
 		}
@@ -96,6 +97,36 @@ std::int64_t position(const Timeline& t, double elapsedSeconds) {
 		         TICKS_PER_SECOND;
 	}
 	return clampTick(value, t.start, t.end);
+}
+std::int64_t positionAt(const Timeline& t, std::int64_t now) {
+	const double elapsed =
+	    t.updated > 0 && now > t.updated
+	        ? static_cast<double>(now - t.updated) / TICKS_PER_SECOND
+	        : 0;
+	return position(t, elapsed);
+}
+Timeline changePlayback(Timeline timeline, double elapsedSeconds, bool playing,
+                        double rate) {
+	timeline.position = position(timeline, elapsedSeconds);
+	timeline.playing = playing;
+	timeline.rate = rate;
+	return timeline;
+}
+bool awaitingSeek(const SeekRequest& request, const Timeline& sampled,
+                  std::int64_t now, std::uint64_t track, bool failed) {
+	if (failed || track != request.track || now < request.at ||
+	    static_cast<long double>(now) - request.at >= 5 * TICKS_PER_SECOND) {
+		return false;
+	}
+	if (sampled.updated < request.at) {
+		return true;
+	}
+	auto expected = sampled;
+	expected.position = request.position;
+	const double elapsed =
+	    static_cast<double>(now - request.at) / TICKS_PER_SECOND;
+	return std::abs(static_cast<long double>(sampled.position) -
+	                position(expected, elapsed)) > 2 * TICKS_PER_SECOND;
 }
 std::optional<std::int64_t> seekPosition(const Timeline& t, double seconds) {
 	if (!valid(t) || !std::isfinite(seconds)) {

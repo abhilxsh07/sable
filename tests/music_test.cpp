@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/helpers/music.h"
 #include <gtest/gtest.h>
 #include <array>
+#include <cmath>
 #include <limits>
 
 namespace {
@@ -43,14 +44,14 @@ TEST(Music, RecognizesOnlySupportedPlayerIds) {
 		EXPECT_EQ(identify(id), Player::None) << id;
 	}
 }
-TEST(Music, ChoosesSupportedCurrentThenPlayingWithStableTie) {
+TEST(Music, ChoosesPlayingBeforeCurrentWithStableTie) {
 	std::array candidates{
 	    Candidate{Player::None, Playback::Playing, true},
 	    Candidate{Player::Spotify, Playback::Paused, false, true},
 	    Candidate{Player::AppleMusic, Playback::Playing}};
 	EXPECT_EQ(choose(candidates), 2u);
 	candidates[1].current = true;
-	EXPECT_EQ(choose(candidates), 1u);
+	EXPECT_EQ(choose(candidates), 2u);
 	candidates[1].current = false;
 	candidates[1].playback = Playback::Playing;
 	EXPECT_EQ(choose(candidates), 1u);
@@ -58,6 +59,64 @@ TEST(Music, ChoosesSupportedCurrentThenPlayingWithStableTie) {
 	candidates[2].playback = Playback::Inactive;
 	EXPECT_FALSE(choose(candidates));
 	EXPECT_FALSE(choose({}));
+}
+TEST(Music, ChoosesRecentMediaActivityOverAStalePlayingSession) {
+	std::array candidates{
+	    Candidate{Player::Spotify, Playback::Playing, true, true, 10},
+	    Candidate{Player::Spotify, Playback::Playing, false, false, 20},
+	    Candidate{Player::AppleMusic, Playback::Paused, true, false, 30}};
+	EXPECT_EQ(choose(candidates), 1u);
+	candidates[2].playback = Playback::Playing;
+	EXPECT_EQ(choose(candidates), 2u);
+	candidates[2].playback = Playback::Inactive;
+	candidates[0].playback = Playback::Paused;
+	EXPECT_EQ(choose(candidates), 1u);
+	candidates[1].playback = Playback::Paused;
+	EXPECT_EQ(choose(candidates), 1u);
+}
+TEST(Music, TimelineUsesTheReportedUtcSampleWithoutDoubleAdvancing) {
+	auto t = track();
+	t.updated = 100 * second;
+	EXPECT_EQ(positionAt(t, 120 * second), 60 * second);
+	EXPECT_EQ(positionAt(t, 120 * second), 60 * second);
+	t.rate = 1.5;
+	EXPECT_EQ(positionAt(t, 120 * second), 70 * second);
+	EXPECT_EQ(positionAt(t, 200 * second), t.end);
+	t.playing = false;
+	EXPECT_EQ(positionAt(t, 120 * second), t.position);
+	t.updated = 0;
+	t.playing = true;
+	EXPECT_EQ(positionAt(t, 120 * second), t.position);
+	t.updated = 130 * second;
+	EXPECT_EQ(positionAt(t, 120 * second), t.position);
+}
+TEST(Music, PauseResumeAndRateChangesKeepTheDisplayedClock) {
+	auto t = track();
+	t = changePlayback(t, 5, false, 1);
+	EXPECT_EQ(position(t, 100), 45 * second);
+	t = changePlayback(t, 100, true, 1);
+	EXPECT_EQ(position(t, 2), 47 * second);
+	t = changePlayback(t, 2, true, 1.5);
+	EXPECT_EQ(position(t, 2), 50 * second);
+	t = changePlayback(t, 2, false, 1.5);
+	EXPECT_EQ(position(t, 100), 50 * second);
+}
+TEST(Music, SeekWaitsForANewTimelineNearTheTargetOrFailure) {
+	auto t = track();
+	SeekRequest request{90 * second, 100 * second, 5};
+	t.updated = 99 * second;
+	EXPECT_TRUE(awaitingSeek(request, t, 101 * second, 5));
+	t.updated = 101 * second;
+	EXPECT_TRUE(awaitingSeek(request, t, 101 * second, 5));
+	t.position = 91 * second;
+	EXPECT_FALSE(awaitingSeek(request, t, 101 * second, 5));
+	t.position = 40 * second;
+	EXPECT_FALSE(awaitingSeek(request, t, 106 * second, 5));
+	EXPECT_FALSE(awaitingSeek(request, t, 101 * second, 6));
+	EXPECT_FALSE(awaitingSeek(request, t, 101 * second, 5, true));
+	t.playing = false;
+	t.position = 90 * second;
+	EXPECT_FALSE(awaitingSeek(request, t, 101 * second, 5));
 }
 TEST(Music, ExtrapolatesPlayingAndClampsTimestamps) {
 	auto t = track();
@@ -144,5 +203,29 @@ TEST(Music, ArtworkTintIgnoresTransparencyAndKeepsWhiteReadable) {
 	const std::array<std::uint8_t, 4> transparent{0, 255, 0, 0};
 	EXPECT_EQ(artworkTint(transparent), Tint{});
 	EXPECT_EQ(artworkTint(std::span(white).first(3)), Tint{});
+}
+TEST(Music, BrightDarkAndGreyscaleArtworkKeepTitleContrast) {
+	const auto linear = [](double channel) {
+		channel /= 255.;
+		return channel <= 0.04045 ? channel / 12.92
+		                          : std::pow((channel + 0.055) / 1.055, 2.4);
+	};
+	for (const auto input : {std::array<std::uint8_t, 4>{250, 252, 255, 255},
+	                         std::array<std::uint8_t, 4>{1, 2, 3, 255},
+	                         std::array<std::uint8_t, 4>{128, 128, 128, 255},
+	                         std::array<std::uint8_t, 4>{255, 255, 255, 255}}) {
+		const auto tint = artworkTint(input);
+		const auto luminance = 0.2126 * linear(tint.r) +
+		                       0.7152 * linear(tint.g) +
+		                       0.0722 * linear(tint.b);
+		EXPECT_GE(1.05 / (luminance + 0.05), 4.5);
+		EXPECT_LE(tint.r, 80);
+		EXPECT_LE(tint.g, 80);
+		EXPECT_LE(tint.b, 80);
+		if (input[0] == input[1] && input[1] == input[2]) {
+			EXPECT_EQ(tint.r, tint.g);
+			EXPECT_EQ(tint.g, tint.b);
+		}
+	}
 }
 } // namespace

@@ -39,9 +39,10 @@ struct Candidate {
 	Playback playback = Playback::Inactive;
 	bool current = false;
 	bool previous = false;
+	std::int64_t changed = 0;
 };
-// Prefer Windows' supported current session, then a playing session; keep
-// the previous target among equally suitable sessions to avoid flicker.
+// Playing wins, then recent media/playback activity. Windows current and
+// the previous target only break exact ties.
 std::optional<std::size_t> choose(std::span<const Candidate> sessions);
 
 struct Timeline {
@@ -50,9 +51,20 @@ struct Timeline {
 	std::int64_t minSeek = 0, maxSeek = 0;
 	double rate = 1;
 	bool playing = false;
+	std::int64_t updated = 0;
 };
 constexpr std::int64_t TICKS_PER_SECOND = 10'000'000;
 std::int64_t position(const Timeline& timeline, double elapsedSeconds);
+std::int64_t positionAt(const Timeline& timeline, std::int64_t now);
+Timeline changePlayback(Timeline timeline, double elapsedSeconds, bool playing,
+                        double rate);
+struct SeekRequest {
+	std::int64_t position = 0, at = 0;
+	std::uint64_t track = 0;
+};
+// A successful command is not a timeline acknowledgement.
+bool awaitingSeek(const SeekRequest& request, const Timeline& sampled,
+                  std::int64_t now, std::uint64_t track, bool failed = false);
 std::optional<std::int64_t> seekPosition(const Timeline& timeline,
                                          double secondsFromStart);
 std::string timeText(std::int64_t ticks);
