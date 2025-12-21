@@ -38,21 +38,6 @@ namespace {
 void label(const DependencyObject& object, std::wstring_view name) {
 	Automation::AutomationProperties::SetName(object, name);
 }
-FontIcon icon(const wchar_t* glyph) {
-	FontIcon result;
-	result.Glyph(glyph);
-	result.FontSize(18);
-	return result;
-}
-Button transport(const wchar_t* glyph, const wchar_t* name) {
-	Button result;
-	result.Content(icon(glyph));
-	result.Width(44);
-	result.Height(40);
-	label(result, name);
-	ToolTipService::SetToolTip(result, box_value(name));
-	return result;
-}
 } // namespace
 Pane::Pane(Button button, std::function<void()> layoutChanged)
     : m_button(std::move(button)), m_layoutChanged(std::move(layoutChanged)) {}
@@ -70,116 +55,13 @@ Pane::~Pane() {
 
 void Pane::initialize(bool connect) {
 	const auto weak = weak_from_this();
-	m_button.Visibility(Visibility::Collapsed);
-	m_button.Flyout(m_flyout);
-	m_flyout.Placement(Microsoft::UI::Xaml::Controls::Primitives::
-	                       FlyoutPlacementMode::BottomEdgeAlignedRight);
-	m_background.TintColor({255, 45, 45, 45});
-	m_background.FallbackColor({255, 45, 45, 45});
-	m_background.TintOpacity(0.8);
-	m_background.TintLuminosityOpacity(0.85);
-	Style presenter(xaml_typename<FlyoutPresenter>());
-	presenter.Setters().Append(
-	    Setter(Control::BackgroundProperty(), m_background));
-	presenter.Setters().Append(
-	    Setter(Control::PaddingProperty(), box_value(Thickness{16})));
-	presenter.Setters().Append(
-	    Setter(FrameworkElement::MinWidthProperty(), box_value(0.)));
-	m_flyout.FlyoutPresenterStyle(presenter);
-
-	StackPanel content;
-	content.Width(304);
-	content.Spacing(12);
-	content.RequestedTheme(ElementTheme::Dark);
-	Grid header;
-	header.ColumnDefinitions().Append(ColumnDefinition());
-	ColumnDefinition textColumn;
-	textColumn.Width({1, GridUnitType::Star});
-	header.ColumnDefinitions().Append(textColumn);
-	header.ColumnDefinitions().GetAt(0).Width({88, GridUnitType::Pixel});
-	header.ColumnSpacing(12);
-	Grid cover;
-	cover.Width(88);
-	cover.Height(88);
-	m_art.Stretch(Media::Stretch::UniformToFill);
-	m_art.IsHitTestVisible(false);
-	m_placeholder = icon(L"\uE8D6");
-	m_placeholder.FontSize(34);
-	m_placeholder.Opacity(0.65);
-	cover.Children().Append(m_placeholder);
-	cover.Children().Append(m_art);
-	header.Children().Append(cover);
-	StackPanel info;
-	Grid::SetColumn(info, 1);
-	info.Spacing(5);
-	info.VerticalAlignment(VerticalAlignment::Center);
-	m_title.FontSize(15);
-	m_title.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
-	m_title.TextWrapping(TextWrapping::Wrap);
-	m_title.MaxLines(2);
-	m_title.TextTrimming(TextTrimming::CharacterEllipsis);
-	m_artist.TextWrapping(TextWrapping::Wrap);
-	m_artist.MaxLines(2);
-	m_artist.TextTrimming(TextTrimming::CharacterEllipsis);
-	m_artist.FontSize(13);
-	m_artist.Opacity(0.9);
-	m_player.FontSize(12);
-	m_player.Opacity(0.7);
-	info.Children().Append(m_title);
-	info.Children().Append(m_artist);
-	info.Children().Append(m_player);
-	header.Children().Append(info);
-	content.Children().Append(header);
-
-	StackPanel timeline;
-	m_seek.Minimum(0);
-	m_seek.Maximum(1);
-	m_seek.StepFrequency(1);
-	m_seek.IsThumbToolTipEnabled(false);
-	label(m_seek, L"Playback position");
-	timeline.Children().Append(m_seek);
-	Grid times;
-	m_elapsed.FontSize(12);
-	m_remaining.FontSize(12);
-	m_elapsed.Opacity(0.8);
-	m_remaining.Opacity(0.8);
-	m_remaining.HorizontalAlignment(HorizontalAlignment::Right);
-	times.Children().Append(m_elapsed);
-	times.Children().Append(m_remaining);
-	timeline.Children().Append(times);
-	content.Children().Append(timeline);
-
-	StackPanel controls;
-	controls.Orientation(Orientation::Horizontal);
-	controls.HorizontalAlignment(HorizontalAlignment::Center);
-	controls.Spacing(12);
-	m_previous = transport(L"\uE892", L"Previous track");
-	m_next = transport(L"\uE893", L"Next track");
-	m_playIcon = icon(L"\uE768");
-	m_play.Content(m_playIcon);
-	m_play.Width(52);
-	m_play.Height(40);
-	controls.Children().Append(m_previous);
-	controls.Children().Append(m_play);
-	controls.Children().Append(m_next);
-	content.Children().Append(controls);
-	StackPanel modes;
-	modes.Orientation(Orientation::Horizontal);
-	modes.HorizontalAlignment(HorizontalAlignment::Center);
-	modes.Spacing(12);
-	m_shuffle.Content(box_value(L"Shuffle"));
-	label(m_shuffle, L"Shuffle");
-	m_repeat.Content(box_value(L"Repeat: off"));
-	modes.Children().Append(m_shuffle);
-	modes.Children().Append(m_repeat);
-	content.Children().Append(modes);
-	m_error.TextWrapping(TextWrapping::Wrap);
-	m_error.FontSize(12);
-	m_error.Visibility(Visibility::Collapsed);
-	Automation::AutomationProperties::SetLiveSetting(
-	    m_error, Automation::Peers::AutomationLiveSetting::Polite);
-	content.Children().Append(m_error);
-	m_flyout.Content(content);
+	layout();
+	m_themeChanged = appearance::observe([weak] {
+		if (auto self = weak.lock()) {
+			self->tint(self->m_tint);
+		}
+	});
+	tint(m_tint);
 
 	m_previous.Click([weak](auto&&, auto&&) {
 		if (auto self = weak.lock()) {
@@ -208,7 +90,7 @@ void Pane::initialize(bool connect) {
 	});
 	const auto queue = m_button.DispatcherQueue();
 	m_timer = queue.CreateTimer();
-	m_timer.Interval(std::chrono::seconds(1));
+	m_timer.Interval(std::chrono::milliseconds(250));
 	m_timer.Tick([weak](auto&&, auto&&) {
 		if (auto self = weak.lock()) {
 			self->progress();
@@ -219,10 +101,32 @@ void Pane::initialize(bool connect) {
 	m_seekTimer.Interval(std::chrono::milliseconds(350));
 	m_seekTimer.Tick([weak](auto&&, auto&&) {
 		if (auto self = weak.lock(); self && !self->m_closed) {
-			self->m_seeking = false;
-			if (self->m_session) {
-				self->m_session->command(Command::Seek, self->m_seek.Value());
+			if (const auto target = seekPosition(
+			        self->m_snapshot.state.timeline, self->m_seek.Value())) {
+				self->m_pendingSeek = SeekRequest{
+				    *target, winrt::clock::now().time_since_epoch().count(),
+				    self->m_snapshot.trackVersion};
+				self->m_seekExpiry.Start();
+#ifdef SABLE_SURFACE_TEST
+				if (self->m_seekSink) {
+					self->m_seekSink(self->m_seek.Value());
+				} else
+#endif
+				    if (self->m_session) {
+					self->m_session->command(Command::Seek,
+					                         self->m_seek.Value());
+				}
 			}
+		}
+	});
+	m_seekExpiry = queue.CreateTimer();
+	m_seekExpiry.IsRepeating(false);
+	m_seekExpiry.Interval(std::chrono::seconds(5));
+	m_seekExpiry.Tick([weak](auto&&, auto&&) {
+		if (auto self = weak.lock(); self && !self->m_closed) {
+			self->m_pendingSeek.reset();
+			self->m_seeking = false;
+			self->progress();
 		}
 	});
 	m_seek.ValueChanged([weak](auto&&, auto&&) {
@@ -230,6 +134,8 @@ void Pane::initialize(bool connect) {
 		    self && !self->m_closed && !self->m_updating &&
 		    enabled(self->m_snapshot.state, Command::Seek)) {
 			self->m_seeking = true;
+			self->m_pendingSeek.reset();
+			self->m_seekExpiry.Stop();
 			self->m_seekTimer.Stop();
 			self->m_seekTimer.Start();
 		}
@@ -237,8 +143,11 @@ void Pane::initialize(bool connect) {
 	m_flyout.Opened([weak](auto&&, auto&&) {
 		if (auto self = weak.lock(); self && !self->m_closed) {
 			self->m_open = true;
+			if (self->m_session) {
+				self->m_session->reload();
+			}
+			self->motion(true);
 			self->progress();
-			self->m_timer.Start();
 		}
 	});
 	m_flyout.Closed([weak](auto&&, auto&&) {
@@ -246,6 +155,8 @@ void Pane::initialize(bool connect) {
 			self->m_open = false;
 			self->m_timer.Stop();
 			self->m_seekTimer.Stop();
+			self->m_seekExpiry.Stop();
+			self->m_pendingSeek.reset();
 			self->m_seeking = false;
 		}
 	});
@@ -267,7 +178,8 @@ void Pane::update(const Snapshot& snapshot) {
 		return;
 	}
 	const bool changedSession =
-	    snapshot.state.player != m_snapshot.state.player;
+	    snapshot.state.player != m_snapshot.state.player ||
+	    snapshot.trackVersion != m_snapshot.trackVersion;
 	m_snapshot = snapshot;
 	const auto& state = m_snapshot.state;
 	const auto visibility =
@@ -283,6 +195,7 @@ void Pane::update(const Snapshot& snapshot) {
 	}
 	m_title.Text(
 	    to_hstring(state.title.empty() ? "Unknown track" : state.title));
+	ToolTipService::SetToolTip(m_title, box_value(m_title.Text()));
 	m_artist.Text(to_hstring(state.artist));
 	m_artist.Visibility(state.artist.empty() ? Visibility::Collapsed
 	                                         : Visibility::Visible);
@@ -304,22 +217,45 @@ void Pane::update(const Snapshot& snapshot) {
 	const hstring repeat = state.repeat == Repeat::All   ? L"Repeat: all"
 	                       : state.repeat == Repeat::One ? L"Repeat: one"
 	                                                     : L"Repeat: off";
-	m_repeat.Content(box_value(repeat));
+	m_repeatIcon.Glyph(state.repeat == Repeat::One ? L"\uE8ED" : L"\uE8EE");
+	m_repeat.IsChecked(state.repeat && *state.repeat != Repeat::Off);
+	m_shuffle.Visibility(state.controls.shuffle && state.shuffle
+	                         ? Visibility::Visible
+	                         : Visibility::Collapsed);
+	m_repeat.Visibility(state.controls.repeat && state.repeat
+	                        ? Visibility::Visible
+	                        : Visibility::Collapsed);
+	ToolTipService::SetToolTip(m_repeat, box_value(repeat));
+	ToolTipService::SetToolTip(
+	    m_shuffle, box_value(state.shuffle.value_or(false) ? L"Shuffle on"
+	                                                       : L"Shuffle off"));
+	label(m_shuffle,
+	      state.shuffle.value_or(false) ? L"Shuffle on" : L"Shuffle off");
+	m_playingDot.Visibility(playing ? Visibility::Visible
+	                                : Visibility::Collapsed);
+	Automation::AutomationProperties::SetItemStatus(
+	    m_button, playing ? L"Playing" : L"Paused");
 	label(m_repeat, repeat);
-	if (changedSession || snapshot.artworkVersion != m_artworkVersion ||
-	    !enabled(state, Command::Seek)) {
+	if (changedSession || !state.controls.seek || !state.error.empty() ||
+	    (m_pendingSeek &&
+	     !awaitingSeek(*m_pendingSeek, state.timeline,
+	                   winrt::clock::now().time_since_epoch().count(),
+	                   snapshot.trackVersion))) {
 		m_seekTimer.Stop();
+		m_seekExpiry.Stop();
+		m_pendingSeek.reset();
 		m_seeking = false;
 	}
 	if (snapshot.artworkVersion != m_artworkVersion) {
 		m_artworkVersion = snapshot.artworkVersion;
 		const auto generation = ++m_artworkGeneration;
-		m_art.Source(nullptr);
-		m_placeholder.Visibility(Visibility::Visible);
+		m_artFade.Stop();
+		m_art.Opacity(1);
+		m_previousArt.Source(nullptr);
 		if (snapshot.artwork) {
 			artwork(weak_from_this(), snapshot.artwork, generation);
 		} else {
-			tint({});
+			setArtwork(nullptr, {});
 		}
 	}
 	progress();
@@ -327,6 +263,13 @@ void Pane::update(const Snapshot& snapshot) {
 void Pane::progress() {
 	if (m_closed) {
 		return;
+	}
+	if (m_open && m_snapshot.state.playback == Playback::Playing) {
+		if (!m_timer.IsRunning()) {
+			m_timer.Start();
+		}
+	} else {
+		m_timer.Stop();
 	}
 	const auto& t = m_snapshot.state.timeline;
 	const double elapsed =
@@ -350,32 +293,9 @@ void Pane::progress() {
 	m_remaining.Text(valid ? L"-" + to_hstring(timeText(t.end - shown))
 	                       : L"--:--");
 }
-void Pane::tint(Tint color) {
-	if (m_closed) {
-		return;
-	}
-	const Windows::UI::Color next{255, color.r, color.g, color.b};
-	const auto previous = m_background.TintColor();
-	m_transition.Stop();
-	m_transition.Children().Clear();
-	for (const auto property : {L"TintColor", L"FallbackColor"}) {
-		Media::Animation::ColorAnimation animation;
-		animation.From(previous);
-		animation.To(next);
-		animation.Duration(
-		    DurationHelper::FromTimeSpan(std::chrono::milliseconds(300)));
-		animation.EnableDependentAnimation(true);
-		Media::Animation::Storyboard::SetTarget(animation, m_background);
-		Media::Animation::Storyboard::SetTargetProperty(animation, property);
-		m_transition.Children().Append(animation);
-	}
-	m_background.TintColor(next);
-	m_background.FallbackColor(next);
-	m_transition.Begin();
-}
 winrt::fire_and_forget
 Pane::artwork(std::weak_ptr<Pane> weak,
-              Windows::Storage::Streams::IRandomAccessStreamReference reference,
+              std::shared_ptr<const std::vector<std::uint8_t>> bytes,
               std::uint64_t generation) {
 	try {
 		const auto current = [weak, generation] {
@@ -383,12 +303,17 @@ Pane::artwork(std::weak_ptr<Pane> weak,
 			return self && !self->m_closed &&
 			       self->m_artworkGeneration == generation;
 		};
-		const auto stream = co_await reference.OpenReadAsync();
-		if (!current()) {
+		if (!bytes || bytes->size() > 8 * 1024 * 1024) {
 			co_return;
 		}
-		if (!stream || stream.Size() > 8 * 1024 * 1024) {
-			throw hresult_invalid_argument();
+		Windows::Storage::Streams::InMemoryRandomAccessStream stream;
+		Windows::Storage::Streams::DataWriter writer(stream);
+		writer.WriteBytes(*bytes);
+		co_await writer.StoreAsync();
+		writer.DetachStream();
+		stream.Seek(0);
+		if (!current()) {
+			co_return;
 		}
 		using namespace Windows::Graphics::Imaging;
 		const auto decoder = co_await BitmapDecoder::CreateAsync(stream);
@@ -414,14 +339,12 @@ Pane::artwork(std::weak_ptr<Pane> weak,
 		}
 		stream.Seek(0);
 		Media::Imaging::BitmapImage bitmap;
-		bitmap.DecodePixelWidth(176);
+		bitmap.DecodePixelWidth(192);
 		co_await bitmap.SetSourceAsync(stream);
 		if (const auto self = weak.lock();
 		    self && !self->m_closed &&
 		    self->m_artworkGeneration == generation) {
-			self->m_art.Source(bitmap);
-			self->m_placeholder.Visibility(Visibility::Collapsed);
-			self->tint(color);
+			self->setArtwork(bitmap, color);
 		}
 	} catch (...) {
 		diagnostics::write(diagnostics::Level::Debug,
@@ -429,7 +352,7 @@ Pane::artwork(std::weak_ptr<Pane> weak,
 		if (const auto self = weak.lock();
 		    self && !self->m_closed &&
 		    self->m_artworkGeneration == generation) {
-			self->tint({});
+			self->setArtwork(nullptr, {});
 		}
 	}
 }
@@ -451,7 +374,13 @@ void Pane::close() noexcept {
 		if (m_seekTimer) {
 			m_seekTimer.Stop();
 		}
+		if (m_seekExpiry) {
+			m_seekExpiry.Stop();
+		}
+		m_pendingSeek.reset();
 		m_transition.Stop();
+		m_artFade.Stop();
+		m_motion.Stop();
 		m_flyout.Hide();
 		m_button.Flyout(nullptr);
 	} catch (...) {

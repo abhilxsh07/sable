@@ -1018,6 +1018,36 @@ outside a synced folder. Google Drive held PDBs through upload-queue hard
 links even after the compiler helper stopped. The tracked solution and CI
 keep their existing paths, and the same build/test scripts still run.
 
+## Rounded music flyout (2026-10-17)
+
+This is the approved second part of the music/print repair batch. The music
+surface is 340 px wide with 12 px corners, 16 px inset content and a raised
+shadow. In-app acrylic uses the artwork tint at 0.62 opacity and 0.92
+luminosity opacity, with a subtle same-hue gradient. The existing brightness
+clamp stays in helpers; missing art keeps NightPDF's #2d2d2d fallback.
+
+The title bar button opens relative to the window content, below the whole
+title bar with an 8 px gap. The position is clamped inside the window; the
+button's right edge is the preferred alignment. The transport row uses
+Fluent glyphs, with a white circular play button and quiet shuffle/repeat
+toggles. Unsupported toggles are hidden. Native slider input and automation
+remain available through its horizontal template parts.
+
+Opening fades and slides by 8 px; closing is shorter. Artwork crossfades
+and tint changes last 300 ms. These effects read Windows' Animation effects
+setting; the no-animation path applies the final state immediately. Artwork
+completion still checks the current generation before touching the surface.
+
+I use 4 px corners for the preset and shared controls, 8 px for the
+configurator and right-rail panels, and 12 px for the music flyout. This is
+an approved visual departure from NightPDF's preset/configurator radii.
+The PDF page surface is unchanged. Printing remains a separate I12 step.
+
+The native music check can save bright, dark and missing-art captures using
+synthetic artwork when SableMusicCaptureDirectory names an output directory.
+That capture code is only part of the surface-test build; it neither connects
+to nor controls a real player.
+
 ## Music pane (2026-10-15)
 
 Neither NightPDF nor Acrobat has this; it's an extra. A button in the title
@@ -1477,6 +1507,35 @@ Release ARM64's link-time code generation cannot write its temporary file in
 this sandbox; a local build with WholeProgramOptimization=false passes. The
 project keeps its normal optimization settings. Its standard ARM64 Release
 link still needs verification outside this environment.
+
+## Music tracking repair (2026-10-17)
+
+The old policy ranked Windows' current session above playback status and
+kept the previous target on ties. A paused current session could beat a
+playing one, and a second Spotify session changing tracks was not observed.
+Reopening the flyout only redrew the cached snapshot. Seeking released its
+thumb lock on a timer before the player had confirmed the new position.
+These defects explain how stale state can persist; identifying the exact
+abandoned session in the reported run still requires live player output.
+
+Selection now prefers Playing, then the most recent media/playback activity.
+Windows current and the previous target only break exact ties. Candidate
+media/playback subscriptions remain connected while the pane is closed;
+the followed session has three separate auto-revoked handlers. Opening the
+pane rereads the session list, media and timeline. Timeline ticks do not
+change activity priority. Broker calls run in the background; the dispatcher
+receives strings, numbers and bounded artwork bytes, with ordered replies.
+Session/request generations and an event epoch reject late metadata/artwork.
+
+Position advances from LastUpdatedTime using PlaybackRate, clamps to the
+reported bounds and freezes when paused. The pane ticks at 250 ms only while
+open and playing. Track changes reject the previous timeline sample until
+a newer one arrives. A seek keeps its target through busy and artwork updates
+until a fresh timeline is near the target, a failure occurs, or five seconds
+elapse. A track change clears it. Debug builds log every enumerated session,
+Windows current, the selected identity/status and metadata changes under
+LocalAppData/Sable/logs, even without DEBUG set. No periodic broker polling
+was added. Real Spotify/Apple Music behavior remains a physical check.
 
 ## Layer API check (2026-10-17)
 

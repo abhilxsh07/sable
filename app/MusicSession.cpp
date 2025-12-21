@@ -20,17 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "MusicSession.h"
 #include "helpers/logging.h"
-
 #include <algorithm>
+#include <format>
 #include <winrt/Windows.Media.h>
-
 namespace music {
 namespace {
 using namespace winrt;
 using namespace Windows::Media::Control;
-Playback
-playback(GlobalSystemMediaTransportControlsSessionPlaybackStatus status) {
-	switch (status) {
+Playback playback(GlobalSystemMediaTransportControlsSessionPlaybackStatus s) {
+	switch (s) {
 	case GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing:
 		return Playback::Playing;
 	case GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused:
@@ -39,23 +37,25 @@ playback(GlobalSystemMediaTransportControlsSessionPlaybackStatus status) {
 		return Playback::Inactive;
 	}
 }
-template <typename Work>
-auto onDispatcher(std::weak_ptr<Session> weak,
-                  Microsoft::UI::Dispatching::DispatcherQueue queue,
-                  Work work) {
-	return [weak, queue, work](auto&&, auto&&) noexcept {
-		try {
-			queue.TryEnqueue([weak, work] {
-				if (const auto self = weak.lock()) {
-					work(*self);
-				}
-			});
-		} catch (...) {
-		}
-	};
+#ifdef _DEBUG
+void trace(const std::string& message) {
+	diagnostics::write(diagnostics::Level::Info, "Music: " + message);
 }
+std::string describe(const GlobalSystemMediaTransportControlsSession& remote) {
+	if (!remote) {
+		return "none";
+	}
+	try {
+		return std::format(
+		    "{} [{:x}] status={}", to_string(remote.SourceAppUserModelId()),
+		    reinterpret_cast<std::uintptr_t>(get_abi(remote)),
+		    static_cast<int>(remote.GetPlaybackInfo().PlaybackStatus()));
+	} catch (...) {
+		return "disconnected";
+	}
+}
+#endif
 } // namespace
-
 Session::Session(winrt::Microsoft::UI::Dispatching::DispatcherQueue queue,
                  Changed changed)
     : m_queue(std::move(queue)), m_changed(std::move(changed)) {}
@@ -70,320 +70,228 @@ Session::create(const winrt::Microsoft::UI::Dispatching::DispatcherQueue& queue,
 Session::~Session() {
 	close();
 }
-
 winrt::fire_and_forget Session::start(std::weak_ptr<Session> weak) {
 	try {
-		// see:
-		// https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionmanager.requestasync
+		co_await winrt::resume_background();
 		const auto manager = co_await Manager::RequestAsync();
 		const auto self = weak.lock();
 		if (!self || self->m_closed) {
 			co_return;
 		}
+		std::lock_guard lock(self->m_mutex);
+		if (self->m_closed) {
+			co_return;
+		}
 		self->m_manager = manager;
-		const auto changed = onDispatcher(
-		    weak, self->m_queue, [](Session& owner) { owner.refresh(); });
 		self->m_sessionsChanged =
-		    manager.SessionsChanged(winrt::auto_revoke, changed);
-		self->m_currentChanged =
-		    manager.CurrentSessionChanged(winrt::auto_revoke, changed);
-		self->refresh();
+		    manager.SessionsChanged(winrt::auto_revoke, [weak](auto&&, auto&&) {
+			    request(weak, Event::Sessions);
+		    });
+		self->m_currentChanged = manager.CurrentSessionChanged(
+		    winrt::auto_revoke,
+		    [weak](auto&&, auto&&) { request(weak, Event::Current); });
+		self->refresh(Event::Open, nullptr, 0);
 	} catch (...) {
 		diagnostics::write(diagnostics::Level::Warning,
-		                   "Windows media sessions are unavailable");
+		                   "Windows media sessions are unavailable: " +
+		                       winrt::to_string(winrt::to_message()));
 	}
 }
 void Session::close() noexcept {
-	if (m_closed) {
-		return;
+	if (!m_closed.exchange(true)) {
+		m_changed = {};
 	}
-	m_closed = true;
-	++m_generation;
-	++m_request;
-	m_changed = {};
-	m_sessionsChanged.revoke();
-	m_currentChanged.revoke();
-	m_mediaChanged.revoke();
-	m_timelineChanged.revoke();
-	m_watches.clear();
-	m_remote = nullptr;
-	m_manager = nullptr;
+	// The last background reader releases the broker and its auto revokers.
+}
+void Session::reload() {
+	request(weak_from_this(), Event::Open);
+}
+winrt::fire_and_forget Session::request(std::weak_ptr<Session> weak,
+                                        Event event, Remote source,
+                                        std::int64_t when) {
+	try {
+		if (event == Event::Media) {
+			if (const auto self = weak.lock()) {
+				++self->m_mediaEpoch;
+			}
+		}
+		if (!when) {
+			when = winrt::clock::now().time_since_epoch().count();
+		}
+		co_await winrt::resume_background();
+		if (const auto self = weak.lock(); self && !self->m_closed) {
+			std::lock_guard lock(self->m_mutex);
+			if (!self->m_closed && self->m_manager) {
+				try {
+					self->refresh(event, source, when);
+				} catch (...) {
+					self->m_remote = nullptr;
+					++self->m_generation;
+					++self->m_request;
+					const auto art = self->m_work.artworkVersion + 1;
+					self->m_work = {};
+					self->m_work.artworkVersion = art;
+					self->notify();
+					throw;
+				}
+			}
+		}
+	} catch (...) {
+		diagnostics::write(diagnostics::Level::Warning,
+		                   "Couldn't refresh Windows media sessions: " +
+		                       winrt::to_string(winrt::to_message()));
+	}
 }
 void Session::notify() noexcept {
-	if (!m_closed && m_changed) {
+	try {
+		if (m_closed) {
+			return;
+		}
+		const auto reply = std::make_shared<Snapshot>(m_work);
+		m_queue.TryEnqueue(
+		    [weak = weak_from_this(), reply, serial = ++m_published] {
+			    const auto self = weak.lock();
+			    if (!self || self->m_closed || serial <= self->m_received) {
+				    return;
+			    }
+			    self->m_received = serial;
+			    self->m_snapshot = *reply;
+			    try {
+				    if (self->m_changed) {
+					    self->m_changed(self->m_snapshot);
+				    }
+			    } catch (...) {
+				    diagnostics::write(diagnostics::Level::Warning,
+				                       "Couldn't update the music pane");
+			    }
+		    });
+	} catch (...) {
+		diagnostics::write(diagnostics::Level::Warning,
+		                   "Couldn't update the music pane");
+	}
+}
+void Session::refresh(Event event, const Remote& source, std::int64_t when) {
+	// Candidate watches observe other sessions; the followed handlers read
+	// all three kinds of changes. Ignore the duplicate candidate callback.
+	if ((event == Event::ObserveMedia || event == Event::ObservePlayback) &&
+	    source == m_remote) {
+		return;
+	}
+	const auto current = m_manager.GetCurrentSession();
+#ifdef _DEBUG
+	trace(std::format("refresh={} current={}", static_cast<int>(event),
+	                  describe(current)));
+#endif
+	std::vector<Candidate> candidates;
+	std::vector<Remote> remotes;
+	std::vector<Info> infos;
+	for (const auto& remote : m_manager.GetSessions()) {
+#ifdef _DEBUG
+		trace("session=" + describe(remote));
+#endif
 		try {
-			m_changed(m_snapshot);
+			const auto player =
+			    identify(winrt::to_string(remote.SourceAppUserModelId()));
+			if (player == Player::None) {
+				continue;
+			}
+			const auto info = remote.GetPlaybackInfo();
+			if (!info) {
+				continue;
+			}
+			auto watch =
+			    std::find_if(m_watches.begin(), m_watches.end(),
+			                 [&](const auto& w) { return w.remote == remote; });
+			if (watch == m_watches.end()) {
+				Watch added;
+				added.remote = remote;
+				const auto weak = weak_from_this();
+				added.playback = remote.PlaybackInfoChanged(
+				    winrt::auto_revoke, [weak](const Remote& sender, auto&&) {
+					    request(weak, Event::ObservePlayback, sender);
+				    });
+				added.media = remote.MediaPropertiesChanged(
+				    winrt::auto_revoke, [weak](const Remote& sender, auto&&) {
+					    request(weak, Event::ObserveMedia, sender);
+				    });
+				const auto timeline = remote.GetTimelineProperties();
+				if (timeline) {
+					added.changed = (std::min)(
+					    timeline.LastUpdatedTime().time_since_epoch().count(),
+					    winrt::clock::now().time_since_epoch().count());
+				}
+				m_watches.push_back(std::move(added));
+				watch = m_watches.end() - 1;
+			}
+			if (source == remote && event != Event::Timeline) {
+				watch->changed = (std::max)(watch->changed, when);
+			}
+			candidates.push_back({player, playback(info.PlaybackStatus()),
+			                      remote == current, remote == m_remote,
+			                      watch->changed});
+			remotes.push_back(remote);
+			infos.push_back(info);
 		} catch (...) {
-			diagnostics::write(diagnostics::Level::Warning,
-			                   "Couldn't update the music pane");
+			// A player may disconnect during enumeration.
 		}
 	}
-}
-void Session::refresh() noexcept {
-	if (m_closed || !m_manager) {
-		return;
-	}
-	try {
-		const auto current = m_manager.GetCurrentSession();
-		std::vector<Candidate> candidates;
-		std::vector<Remote> remotes;
-		std::vector<Info> infos;
-		std::vector<Watch> watches;
-		const auto weak = weak_from_this();
-		for (const auto& remote : m_manager.GetSessions()) {
-			try {
-				const auto player =
-				    identify(winrt::to_string(remote.SourceAppUserModelId()));
-				if (player == Player::None) {
-					continue;
-				}
-				const auto info = remote.GetPlaybackInfo();
-				if (!info) {
-					continue;
-				}
-				candidates.push_back({player, playback(info.PlaybackStatus()),
-				                      remote == current, remote == m_remote});
-				remotes.push_back(remote);
-				infos.push_back(info);
-				watches.push_back({remote, remote.PlaybackInfoChanged(
-				                               winrt::auto_revoke,
-				                               onDispatcher(weak, m_queue,
-				                                            [](Session& owner) {
-					                                            owner.refresh();
-				                                            }))});
-			} catch (...) {
-				// A player may disappear between enumeration and querying it.
-			}
-		}
-		m_watches = std::move(watches);
-		const auto selected = choose(candidates);
-		const Remote next = selected ? remotes[*selected] : nullptr;
-		if (next != m_remote) {
-			++m_generation;
-			++m_request;
-			m_mediaChanged.revoke();
-			m_timelineChanged.revoke();
-			m_remote = next;
-			m_metadataRequested = false;
-			const auto version = m_snapshot.artworkVersion + 1;
-			m_snapshot = {};
-			m_snapshot.artworkVersion = version;
-			if (next) {
-				m_mediaChanged = next.MediaPropertiesChanged(
-				    winrt::auto_revoke,
-				    onDispatcher(weak, m_queue,
-				                 [](Session& owner) { owner.refreshMedia(); }));
-				m_timelineChanged = next.TimelinePropertiesChanged(
-				    winrt::auto_revoke,
-				    onDispatcher(weak, m_queue, [](Session& owner) {
-					    if (owner.m_closed) {
-						    return;
-					    }
-					    try {
-						    owner.readTimeline();
-						    owner.notify();
-					    } catch (...) {
-					    }
-				    }));
-			}
-		}
-		if (selected) {
-			m_snapshot.state.player = candidates[*selected].player;
-			readPlayback(infos[*selected]);
-			readTimeline();
-			if (!m_metadataRequested) {
-				refreshMedia();
-			}
-		}
-		notify();
-	} catch (...) {
-		// Losing the broker must not leave controls targeting stale sessions.
-		m_remote = nullptr;
+	std::erase_if(m_watches, [&](const auto& w) {
+		return std::find(remotes.begin(), remotes.end(), w.remote) ==
+		       remotes.end();
+	});
+	const auto selected = choose(candidates);
+	const Remote next = selected ? remotes[*selected] : nullptr;
+	const bool switched = next != m_remote;
+	if (switched) {
+		m_playbackChanged.revoke();
+		m_mediaChanged.revoke();
+		m_timelineChanged.revoke();
 		++m_generation;
-		const auto version = m_snapshot.artworkVersion + 1;
-		m_snapshot = {};
-		m_snapshot.artworkVersion = version;
-		notify();
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't refresh Windows media sessions");
-	}
-}
-void Session::readPlayback(const Info& info) {
-	auto& state = m_snapshot.state;
-	state.playback = playback(info.PlaybackStatus());
-	const auto controls = info.Controls();
-	state.controls = {};
-	if (controls) {
-		state.controls = {
-		    controls.IsPreviousEnabled(), controls.IsPlayEnabled(),
-		    controls.IsPauseEnabled(),    controls.IsPlayPauseToggleEnabled(),
-		    controls.IsNextEnabled(),     controls.IsPlaybackPositionEnabled(),
-		    controls.IsShuffleEnabled(),  controls.IsRepeatEnabled()};
-	}
-	const auto shuffle = info.IsShuffleActive();
-	state.shuffle = shuffle ? std::optional(shuffle.Value()) : std::nullopt;
-	const auto repeat = info.AutoRepeatMode();
-	state.repeat.reset();
-	if (repeat) {
-		using winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
-		switch (repeat.Value()) {
-		case MediaPlaybackAutoRepeatMode::None:
-			state.repeat = Repeat::Off;
-			break;
-		case MediaPlaybackAutoRepeatMode::List:
-			state.repeat = Repeat::All;
-			break;
-		case MediaPlaybackAutoRepeatMode::Track:
-			state.repeat = Repeat::One;
-			break;
+		++m_request;
+		const auto art = m_work.artworkVersion + 1;
+		const auto track = m_work.trackVersion + 1;
+		m_work = {};
+		m_work.artworkVersion = art;
+		m_work.trackVersion = track;
+		m_remote = next;
+		m_timelineFloor = m_mediaFloor = 0;
+		m_title.clear();
+		m_artist.clear();
+		m_metadataRequested = false;
+		if (next) {
+			const auto weak = weak_from_this();
+			m_playbackChanged = next.PlaybackInfoChanged(
+			    winrt::auto_revoke, [weak](const Remote& sender, auto&&) {
+				    request(weak, Event::Playback, sender);
+			    });
+			m_mediaChanged = next.MediaPropertiesChanged(
+			    winrt::auto_revoke, [weak](const Remote& sender, auto&&) {
+				    request(weak, Event::Media, sender);
+			    });
+			m_timelineChanged = next.TimelinePropertiesChanged(
+			    winrt::auto_revoke, [weak](const Remote& sender, auto&&) {
+				    request(weak, Event::Timeline, sender);
+			    });
 		}
 	}
-	const auto rate = info.PlaybackRate();
-	state.timeline.rate = rate ? rate.Value() : 1;
-	state.timeline.playing = state.playback == Playback::Playing;
-}
-void Session::readTimeline() {
-	if (!m_remote) {
-		return;
+#ifdef _DEBUG
+	trace("selected=" + describe(next));
+#endif
+	if (selected) {
+		m_work.state.player = candidates[*selected].player;
+		readPlayback(infos[*selected]);
+		const bool media =
+		    event == Event::Media || event == Event::ObserveMedia;
+		if (media && source == next && !switched) {
+			m_mediaFloor = m_work.state.timeline.updated;
+		} else if (event == Event::Open) {
+			m_mediaFloor = m_timelineFloor = 0;
+		}
+		readTimeline();
+		if (!m_metadataRequested || event == Event::Open || media) {
+			refreshMedia(media || switched);
+		}
 	}
-	// see:
-	// https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessiontimelineproperties
-	const auto timeline = m_remote.GetTimelineProperties();
-	auto& t = m_snapshot.state.timeline;
-	m_snapshot.sampledAt = std::chrono::steady_clock::now();
-	if (!timeline) {
-		const auto rate = t.rate;
-		const bool playing = t.playing;
-		t = {};
-		t.rate = rate;
-		t.playing = playing;
-		return;
-	}
-	t.start = timeline.StartTime().count();
-	t.end = timeline.EndTime().count();
-	t.minSeek = timeline.MinSeekTime().count();
-	t.maxSeek = timeline.MaxSeekTime().count();
-	t.position = timeline.Position().count();
-	const auto updated = timeline.LastUpdatedTime();
-	// Missing timestamps must not advance a track from the Windows epoch.
-	if (updated.time_since_epoch().count() > 0) {
-		const double elapsed =
-		    std::chrono::duration<double>(winrt::clock::now() - updated)
-		        .count();
-		t.position = position(t, elapsed);
-	} else {
-		t.position = position(t, 0);
-	}
-}
-void Session::refreshMedia() {
-	if (m_closed || !m_remote) {
-		return;
-	}
-	m_metadataRequested = true;
-	// Clear the previous track before fetching; late metadata cannot restore
-	// it.
-	m_snapshot.state.title.clear();
-	m_snapshot.state.artist.clear();
-	m_snapshot.artwork = nullptr;
-	++m_snapshot.artworkVersion;
 	notify();
-	readMedia(weak_from_this(), m_remote, m_generation, ++m_request);
-}
-winrt::fire_and_forget Session::readMedia(std::weak_ptr<Session> weak,
-                                          Remote remote,
-                                          std::uint64_t generation,
-                                          std::uint64_t request) {
-	try {
-		const auto media = co_await remote.TryGetMediaPropertiesAsync();
-		const auto self = weak.lock();
-		if (!self || self->m_closed || self->m_generation != generation ||
-		    self->m_request != request) {
-			co_return;
-		}
-		self->m_snapshot.state.title =
-		    media ? winrt::to_string(media.Title()) : "";
-		self->m_snapshot.state.artist =
-		    media ? winrt::to_string(media.Artist()) : "";
-		self->m_snapshot.artwork = media ? media.Thumbnail() : nullptr;
-		++self->m_snapshot.artworkVersion;
-		self->notify();
-	} catch (...) {
-		diagnostics::write(diagnostics::Level::Debug,
-		                   "Couldn't read music metadata");
-	}
-}
-void Session::command(Command command, double seekSeconds) {
-	if (m_closed || !m_remote || !enabled(m_snapshot.state, command)) {
-		return;
-	}
-	m_snapshot.state.busy = true;
-	m_snapshot.state.error.clear();
-	notify();
-	send(weak_from_this(), m_remote, m_generation, command, seekSeconds);
-}
-winrt::fire_and_forget Session::send(std::weak_ptr<Session> weak, Remote remote,
-                                     std::uint64_t generation, Command command,
-                                     double seekSeconds) {
-	bool accepted = false;
-	try {
-		// Release the owner before the remote operation suspends.
-		winrt::Windows::Foundation::IAsyncOperation<bool> operation{nullptr};
-		{
-			const auto self = weak.lock();
-			if (!self || self->m_closed || self->m_generation != generation) {
-				co_return;
-			}
-			const auto& state = self->m_snapshot.state;
-			switch (command) {
-			case Command::Previous:
-				operation = remote.TrySkipPreviousAsync();
-				break;
-			case Command::Next:
-				operation = remote.TrySkipNextAsync();
-				break;
-			case Command::PlayPause:
-				if (state.controls.toggle) {
-					operation = remote.TryTogglePlayPauseAsync();
-				} else if (state.playback == Playback::Playing) {
-					operation = remote.TryPauseAsync();
-				} else {
-					operation = remote.TryPlayAsync();
-				}
-				break;
-			case Command::Seek:
-				if (const auto target =
-				        seekPosition(state.timeline, seekSeconds)) {
-					operation = remote.TryChangePlaybackPositionAsync(*target);
-				}
-				break;
-			case Command::Shuffle:
-				operation = remote.TryChangeShuffleActiveAsync(
-				    !state.shuffle.value_or(false));
-				break;
-			case Command::Repeat:
-				using winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
-				const auto next =
-				    nextRepeat(state.repeat.value_or(Repeat::Off));
-				operation = remote.TryChangeAutoRepeatModeAsync(
-				    next == Repeat::Off   ? MediaPlaybackAutoRepeatMode::None
-				    : next == Repeat::All ? MediaPlaybackAutoRepeatMode::List
-				                          : MediaPlaybackAutoRepeatMode::Track);
-				break;
-			}
-		}
-		if (operation) {
-			accepted = co_await operation;
-		}
-	} catch (...) {
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't send a music control request");
-	}
-	if (const auto self = weak.lock();
-	    self && !self->m_closed && self->m_generation == generation) {
-		self->m_snapshot.state.busy = false;
-		self->m_snapshot.state.error =
-		    accepted ? "" : "The player couldn't complete that request.";
-		self->refresh();
-	}
 }
 } // namespace music

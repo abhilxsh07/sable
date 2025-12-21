@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "helpers/music.h"
 #include <chrono>
+#include <atomic>
+#include <mutex>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -31,14 +33,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace music {
 struct Snapshot {
 	State state;
-	winrt::Windows::Storage::Streams::IRandomAccessStreamReference artwork{
-	    nullptr};
-	std::uint64_t artworkVersion = 0;
+	std::shared_ptr<const std::vector<std::uint8_t>> artwork;
+	std::uint64_t artworkVersion = 0, trackVersion = 0;
 	std::chrono::steady_clock::time_point sampledAt =
 	    std::chrono::steady_clock::now();
 };
-// Created, read and closed on the reader's dispatcher. System event callbacks
-// only enqueue work; coroutines keep weak owners across remote calls.
+// Public methods run on the dispatcher. Broker reads and subscriptions run
+// in the background under m_mutex; only plain snapshots reach the UI.
 class Session : public std::enable_shared_from_this<Session> {
   public:
 	using Changed = std::function<void(const Snapshot&)>;
@@ -48,6 +49,7 @@ class Session : public std::enable_shared_from_this<Session> {
 	~Session();
 	void close() noexcept;
 	void command(Command command, double seekSeconds = 0);
+	void reload();
 	const Snapshot& snapshot() const {
 		return m_snapshot;
 	}
@@ -62,21 +64,36 @@ class Session : public std::enable_shared_from_this<Session> {
 	Session(winrt::Microsoft::UI::Dispatching::DispatcherQueue queue,
 	        Changed changed);
 	static winrt::fire_and_forget start(std::weak_ptr<Session> weak);
+	enum class Event {
+		Open,
+		Sessions,
+		Current,
+		Playback,
+		Media,
+		Timeline,
+		ObservePlayback,
+		ObserveMedia
+	};
+	static winrt::fire_and_forget request(std::weak_ptr<Session> weak,
+	                                      Event event, Remote source = nullptr,
+	                                      std::int64_t when = 0);
 	static winrt::fire_and_forget readMedia(std::weak_ptr<Session> weak,
 	                                        Remote remote,
 	                                        std::uint64_t generation,
-	                                        std::uint64_t request);
+	                                        std::uint64_t request,
+	                                        std::uint64_t epoch);
 	static winrt::fire_and_forget send(std::weak_ptr<Session> weak,
-	                                   Remote remote, std::uint64_t generation,
 	                                   Command command, double seekSeconds);
-	void refresh() noexcept;
-	void refreshMedia();
+	void refresh(Event event, const Remote& source, std::int64_t when);
+	void refreshMedia(bool trackChanged);
 	void readPlayback(const Info& info);
 	void readTimeline();
 	void notify() noexcept;
 	struct Watch {
 		Remote remote{nullptr};
 		Remote::PlaybackInfoChanged_revoker playback;
+		Remote::MediaPropertiesChanged_revoker media;
+		std::int64_t changed = 0;
 	};
 	winrt::Microsoft::UI::Dispatching::DispatcherQueue m_queue{nullptr};
 	Changed m_changed;
@@ -84,12 +101,18 @@ class Session : public std::enable_shared_from_this<Session> {
 	Remote m_remote{nullptr};
 	Manager::SessionsChanged_revoker m_sessionsChanged;
 	Manager::CurrentSessionChanged_revoker m_currentChanged;
+	Remote::PlaybackInfoChanged_revoker m_playbackChanged;
 	Remote::MediaPropertiesChanged_revoker m_mediaChanged;
 	Remote::TimelinePropertiesChanged_revoker m_timelineChanged;
 	std::vector<Watch> m_watches;
-	Snapshot m_snapshot;
+	Snapshot m_snapshot, m_work;
+	std::mutex m_mutex;
+	std::uint64_t m_published = 0, m_received = 0;
+	std::int64_t m_timelineFloor = 0, m_mediaFloor = 0;
+	std::string m_title, m_artist;
 	std::uint64_t m_generation = 0, m_request = 0;
-	bool m_closed = false;
+	std::atomic<bool> m_closed{false};
+	std::atomic<std::uint64_t> m_mediaEpoch{0};
 	bool m_metadataRequested = false;
 };
 } // namespace music
