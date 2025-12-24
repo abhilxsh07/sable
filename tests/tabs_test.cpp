@@ -312,6 +312,19 @@ struct TabsTest {
 		}
 	}
 	void filterTick(MainWindow& owner) {
+		const auto captureTheme = [&](const wchar_t* name) {
+			wchar_t directory[2048]{};
+			const auto count = GetEnvironmentVariableW(
+			    L"SableThemeCaptureDirectory", directory, 2048);
+			if (count && count < 2048) {
+				const std::filesystem::path destination(directory);
+				std::filesystem::create_directories(destination);
+				HWND reader{};
+				check_hresult(
+				    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+				captureMusicWindow(reader, destination / name);
+			}
+		};
 		const auto current = owner.Viewer();
 		if (!current || !ready(*get_self<ViewerPage>(current))) {
 			return;
@@ -392,10 +405,24 @@ struct TabsTest {
 			owner.m_presenter.Restore();
 			owner.AppWindow().Resize({565, 700});
 			break;
-		case 2:
+		case 2: {
+			auto& viewer = *get_self<ViewerPage>(current);
+			const auto key = viewer.key(0);
+			const auto zoomBefore = viewer.m_zoom;
+			appearance::apply(true);
+			filterValues(owner, {});
+			check(viewer.key(0) == key && viewer.m_zoom == zoomBefore,
+			      "appearance changed PDF geometry or raster identity");
+			check(current.Content()
+			              .as<Grid>()
+			              .Background()
+			              .as<Media::SolidColorBrush>()
+			              .Color() == Windows::UI::Color{255, 0, 0, 0},
+			      "PDF viewer background is not black");
 			check(owner.Presets().ActualWidth() > 0, "narrow preset bar");
 			owner.onPresetClick(owner.DefaultPreset(), {});
 			break;
+		}
 		case 3: {
 			const auto panel = owner.DarkConfigurator();
 			if (panel.ActualWidth() <= 0) {
@@ -411,11 +438,45 @@ struct TabsTest {
 			check(origin.X >= 0 && origin.X + panel.ActualWidth() <=
 			                           owner.RootGrid().ActualWidth() + 1,
 			      "configurator outside window");
+			check(panel.Background().as<Media::SolidColorBrush>().Color() ==
+			          Windows::UI::Color{255, 0, 0, 0},
+			      "filter panel is not black");
+			captureTheme(L"obsidian-pdf.png");
+			owner.onHideConfigurator({}, nullptr);
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			break;
+		}
+		case 4:
+			captureTheme(L"obsidian-menu.png");
+			owner.MainMenu().Hide();
+			owner.m_music->tint({120, 50, 80});
+			owner.m_music->show();
+			break;
+		case 5:
+			check(owner.m_music->m_surface.Background()
+			                  .as<Media::SolidColorBrush>()
+			                  .Color() == Windows::UI::Color{255, 0, 0, 0} &&
+			          owner.m_music->m_gradientTop.Color().A == 0,
+			      "music artwork tint overrode Obsidian");
+			captureTheme(L"obsidian-music.png");
+			appearance::apply(false);
+			check(owner.m_music->m_surface.Background() ==
+			              owner.m_music->m_background &&
+			          owner.m_music->m_background.TintColor() ==
+			              Windows::UI::Color{255, 120, 50, 80},
+			      "Dark did not restore music tint");
+			owner.m_music->m_allowClose = true;
+			owner.m_music->m_flyout.Hide();
+			break;
+		case 6: {
+			filterValues(owner, {});
+			captureTheme(L"dark-pdf-restored.png");
 			while (!owner.m_tabs.empty()) {
 				owner.closeTab(owner.m_tabs.back().tab);
 			}
 			check(owner.Presets().Visibility() == Visibility::Collapsed &&
-			          panel.Visibility() == Visibility::Collapsed,
+			          owner.DarkConfigurator().Visibility() ==
+			              Visibility::Collapsed,
 			      "home filter controls");
 			status.Text(
 			    L"PASS: preset toggles, slider ranges/tooltips, shared "
@@ -472,10 +533,16 @@ struct TabsTest {
 			      "rotated external PDF link");
 			viewer.m_launchedUri.clear();
 			click(1, 0.28, 160.0 / 300);
+			propertiesRequest = viewer.m_linkVersion;
 			break;
 		case 4:
 			check(viewer.m_current == 0 && std::abs(viewer.m_zoom - 2) < 0.001,
-			      "null XYZ zoom");
+			      "null XYZ zoom; version " +
+			          std::to_string(viewer.m_linkVersion) + "/" +
+			          std::to_string(propertiesRequest) + ", direct " +
+			          std::to_string(viewer.m_directManipulation) +
+			          ", offset " +
+			          std::to_string(viewer.Scroller().VerticalOffset()));
 			click(0, 80.0 / 360, 210.0 / 540);
 			break;
 		case 5:
@@ -530,20 +597,14 @@ struct TabsTest {
 			return;
 		}
 		auto& viewer = *get_self<ViewerPage>(current);
-		if (!ready(viewer) || owner.m_printing) {
+		if ((step != 6 && !ready(viewer)) ||
+		    (owner.m_printing && step != 3 && step != 6)) {
 			return;
 		}
 		switch (step) {
 		case 0: {
 			check(owner.PrintItem().IsEnabled(),
 			      "print disabled with document");
-			bool shortcut = false;
-			for (const auto& key : owner.RootGrid().KeyboardAccelerators()) {
-				shortcut |= key.Key() == Windows::System::VirtualKey::P &&
-				            key.Modifiers() ==
-				                Windows::System::VirtualKeyModifiers::Control;
-			}
-			check(shortcut, "missing fixed print accelerator");
 			int calls = 0;
 			viewer.m_printDialog = [&](void* handle, int count, int page,
 			                           const std::wstring& title) {
@@ -558,7 +619,8 @@ struct TabsTest {
 				owner.onPrint({}, {});
 				return pdf::PrintDialogResult{};
 			};
-			owner.onPrint({}, {});
+			check(owner.routeKey('P', helpers::SHORTCUT_CTRL),
+			      "fixed print shortcut did not dispatch");
 			viewer.m_printDialog = {};
 			check(calls == 1 && !owner.m_printing &&
 			          owner.PrintItem().IsEnabled(),
@@ -606,6 +668,107 @@ struct TabsTest {
 			          viewer.Scroller().Visibility() == Visibility::Visible,
 			      "invalid browser link hid the document");
 			viewer.m_printDialog = {};
+			viewer.m_printUi = [](auto) {};
+			owner.onPrint({}, {});
+			check(owner.m_printing && viewer.m_printController,
+			      "modern print did not retain its document");
+			{
+				const auto controller = viewer.m_printController;
+				owner.onPrint({}, {});
+				check(controller == viewer.m_printController,
+				      "modern print accepted a second dialog");
+				controller->finish(pdf::PrintResult::Failed);
+			}
+			check(!owner.m_printing && viewer.Message().IsOpen() &&
+			          viewer.Scroller().Visibility() == Visibility::Visible,
+			      "modern print failure hid or disabled the document");
+			viewer.Message().IsOpen(false);
+			owner.onPrint({}, {});
+			viewer.m_printController->finish(pdf::PrintResult::Completed);
+			check(owner.m_printing && viewer.m_printController,
+			      "submitted print discarded the unfinished writer");
+			break;
+		case 3:
+			check(owner.m_printing && viewer.m_printController,
+			      "writer guard ended before completion");
+			viewer.m_printController->m_source->jobFinished();
+			break;
+		case 4: {
+			check(!viewer.m_printController && !viewer.Message().IsOpen(),
+			      "finished writer kept the reader busy");
+			int fallbacks = 0;
+			viewer.m_printDialog = [&fallbacks](void*, int, int,
+			                                    const std::wstring&) {
+				++fallbacks;
+				return pdf::PrintDialogResult{};
+			};
+			owner.onPrint({}, {});
+			{
+				const auto controller = viewer.m_printController;
+				controller->finish(std::nullopt);
+			}
+			check(fallbacks == 1 && !owner.m_printing,
+			      "unavailable modern UI did not fall back once");
+			viewer.m_printDialog = {};
+			owner.onPrint({}, {});
+			const auto controller = viewer.m_printController;
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			check(!owner.m_printing && controller->m_finished &&
+			          controller->m_source->MakePage(1, 300, 400) ==
+			              HRESULT_FROM_WIN32(ERROR_CANCELLED),
+			      "closed tab retained its print job");
+			break;
+		}
+		case 5:
+			try {
+				using Windows::Graphics::Printing::PrintManager;
+				HWND handle{};
+				check_hresult(
+				    owner.get_strong().as<::IWindowNative>()->get_WindowHandle(
+				        &handle));
+				auto interop = get_activation_factory<PrintManager,
+				                                      IPrintManagerInterop>();
+				PrintManager manager{nullptr};
+				check_hresult(interop->GetForWindow(
+				    handle, guid_of<PrintManager>(), put_abi(manager)));
+				diagnostics::write(diagnostics::Level::Info,
+				                   "Modern print window interop is available");
+			} catch (const hresult_error& error) {
+				diagnostics::write(diagnostics::Level::Warning,
+				                   "Modern print window interop unavailable: " +
+				                       to_string(error.message()));
+			}
+			if (!diagnostics::environmentEnabled(L"SablePrintUiTest")) {
+				step = 7;
+				return;
+			}
+			viewer.m_printDialog = {};
+			viewer.m_printUi = {};
+			owner.onPrint({}, {});
+			printPreviewController = viewer.m_printController;
+			check(static_cast<bool>(printPreviewController),
+			      "modern print UI rejected the live preview request");
+			break;
+		case 6:
+			if (printPreviewController->m_source->m_previewFrames == 0) {
+				bool target = false;
+				{
+					std::lock_guard lock(
+					    printPreviewController->m_source->m_mutex);
+					target = static_cast<bool>(
+					    printPreviewController->m_source->m_preview);
+				}
+				check(ticks < 60 && !printPreviewController->m_finished,
+				      "system preview unavailable: task " +
+				          std::to_string(printPreviewController->m_created) +
+				          ", target " + std::to_string(target));
+				return;
+			}
+			diagnostics::write(diagnostics::Level::Info,
+			                   "System print preview received a DXGI page");
+			printPreviewController->cancel();
+			break;
+		case 7:
 			while (!owner.m_tabs.empty()) {
 				owner.closeTab(owner.m_tabs.back().tab);
 			}
@@ -617,7 +780,7 @@ struct TabsTest {
 			owner.onPrint({}, {});
 			check(!owner.m_printing, "print without document");
 			status.Text(L"PASS: print menu/accelerator, active tab/current "
-			            L"page, cancel, reentry, failures and home");
+			            L"page, modern lifecycle/fallback, cancel and home");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
@@ -638,22 +801,16 @@ struct TabsTest {
 		check(!owner.m_easterEgg, "notification enabled without opt-in");
 		owner.showEasterEgg();
 		int calls = 0;
-		const auto before = owner.RootGrid().KeyboardAccelerators().Size();
 		owner.setEasterEgg([&calls] { ++calls; });
 		owner.setEasterEgg([&calls] { ++calls; });
-		check(owner.RootGrid().KeyboardAccelerators().Size() == before + 1,
-		      "duplicate notification accelerator");
-		const auto key = owner.RootGrid().KeyboardAccelerators().GetAt(before);
-		check(key.Key() == Windows::System::VirtualKey::T &&
-		          key.Modifiers() ==
-		              (Windows::System::VirtualKeyModifiers::Shift |
-		               Windows::System::VirtualKeyModifiers::Menu),
-		      "notification shortcut");
-		owner.showEasterEgg();
-		check(calls == 1, "notification dispatch");
+		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
+		check(owner.routeKey('T', modifiers) && calls == 1,
+		      "notification shortcut missing or duplicated");
+		check(owner.routeKey('T', modifiers, true) && calls == 1,
+		      "held notification shortcut repeated");
 		owner.setEasterEgg({});
-		owner.showEasterEgg();
-		check(calls == 1, "disabled notification dispatch");
+		check(!owner.routeKey('T', modifiers) && calls == 1,
+		      "disabled notification shortcut dispatched");
 		check(!diagnostics::environmentEnabled(L"EASTER_EGG"),
 		      "finish test requires EASTER_EGG unset");
 		peerWindow = app.createWindow();
