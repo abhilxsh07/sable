@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fstream>
 #include <optional>
 #include <ostream>
+#include <random>
 #include <set>
 #include <string>
 #include <string_view>
@@ -242,6 +243,45 @@ TEST_F(PdfDocumentTest, EmptyBufferIsAFormatError) {
 	EXPECT_FALSE(opened.hasDocument);
 }
 
+TEST_F(PdfDocumentTest, DamagedInputsStaySafeToOpenInspectAndClose) {
+	std::minstd_rand random(19026);
+	for (const auto name : {"pages.pdf", "text.pdf", "attachments.pdf"}) {
+		const auto original = readBytes(fixturePath(name));
+		ASSERT_FALSE(original.empty());
+		for (int trial = 0; trial < 64; ++trial) {
+			SCOPED_TRACE(std::string(name) + ":" + std::to_string(trial));
+			auto bytes = original;
+			if (trial % 4 == 0) {
+				bytes.resize(random() % bytes.size());
+			} else {
+				for (int edit = 0; edit < 4; ++edit) {
+					bytes[random() % bytes.size()] ^=
+					    static_cast<std::uint8_t>(1u << (random() % 8));
+				}
+			}
+			engine
+			    .run([bytes = std::move(bytes)]() mutable {
+				    const auto result = pdf::openDocument(std::move(bytes));
+				    if (!result.document) {
+					    EXPECT_NE(result.error, pdf::Error::None);
+					    return;
+				    }
+				    EXPECT_EQ(result.error, pdf::Error::None);
+				    EXPECT_GE(result.document->pageCount(), 0);
+				    if (result.document->pageCount() > 0) {
+					    result.document->pageSize(0);
+					    result.document->pageLabel(0);
+					    const auto bitmap = result.document->render(0, 32, 32);
+					    if (bitmap) {
+						    EXPECT_EQ(bitmap->pixels.size(), 32u * 32u * 4u);
+					    }
+				    }
+			    })
+			    .get();
+		}
+	}
+}
+
 // broken.pdf starts like a PDF and has nothing in it
 TEST_F(PdfDocumentTest, BrokenFileIsAFormatError) {
 	const auto opened = tryOpen(fixturePath("broken.pdf"));
@@ -326,7 +366,7 @@ TEST_F(PdfDocumentTest, LinksUseDisplayedCoordinatesAndRejectOtherActions) {
 	const auto links =
 	    engine
 	        .run([] {
-		        auto opened = pdf::openFile("tests/fixtures/links.pdf");
+		        auto opened = pdf::openFile(fixturePath("links.pdf"));
 		        std::vector<std::optional<pdf::Link>> result;
 		        if (!opened.document) {
 			        return result;
@@ -569,7 +609,6 @@ TEST(PdfProperties, ReadsUnicodeDatesAndSnapshotSize) {
 	EXPECT_FALSE(result->encrypted);
 	EXPECT_FALSE(result->limited);
 }
-
 TEST(PdfProperties, MissingFieldsAndOversizedFieldsDoNotBlockOtherDetails) {
 	pdf::Engine engine;
 	engine
@@ -593,7 +632,6 @@ TEST(PdfProperties, MissingFieldsAndOversizedFieldsDoNotBlockOtherDetails) {
 	    })
 	    .get();
 }
-
 TEST(PdfProperties, ReadsEncryptedMetadataAfterUnlock) {
 	pdf::Engine engine;
 	engine
@@ -695,7 +733,6 @@ TEST_F(PdfDocumentTest, SavedCopiesRetainPagesTextMetadataLinksAndAttachments) {
 	    })
 	    .get();
 }
-
 TEST_F(PdfDocumentTest, CopyRetainsPasswordsAndRestrictions) {
 	const auto directory = tempDir("copy_security");
 	engine
@@ -723,7 +760,6 @@ TEST_F(PdfDocumentTest, CopyRetainsPasswordsAndRestrictions) {
 	    })
 	    .get();
 }
-
 TEST_F(PdfDocumentTest,
        CopyUsesLoadedSnapshotAndProtectsSourcesAndFailedTargets) {
 	const auto directory = tempDir("copy_atomic");

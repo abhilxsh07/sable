@@ -340,6 +340,28 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## Reader reliability checks (2026-10-19)
+
+The printing stress run found a real shutdown bug. A print renderer can
+outlive its closed session and engine, so releasing an already empty state
+must not post work through that old engine. I now delete empty state directly;
+state that still owns a PDFium document keeps the engine-thread cleanup.
+The regression retains a renderer through session and engine shutdown.
+
+There was also a separate crash in the test runner: cached WinRT print
+factories survived the temporary COM apartments used by individual tests.
+The runner now keeps one apartment alive through the suite, clears cached
+factories before shutdown and waits for asynchronous print jobs to finish.
+That makes repeated printing checks useful without changing the print UI.
+
+The gesture checks caught two more transitions. Returning to a tab now
+clears a completed pan flag, and page navigation accounts for the native
+scale while a pinch is active. Layout, rotation and presentation commands
+are ignored during that transform and become available once it settles;
+they are not queued. This avoids changing page geometry under an active
+gesture. TEST_PLAN.md records the regressions, bounded stress runs and the
+device checks that still need a person at the app.
+
 ## Trackpad stability and spread clicks (2026-10-19)
 
 The first gesture pass could stop updating visible pages while waiting for a
