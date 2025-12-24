@@ -2755,6 +2755,352 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void settingsCaptureTick(MainWindow& owner) {
+		if (ticks < 3) {
+			return;
+		}
+		const auto settings = owner.m_settingsWindow;
+		check(settings != nullptr, "settings closed during capture");
+		auto& settingsWindow = settings->window;
+		HWND handle{};
+		check_hresult(
+		    settingsWindow.as<IWindowNative>()->get_WindowHandle(&handle));
+		const auto capture = [&](const wchar_t* name) {
+			settingsWindow.Content().as<FrameworkElement>().UpdateLayout();
+			check(!settings->m_heading.Text().empty() &&
+			          !settings->m_description.Text().empty(),
+			      "settings page heading or description missing");
+			captureMusicWindow(handle, settingsCaptureDirectory / name);
+		};
+		switch (settingsCapturePhase) {
+		case 0: {
+			std::filesystem::create_directories(settingsCaptureDirectory);
+			const auto size = settingsWindow.AppWindow().Size();
+			settingsCaptureSize = {size.Width, size.Height};
+			settingsCaptureSnapshot = uiStore->get();
+			settings->select("version");
+			break;
+		}
+		case 1:
+			check(settings->m_version.Visibility() == Visibility::Visible &&
+			          settings->m_version.Text() ==
+			              to_hstring(helpers::versionString()),
+			      "settings About version");
+			capture(L"about.png");
+			settings->m_buildDetails.IsExpanded(true);
+			break;
+		case 2:
+			check(settings->m_buildDetails.IsExpanded(),
+			      "settings build details did not expand");
+			capture(L"about-details.png");
+			settings->m_buildDetails.IsExpanded(false);
+			settings->select("general");
+			break;
+		case 3:
+			capture(L"general.png");
+			settings->select("keybinds");
+			break;
+		case 4:
+			capture(L"keyboard-shortcuts.png");
+			settings->edit("OpenWindow", 0);
+			break;
+		case 5: {
+			check(settings->m_overlay.Visibility() == Visibility::Visible &&
+			          !settings->m_saveBinding.IsEnabled(),
+			      "shortcut capture prompt");
+			capture(L"shortcut-capture.png");
+			settings->dismiss();
+			const double scale = GetDpiForWindow(handle) / 96.0;
+			settingsWindow.AppWindow().Resize(
+			    {static_cast<int32_t>(660 * scale),
+			     static_cast<int32_t>(620 * scale)});
+			break;
+		}
+		case 6:
+			capture(L"keyboard-shortcuts-narrow.png");
+			settings->select("general");
+			break;
+		case 7: {
+			capture(L"general-narrow.png");
+			const double scale = GetDpiForWindow(handle) / 96.0;
+			settingsWindow.AppWindow().Resize(
+			    {static_cast<int32_t>(660 * scale),
+			     static_cast<int32_t>(360 * scale)});
+			break;
+		}
+		case 8:
+			check(settings->m_detailScroll.ScrollableHeight() > 0,
+			      "short General page cannot scroll");
+			settings->m_detailScroll.ChangeView(
+			    nullptr, settings->m_detailScroll.ScrollableHeight(), nullptr,
+			    true);
+			break;
+		case 9:
+			check(settings->m_detailScroll.VerticalOffset() > 0,
+			      "short General page did not scroll");
+			capture(L"general-short.png");
+			settingsWindow.AppWindow().Resize(
+			    {settingsCaptureSize.cx, settingsCaptureSize.cy});
+			settings->m_detailScroll.ChangeView(nullptr, 0., nullptr, true);
+			settings->select("version");
+			break;
+		case 10:
+			settings->select("general");
+			settings->m_theme.SelectedIndex(1);
+			break;
+		case 11: {
+			check(appearance::obsidian(), "Obsidian did not apply live");
+			capture(L"obsidian-general.png");
+			HWND reader{};
+			check_hresult(
+			    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+			captureMusicWindow(reader, settingsCaptureDirectory /
+			                               L"obsidian-reader.png");
+			settings->select("keybinds");
+			break;
+		}
+		case 12:
+			capture(L"obsidian-shortcuts.png");
+			settings->edit("OpenWindow", 0);
+			break;
+		case 13:
+			capture(L"obsidian-capture.png");
+			settings->dismiss();
+			settings->select("version");
+			settings->m_buildDetails.IsExpanded(true);
+			break;
+		case 14:
+			capture(L"obsidian-about.png");
+			settings->m_buildDetails.IsExpanded(false);
+			settings->m_theme.SelectedIndex(0);
+			break;
+		case 15:
+			check(!appearance::obsidian(), "Dark did not restore live");
+			capture(L"dark-restored.png");
+			check(uiStore->get() == *settingsCaptureSnapshot &&
+			          settings->m_overlay.Visibility() == Visibility::Collapsed,
+			      "settings capture changed stored values or left a dialog");
+			settingsCapturePhase = -1;
+			ticks = 0;
+			return;
+		}
+		++settingsCapturePhase;
+		ticks = 0;
+	}
+
+	void propertiesTick(MainWindow& owner) {
+		if (ticks < 3) {
+			return;
+		}
+		auto current = owner.Viewer();
+		auto* viewer = current ? get_self<ViewerPage>(current) : nullptr;
+		if (viewer && !ready(*viewer)) {
+			return;
+		}
+		const auto capture = [&](const wchar_t* name) {
+			wchar_t directory[2048]{};
+			const auto count = GetEnvironmentVariableW(
+			    L"SablePropertiesCaptureDirectory", directory, 2048);
+			if (count && count < 2048) {
+				const std::filesystem::path destination(directory);
+				std::filesystem::create_directories(destination);
+				HWND reader{};
+				check_hresult(
+				    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+				captureMusicWindow(reader, destination / name);
+			}
+		};
+		const auto value = [&](int index) {
+			const auto scroll =
+			    viewer->m_propertiesDialog.Content().as<ScrollViewer>();
+			const auto rows = scroll.Content()
+			                      .as<StackPanel>()
+			                      .Children()
+			                      .GetAt(0)
+			                      .as<Grid>();
+			const auto text =
+			    rows.Children().GetAt(index * 2 + 1).as<TextBlock>();
+			check(text.IsTextSelectionEnabled(),
+			      "property values cannot be selected");
+			return text.Text();
+		};
+		switch (step) {
+		case 0: {
+			if (!viewer) {
+				return;
+			}
+			check(owner.PropertiesItem().IsEnabled(),
+			      "properties menu is disabled");
+			first.copy_from(viewer);
+			zoom = viewer->m_zoom;
+			owner.onDocumentProperties({}, {});
+			const auto dialog = viewer->m_propertiesDialog;
+			check(dialog != nullptr, "properties dialog did not open");
+			owner.onDocumentProperties({}, {});
+			check(viewer->m_propertiesDialog == dialog,
+			      "duplicate properties dialog");
+			break;
+		}
+		case 1:
+			if (!viewer->m_properties || viewer->m_propertiesPending) {
+				return;
+			}
+			check(value(0) == L"properties.pdf" &&
+			          value(2) == L"Field notes \u03a9\U0001f600" &&
+			          value(3) == L"Abhilash \u03a9",
+			      "property filename or Unicode metadata");
+			check(value(6) == L"2026-01-02  12:34:56 UTC+05:30" &&
+			          value(10) == L"1.7" && value(11) == L"2" &&
+			          value(12) == L"279.4 x 215.9 mm (Letter, landscape)" &&
+			          value(13) == L"1",
+			      "property dates, version or crop/rotation size");
+			check(viewer->m_zoom == zoom && viewer->m_current == 0,
+			      "properties changed the document view");
+			propertiesRequest = viewer->m_propertiesVersion;
+			capture(L"properties-dark.png");
+			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
+			    nullptr, 10000., nullptr, true);
+			break;
+		case 2:
+			capture(L"properties-details.png");
+			appearance::apply(true);
+			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
+			    nullptr, 0., nullptr, true);
+			break;
+		case 3:
+			capture(L"properties-obsidian.png");
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({565, 620});
+			break;
+		case 4:
+			capture(L"properties-narrow.png");
+			viewer->dismissProperties();
+			appearance::apply(false);
+			viewer->rotateView(1);
+			// Keep page 2 genuinely current after the landing guard expires.
+			// At Auto both pages can fit in the viewport after the narrow
+			// resize.
+			viewer->zoomTo(1.5, {0, 0});
+			viewer->goToPage(1);
+			break;
+		case 5:
+			viewer->showProperties();
+			break;
+		case 6:
+			check(
+			    viewer->m_propertiesVersion == propertiesRequest &&
+			        value(13) == L"2" &&
+			        value(12) == L"297.0 x 210.0 mm (A4, landscape)",
+			    "cached properties did not follow current page/view rotation");
+			owner.openDocument(engine, L"tests/fixtures/properties_missing.pdf",
+			                   1);
+			check(!first->m_propertiesDialog,
+			      "hidden tab kept its properties dialog");
+			break;
+		case 7:
+			if (!viewer || viewer == first.get()) {
+				return;
+			}
+			viewer->showProperties();
+			break;
+		case 8:
+			if (!viewer->m_properties || viewer->m_propertiesPending) {
+				return;
+			}
+			check(value(2) == L"\u2014" && value(3) == L"\u2014",
+			      "missing metadata display");
+			capture(L"properties-missing.png");
+			owner.closeTab(owner.m_tabs.back().tab);
+			break;
+		case 9: {
+			check(viewer == first.get() && !viewer->m_propertiesDialog,
+			      "closed or switched properties returned");
+			viewer->m_properties.reset();
+			auto healthy = std::move(viewer->m_session);
+			viewer->m_session = std::make_unique<pdf::Session>(engine);
+			viewer->showProperties();
+			check(viewer->m_propertiesFailed &&
+			          viewer->m_propertiesDialog.PrimaryButtonText() ==
+			              L"Retry",
+			      "properties failure has no retry");
+			viewer->m_session = std::move(healthy);
+			capture(L"properties-retry.png");
+			viewer->requestProperties();
+			break;
+		}
+		case 10:
+			if (viewer->m_propertiesPending) {
+				return;
+			}
+			check(viewer->m_properties && !viewer->m_propertiesFailed &&
+			          viewer->m_propertiesDialog.PrimaryButtonText().empty(),
+			      "properties retry failed");
+			viewer->dismissProperties();
+			break;
+		case 11: {
+			// A delayed reply can populate the cache, but cannot reopen a
+			// dismissed dialog.
+			viewer->m_properties.reset();
+			auto release = std::make_shared<std::promise<void>>();
+			auto wait = release->get_future().share();
+			engine.post([wait] { wait.wait(); });
+			viewer->showProperties();
+			const bool pending = viewer->m_propertiesPending;
+			viewer->dismissProperties();
+			release->set_value();
+			check(pending, "properties request was not queued");
+			break;
+		}
+		case 12:
+			if (viewer->m_propertiesPending) {
+				return;
+			}
+			check(viewer->m_properties && !viewer->m_propertiesDialog,
+			      "late metadata resurrected the dialog");
+			viewer->showProperties();
+			break;
+		case 13:
+			check(viewer->m_propertiesDialog != nullptr);
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(first->m_closed && !first->m_propertiesDialog &&
+			          !owner.PropertiesItem().IsEnabled(),
+			      "closing a document kept properties active");
+			peerWindow = app.createWindow();
+			peerWindow->openDocument(engine, L"tests/fixtures/properties.pdf",
+			                         1);
+			break;
+		case 14: {
+			const auto other = peerWindow->Viewer();
+			if (!other || !ready(*get_self<ViewerPage>(other))) {
+				return;
+			}
+			get_self<ViewerPage>(other)->showProperties();
+			break;
+		}
+		case 15: {
+			auto other =
+			    get_self<ViewerPage>(peerWindow->Viewer())->get_strong();
+			if (!other->m_properties || other->m_propertiesPending) {
+				return;
+			}
+			check(other->m_propertiesDialog != nullptr,
+			      "peer properties did not open");
+			peerWindow->Close();
+			check(other->m_closed && !other->m_propertiesDialog &&
+			          app.m_windows.size() == 1,
+			      "closing a reader kept its properties dialog alive");
+			status.Text(L"PASS: properties metadata, Unicode, dates, "
+			            L"page/rotation size, themes, "
+			            L"cache, retry, dismissal, tabs and close");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
