@@ -882,7 +882,7 @@ struct TabsTest {
 			          !pane.m_next.IsEnabled() && !pane.m_seek.IsEnabled() &&
 			          !pane.m_shuffle.IsEnabled() && !pane.m_repeat.IsEnabled(),
 			      "music capability gates");
-			pane.m_flyout.ShowAt(owner.MusicButton());
+			pane.show();
 			const auto closed = std::make_shared<bool>(false);
 			auto session = music::Session::create(
 			    owner.DispatcherQueue(), [closed](const auto&) {
@@ -899,6 +899,36 @@ struct TabsTest {
 		case 1:
 			check(pane.m_open && pane.m_timer.IsRunning(),
 			      "music flyout did not open");
+			{
+				const auto origin =
+				    pane.m_surface.TransformToVisual(owner.RootGrid())
+				        .TransformPoint({0, 0});
+				check(origin.Y >= owner.AppTitleBar().ActualHeight() + 7 &&
+				          origin.X >= 0 &&
+				          origin.X + pane.m_surface.ActualWidth() <=
+				              owner.RootGrid().ActualWidth() + 1,
+				      "music flyout overlaps title bar or leaves the window: " +
+				          std::to_string(origin.X) + "/" +
+				          std::to_string(origin.Y));
+				const auto artOrigin =
+				    pane.m_art.TransformToVisual(owner.RootGrid())
+				        .TransformPoint({0, 0});
+				const auto seekOrigin =
+				    pane.m_seek.TransformToVisual(owner.RootGrid())
+				        .TransformPoint({0, 0});
+				check(artOrigin.X >= origin.X + 15 &&
+				          artOrigin.Y >= origin.Y + 15 &&
+				          seekOrigin.X + pane.m_seek.ActualWidth() <=
+				              origin.X + pane.m_surface.ActualWidth() - 15,
+				      "music content lost its top or right padding");
+				check(pane.m_surface.CornerRadius().TopLeft == 12 &&
+				          pane.m_surface.CornerRadius().TopRight == 12 &&
+				          pane.m_surface.CornerRadius().BottomLeft == 12 &&
+				          pane.m_surface.CornerRadius().BottomRight == 12 &&
+				          pane.m_play.CornerRadius().TopLeft == 22 &&
+				          pane.m_title.FontSize() == 16,
+				      "music surface and primary control geometry");
+			}
 			check(closedMusic.expired(),
 			      "music request retained a closed owner");
 			state.timeline = {10 * music::TICKS_PER_SECOND,
@@ -918,8 +948,8 @@ struct TabsTest {
 			      "read-only music timeline");
 			check(!pane.m_seek.IsEnabled() && !pane.m_repeat.IsEnabled() &&
 			          pane.m_shuffle.IsChecked().Value() &&
-			          unbox_value<hstring>(pane.m_repeat.Content()) ==
-			              L"Repeat: one",
+			          pane.m_repeatIcon.Glyph() == L"\uE8ED" &&
+			          pane.m_repeat.Visibility() == Visibility::Collapsed,
 			      "read-only shuffle/repeat state");
 			check(Automation::AutomationProperties::GetName(pane.m_play) ==
 			          L"Play",
@@ -938,15 +968,91 @@ struct TabsTest {
 			state.busy = false;
 			break;
 		case 2:
+			pane.m_animationsOverride = false;
+			pane.tint({20, 25, 30});
+			pane.motion(true);
+			check(pane.m_transition.Children().Size() == 0 &&
+			          pane.m_motion.Children().Size() == 0 &&
+			          pane.m_surface.Opacity() == 1 && pane.m_slide.Y() == 0,
+			      "reduced motion still animated the pane");
+			pane.tint({});
+			pane.m_animationsOverride.reset();
+			pane.update(musicSnapshot);
+			check(!pane.m_timer.IsRunning(), "paused music kept ticking");
+			pane.m_seekSink = [this](double value) {
+				check(value == 70, "wrong seek sent");
+				++musicSeeks;
+			};
+			pane.m_seek.Value(70);
+			break;
+		case 3:
+			if (!pane.m_pendingSeek) {
+				return;
+			}
+			check(musicSeeks == 1, "seek not dispatched once");
+			state.busy = true;
+			pane.update(musicSnapshot);
+			check(pane.m_seeking && pane.m_seek.Value() == 70,
+			      "busy/old timeline snapped the seek back");
+			state.busy = false;
+			break;
+		case 4:
+			++musicSnapshot.artworkVersion;
+			pane.update(musicSnapshot);
+			check(pane.m_seeking && pane.m_seek.Value() == 70,
+			      "artwork refresh discarded the pending seek");
+			state.timeline.position = 80 * music::TICKS_PER_SECOND;
+			state.timeline.updated =
+			    winrt::clock::now().time_since_epoch().count();
+			pane.update(musicSnapshot);
+			check(!pane.m_seeking && !pane.m_pendingSeek &&
+			          pane.m_seek.Value() == 70,
+			      "fresh seek acknowledgement was ignored");
+			break;
+		case 5:
+			state.playback = music::Playback::Playing;
+			state.timeline.playing = true;
+			musicSnapshot.sampledAt = std::chrono::steady_clock::now();
+			pane.update(musicSnapshot);
+			check(pane.m_timer.IsRunning() &&
+			          pane.m_timer.Interval() == std::chrono::milliseconds(250),
+			      "playing clock does not tick at four Hz");
+			pane.m_flyout.Hide();
+			break;
+		case 6:
+			if (pane.m_open) {
+				return;
+			}
+			check(!pane.m_timer.IsRunning(), "closed music kept ticking");
+			pane.show();
+			break;
+		case 7:
+			if (!pane.m_open) {
+				return;
+			}
+			++musicSnapshot.trackVersion;
+			state.timeline.position = state.timeline.start;
+			musicSnapshot.sampledAt = std::chrono::steady_clock::now();
+			pane.update(musicSnapshot);
+			check(pane.m_seek.Value() < 1,
+			      "new track kept the previous position");
+			break;
+		case 8: {
 			if (musicArt.Status() ==
 			    Windows::Foundation::AsyncStatus::Started) {
 				return;
 			}
-			musicSnapshot.artwork = musicArt.GetResults();
+			const auto encoded = musicArt.GetResults();
+			auto bytes =
+			    std::make_shared<std::vector<std::uint8_t>>(encoded.Length());
+			Windows::Storage::Streams::DataReader::FromBuffer(encoded)
+			    .ReadBytes(*bytes);
+			musicSnapshot.artwork = std::move(bytes);
 			++musicSnapshot.artworkVersion;
 			pane.update(musicSnapshot);
 			break;
-		case 3:
+		}
+		case 9:
 			if (!pane.m_art.Source() || pane.m_background.TintColor().R != 80 ||
 			    pane.m_background.TintColor().G != 0) {
 				return;
@@ -963,7 +1069,7 @@ struct TabsTest {
 			state.title = "Another track";
 			pane.update(musicSnapshot);
 			break;
-		case 4:
+		case 10:
 			if (pane.m_background.TintColor().R != 45) {
 				return;
 			}
@@ -976,7 +1082,7 @@ struct TabsTest {
 			owner.AppWindow().Resize({565, 700});
 			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 			break;
-		case 5: {
+		case 11: {
 			const auto current = owner.Viewer();
 			if (!current || !ready(*get_self<ViewerPage>(current))) {
 				return;
@@ -997,6 +1103,14 @@ struct TabsTest {
 				              owner.RootGrid().ActualWidth(),
 				      "music displaced a preset outside the narrow window");
 			}
+			wchar_t directory[2048]{};
+			if (GetEnvironmentVariableW(L"SableMusicCaptureDirectory",
+			                            directory, 2048)) {
+				owner.AppWindow().Resize({1100, 800});
+				step = 20;
+				ticks = 0;
+				return;
+			}
 			while (!owner.m_tabs.empty()) {
 				owner.closeTab(owner.m_tabs.back().tab);
 			}
@@ -1006,7 +1120,98 @@ struct TabsTest {
 			pane.update(musicSnapshot);
 			break;
 		}
-		case 6:
+		case 20:
+		case 24:
+		case 28:
+			if (ticks < 3) {
+				return;
+			}
+			report.Visibility(Visibility::Collapsed);
+			state.title = step == 20   ? "Bright artwork"
+			              : step == 24 ? "Dark artwork"
+			                           : "No artwork";
+			state.artist = "Sample artist";
+			state.player = music::Player::Spotify;
+			state.controls = {true, true, true, true, true, true, true, true};
+			state.shuffle = true;
+			state.repeat = music::Repeat::One;
+			state.playback = music::Playback::Paused;
+			state.timeline = {0,
+			                  260 * music::TICKS_PER_SECOND,
+			                  195 * music::TICKS_PER_SECOND,
+			                  0,
+			                  260 * music::TICKS_PER_SECOND,
+			                  1,
+			                  false};
+			++musicSnapshot.trackVersion;
+			musicSnapshot.artwork = nullptr;
+			++musicSnapshot.artworkVersion;
+			pane.update(musicSnapshot);
+			if (step == 28) {
+				pane.show();
+				step = 30;
+				ticks = 0;
+				return;
+			}
+			musicArt = makeMusicArtwork(step == 20 ? 1 : 2);
+			break;
+		case 21:
+		case 25: {
+			if (musicArt.Status() ==
+			    Windows::Foundation::AsyncStatus::Started) {
+				return;
+			}
+			const auto encoded = musicArt.GetResults();
+			auto bytes =
+			    std::make_shared<std::vector<std::uint8_t>>(encoded.Length());
+			Windows::Storage::Streams::DataReader::FromBuffer(encoded)
+			    .ReadBytes(*bytes);
+			musicSnapshot.artwork = std::move(bytes);
+			++musicSnapshot.artworkVersion;
+			pane.update(musicSnapshot);
+			pane.show();
+			break;
+		}
+		case 22:
+		case 26:
+		case 30: {
+			if (ticks == 3) {
+				pane.m_play.Focus(FocusState::Pointer);
+			}
+			if (ticks < 5 || !pane.m_open ||
+			    (step != 30 && !pane.m_art.Source())) {
+				return;
+			}
+			wchar_t directory[2048]{};
+			check(GetEnvironmentVariableW(L"SableMusicCaptureDirectory",
+			                              directory, 2048) > 0);
+			const std::filesystem::path target(directory);
+			std::filesystem::create_directories(target);
+			const auto file = step == 22   ? L"bright-art.png"
+			                  : step == 26 ? L"dark-art.png"
+			                               : L"no-art.png";
+			HWND captureWindow{};
+			check_hresult(owner.get_strong()
+			                  .as<Window>()
+			                  .as<IWindowNative>()
+			                  ->get_WindowHandle(&captureWindow));
+			captureMusicWindow(captureWindow, target / file);
+			pane.m_flyout.Hide();
+			break;
+		}
+		case 23:
+		case 27:
+			if (pane.m_open) {
+				return;
+			}
+			break;
+		case 31:
+			musicSnapshot = {};
+			pane.update(musicSnapshot);
+			step = 12;
+			ticks = 0;
+			return;
+		case 12:
 			check(owner.MusicButton().Visibility() == Visibility::Collapsed &&
 			          !pane.m_open && !pane.m_timer.IsRunning(),
 			      "inactive music did not dismiss");
