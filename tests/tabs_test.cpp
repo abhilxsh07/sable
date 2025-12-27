@@ -3713,6 +3713,284 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void keyboardTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || ticks < 3) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+			return;
+		}
+		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
+		constexpr auto shift = helpers::SHORTCUT_SHIFT;
+		constexpr auto alt = helpers::SHORTCUT_ALT;
+		const auto key = [&](unsigned code, unsigned modifiers = 0) {
+			return owner.routeKey(code, modifiers);
+		};
+		switch (step) {
+		case 0: {
+			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
+			    FocusState::Keyboard);
+			check(key('G', ctrl | alt), "global page-box command missing");
+			check(Input::FocusManager::GetFocusedElement(
+			          owner.RootGrid().XamlRoot()) == v.PageBox(),
+			      "tab-header shortcut did not focus page box");
+			const auto page = v.m_current;
+			check(!key('J') && !key('R') && v.m_current == page &&
+			          v.m_rotation == 0,
+			      "reader letters changed a text field");
+			check(!key('A', ctrl) && !key('C', ctrl),
+			      "PDF commands stole native text editing");
+			const auto beforeZoom = v.m_zoom;
+			check(key(VK_OEM_MINUS, ctrl) && v.m_zoom < beforeZoom,
+			      "text-field Ctrl-minus did not zoom");
+			check(key(VK_ADD, ctrl | shift) && key(VK_SUBTRACT, ctrl | shift) &&
+			          key(VK_OEM_PLUS, ctrl) && key(VK_NUMPAD0, ctrl | shift) &&
+			          v.m_preset == helpers::ZoomPreset::Auto,
+			      "keypad or Shift zoom aliases failed");
+			v.Scroller().Focus(FocusState::Keyboard);
+			check(!key('R', helpers::SHORTCUT_WIN) && v.m_rotation == 0,
+			      "Windows chord reached the reader");
+			check(key('H') && v.cursorTool() == ViewerPage::CursorTool::Hand &&
+			          key('S') &&
+			          v.cursorTool() == ViewerPage::CursorTool::Select,
+			      "cursor-tool shortcuts failed");
+			check(key('R') && v.m_rotation == 1 && key('R', shift) &&
+			          v.m_rotation == 0,
+			      "rotation shortcuts failed");
+			const bool sidebar = v.thumbnailsOpen();
+			check(key(VK_F4) && v.thumbnailsOpen() != sidebar && key(VK_F4) &&
+			          v.thumbnailsOpen() == sidebar,
+			      "sidebar key failed");
+			v.goToPage(0);
+			break;
+		}
+		case 1:
+			key('J');
+			break;
+		case 2:
+			check(v.m_current == 1, "J did not turn a page");
+			key('K');
+			break;
+		case 3:
+			check(v.m_current == 0, "K did not turn back");
+			v.PageBox().Focus(FocusState::Keyboard);
+			key(VK_DOWN, ctrl | shift);
+			break;
+		case 4:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "Ctrl-Down missed last page");
+			key(VK_UP, ctrl);
+			break;
+		case 5:
+			check(v.m_current == 0, "Ctrl-Up missed first page");
+			v.Scroller().Focus(FocusState::Keyboard);
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			key(VK_SPACE);
+			break;
+		case 6:
+			check(v.m_current == 1, "page-fit Space did not advance");
+			key(VK_SPACE, shift);
+			break;
+		case 7:
+			check(v.m_current == 0, "Shift-Space did not go back");
+			check(key('F', ctrl) && v.findOpen(), "Ctrl-F failed");
+			v.FindBox().Text(L"Alpha");
+			break;
+		case 8: {
+			check(v.m_findActive && v.m_findMatches.size() > 1,
+			      "shortcut Find query did not finish");
+			const auto before = *v.m_findActive;
+			check(key('G', ctrl) && v.m_findActive != before &&
+			          key('G', ctrl | shift) && v.m_findActive == before &&
+			          key(VK_F3) && v.m_findActive != before &&
+			          key(VK_F3, shift) && v.m_findActive == before,
+			      "Find next/previous shortcuts failed");
+			key(VK_ESCAPE);
+			check(!v.findOpen(), "Escape did not close Find");
+			v.showProperties();
+			break;
+		}
+		case 9: {
+			check(v.m_propertiesDialog != nullptr,
+			      "properties dialog did not open");
+			const auto beforeZoom = v.m_zoom;
+			check(!key('F', ctrl) && !key(VK_ADD, ctrl) && !key('R') &&
+			          !key('G', ctrl | alt) && v.m_zoom == beforeZoom &&
+			          !v.findOpen(),
+			      "modal dialog leaked reader shortcuts");
+			v.dismissProperties();
+			break;
+		}
+		case 10:
+			key('P', ctrl | alt);
+			break;
+		case 11:
+			check(v.m_presentation.has_value(),
+			      "presentation key did not enter");
+			key(VK_DOWN, ctrl);
+			break;
+		case 12:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "presentation Ctrl-Down missed last page");
+			key(VK_UP, ctrl | shift);
+			break;
+		case 13:
+			check(v.m_current == 0, "presentation Ctrl-Up missed first page");
+			owner.m_copyPicker = [](hstring) {
+				return attachmentChoice(L"", {});
+			};
+			key('S', ctrl);
+			check(!v.m_presentation, "Save did not leave presentation");
+			break;
+		case 14:
+			check(!owner.m_saveCopyCancel,
+			      "cancelled keyboard save stayed active");
+			key(VK_F11);
+			check(owner.AppWindow().Presenter().Kind() ==
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "F11 did not enter full screen");
+			check(owner.routeKey(VK_F11, 0, true) &&
+			          owner.AppWindow().Presenter().Kind() ==
+			              Microsoft::UI::Windowing::AppWindowPresenterKind::
+			                  FullScreen,
+			      "repeat F11 toggled full screen");
+			key(VK_F11);
+			first.copy_from(&v);
+			owner.m_shortcuts.push_back({'J', 0, "switch-tab", "next"});
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			owner.Tabs().SelectedIndex(0);
+			break;
+		case 15:
+			check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
+			          owner.Tabs().SelectedIndex() == 1 &&
+			          first->m_current == 0,
+			      "custom binding lost priority over viewer letters");
+			status.Text(
+			    L"PASS: global focus, navigation, zoom aliases, Find, "
+			    L"tools, modal guards, presentation and custom bindings");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void saveCopyTick(MainWindow& owner) {
+		if (ticks < 3 || owner.m_saveCopyCancel) {
+			return;
+		}
+		if (step == 8) {
+			check(first && first->m_closed, "closed save retained its viewer");
+			check(!std::filesystem::exists(attachmentTarget),
+			      "closed tab accepted a late picker result");
+			status.Text(L"PASS: PDF copy, cancel, source protection, errors "
+			            L"and late picker guards");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v)) {
+			return;
+		}
+		const auto choose = [&](const std::wstring& path) {
+			owner.m_copyPicker = [this, path](hstring name) {
+				attachmentName = name;
+				++attachmentPicks;
+				return attachmentChoice(hstring(path), attachmentGate);
+			};
+		};
+		const auto bytes = [](const std::filesystem::path& path) {
+			std::ifstream in(path, std::ios::binary);
+			return std::string((std::istreambuf_iterator<char>(in)), {});
+		};
+		switch (step) {
+		case 0:
+			attachmentTarget = settingsPath;
+			attachmentTarget.replace_extension(L".pdf");
+			choose(L"");
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 1:
+			check(attachmentPicks == 1 && attachmentName == L"pages copy.pdf" &&
+			          !std::filesystem::exists(attachmentTarget) &&
+			          !v.Message().IsOpen() && owner.SaveCopyItem().IsEnabled(),
+			      "cancel changed document state or suggested name");
+			v.rotateView(1);
+			v.zoomIn();
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.onSaveCopy(nullptr, nullptr);
+			check(attachmentPicks == 2, "duplicate save opened another picker");
+			break;
+		case 2:
+			check(bytes(attachmentTarget) == bytes(v.m_path),
+			      "saving applied view changes to the PDF");
+			choose(std::filesystem::absolute(v.m_path).wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 3:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Choose a different") == 0 &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "source protection missing or previous copy changed");
+			v.Message().IsOpen(false);
+			choose((attachmentTarget / L"missing" / L"copy.pdf").wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 4:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Couldn't save") == 0 &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "failed copy has no notice or changed existing output");
+			v.Message().IsOpen(false);
+			owner.m_copyPicker =
+			    [](hstring) -> Windows::Foundation::IAsyncOperation<hstring> {
+				throw hresult_access_denied();
+			};
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 5:
+			check(v.Message().IsOpen(), "picker failure has no notice");
+			v.Message().IsOpen(false);
+			first.copy_from(&v);
+			std::filesystem::remove(attachmentTarget);
+			attachmentGate = std::make_shared<winrt::handle>(
+			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+			check(static_cast<bool>(*attachmentGate));
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
+			SetEvent(attachmentGate->get());
+			break;
+		case 6:
+			check(!std::filesystem::exists(attachmentTarget),
+			      "tab switch accepted a late picker result");
+			owner.Tabs().SelectedIndex(0);
+			break;
+		case 7:
+			ResetEvent(attachmentGate->get());
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			SetEvent(attachmentGate->get());
+			break;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
