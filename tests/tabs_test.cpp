@@ -3463,6 +3463,256 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void
+	deliverKeys(std::initializer_list<std::pair<unsigned, unsigned>> chords) {
+		DWORD process = 0;
+		GetWindowThreadProcessId(GetForegroundWindow(), &process);
+		check(process == GetCurrentProcessId() &&
+		          GetForegroundWindow() == inputWindow,
+		      "input check lost the reader foreground; no keys sent");
+		for (const auto modifier :
+		     {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN, VK_LBUTTON,
+		      VK_RBUTTON, VK_MBUTTON}) {
+			check(
+			    (GetAsyncKeyState(modifier) & 0x8000) == 0,
+			    "input check found a held key or pointer button; no keys sent");
+		}
+		std::vector<::INPUT> events;
+		const auto append = [&](unsigned code, bool up) {
+			::INPUT event{};
+			event.type = INPUT_KEYBOARD;
+			event.ki.wVk = static_cast<WORD>(code);
+			event.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+			if ((code >= VK_PRIOR && code <= VK_DOWN) || code == VK_INSERT ||
+			    code == VK_DELETE || code == VK_DIVIDE) {
+				event.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+			}
+			events.push_back(event);
+		};
+		for (const auto& [code, modifiers] : chords) {
+			const std::pair<unsigned, unsigned> held[] = {
+			    {helpers::SHORTCUT_CTRL, VK_CONTROL},
+			    {helpers::SHORTCUT_ALT, VK_MENU},
+			    {helpers::SHORTCUT_SHIFT, VK_SHIFT}};
+			for (const auto& [flag, modifier] : held) {
+				if (modifiers & flag) {
+					append(modifier, false);
+				}
+			}
+			append(code, false);
+			append(code, true);
+			for (auto index = std::size(held); index > 0; --index) {
+				const auto [flag, modifier] = held[index - 1];
+				if (modifiers & flag) {
+					append(modifier, true);
+				}
+			}
+		}
+		SetLastError(ERROR_SUCCESS);
+		const auto sent = SendInput(static_cast<UINT>(events.size()),
+		                            events.data(), sizeof(::INPUT));
+		const auto error = GetLastError();
+		if (sent != events.size()) {
+			std::vector<::INPUT> release;
+			for (auto index = sent; index > 0; --index) {
+				if (!(events[index - 1].ki.dwFlags & KEYEVENTF_KEYUP)) {
+					auto event = events[index - 1];
+					event.ki.dwFlags |= KEYEVENTF_KEYUP;
+					release.push_back(event);
+				}
+			}
+			if (!release.empty()) {
+				SendInput(static_cast<UINT>(release.size()), release.data(),
+				          sizeof(::INPUT));
+			}
+			check(false, "Windows input unavailable: accepted " +
+			                 std::to_string(sent) + "/" +
+			                 std::to_string(events.size()) + ", error " +
+			                 std::to_string(error));
+		}
+	}
+
+	void keyboardInputTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || ticks < 3) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+			return;
+		}
+		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
+		constexpr auto shift = helpers::SHORTCUT_SHIFT;
+		constexpr auto alt = helpers::SHORTCUT_ALT;
+		switch (step) {
+		case 0:
+			check_hresult(
+			    owner.get_strong().as<IWindowNative>()->get_WindowHandle(
+			        &inputWindow));
+			owner.Activate();
+			SetForegroundWindow(inputWindow);
+			v.Scroller().Focus(FocusState::Keyboard);
+			break;
+		case 1:
+			deliverKeys({{'J', 0}});
+			break;
+		case 2:
+			check(v.m_current == 1, "Windows-delivered J did not turn a page");
+			deliverKeys({{'K', 0}});
+			break;
+		case 3:
+			check(v.m_current == 0, "Windows-delivered K did not go back");
+			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
+			    FocusState::Keyboard);
+			deliverKeys({{'G', ctrl | alt}});
+			break;
+		case 4:
+			check(Input::FocusManager::GetFocusedElement(
+			          owner.RootGrid().XamlRoot()) == v.PageBox(),
+			      "Windows-delivered Ctrl-Alt-G lost page-box focus");
+			deliverKeys({{'3', 0}});
+			break;
+		case 5:
+			check(v.PageBox().Text() == L"3" && v.m_current == 0,
+			      "page draft navigated before Enter");
+			deliverKeys({{'R', 0}});
+			break;
+		case 6:
+			check(v.m_rotation == 0 && (v.PageBox().Text() == L"3r" ||
+			                            v.PageBox().Text() == L"3R"),
+			      "reader stole typed R");
+			deliverKeys({{'A', ctrl}, {'2', 0}, {VK_RETURN, 0}});
+			break;
+		case 7:
+			check(v.m_current == 1, "Enter did not commit the page draft");
+			v.PageBox().Focus(FocusState::Keyboard);
+			inputZoom = v.m_zoom;
+			inputText = v.PageBox().Text();
+			deliverKeys({{VK_OEM_MINUS, ctrl}});
+			break;
+		case 8:
+			check(v.m_zoom < inputZoom && v.PageBox().Text() == inputText,
+			      "Ctrl-minus edited the page box instead of zooming");
+			deliverKeys({{'0', ctrl}});
+			break;
+		case 9:
+			check(v.m_preset == helpers::ZoomPreset::Auto,
+			      "Ctrl-0 did not reset zoom");
+			v.Scroller().Focus(FocusState::Keyboard);
+			deliverKeys({{'R', 0}});
+			break;
+		case 10:
+			check(v.m_rotation == 1, "Windows-delivered R did not rotate");
+			deliverKeys({{'R', shift}});
+			break;
+		case 11:
+			check(v.m_rotation == 0,
+			      "Windows-delivered Shift-R did not restore rotation");
+			deliverKeys({{'H', 0}});
+			break;
+		case 12:
+			check(v.cursorTool() == ViewerPage::CursorTool::Hand,
+			      "H did not select Hand");
+			deliverKeys({{'S', 0}});
+			break;
+		case 13:
+			check(v.cursorTool() == ViewerPage::CursorTool::Select,
+			      "S did not select text");
+			deliverKeys({{'F', ctrl}});
+			break;
+		case 14:
+			check(v.findOpen() &&
+			          Input::FocusManager::GetFocusedElement(
+			              owner.RootGrid().XamlRoot()) == v.FindBox(),
+			      "Ctrl-F focus failed");
+			deliverKeys({{'A', shift}, {'L', 0}, {'P', 0}, {'H', 0}, {'A', 0}});
+			break;
+		case 15:
+			check(v.m_findActive && v.m_findMatches.size() > 1,
+			      "typed Find query did not produce matches");
+			inputMatch = *v.m_findActive;
+			deliverKeys({{'G', ctrl}});
+			break;
+		case 16:
+			check(v.m_findActive && v.m_findActive != inputMatch,
+			      "Ctrl-G did not advance");
+			deliverKeys({{'G', ctrl | shift}});
+			break;
+		case 17:
+			check(v.m_findActive == inputMatch, "Ctrl-Shift-G did not go back");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 18:
+			check(!v.findOpen(), "Escape did not close Find");
+			v.Scroller().Focus(FocusState::Keyboard);
+			deliverKeys({{'P', ctrl | alt}});
+			break;
+		case 19:
+			check(v.m_presentation.has_value(),
+			      "Ctrl-Alt-P did not enter presentation");
+			deliverKeys({{VK_DOWN, ctrl}});
+			break;
+		case 20:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "presentation Ctrl-Down failed");
+			deliverKeys({{VK_UP, ctrl}});
+			break;
+		case 21:
+			check(v.m_current == 0, "presentation Ctrl-Up failed");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 22:
+			check(!v.m_presentation, "Escape did not leave presentation");
+			owner.m_copyPicker = [this](hstring) {
+				++attachmentPicks;
+				return attachmentChoice(L"", {});
+			};
+			deliverKeys({{'S', ctrl}});
+			break;
+		case 23:
+			check(attachmentPicks == 1 && !owner.m_saveCopyCancel,
+			      "Windows-delivered Ctrl-S did not reach the save picker");
+			deliverKeys({{VK_F11, 0}});
+			break;
+		case 24:
+			check(owner.AppWindow().Presenter().Kind() ==
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "Windows-delivered F11 did not enter full screen");
+			deliverKeys({{VK_F11, 0}});
+			break;
+		case 25:
+			check(owner.AppWindow().Presenter().Kind() !=
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "second F11 did not leave full screen");
+			v.showProperties();
+			break;
+		case 26:
+			check(v.m_propertiesDialog != nullptr,
+			      "properties dialog did not open");
+			inputZoom = v.m_zoom;
+			deliverKeys({{VK_ADD, ctrl}, {'R', 0}});
+			break;
+		case 27:
+			check(v.m_zoom == inputZoom && v.m_rotation == 0,
+			      "modal dialog leaked OS-delivered reader keys");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 28:
+			check(!v.m_propertiesDialog, "Escape did not dismiss properties");
+			status.Text(
+			    L"PASS: Windows input delivery, text editing, zoom, Find, "
+			    L"rotation, tools, presentation and dialog isolation");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
