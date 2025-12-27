@@ -1394,12 +1394,31 @@ struct TabsTest {
 			}
 			check(v.AttachmentList().IsItemClickEnabled(),
 			      "attachment rows do not invoke Save As");
-			choose(L"");
-			v.saveAttachment(0);
+			{
+				// UI Automation's Invoke takes the same ItemClick path as a
+				// click or Enter on the row
+				using namespace Microsoft::UI::Xaml::Automation;
+				const auto row =
+				    v.AttachmentList().Items().GetAt(0).as<ListViewItem>();
+				const auto peer =
+				    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+				        row);
+				const auto invoke =
+				    peer ? peer.GetPattern(Peers::PatternInterface::Invoke)
+				               .try_as<Provider::IInvokeProvider>()
+				         : nullptr;
+				if (!invoke) {
+					check(ticks < 30, "attachment row has no Invoke");
+					return;
+				}
+				choose(L"");
+				invoke.Invoke();
+			}
 			break;
 		case 2:
-			check(attachmentPicks == 1 &&
-			          !std::filesystem::exists(attachmentTarget) &&
+			check(attachmentPicks == 1,
+			      "clicking an attachment row didn't open Save As");
+			check(!std::filesystem::exists(attachmentTarget) &&
 			          !v.Message().IsOpen(),
 			      "cancel changed attachment state");
 			check(attachmentName == L"notes \u03a9\U0001f600.txt",
@@ -2625,8 +2644,16 @@ struct TabsTest {
 			          !first->m_attachmentsPending &&
 			          first->AttachmentList().Items().Size() == 0,
 			      "closed attachment panel accepted a late result");
+			// closing the focused tab hands the keys to the next document
+			const auto next = owner.Viewer();
+			const auto focus = Input::FocusManager::GetFocusedElement(
+			    owner.RootGrid().XamlRoot());
+			if (!next || focus != get_self<ViewerPage>(next)->Scroller()) {
+				check(ticks < 30, "closing a tab left the keys nowhere");
+				return;
+			}
 			status.Text(L"PASS: attachment names, cache, sidebar switching, "
-			            L"empty/retry and close guards");
+			            L"empty/retry, close guards and Recent");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
@@ -2655,8 +2682,10 @@ struct TabsTest {
 			      "attachment list count");
 			attachmentItem =
 			    v.AttachmentList().Items().GetAt(0).as<ListViewItem>();
-			check(unbox_value<hstring>(attachmentItem.Content()) ==
-			          L"notes \u03a9\U0001f600.txt",
+			check(attachmentItem.Content().as<TextBlock>().Text() ==
+			              L"notes \u03a9\U0001f600.txt" &&
+			          Automation::AutomationProperties::GetName(
+			              attachmentItem) == L"notes \u03a9\U0001f600.txt",
 			      "attachment Unicode name");
 			v.AttachmentList().Focus(FocusState::Programmatic);
 			if (!v.attachmentsHasFocus()) {
@@ -2681,11 +2710,19 @@ struct TabsTest {
 			      "thumbnails did not close attachments");
 			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 			break;
-		case 3:
+		case 3: {
 			check(!v.m_attachments && !v.attachmentsOpen(),
 			      "attachment state leaked between tabs");
+			// both files opened, so both are in Recent, newest first
+			const auto& recent =
+			    get_self<HomePage>(owner.Home())->m_recents.items();
+			check(recent.size() == 2 &&
+			          recent[0].path.filename() == L"pages.pdf" &&
+			          recent[1].path.filename() == L"attachments.pdf",
+			      "opened files missing from Recent");
 			v.setAttachmentsOpen(true);
 			break;
+		}
 		case 4:
 			if (!v.m_attachmentsBuilt) {
 				return;
