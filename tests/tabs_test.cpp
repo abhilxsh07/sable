@@ -4455,6 +4455,377 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void longGesturesTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		check(!v.Message().IsOpen(), to_string(v.Message().Message()));
+		if (!ready(v) || ticks < 3 || v.m_resettingGesture || v.m_linkPending) {
+			return;
+		}
+		const auto click = [&v](std::size_t page, double x = .5) {
+			const auto& rect = v.m_layout->pages()[page];
+			return Windows::Foundation::Point{
+			    static_cast<float>(rect.x + rect.width * x),
+			    static_cast<float>(rect.y + rect.height * .5)};
+		};
+		const auto firstInSpread = [&v] {
+			return helpers::spreadPages(v.m_sizes.size(), v.m_current,
+			                            v.m_spreadMode)
+			    .first;
+		};
+		switch (step) {
+		case 0:
+			owner.openDocument(engine, L"tests/fixtures/long.pdf", 1000);
+			break;
+		case 1:
+			check(v.m_sizes.size() == 1000, "long fixture not open");
+			v.setThumbnailsOpen(false);
+			v.zoomTo(1.5, {0, 0});
+			v.goToPage(999);
+			break;
+		case 2: {
+			check(v.m_current >= 998, "last page did not settle");
+			v.m_directManipulation = true;
+			const auto view = v.viewport();
+			v.Scroller().ChangeView(nullptr,
+			                        (view.y + view.height / 2) * .6 -
+			                            v.Scroller().ViewportHeight() / 2,
+			                        .6f, true);
+			break;
+		}
+		case 3:
+			check(v.m_zoom == 1.5 && !v.m_resettingGesture &&
+			          std::abs(v.Scroller().ZoomFactor() - .6f) < 1e-5 &&
+			          v.ZoomText().Text() == L"90%",
+			      "active gesture baked early or lost its live percentage");
+			check(v.m_wanted.first >= 997 && v.m_wanted.end == 1000,
+			      "native zoom used scaled offsets as PDF coordinates");
+			v.m_device.bitmaps.clear();
+			v.m_cache.clear();
+			v.invalidate(999);
+			v.updateVisible();
+			break;
+		case 4:
+			if (!v.m_device.bitmaps.contains(999)) {
+				return;
+			}
+			check(v.m_visible.end == 1000,
+			      "last-page raster vanished during active native zoom");
+			v.m_directManipulation = false;
+			v.queueNativeZoom();
+			break;
+		case 5:
+			check(std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
+			          v.m_current >= 998 && v.m_wanted.end == 1000,
+			      "finishing zoom jumped away from the final page");
+			if (gestureRound < 2) {
+				if (gestureRound == 0) {
+					const auto wanted = v.m_wanted;
+					const auto landing = v.m_landingAt;
+					v.m_holdCurrent = true;
+					v.m_landingAt = std::pair{0., 0.};
+					v.updateVisible();
+					check(v.m_wanted == wanted &&
+					          v.m_device.bitmaps.contains(999),
+					      "transient zoom layout evicted the visible page");
+					v.m_landingAt = landing;
+					v.m_holdCurrent = false;
+					const auto previous = v.m_current;
+					v.m_current = 0;
+					v.queueNativeZoom();
+					check(v.m_current >= 990,
+					      "completed native pan retained an old page number");
+					v.m_current = previous;
+				}
+				v.zoomTo(gestureRound++ == 0 ? 2.2 : .6, {0, 0});
+				ticks = 0;
+				return;
+			}
+			v.setLayout(helpers::ScrollMode::Page, helpers::SpreadMode::Odd);
+			v.goToPage(999);
+			owner.updateLayoutMenu();
+			check(owner.ClickSpreadsItem().IsEnabled() &&
+			          !owner.ClickSpreadsItem().IsChecked(),
+			      "spread click option must start off");
+			owner.ClickSpreadsItem().IsChecked(true);
+			owner.onClickSpreads({}, {});
+			break;
+		case 6:
+			check(v.spreadClickDirection(click(998)) == -1 &&
+			          v.spreadClickDirection(click(999)) == 1 &&
+			          v.spreadClickDirection({0, 0}) == 0,
+			      "left/right spread click hit testing");
+			v.requestLink(click(998), -1);
+			break;
+		case 7:
+			check(firstInSpread() == 996,
+			      "left page did not turn back a spread");
+			v.requestLink(click(997), 1);
+			break;
+		case 8:
+			check(firstInSpread() == 998,
+			      "right page did not turn forward a spread");
+			v.requestLink(click(999), 1);
+			break;
+		case 9:
+			check(firstInSpread() == 998,
+			      "last spread moved past the document");
+			v.goToPage(0);
+			v.requestLink(click(0), -1);
+			break;
+		case 10:
+			check(firstInSpread() == 0,
+			      "first spread moved before the document");
+			v.setLayout(helpers::ScrollMode::Page, helpers::SpreadMode::Even);
+			check(v.spreadClickDirection(click(0, .25)) == -1 &&
+			          v.spreadClickDirection(click(0, .75)) == 1,
+			      "single cover must expose both directions");
+			v.requestLink(click(0, .75), 1);
+			break;
+		case 11:
+			check(firstInSpread() == 1,
+			      "even cover did not advance to its spread");
+			owner.ClickSpreadsItem().IsChecked(false);
+			owner.onClickSpreads({}, {});
+			v.requestLink(click(2), 1);
+			break;
+		case 12:
+			check(firstInSpread() == 1,
+			      "disabled spread clicks still navigated");
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
+			break;
+		case 13: {
+			v.setLayout(helpers::ScrollMode::Page, helpers::SpreadMode::Odd);
+			v.m_clickSpreads = true;
+			const auto& rect = v.m_layout->pages()[0];
+			v.requestLink(
+			    {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			     static_cast<float>(rect.y + 50. / 540 * rect.height)},
+			    1);
+			break;
+		}
+		case 14:
+			check(!v.m_launchedUri.empty() && firstInSpread() == 0,
+			      "spread clicks swallowed an existing PDF link");
+			status.Text(
+			    L"PASS: long-document gesture rendering, last-page anchor, "
+			    L"live zoom, spread clicks, endpoints and link priority");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void gesturesTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (step < 10) {
+			check(!v.Message().IsOpen(), to_string(v.Message().Message()));
+		}
+		if (!ready(v) || ticks < 3 || v.m_resettingGesture) {
+			return;
+		}
+		const auto center = [&v] {
+			return Windows::Foundation::Point{
+			    static_cast<float>(v.Scroller().ViewportWidth() / 2),
+			    static_cast<float>(v.Scroller().ViewportHeight() / 2)};
+		};
+		const auto localCenter = [&] {
+			return v.Pages()
+			    .TransformToVisual(v.Scroller())
+			    .Inverse()
+			    .TransformPoint(center());
+		};
+		switch (step) {
+		case 0:
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({900, 700});
+			v.setThumbnailsOpen(false);
+			v.zoomTo(2, {0, 0});
+			check(v.Scroller().ZoomMode() == ZoomMode::Enabled &&
+			          v.Scroller().HorizontalScrollMode() ==
+			              ScrollMode::Enabled &&
+			          v.Scroller().VerticalScrollMode() == ScrollMode::Enabled,
+			      "native pinch and both scroll axes must be enabled");
+			break;
+		case 1:
+			v.Scroller().ChangeView(100., 150., nullptr, true);
+			break;
+		case 2:
+			check(std::abs(v.Scroller().HorizontalOffset() - 100) < 1 &&
+			          std::abs(v.Scroller().VerticalOffset() - 150) < 1,
+			      "native scroll did not move both axes");
+			gesturePoint = localCenter();
+			// Hold the final callback so the real transformed center can be
+			// saved.
+			v.m_viewChanged.revoke();
+			check(v.Scroller().ChangeView(200., 300., 1.5f, true),
+			      "native zoom request failed");
+			break;
+		case 3:
+			check(std::abs(v.Scroller().ZoomFactor() - 1.5f) < 1e-5,
+			      "native transform did not settle");
+			gesturePoint = localCenter();
+			v.nativeViewChanged(true);
+			check(v.m_zoom == 2 && v.ZoomText().Text() == L"300%",
+			      "intermediate gesture changed layout or lost zoom label");
+			v.m_viewChanged = v.Scroller().ViewChanged(
+			    auto_revoke,
+			    [&v](auto&&, const ScrollViewerViewChangedEventArgs& e) {
+				    v.nativeViewChanged(e.IsIntermediate());
+			    });
+			v.nativeViewChanged(false);
+			break;
+		case 4: {
+			check(std::abs(v.m_zoom - 3) < 1e-5 &&
+			          std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
+			          v.m_preset == helpers::ZoomPreset::None,
+			      "gesture scale was not baked into PDF zoom");
+			const auto point = localCenter();
+			const auto page = v.m_layout->pageAt(point.X, point.Y);
+			check(page == 0 && std::abs(point.Y - gesturePoint.Y * 1.5) < 12,
+			      "gesture lost the reading position");
+			check(v.Scroller().MinZoomFactor() >= .1f &&
+			          v.Scroller().MinZoomFactor() * v.m_zoom >=
+			              helpers::MIN_ZOOM &&
+			          std::abs(v.Scroller().MaxZoomFactor() * v.m_zoom -
+			                   helpers::MAX_ZOOM) < 1e-5,
+			      "native limits no longer match PDF zoom limits");
+			v.Scroller().ChangeView(nullptr, nullptr, .5f, true);
+			break;
+		}
+		case 5:
+			check(std::abs(v.m_zoom - 1.5) < 1e-5 &&
+			          v.ZoomText().Text() == L"150%",
+			      "second gesture compounded the previous transform");
+			v.zoomIn();
+			check(v.m_zoom > 1.5, "keyboard zoom stopped after pinch");
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			check(v.m_preset == helpers::ZoomPreset::PageFit,
+			      "fit preset stopped after pinch");
+			check(v.beginPresentation([] {}), "presentation start after pinch");
+			check(v.Scroller().ZoomMode() == ZoomMode::Disabled,
+			      "presentation allowed native zoom");
+			v.endPresentation();
+			check(v.Scroller().ZoomMode() == ZoomMode::Enabled,
+			      "presentation did not restore native zoom");
+			break;
+		case 6:
+			v.zoomTo(helpers::MAX_ZOOM, {0, 0});
+			check(v.Scroller().MaxZoomFactor() == 1.f,
+			      "pinch can exceed the PDF maximum");
+			v.Scroller().ChangeView(0., 0., .5f, true);
+			break;
+		case 7:
+			check(std::abs(v.m_zoom - 5) < 1e-5, "pinch away from maximum");
+			v.zoomTo(helpers::MIN_ZOOM, {0, 0});
+			check(v.Scroller().MinZoomFactor() == 1.f &&
+			          v.Scroller().MaxZoomFactor() == 10.f,
+			      "native limits at the PDF minimum");
+			v.Scroller().ChangeView(0., 0., 10.f, true);
+			break;
+		case 8:
+			if (gestureRound == 0) {
+				check(std::abs(v.m_zoom - 1) < 1e-5, "pinch away from minimum");
+				v.rotateView(1);
+			}
+			v.setLayout(static_cast<helpers::ScrollMode>(gestureRound / 3),
+			            static_cast<helpers::SpreadMode>(gestureRound % 3));
+			v.zoomTo(1.5, {0, 0});
+			v.Scroller().ChangeView(nullptr, nullptr, 1.2f, true);
+			break;
+		case 9:
+			check(std::abs(v.m_zoom - 1.8) < 1e-5 &&
+			          std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
+			          !v.m_holdCurrent,
+			      "pinch failed in a rotated scroll/spread layout");
+			if (++gestureRound < 12) {
+				step = 8;
+				ticks = 0;
+				return;
+			}
+			break;
+		case 10:
+			gestureSize = v.m_sizes[0];
+			v.m_sizes[0] = {50'000'000, 50'000'000};
+			v.Scroller().ChangeView(nullptr, nullptr, 1.1f, true);
+			break;
+		case 11:
+			v.m_sizes[0] = gestureSize;
+			check(std::abs(v.m_zoom - 1.8) < 1e-5 &&
+			          std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
+			          v.Message().IsOpen() && !v.m_holdCurrent,
+			      "oversized pinch did not restore readable state");
+			v.Message().IsOpen(false);
+			break;
+		case 12:
+			// A hidden tab can miss the end of an ordinary pan, at native 1x.
+			v.m_directManipulation = true;
+			v.activate();
+			check(!v.m_directManipulation,
+			      "reactivating a tab retained a completed native pan");
+			v.zoomIn();
+			check(v.m_zoom > 1.8, "zoom stayed blocked after tab activation");
+			v.setLayout(helpers::ScrollMode::Vertical,
+			            helpers::SpreadMode::None);
+			v.zoomTo(2, {0, 0});
+			v.goToPage(0);
+			v.m_directManipulation = true;
+			v.Scroller().ChangeView(0., 0., 2.f, true);
+			break;
+		case 13:
+			check(std::abs(v.Scroller().ZoomFactor() - 2.f) < 1e-5,
+			      "navigation interruption needs an active native scale");
+			v.goToPage(v.m_sizes.size() - 1);
+			break;
+		case 14:
+			v.m_directManipulation = false;
+			v.queueNativeZoom();
+			break;
+		case 15:
+			check(v.m_current == v.m_sizes.size() - 1,
+			      "page navigation during pinch landed on the wrong page");
+			v.m_directManipulation = true;
+			v.Scroller().ChangeView(nullptr, nullptr, .5f, true);
+			break;
+		case 16: {
+			const auto rotation = v.m_rotation;
+			v.rotateView(1);
+			v.setLayout(helpers::ScrollMode::Page, helpers::SpreadMode::Odd);
+			check(v.m_rotation == rotation &&
+			          v.m_scrollMode == helpers::ScrollMode::Vertical,
+			      "active pinch changed its underlying page geometry");
+			if (v.beginPresentation([] {})) {
+				check(std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
+				          !v.m_resettingGesture,
+				      "presentation retained a native pinch transform");
+				v.endPresentation();
+			}
+			v.m_directManipulation = false;
+			v.queueNativeZoom();
+			break;
+		}
+		case 17:
+			v.close();
+			v.nativeViewChanged(false);
+			status.Text(L"PASS: native zoom synchronization, anchor, limits, "
+			            L"both scroll axes, presets and presentation");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
