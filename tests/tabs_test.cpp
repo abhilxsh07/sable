@@ -4028,6 +4028,433 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void presentationTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || ticks < 3 || v.m_linkPending) {
+			return;
+		}
+		using Kind = Microsoft::UI::Windowing::AppWindowPresenterKind;
+		const auto capture = [&](const wchar_t* name) {
+			wchar_t directory[2048]{};
+			if (GetEnvironmentVariableW(L"SablePresentationCaptureDirectory",
+			                            directory, 2048)) {
+				std::filesystem::create_directories(directory);
+				HWND handle{};
+				check_hresult(
+				    owner.try_as<IWindowNative>()->get_WindowHandle(&handle));
+				captureMusicWindow(handle,
+				                   std::filesystem::path(directory) / name);
+				captureMusicWindow(handle,
+				                   std::filesystem::path(directory) /
+				                       (std::wstring(L"screen-") + name),
+				                   true);
+			}
+		};
+		switch (step) {
+		case 0:
+			first = v.get_strong();
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({1100, 800});
+			v.setLayout(helpers::ScrollMode::Wrapped,
+			            helpers::SpreadMode::Even);
+			v.zoomTo(.6, {0, 0});
+			v.setThumbnailsOpen(true);
+			v.setCursorTool(ViewerPage::CursorTool::Hand);
+			v.goToPage(1);
+			break;
+		case 1:
+			zoom = v.m_zoom;
+			outlinePage = v.m_current;
+			owner.onPresentation({}, {});
+			break;
+		case 2:
+			check(v.m_presentation && owner.m_presentationViewer == current &&
+			          owner.AppWindow().Presenter().Kind() == Kind::FullScreen,
+			      "presentation did not enter full screen");
+			check(v.m_current == outlinePage &&
+			          v.scrollMode() == helpers::ScrollMode::Page &&
+			          v.spreadMode() == helpers::SpreadMode::None &&
+			          v.m_preset == helpers::ZoomPreset::PageFit,
+			      "presentation page/layout/fit or mixed-size spread");
+			check(owner.AppTitleBar().Visibility() == Visibility::Collapsed &&
+			          v.Rail().Visibility() == Visibility::Collapsed &&
+			          v.ThumbnailPanel().Visibility() ==
+			              Visibility::Collapsed &&
+			          v.PresentationBackdrop().Visibility() ==
+			              Visibility::Visible,
+			      "presentation chrome still visible");
+			check(v.m_layout->width() <= v.Scroller().ViewportWidth() + 1 &&
+			          v.m_layout->height() <= v.Scroller().ViewportHeight() + 1,
+			      "presentation page does not fit viewport");
+			check(!v.beginPan({40, 40}), "presentation started hand dragging");
+			v.zoomIn();
+			v.zoomReset();
+			v.rotateView(1);
+			check(v.m_preset == helpers::ZoomPreset::PageFit &&
+			          v.m_rotation == 0,
+			      "presentation allowed reading zoom/rotation commands");
+			capture(L"dark.png");
+			appearance::apply(true);
+			break;
+		case 3:
+			capture(L"obsidian.png");
+			appearance::apply(false);
+			break;
+		case 4:
+			if (ticks < 36) {
+				return;
+			}
+			check(v.PresentationControls().Visibility() ==
+			          Visibility::Collapsed,
+			      "presentation controls did not hide when idle");
+			v.showPresentationControls();
+			v.presentationKey(VK_HOME, false);
+			v.presentationWheel(-6);
+			check(v.m_current == 0, "small wheel motion turned a page");
+			v.presentationWheel(-6);
+			check(v.m_current == 1, "wheel accumulation did not turn a page");
+			v.presentationWheel(-120);
+			check(v.m_current == 1, "wheel cooldown did not hold");
+			v.m_presentationWheelTime = {};
+			v.presentationWheel(120);
+			check(v.m_current == 0, "reverse wheel did not go back");
+			v.presentationKey('N', false);
+			check(v.m_current == 1, "presentation next key");
+			v.presentationKey(VK_SPACE, true);
+			check(v.m_current == 0, "presentation shifted space");
+			v.presentationKey(VK_END, false);
+			check(v.m_current == v.m_sizes.size() - 1, "presentation End");
+			v.presentationKey(VK_HOME, false);
+			owner.endPresentation();
+			break;
+		case 5:
+			check(!v.m_presentation && !owner.m_presentationViewer &&
+			          owner.AppWindow().Presenter().Kind() ==
+			              Kind::Overlapped &&
+			          owner.AppTitleBar().Visibility() == Visibility::Visible,
+			      "presentation did not restore window chrome/presenter");
+			check(v.scrollMode() == helpers::ScrollMode::Wrapped &&
+			          v.spreadMode() == helpers::SpreadMode::Even &&
+			          v.m_preset == helpers::ZoomPreset::None &&
+			          v.m_zoom == zoom && v.m_current == 0 &&
+			          v.thumbnailsOpen() &&
+			          v.cursorTool() == ViewerPage::CursorTool::Hand,
+			      "presentation lost reading layout/zoom/page/sidebar/tool");
+			capture(L"restored.png");
+			owner.onToggleFullScreen({}, {});
+			owner.onPresentation({}, {});
+			break;
+		case 6:
+			owner.onToggleFullScreen({}, {});
+			check(!v.m_presentation &&
+			          owner.AppWindow().Presenter().Kind() == Kind::FullScreen,
+			      "presentation lost pre-existing full screen");
+			owner.onToggleFullScreen({}, {});
+			owner.onPresentation({}, {});
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", {});
+			break;
+		case 7:
+			check(&v != first.get() && !owner.m_presentationViewer &&
+			          !first->m_presentation &&
+			          owner.AppTitleBar().Visibility() == Visibility::Visible,
+			      "tab change kept presentation active");
+			owner.onPresentation({}, {});
+			v.goToPage(0);
+			break;
+		case 8: {
+			const auto& rect = v.m_layout->pages()[0];
+			v.requestLink(
+			    {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			     static_cast<float>(rect.y + 130. / 540 * rect.height)},
+			    1);
+			break;
+		}
+		case 9:
+			check(v.m_current == 1 &&
+			          v.m_preset == helpers::ZoomPreset::PageFit,
+			      "presentation internal link changed fit or failed");
+			v.goToPage(0);
+			break;
+		case 10: {
+			const auto& rect = v.m_layout->pages()[0];
+			v.requestLink(
+			    {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			     static_cast<float>(rect.y + 50. / 540 * rect.height)},
+			    1);
+			break;
+		}
+		case 11:
+			check(
+			    v.m_current == 1 && v.m_launchedUri.empty(),
+			    "presentation external link did not advance without launching");
+			owner.endPresentation();
+			owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
+			break;
+		case 12:
+			owner.onPresentation({}, {});
+			check(first->m_presentation.has_value(), "presentation re-entry");
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(!owner.m_presentationViewer && !first->m_presentation &&
+			          first->m_closed && !first->beginPresentation([] {}),
+			      "presentation survived tab closure");
+			status.Text(L"PASS: presentation fit, navigation, links, controls, "
+			            L"restoration, full screen and tab lifetime");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void layoutTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || ticks < 3 || v.m_copying || v.m_finding ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning()) || v.m_linkPending) {
+			return;
+		}
+		using Scroll = helpers::ScrollMode;
+		using Spread = helpers::SpreadMode;
+		const auto capture = [&](const wchar_t* theme) {
+			wchar_t directory[2048]{};
+			if (GetEnvironmentVariableW(L"SableLayoutCaptureDirectory",
+			                            directory, 2048)) {
+				std::filesystem::create_directories(directory);
+				HWND reader{};
+				check_hresult(
+				    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+				captureMusicWindow(reader,
+				                   std::filesystem::path(directory) /
+				                       (std::to_wstring(layoutRound / 3) +
+				                        L"-" + theme + L".png"));
+			}
+		};
+		const auto nextLayout = [&] {
+			if (++layoutRound < 12) {
+				const auto selection = v.m_selection;
+				v.setLayout(static_cast<Scroll>(layoutRound / 3),
+				            static_cast<Spread>(layoutRound % 3));
+				check(selection == v.m_selection,
+				      "layout cleared selected text");
+				v.goToPage(0);
+				step = 2;
+			} else {
+				step = 4;
+			}
+			ticks = 0;
+		};
+		switch (step) {
+		case 0:
+			first = v.get_strong();
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({1100, 800});
+			v.setThumbnailsOpen(false);
+			v.requestText(0);
+			v.requestText(1);
+			v.openFind();
+			v.FindBox().Text(L"Alpha");
+			break;
+		case 1:
+			if (!v.m_text.contains(0) || !v.m_text.contains(1) ||
+			    !v.m_findActive) {
+				if (!v.m_text.contains(0)) {
+					v.requestText(0);
+				} else if (!v.m_text.contains(1)) {
+					v.requestText(1);
+				}
+				return;
+			}
+			check(v.m_findMatches.size() == 4, "layout Find setup");
+			v.zoomTo(.6, {0, 0});
+			v.goToPage(0);
+			layoutKey = v.key(0);
+			v.selectAllText();
+			break;
+		case 2: {
+			check(v.scrollMode() == static_cast<Scroll>(layoutRound / 3) &&
+			          v.spreadMode() == static_cast<Spread>(layoutRound % 3),
+			      "layout choice");
+			check(v.m_current == 0 && v.m_zoom == .6 && v.key(0) == layoutKey &&
+			          v.m_findMatches.size() == 4 && v.canCopySelection(),
+			      "layout changed page/zoom/rasters/Find/selection at round " +
+			          std::to_string(layoutRound));
+			const int page = v.m_layout->contains(1) ? 1 : 0;
+			const auto& rect = v.m_layout->pages()[page];
+			const auto point = [&](int index) {
+				const auto box =
+				    v.viewBox(v.m_text.at(page).text->characters[index].box);
+				return Windows::Foundation::Point{
+				    static_cast<float>(rect.x + (box.left + box.right) * .5 *
+				                                    rect.width),
+				    static_cast<float>(rect.y + (box.top + box.bottom) * .5 *
+				                                    rect.height)};
+			};
+			check(v.m_layout->pageAt(point(0).X, point(0).Y) ==
+			          static_cast<std::size_t>(page),
+			      "layout text page hit");
+			v.beginSelection(point(0));
+			v.extendSelection(point(4));
+			v.endSelection();
+			check(v.canCopySelection() && v.m_selection->anchor.page == page,
+			      "layout text selection page");
+			owner.updateLayoutMenu();
+			check(owner.ScrollModeMenu().IsEnabled() &&
+			          owner.SpreadModeMenu().IsEnabled(),
+			      "layout menus disabled");
+			if (layoutRound % 3 == 0) {
+				capture(L"dark");
+				appearance::apply(true);
+				step = 3;
+				ticks = 0;
+				return;
+			}
+			nextLayout();
+			return;
+		}
+		case 3:
+			capture(L"obsidian");
+			appearance::apply(false);
+			nextLayout();
+			return;
+		case 4:
+			v.setLayout(Scroll::Page, Spread::Odd);
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			v.goToPage(0);
+			break;
+		case 5:
+			check(v.m_visible == helpers::PageRange{0, 2},
+			      "paged spread visible range");
+			check(v.m_layout->pages()[1].x + v.m_layout->pages()[1].width <=
+			          v.Scroller().ViewportWidth() + 1,
+			      "page-fit did not fit spread width");
+			v.onNextPage({}, {});
+			break;
+		case 6:
+			check(v.m_current == 2 && v.m_layout->contains(2) &&
+			          !v.m_layout->contains(0),
+			      "next spread navigation");
+			v.onPreviousPage({}, {});
+			break;
+		case 7:
+			check(v.m_current <= 1 && v.m_layout->contains(0),
+			      "previous spread navigation");
+			v.m_findActive = v.m_findMatches.size() - 1;
+			v.m_findNeedsReveal = true;
+			v.revealFindMatch();
+			break;
+		case 8:
+			if (v.m_findNeedsReveal) {
+				return;
+			}
+			check(v.m_layout->contains(
+			          static_cast<std::size_t>(v.m_findMatches.back().page)),
+			      "Find did not change active spread");
+			v.closeFind();
+			v.setLayout(Scroll::Wrapped, Spread::Even);
+			v.zoomTo(.6, {0, 0});
+			v.goToPage(2);
+			owner.AppWindow().Resize({660, 700});
+			break;
+		case 9:
+			check(std::abs(v.m_layoutViewWidth - v.Scroller().ActualWidth()) <
+			              1 &&
+			          v.m_zoom == .6,
+			      "numeric zoom did not rewrap on resize");
+			v.rotateView(1);
+			break;
+		case 10:
+			check(v.m_rotation == 1 && v.scrollMode() == Scroll::Wrapped &&
+			          v.spreadMode() == Spread::Even,
+			      "rotation lost layout");
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", {});
+			break;
+		case 11:
+			check(&v != first.get() && v.scrollMode() == Scroll::Vertical &&
+			          v.spreadMode() == Spread::None,
+			      "layout leaked into new tab");
+			owner.onPageLayout(owner.ScrollPageItem(), {});
+			owner.onPageLayout(owner.SpreadEvenItem(), {});
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			v.goToPage(0);
+			break;
+		case 12: {
+			check(owner.ScrollPageItem().IsChecked() &&
+			          owner.SpreadEvenItem().IsChecked(),
+			      "layout menu handlers");
+			const auto& rect = v.m_layout->pages()[0];
+			v.requestLink(
+			    {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			     static_cast<float>(rect.y + 130. / 540 * rect.height)});
+			break;
+		}
+		case 13:
+			check(v.m_current == 1 && v.m_layout->contains(1) && v.m_zoom == 2,
+			      "XYZ link failed to change active spread");
+			v.goToPage(0);
+			break;
+		case 14: {
+			const auto& rect = v.m_layout->pages()[0];
+			v.requestLink(
+			    {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			     static_cast<float>(rect.y + 50. / 540 * rect.height)});
+			v.setLayout(Scroll::Horizontal, Spread::None);
+			break;
+		}
+		case 15:
+			check(v.m_launchedUri.empty(),
+			      "stale link acted after layout change");
+			owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
+			break;
+		case 16:
+			check(&v == first.get() && v.scrollMode() == Scroll::Wrapped &&
+			          v.spreadMode() == Spread::Even,
+			      "returning tab lost layout");
+			const auto oldSize = v.m_sizes[0];
+			v.m_sizes[0] = {50'000'000, 50'000'000};
+			v.setLayout(Scroll::Vertical, Spread::None);
+			v.m_sizes[0] = oldSize;
+			check(v.scrollMode() == Scroll::Wrapped &&
+			          v.spreadMode() == Spread::Even,
+			      "oversized layout changed readable state");
+			v.setLayout(Scroll::Page, Spread::Odd);
+			v.zoomTo(3, {0, 0});
+			v.goToPage(0);
+			break;
+		case 17:
+			check(v.m_current == 0 && v.Scroller().ScrollableWidth() > 0,
+			      "wide spread fixture did not settle");
+			v.advancePage(1);
+			break;
+		case 18:
+			check(v.m_current == 1,
+			      "wide spread skipped its other page; offset " +
+			          std::to_string(v.Scroller().HorizontalOffset()) +
+			          " max " + std::to_string(v.Scroller().ScrollableWidth()) +
+			          " target " + std::to_string(v.m_layout->pages()[1].x));
+			v.setLayout(Scroll::Page, Spread::None);
+			v.goToPage(0);
+			v.close();
+			v.setLayout(Scroll::Horizontal, Spread::Odd);
+			check(v.scrollMode() == Scroll::Page && !v.m_pan.active(),
+			      "closed viewer changed layout");
+			status.Text(L"PASS: scroll/spread layouts, text, Find, zoom, "
+			            L"links, menus and tab lifetime");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
