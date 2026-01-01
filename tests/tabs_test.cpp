@@ -27,7 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
 #include "../app/pdf/printing.h"
+#include "../app/printing/controller.h"
 #include "surface_test.h"
+#include "music_capture.h"
 
 #include <chrono>
 #include <fstream>
@@ -35,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <iterator>
 #include <memory>
 #include <microsoft.ui.xaml.window.h>
+#include <PrintManagerInterop.h>
 #include <stdexcept>
 #include <string_view>
 #include <winrt/Windows.Storage.h>
@@ -58,13 +61,42 @@ struct TabsTest {
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
 	bool shortcuts = false;
 	bool settingsOnly = false;
+	bool windowsOnly = false;
+	int settingsCapturePhase = -1;
+	std::filesystem::path settingsCaptureDirectory;
+	SIZE settingsCaptureSize{};
+	std::optional<helpers::NightPDFSettings> settingsCaptureSnapshot;
 	bool filtersOnly = false;
+	bool propertiesOnly = false;
+	bool panOnly = false;
+	bool gesturesOnly = false;
+	bool longGesturesOnly = false;
+	Windows::Foundation::Point gesturePoint{};
+	int gestureRound = 0;
+	helpers::PageSize gestureSize{};
+	bool layoutOnly = false;
+	bool presentationOnly = false;
+	bool saveCopyOnly = false;
+	bool keyboardOnly = false;
+	bool keyboardInputOnly = false;
+	HWND inputWindow = nullptr;
+	double inputZoom = 0;
+	hstring inputText;
+	std::size_t inputMatch = 0;
+	int layoutRound = 0;
+	pdf::PageKey layoutKey{};
+	double panX = 0, panY = 0;
+	std::uint64_t propertiesRequest = 0;
 	bool linksOnly = false;
 	bool printOnly = false;
+	std::shared_ptr<printing::Controller> printPreviewController;
 	bool finishOnly = false;
 	bool editOnly = false;
 	bool musicOnly = false;
 	bool selectionOnly = false;
+	bool rotationOnly = false;
+	int rotationRound = 0;
+	helpers::PageSize rotationSize{};
 	bool findOnly = false;
 	bool outlineOnly = false;
 	bool highlightOnly = false;
@@ -105,9 +137,9 @@ struct TabsTest {
 	std::size_t outlinePage = 0;
 	std::string copiedText;
 	int copyCalls = 0;
+	int musicSeeks = 0;
 	music::Snapshot musicSnapshot;
-	Windows::Foundation::IAsyncOperation<
-	    Windows::Storage::Streams::IRandomAccessStreamReference>
+	Windows::Foundation::IAsyncOperation<Windows::Storage::Streams::IBuffer>
 	    musicArt{nullptr};
 	std::weak_ptr<music::Session> closedMusic;
 	int editCopies = 0;
@@ -844,20 +876,38 @@ struct TabsTest {
 		timer.Stop();
 	}
 	static Windows::Foundation::IAsyncOperation<
-	    Windows::Storage::Streams::IRandomAccessStreamReference>
-	makeMusicArtwork() {
+	    Windows::Storage::Streams::IBuffer>
+	makeMusicArtwork(int kind = 0) {
 		using namespace Windows::Graphics::Imaging;
 		Windows::Storage::Streams::InMemoryRandomAccessStream stream;
 		const auto encoder = co_await BitmapEncoder::CreateAsync(
 		    BitmapEncoder::PngEncoderId(), stream);
-		const std::array<std::uint8_t, 16> red{0, 0, 255, 255, 0, 0, 255, 255,
-		                                       0, 0, 255, 255, 0, 0, 255, 255};
+		std::vector<std::uint8_t> pixels(96 * 96 * 4);
+		for (int y = 0; y < 96; ++y) {
+			for (int x = 0; x < 96; ++x) {
+				const auto at = static_cast<std::size_t>((y * 96 + x) * 4);
+				const bool circle =
+				    (x - 48) * (x - 48) + (y - 48) * (y - 48) < 700;
+				pixels[at] = kind == 0   ? 0
+				             : kind == 1 ? (circle ? 60 : 140)
+				                         : (circle ? 70 : 25);
+				pixels[at + 1] = kind == 0   ? 0
+				                 : kind == 1 ? (circle ? 180 : 225)
+				                             : (circle ? 42 : 15);
+				pixels[at + 2] = kind == 0   ? 255
+				                 : kind == 1 ? 255
+				                             : (circle ? 28 : 8);
+				pixels[at + 3] = 255;
+			}
+		}
 		encoder.SetPixelData(BitmapPixelFormat::Bgra8,
-		                     BitmapAlphaMode::Straight, 2, 2, 96, 96, red);
+		                     BitmapAlphaMode::Straight, 96, 96, 96, 96, pixels);
 		co_await encoder.FlushAsync();
 		stream.Seek(0);
-		co_return Windows::Storage::Streams::RandomAccessStreamReference::
-		    CreateFromStream(stream);
+		Windows::Storage::Streams::DataReader reader(stream);
+		const auto size = static_cast<std::uint32_t>(stream.Size());
+		co_await reader.LoadAsync(size);
+		co_return reader.ReadBuffer(size);
 	}
 	void musicTick(MainWindow& owner) {
 		auto& pane = *owner.m_music;
@@ -4210,7 +4260,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void layoutTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -4454,7 +4503,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void longGesturesTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -4620,7 +4668,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void gesturesTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -4825,7 +4872,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void panTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -4971,7 +5017,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void rotationTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -5209,7 +5254,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -5248,8 +5292,48 @@ struct TabsTest {
 				editTick(*self);
 				return;
 			}
+			if (layoutOnly) {
+				layoutTick(*self);
+				return;
+			}
+			if (presentationOnly) {
+				presentationTick(*self);
+				return;
+			}
+			if (gesturesOnly) {
+				gesturesTick(*self);
+				return;
+			}
+			if (longGesturesOnly) {
+				longGesturesTick(*self);
+				return;
+			}
+			if (panOnly) {
+				panTick(*self);
+				return;
+			}
+			if (rotationOnly) {
+				rotationTick(*self);
+				return;
+			}
+			if (propertiesOnly) {
+				propertiesTick(*self);
+				return;
+			}
 			if (musicOnly) {
 				musicTick(*self);
+				return;
+			}
+			if (keyboardInputOnly) {
+				keyboardInputTick(*self);
+				return;
+			}
+			if (keyboardOnly) {
+				keyboardTick(*self);
+				return;
+			}
+			if (saveCopyOnly) {
+				saveCopyTick(*self);
 				return;
 			}
 			if (attachmentSaveOnly) {
@@ -5315,6 +5399,19 @@ struct TabsTest {
 				clearBindings();
 				self->onOpenSettings({}, {});
 				step = 23;
+				wchar_t directory[2048]{};
+				const auto length = GetEnvironmentVariableW(
+				    L"SableSettingsCaptureDirectory", directory, 2048);
+				if (length) {
+					check(length < 2048, "settings capture path is too long");
+					settingsCaptureDirectory = directory;
+					settingsCapturePhase = 0;
+				}
+				ticks = 0;
+				return;
+			}
+			if (settingsOnly && settingsCapturePhase >= 0) {
+				settingsCaptureTick(*self);
 				return;
 			}
 			auto current = self->Viewer();
@@ -5537,8 +5634,10 @@ struct TabsTest {
 				closedDropWindow->Close();
 				break;
 			case 16:
-				check(closedDropWindow->m_closing &&
-				      closedDropWindow->m_tabs.empty());
+				if (!windowsOnly) {
+					check(closedDropWindow->m_closing &&
+					      closedDropWindow->m_tabs.empty());
+				}
 				{
 					auto settings = self->m_settings;
 					settings.general.MaximizeOnOpen = false;
@@ -5680,8 +5779,57 @@ struct TabsTest {
 				                            helpers::versionString()) ==
 				          uiStore->get(),
 				      "general values were not persisted");
-				keybindSettings(*settings);
+				const auto beforeTheme = uiStore->get();
+				const auto originalFill = self->RootGrid()
+				                              .Background()
+				                              .as<Media::SolidColorBrush>()
+				                              .Color();
+				settings->m_theme.SelectedIndex(1);
+				check(appearance::obsidian() &&
+				          uiStore->get().general.Theme == "obsidian" &&
+				          !settings->m_error.IsOpen(),
+				      "Obsidian selection failed");
+				const auto isBlack = [](const Media::Brush& brush) {
+					const auto solid = brush.try_as<Media::SolidColorBrush>();
+					return solid &&
+					       solid.Color() == Windows::UI::Color{255, 0, 0, 0};
+				};
+				check(isBlack(self->RootGrid().Background()),
+				      "reader is not pure black");
+				check(
+				    isBlack(settings->window.Content().as<Grid>().Background()),
+				    "settings is not pure black");
+				check(helpers::loadSettings(settingsPath,
+				                            helpers::versionString())
+				              .general.Theme == "obsidian",
+				      "theme did not persist");
+				check(uiStore->get().keybinds == beforeTheme.keybinds,
+				      "theme changed keybinds");
+				peerWindow = app.createWindow();
+				check(isBlack(peerWindow->RootGrid().Background()),
+				      "new window did not inherit Obsidian");
 				settings->window.Close();
+				self->onOpenSettings({}, {});
+				const auto reopened = self->m_settingsWindow;
+				check(reopened->m_theme.SelectedIndex() == 1,
+				      "reopened settings lost theme");
+				reopened->m_theme.SelectedIndex(0);
+				check(!appearance::obsidian() &&
+				          self->RootGrid()
+				                  .Background()
+				                  .as<Media::SolidColorBrush>()
+				                  .Color() == originalFill &&
+				          uiStore->get() == beforeTheme,
+				      "returning to Dark did not restore palette and "
+				      "preferences");
+				check(peerWindow->RootGrid()
+				              .Background()
+				              .as<Media::SolidColorBrush>()
+				              .Color() == originalFill,
+				      "existing peer did not return to Dark");
+				peerWindow->Close();
+				keybindSettings(*reopened);
+				reopened->window.Close();
 				check(!self->m_settingsWindow && IsWindowEnabled(owner),
 				      "settings close did not restore owner");
 				check(self->m_presenter.State() ==
@@ -5706,6 +5854,12 @@ struct TabsTest {
 				          failing->m_checks[0].IsChecked().Value() &&
 				          blocked.get().general.MaximizeOnOpen,
 				      "failed settings save was not restored");
+				failing->m_theme.SelectedIndex(1);
+				check(failing->m_error.IsOpen() &&
+				          failing->m_theme.SelectedIndex() == 0 &&
+				          !appearance::obsidian() &&
+				          blocked.get().general.Theme == "dark",
+				      "failed theme save was not restored");
 				const auto saved = blocked.get();
 				check(!failing->saveBinding("CloseWindow", 0, std::nullopt));
 				check(failing->m_error.IsOpen() && blocked.get() == saved,
@@ -5722,6 +5876,10 @@ struct TabsTest {
 					status.Text(
 					    L"PASS: settings owner, General, keybind "
 					    L"capture, persistence, clear and failed saves");
+				} else if (windowsOnly) {
+					status.Text(
+					    L"PASS: startup size, independent windows, pending "
+					    L"close, settings ownership and shared preferences");
 				}
 				probePass(self.as<Window>());
 				timer.Stop();
@@ -5734,10 +5892,24 @@ struct TabsTest {
 			status.Text(L"FAIL at step " + to_hstring(step) + L": " +
 			            to_message());
 			if (auto current = self->Viewer()) {
-				const auto* viewer = get_self<ViewerPage>(current);
+				auto* viewer = get_self<ViewerPage>(current);
 				status.Text(status.Text() + L", page " +
 				            to_hstring(viewer->m_current + 1) + L", zoom " +
 				            to_hstring(viewer->m_zoom));
+				if (gesturesOnly) {
+					status.Text(status.Text() + L", height " +
+					            to_hstring(viewer->Pages().Height()) + L"/" +
+					            to_hstring(viewer->Scroller().ExtentHeight()));
+					status.Text(status.Text() + L", factor " +
+					            to_hstring(viewer->Scroller().ZoomFactor()) +
+					            L", reset " +
+					            to_hstring(viewer->m_resettingGesture) +
+					            L", start " +
+					            to_hstring(viewer->m_startPage.has_value()) +
+					            L", settle " + to_hstring(viewer->m_settling) +
+					            L", landing " +
+					            to_hstring(viewer->m_landingAt.has_value()));
+				}
 			}
 			timer.Stop();
 			probeFail(status.Text());
@@ -5747,7 +5919,22 @@ struct TabsTest {
 } // namespace winrt::Sable::implementation
 
 Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
-	auto window = make_self<Sable::implementation::MainWindow>();
+	wchar_t appearanceMode[8]{};
+	const bool blackStartup =
+	    GetEnvironmentVariableW(L"SableObsidianStartupTest", appearanceMode,
+	                            8) &&
+	    std::wstring_view(appearanceMode) == L"true";
+	auto startup = helpers::nightpdf_default_settings(helpers::versionString());
+	startup.general.Theme = blackStartup ? "obsidian" : "dark";
+	// Native probes use isolated defaults, regardless of the owner's saved
+	// theme.
+	auto window = make_self<Sable::implementation::MainWindow>(startup);
+	if (blackStartup &&
+	    (!appearance::obsidian() ||
+	     window->RootGrid().Background().as<Media::SolidColorBrush>().Color() !=
+	         Windows::UI::Color{255, 0, 0, 0})) {
+		throw std::runtime_error("Obsidian did not apply at startup");
+	}
 	auto state =
 	    std::make_shared<Sable::implementation::TabsTest>(*window, engine, app);
 	window->setSettingsStore(*state->uiStore);
@@ -5755,6 +5942,16 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	wchar_t mode[8]{};
 	state->settingsOnly =
 	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->windowsOnly =
+	    GetEnvironmentVariableW(L"SableWindowsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	if (state->windowsOnly) {
+		// I can check windows separately when the storage broker is blocked.
+		state->step = 16;
+	}
+	state->propertiesOnly =
+	    GetEnvironmentVariableW(L"SablePropertiesTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->filtersOnly = GetEnvironmentVariableW(L"SableFilterTest", mode, 8) &&
 	                     std::wstring_view(mode) == L"true";
@@ -5813,6 +6010,15 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->commentsOnly =
 	    state->commentsOnly || state->commentLocationsOnly || state->notesOnly;
+	state->keyboardInputOnly =
+	    GetEnvironmentVariableW(L"SableKeyboardInputTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->keyboardOnly =
+	    GetEnvironmentVariableW(L"SableKeyboardTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->saveCopyOnly =
+	    GetEnvironmentVariableW(L"SableSaveCopyTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->attachmentSaveOnly =
 	    GetEnvironmentVariableW(L"SableAttachmentSaveTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -5821,13 +6027,33 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->findOnly = GetEnvironmentVariableW(L"SableFindTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
+	state->layoutOnly = GetEnvironmentVariableW(L"SableLayoutTest", mode, 8) &&
+	                    std::wstring_view(mode) == L"true";
+	state->presentationOnly =
+	    GetEnvironmentVariableW(L"SablePresentationTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->panOnly = GetEnvironmentVariableW(L"SablePanTest", mode, 8) &&
+	                 std::wstring_view(mode) == L"true";
+	state->gesturesOnly =
+	    GetEnvironmentVariableW(L"SableGesturesTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->longGesturesOnly =
+	    GetEnvironmentVariableW(L"SableLongGesturesTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->rotationOnly =
+	    GetEnvironmentVariableW(L"SableRotationTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
-	    state->printOnly || state->finishOnly || state->editOnly ||
-	    state->musicOnly || state->selectionOnly || state->findOnly ||
-	    state->outlineOnly || state->attachmentsOnly ||
-	    state->attachmentSaveOnly || state->commentsOnly) {
+	if (state->settingsOnly || state->windowsOnly || state->filtersOnly ||
+	    state->linksOnly || state->printOnly || state->finishOnly ||
+	    state->editOnly || state->musicOnly || state->selectionOnly ||
+	    state->findOnly || state->outlineOnly || state->attachmentsOnly ||
+	    state->commentsOnly || state->attachmentSaveOnly ||
+	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
+	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
+	    state->keyboardOnly || state->keyboardInputOnly ||
+	    state->gesturesOnly || state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -5836,6 +6062,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->status.TextWrapping(TextWrapping::Wrap);
 	Border report;
 	state->report = report;
+	if (state->presentationOnly) {
+		report.Visibility(Visibility::Collapsed);
+	}
 	StackPanel controls;
 	controls.Children().Append(state->status);
 	if (state->shortcuts) {
@@ -5878,7 +6107,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->attachmentsOnly || state->attachmentSaveOnly) {
+	if (state->propertiesOnly) {
+		window->openDocument(engine, L"tests/fixtures/properties.pdf", 1);
+	} else if (state->attachmentsOnly || state->attachmentSaveOnly) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
@@ -5893,17 +6124,21 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		                         ? L"tests/fixtures/comment_locations.pdf"
 		                         : L"tests/fixtures/comments.pdf",
 		                     1);
-	} else if (state->selectionOnly || state->findOnly) {
+	} else if (state->selectionOnly || state->findOnly || state->rotationOnly ||
+	           state->panOnly || state->gesturesOnly ||
+	           state->longGesturesOnly || state->layoutOnly ||
+	           state->presentationOnly || state->keyboardOnly ||
+	           state->keyboardInputOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
-	} else if (state->editOnly) {
+	} else if (state->editOnly || state->saveCopyOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 	} else if (state->printOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/print.pdf", {});
 	} else if (state->linksOnly) {
 		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
-	} else if (!state->settingsOnly && !state->finishOnly &&
-	           !state->musicOnly) {
+	} else if (!state->settingsOnly && !state->windowsOnly &&
+	           !state->finishOnly && !state->musicOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
 		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);
