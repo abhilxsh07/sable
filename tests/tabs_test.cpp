@@ -4826,6 +4826,390 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void panTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || ticks < 3 || v.m_linkPending) {
+			return;
+		}
+		using Tool = ViewerPage::CursorTool;
+		const auto linkPoint = [&v] {
+			const auto& rect = v.m_layout->pages()[0];
+			return v.Pages()
+			    .TransformToVisual(v.Scroller())
+			    .TransformPoint(
+			        {static_cast<float>(rect.x + 80. / 360 * rect.width),
+			         static_cast<float>(rect.y + 50. / 540 * rect.height)});
+		};
+		switch (step) {
+		case 0:
+			first = v.get_strong();
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({900, 700});
+			check(v.cursorTool() == Tool::Select, "default text tool");
+			check(!v.beginPan({100, 100}), "text mode started pan");
+			v.setThumbnailsOpen(false);
+			v.zoomTo(3, {0, 0});
+			v.selectAllText();
+			owner.onCursorTool(owner.HandToolItem(), {});
+			check(v.cursorTool() == Tool::Hand &&
+			          owner.HandToolItem().IsChecked(),
+			      "hand menu selection");
+			break;
+		case 1:
+			check(v.Scroller().ScrollableWidth() > 100 &&
+			          v.Scroller().ScrollableHeight() > 100,
+			      "pan fixture extents");
+			v.Scroller().ChangeView(100., 100., nullptr, true);
+			break;
+		case 2: {
+			panX = v.Scroller().HorizontalOffset();
+			panY = v.Scroller().VerticalOffset();
+			const auto selection = v.m_selection;
+			v.beginSelection({100, 100});
+			check(selection == v.m_selection && !v.m_textPointerDown,
+			      "hand press changed text selection");
+			check(v.beginPan({200, 200}), "hand gesture start");
+			v.movePan({150, 120});
+			check(v.m_pan.active() && v.m_pan.moved() && v.m_ignorePanTap,
+			      "hand drag state");
+			check(v.m_selection == selection && v.m_zoom == 3 &&
+			          v.m_rotation == 0,
+			      "pan changed reading state");
+			v.finishPan({150, 120});
+			check(!v.m_pan.active() && !v.m_linkPending, "drag followed link");
+			break;
+		}
+		case 3:
+			check(std::abs(v.Scroller().HorizontalOffset() - panX - 50) < 1 &&
+			          std::abs(v.Scroller().VerticalOffset() - panY - 80) < 1,
+			      "hand drag did not move both scroll axes");
+			check(v.beginPan({100, 100}), "zoom pan start");
+			v.zoomTo(2, {0, 0});
+			check(!v.m_pan.active(), "zoom retained drag");
+			check(v.beginPan({100, 100}), "rotation pan start");
+			v.rotateView(1);
+			check(!v.m_pan.active(), "rotation retained drag");
+			check(v.beginPan({100, 100}), "Find pan start");
+			v.openFind();
+			check(!v.m_pan.active(), "Find retained drag");
+			v.closeFind();
+			v.m_panHover = true;
+			v.beginPan({100, 100});
+			v.stopPan(true);
+			check(!v.m_pan.active() && !v.m_panHover && !v.ProtectedCursor(),
+			      "deactivation retained drag cursor");
+			v.beginPan({100, 100});
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", {});
+			break;
+		case 4:
+			check(&v != first.get() && v.cursorTool() == Tool::Select &&
+			          !first->m_pan.active() && !first->m_panHover,
+			      "tab switch leaked cursor/drag");
+			owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
+			break;
+		case 5:
+			check(&v == first.get() && v.cursorTool() == Tool::Hand,
+			      "tab lost hand mode");
+			owner.updateCursorToolMenu();
+			check(owner.HandToolItem().IsChecked(), "menu lost per-tab tool");
+			v.beginPan({100, 100});
+			owner.onCursorTool(owner.SelectToolItem(), {});
+			check(!v.m_pan.active() && !v.ProtectedCursor() &&
+			          v.cursorTool() == Tool::Select && v.canCopySelection(),
+			      "text tool lost selection or retained cursor");
+			owner.Tabs().SelectedItem(owner.m_tabs.back().tab);
+			break;
+		case 6:
+			v.setCursorTool(Tool::Hand);
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			v.goToPage(0);
+			break;
+		case 7: {
+			const auto point = linkPoint();
+			check(v.beginPan(point), "link tap start");
+			v.finishPan(point);
+			check(v.m_linkPending, "hand tap did not query link");
+			break;
+		}
+		case 8: {
+			check(v.m_launchedUri == "https://example.com/sable?x=1#part",
+			      "hand tap failed to follow link");
+			v.m_launchedUri.clear();
+			const auto point = linkPoint();
+			v.beginPan(point);
+			v.finishPan(point);
+			// The queued reply cannot run on this UI thread before the next
+			// gesture.
+			check(v.beginPan(point), "new gesture after link tap");
+			v.movePan({point.X - 10, point.Y - 10});
+			v.stopPan();
+			break;
+		}
+		case 9:
+			check(v.m_launchedUri.empty(),
+			      "stale tap followed link during drag");
+			v.beginPan({100, 100});
+			v.close();
+			check(!v.m_pan.active() && !v.ProtectedCursor() &&
+			          !v.beginPan({100, 100}),
+			      "closed viewer retained hand gesture");
+			owner.closeTab(owner.m_tabs.back().tab);
+			break;
+		case 10:
+			check(&v == first.get() && v.cursorTool() == Tool::Select,
+			      "remaining tab tool changed");
+			status.Text(L"PASS: hand drag, links, selection, menus, tabs and "
+			            L"cancellation");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void rotationTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if ((step != 9 && !ready(v)) || v.m_copying || v.m_finding ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning()) || v.m_linkPending) {
+			return;
+		}
+		const auto click = [&v](int page, double x, double y) {
+			const auto point = helpers::rotatePoint({x, y}, v.m_rotation);
+			const auto& rect = v.m_layout->pages()[page];
+			v.requestLink({static_cast<float>(rect.x + point.x * rect.width),
+			               static_cast<float>(rect.y + point.y * rect.height)});
+		};
+		switch (step) {
+		case 0:
+			first = v.get_strong();
+			rotationSize = v.m_sizes[0];
+			v.m_copySink = [this](const std::string& text) {
+				copiedText = text;
+				++copyCalls;
+			};
+			v.setThumbnailsOpen(true);
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			v.requestText(0);
+			v.openFind();
+			v.FindBox().Text(L"Alpha");
+			break;
+		case 1:
+			if (!v.m_text.contains(0) || !v.m_findActive) {
+				return;
+			}
+			check(v.m_findMatches.size() == 4, "rotation Find setup");
+			v.m_findActive = 0;
+			v.m_current = 0;
+			v.applyPreset();
+			v.goToPage(0);
+			break;
+		case 2: {
+			check(v.m_rotation == rotationRound, "quarter-turn sequence");
+			check(v.m_current == 0, "rotation check moved off first page");
+			const auto source = v.m_sizes[0];
+			const auto shown = v.displaySizes()[0];
+			check(shown.width ==
+			              (rotationRound % 2 ? source.height : source.width) &&
+			          shown.height ==
+			              (rotationRound % 2 ? source.width : source.height),
+			      "rotation displayed size");
+			check(v.key(0).rotation == rotationRound &&
+			          v.thumbKey(0).rotation == rotationRound,
+			      "rotation raster keys");
+			check(
+			    std::abs(v.m_strip->imageHeight(0) / helpers::THUMBNAIL_WIDTH -
+			             shown.height / shown.width) < .01,
+			    "rotated thumbnail shape");
+			check(std::abs(v.m_zoom - helpers::presetZoom(
+			                              helpers::ZoomPreset::PageFit, shown,
+			                              v.Scroller().ActualWidth(),
+			                              v.Scroller().ActualHeight())) < .001,
+			      "rotation fitted zoom at turn " +
+			          std::to_string(rotationRound));
+			const auto point = [&v](int index) {
+				const auto box =
+				    v.viewBox(v.m_text.at(0).text->characters[index].box);
+				const auto& rect = v.m_layout->pages()[0];
+				return Windows::Foundation::Point{
+				    static_cast<float>(rect.x + (box.left + box.right) * .5 *
+				                                    rect.width),
+				    static_cast<float>(rect.y + (box.top + box.bottom) * .5 *
+				                                    rect.height)};
+			};
+			check(v.hitText(0, point(0), false) == 0 &&
+			          v.hitText(0, point(4), false) == 4,
+			      "rotated text hit");
+			v.beginSelection(point(0));
+			v.extendSelection(point(4));
+			v.endSelection();
+			v.copySelection();
+			pdf::LinkDestination partial;
+			partial.x = .25;
+			partial.fit = pdf::LinkFit::Width;
+			const auto mapped = v.viewDestination(partial);
+			check(mapped.fit == (rotationRound % 2 ? pdf::LinkFit::Height
+			                                       : pdf::LinkFit::Width),
+			      "rotated destination fit");
+			check(rotationRound % 2
+			          ? (!mapped.x && mapped.y &&
+			             std::abs(*mapped.y -
+			                      (rotationRound == 1 ? .25 : .75)) < 1e-9)
+			          : (!mapped.y && mapped.x &&
+			             std::abs(*mapped.x -
+			                      (rotationRound == 0 ? .25 : .75)) < 1e-9),
+			      "partial destination axis");
+			partial.fit = pdf::LinkFit::Rectangle;
+			partial.x = .1;
+			partial.y = .2;
+			partial.width = .3;
+			partial.height = .4;
+			const auto rectangle = v.viewDestination(partial);
+			const double expected[4][4] = {{.1, .2, .3, .4},
+			                               {.4, .1, .4, .3},
+			                               {.6, .4, .3, .4},
+			                               {.2, .6, .4, .3}};
+			check(rectangle.x && rectangle.y &&
+			          std::abs(*rectangle.x - expected[rotationRound][0]) <
+			              1e-9 &&
+			          std::abs(*rectangle.y - expected[rotationRound][1]) <
+			              1e-9 &&
+			          std::abs(rectangle.width - expected[rotationRound][2]) <
+			              1e-9 &&
+			          std::abs(rectangle.height - expected[rotationRound][3]) <
+			              1e-9,
+			      "rotated rectangle destination");
+			break;
+		}
+		case 3: {
+			check(copiedText == "Alpha" && copyCalls == rotationRound + 1,
+			      "rotated selection copy");
+			const auto active = v.m_findActive;
+			const auto selection = v.m_selection;
+			v.rotateView(1);
+			check(v.m_selection == selection && v.m_findActive == active &&
+			          v.m_findMatches.size() == 4,
+			      "rotation discarded reading state");
+			v.m_findNeedsReveal = true;
+			v.revealFindMatch();
+			check(!v.m_findNeedsReveal, "rotated Find reveal");
+			// an upside-down hit is near the foot; return before checking fit
+			v.goToPage(0);
+			if (++rotationRound < 4) {
+				step = 2;
+				ticks = 0;
+				return;
+			}
+			break;
+		}
+		case 4: {
+			const auto oldKey = v.key(0);
+			const auto bitmap = v.m_cache.find(oldKey);
+			if (!bitmap || !v.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			pdf::RenderResult old{oldKey, *bitmap, false};
+			const auto oldGpu = v.m_device.bitmaps.at(0);
+			v.rotateView(2);
+			check(v.key(0).width == oldKey.width &&
+			          v.key(0).height == oldKey.height &&
+			          v.key(0).rotation == 2,
+			      "half-turn raster size");
+			const auto gpu = v.m_device.bitmaps.find(0);
+			const auto fresh =
+			    gpu == v.m_device.bitmaps.end() ? nullptr : gpu->second.get();
+			check(fresh != oldGpu.get(), "half turn kept old GPU pixels");
+			v.rendered(std::move(old));
+			const auto after = v.m_device.bitmaps.find(0);
+			check((after == v.m_device.bitmaps.end()
+			           ? nullptr
+			           : after->second.get()) == fresh,
+			      "late half-turn raster replaced current pixels");
+			check(v.m_sizes[0].width == rotationSize.width &&
+			          v.m_sizes[0].height == rotationSize.height,
+			      "view changed canonical print size");
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", {});
+			break;
+		}
+		case 5:
+			check(&v != first.get() && v.m_rotation == 0 &&
+			          first->m_rotation == 2,
+			      "rotation leaked between tabs");
+			v.rotateView(1);
+			click(0, 80.0 / 360, 50.0 / 540);
+			break;
+		case 6:
+			check(v.m_launchedUri == "https://example.com/sable?x=1#part",
+			      "view-rotated external link");
+			v.m_launchedUri.clear();
+			click(1, .28, .2);
+			break;
+		case 7:
+			check(v.m_launchedUri == "HTTP://example.com/rotated",
+			      "intrinsic and view rotation link");
+			v.m_launchedUri.clear();
+			click(0, 80.0 / 360, 50.0 / 540);
+			v.rotateView(1);
+			break;
+		case 8:
+			check(v.m_launchedUri.empty(), "late link acted after rotation");
+			click(0, 80.0 / 360, 50.0 / 540);
+			v.close();
+			v.rotateView(1);
+			check(v.m_rotation == 2, "closed view rotated");
+			break;
+		case 9:
+			check(v.m_launchedUri.empty() && first->m_rotation == 2,
+			      "closed link or tab rotation isolation");
+			owner.closeTab(owner.m_tabs.back().tab);
+			break;
+		case 10:
+			check(&v == first.get() && v.m_rotation == 2 &&
+			          v.m_findMatches.size() == 4 && v.canCopySelection(),
+			      "returning to tab lost rotated reading state");
+			v.PageBox().Focus(FocusState::Programmatic);
+			v.PageBox().Text(L"2");
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			owner.onRotateView(owner.RotateCounterClockwiseItem(), {});
+			owner.MainMenu().Hide();
+			check(v.m_rotation == 1 && v.m_current == 1,
+			      "menu rotation lost pending page-number edit");
+			break;
+		case 11:
+			v.zoomTo(1.25, {0, 0});
+			v.goToPage(1);
+			v.rotateView(-1);
+			check(v.m_rotation == 0 && v.m_zoom == 1.25 && v.m_current == 1,
+			      "numeric zoom changed during counterclockwise rotation");
+			break;
+		case 12: {
+			const auto before = v.key(0);
+			const auto size = v.m_sizes[0];
+			v.m_sizes[0] = {20'000'000, 20'000'000};
+			v.rotateView(1);
+			v.m_sizes[0] = size;
+			check(v.m_rotation == 0 && v.key(0) == before && v.m_zoom == 1.25,
+			      "oversized rotation changed the readable view");
+			status.Text(
+			    L"PASS: view rotation, rasters, text, Find, thumbnails, "
+			    L"destinations, tab isolation and late callbacks");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void tick() {
 		auto self = window.get();
 		if (!self) {
