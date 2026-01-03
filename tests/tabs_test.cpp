@@ -224,6 +224,138 @@ struct TabsTest {
 		return viewer.m_layout && !viewer.m_startPage && !viewer.m_settling &&
 		       !viewer.m_landingAt;
 	}
+	void settingsCaptureTick(MainWindow& owner) {
+		if (ticks < 3) {
+			return;
+		}
+		const auto settings = owner.m_settingsWindow;
+		check(settings != nullptr, "settings closed during capture");
+		auto& settingsWindow = settings->window;
+		HWND handle{};
+		check_hresult(
+		    settingsWindow.as<IWindowNative>()->get_WindowHandle(&handle));
+		const auto capture = [&](const wchar_t* name) {
+			settingsWindow.Content().as<FrameworkElement>().UpdateLayout();
+			check(!settings->m_heading.Text().empty() &&
+			          !settings->m_description.Text().empty(),
+			      "settings page heading or description missing");
+			captureMusicWindow(handle, settingsCaptureDirectory / name);
+		};
+		switch (settingsCapturePhase) {
+		case 0: {
+			std::filesystem::create_directories(settingsCaptureDirectory);
+			const auto size = settingsWindow.AppWindow().Size();
+			settingsCaptureSize = {size.Width, size.Height};
+			settingsCaptureSnapshot = uiStore->get();
+			settings->select("version");
+			break;
+		}
+		case 1:
+			check(settings->m_version.Visibility() == Visibility::Visible &&
+			          settings->m_version.Text() ==
+			              to_hstring(helpers::versionString()),
+			      "settings About version");
+			capture(L"about.png");
+			settings->m_buildDetails.IsExpanded(true);
+			break;
+		case 2:
+			check(settings->m_buildDetails.IsExpanded(),
+			      "settings build details did not expand");
+			capture(L"about-details.png");
+			settings->m_buildDetails.IsExpanded(false);
+			settings->select("general");
+			break;
+		case 3:
+			capture(L"general.png");
+			settings->select("keybinds");
+			break;
+		case 4:
+			capture(L"keyboard-shortcuts.png");
+			settings->edit("OpenWindow", 0);
+			break;
+		case 5: {
+			check(settings->m_overlay.Visibility() == Visibility::Visible &&
+			          !settings->m_saveBinding.IsEnabled(),
+			      "shortcut capture prompt");
+			capture(L"shortcut-capture.png");
+			settings->dismiss();
+			const double scale = GetDpiForWindow(handle) / 96.0;
+			settingsWindow.AppWindow().Resize(
+			    {static_cast<int32_t>(660 * scale),
+			     static_cast<int32_t>(620 * scale)});
+			break;
+		}
+		case 6:
+			capture(L"keyboard-shortcuts-narrow.png");
+			settings->select("general");
+			break;
+		case 7: {
+			capture(L"general-narrow.png");
+			const double scale = GetDpiForWindow(handle) / 96.0;
+			settingsWindow.AppWindow().Resize(
+			    {static_cast<int32_t>(660 * scale),
+			     static_cast<int32_t>(360 * scale)});
+			break;
+		}
+		case 8:
+			check(settings->m_detailScroll.ScrollableHeight() > 0,
+			      "short General page cannot scroll");
+			settings->m_detailScroll.ChangeView(
+			    nullptr, settings->m_detailScroll.ScrollableHeight(), nullptr,
+			    true);
+			break;
+		case 9:
+			check(settings->m_detailScroll.VerticalOffset() > 0,
+			      "short General page did not scroll");
+			capture(L"general-short.png");
+			settingsWindow.AppWindow().Resize(
+			    {settingsCaptureSize.cx, settingsCaptureSize.cy});
+			settings->m_detailScroll.ChangeView(nullptr, 0., nullptr, true);
+			settings->select("version");
+			break;
+		case 10:
+			settings->select("general");
+			settings->m_theme.SelectedIndex(1);
+			break;
+		case 11: {
+			check(appearance::obsidian(), "Obsidian did not apply live");
+			capture(L"obsidian-general.png");
+			HWND reader{};
+			check_hresult(
+			    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+			captureMusicWindow(reader, settingsCaptureDirectory /
+			                               L"obsidian-reader.png");
+			settings->select("keybinds");
+			break;
+		}
+		case 12:
+			capture(L"obsidian-shortcuts.png");
+			settings->edit("OpenWindow", 0);
+			break;
+		case 13:
+			capture(L"obsidian-capture.png");
+			settings->dismiss();
+			settings->select("version");
+			settings->m_buildDetails.IsExpanded(true);
+			break;
+		case 14:
+			capture(L"obsidian-about.png");
+			settings->m_buildDetails.IsExpanded(false);
+			settings->m_theme.SelectedIndex(0);
+			break;
+		case 15:
+			check(!appearance::obsidian(), "Dark did not restore live");
+			capture(L"dark-restored.png");
+			check(uiStore->get() == *settingsCaptureSnapshot &&
+			          settings->m_overlay.Visibility() == Visibility::Collapsed,
+			      "settings capture changed stored values or left a dialog");
+			settingsCapturePhase = -1;
+			ticks = 0;
+			return;
+		}
+		++settingsCapturePhase;
+		ticks = 0;
+	}
 	void keybindSettings(SettingsWindow& settings) {
 		settings.select("keybinds");
 		check(settings.m_bindingScroll.Visibility() == Visibility::Visible);
@@ -316,6 +448,218 @@ struct TabsTest {
 		                             helpers::SHORTCUT_ALT) == nullptr,
 		      "numeric keypad add matched equals");
 		reader->Close();
+	}
+	void propertiesTick(MainWindow& owner) {
+		if (ticks < 3) {
+			return;
+		}
+		auto current = owner.Viewer();
+		auto* viewer = current ? get_self<ViewerPage>(current) : nullptr;
+		if (viewer && !ready(*viewer)) {
+			return;
+		}
+		const auto capture = [&](const wchar_t* name) {
+			wchar_t directory[2048]{};
+			const auto count = GetEnvironmentVariableW(
+			    L"SablePropertiesCaptureDirectory", directory, 2048);
+			if (count && count < 2048) {
+				const std::filesystem::path destination(directory);
+				std::filesystem::create_directories(destination);
+				HWND reader{};
+				check_hresult(
+				    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
+				captureMusicWindow(reader, destination / name);
+			}
+		};
+		const auto value = [&](int index) {
+			const auto scroll =
+			    viewer->m_propertiesDialog.Content().as<ScrollViewer>();
+			const auto rows = scroll.Content()
+			                      .as<StackPanel>()
+			                      .Children()
+			                      .GetAt(0)
+			                      .as<Grid>();
+			const auto text =
+			    rows.Children().GetAt(index * 2 + 1).as<TextBlock>();
+			check(text.IsTextSelectionEnabled(),
+			      "property values cannot be selected");
+			return text.Text();
+		};
+		switch (step) {
+		case 0: {
+			if (!viewer) {
+				return;
+			}
+			check(owner.PropertiesItem().IsEnabled(),
+			      "properties menu is disabled");
+			first.copy_from(viewer);
+			zoom = viewer->m_zoom;
+			owner.onDocumentProperties({}, {});
+			const auto dialog = viewer->m_propertiesDialog;
+			check(dialog != nullptr, "properties dialog did not open");
+			owner.onDocumentProperties({}, {});
+			check(viewer->m_propertiesDialog == dialog,
+			      "duplicate properties dialog");
+			break;
+		}
+		case 1:
+			if (!viewer->m_properties || viewer->m_propertiesPending) {
+				return;
+			}
+			check(value(0) == L"properties.pdf" &&
+			          value(2) == L"Field notes \u03a9\U0001f600" &&
+			          value(3) == L"Abhilash \u03a9",
+			      "property filename or Unicode metadata");
+			check(value(6) == L"2026-01-02  12:34:56 UTC+05:30" &&
+			          value(10) == L"1.7" && value(11) == L"2" &&
+			          value(12) == L"279.4 x 215.9 mm (Letter, landscape)" &&
+			          value(13) == L"1",
+			      "property dates, version or crop/rotation size");
+			check(viewer->m_zoom == zoom && viewer->m_current == 0,
+			      "properties changed the document view");
+			propertiesRequest = viewer->m_propertiesVersion;
+			capture(L"properties-dark.png");
+			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
+			    nullptr, 10000., nullptr, true);
+			break;
+		case 2:
+			capture(L"properties-details.png");
+			appearance::apply(true);
+			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
+			    nullptr, 0., nullptr, true);
+			break;
+		case 3:
+			capture(L"properties-obsidian.png");
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({565, 620});
+			break;
+		case 4:
+			capture(L"properties-narrow.png");
+			viewer->dismissProperties();
+			appearance::apply(false);
+			viewer->rotateView(1);
+			// Keep page 2 genuinely current after the landing guard expires.
+			// At Auto both pages can fit in the viewport after the narrow
+			// resize.
+			viewer->zoomTo(1.5, {0, 0});
+			viewer->goToPage(1);
+			break;
+		case 5:
+			viewer->showProperties();
+			break;
+		case 6:
+			check(
+			    viewer->m_propertiesVersion == propertiesRequest &&
+			        value(13) == L"2" &&
+			        value(12) == L"297.0 x 210.0 mm (A4, landscape)",
+			    "cached properties did not follow current page/view rotation");
+			owner.openDocument(engine, L"tests/fixtures/properties_missing.pdf",
+			                   1);
+			check(!first->m_propertiesDialog,
+			      "hidden tab kept its properties dialog");
+			break;
+		case 7:
+			if (!viewer || viewer == first.get()) {
+				return;
+			}
+			viewer->showProperties();
+			break;
+		case 8:
+			if (!viewer->m_properties || viewer->m_propertiesPending) {
+				return;
+			}
+			check(value(2) == L"\u2014" && value(3) == L"\u2014",
+			      "missing metadata display");
+			capture(L"properties-missing.png");
+			owner.closeTab(owner.m_tabs.back().tab);
+			break;
+		case 9: {
+			check(viewer == first.get() && !viewer->m_propertiesDialog,
+			      "closed or switched properties returned");
+			viewer->m_properties.reset();
+			auto healthy = std::move(viewer->m_session);
+			viewer->m_session = std::make_unique<pdf::Session>(engine);
+			viewer->showProperties();
+			check(viewer->m_propertiesFailed &&
+			          viewer->m_propertiesDialog.PrimaryButtonText() ==
+			              L"Retry",
+			      "properties failure has no retry");
+			viewer->m_session = std::move(healthy);
+			capture(L"properties-retry.png");
+			viewer->requestProperties();
+			break;
+		}
+		case 10:
+			if (viewer->m_propertiesPending) {
+				return;
+			}
+			check(viewer->m_properties && !viewer->m_propertiesFailed &&
+			          viewer->m_propertiesDialog.PrimaryButtonText().empty(),
+			      "properties retry failed");
+			viewer->dismissProperties();
+			break;
+		case 11: {
+			// A delayed reply can populate the cache, but cannot reopen a
+			// dismissed dialog.
+			viewer->m_properties.reset();
+			auto release = std::make_shared<std::promise<void>>();
+			auto wait = release->get_future().share();
+			engine.post([wait] { wait.wait(); });
+			viewer->showProperties();
+			const bool pending = viewer->m_propertiesPending;
+			viewer->dismissProperties();
+			release->set_value();
+			check(pending, "properties request was not queued");
+			break;
+		}
+		case 12:
+			if (viewer->m_propertiesPending) {
+				return;
+			}
+			check(viewer->m_properties && !viewer->m_propertiesDialog,
+			      "late metadata resurrected the dialog");
+			viewer->showProperties();
+			break;
+		case 13:
+			check(viewer->m_propertiesDialog != nullptr);
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(first->m_closed && !first->m_propertiesDialog &&
+			          !owner.PropertiesItem().IsEnabled(),
+			      "closing a document kept properties active");
+			peerWindow = app.createWindow();
+			peerWindow->openDocument(engine, L"tests/fixtures/properties.pdf",
+			                         1);
+			break;
+		case 14: {
+			const auto other = peerWindow->Viewer();
+			if (!other || !ready(*get_self<ViewerPage>(other))) {
+				return;
+			}
+			get_self<ViewerPage>(other)->showProperties();
+			break;
+		}
+		case 15: {
+			auto other =
+			    get_self<ViewerPage>(peerWindow->Viewer())->get_strong();
+			if (!other->m_properties || other->m_propertiesPending) {
+				return;
+			}
+			check(other->m_propertiesDialog != nullptr,
+			      "peer properties did not open");
+			peerWindow->Close();
+			check(other->m_closed && !other->m_propertiesDialog &&
+			          app.m_windows.size() == 1,
+			      "closing a reader kept its properties dialog alive");
+			status.Text(L"PASS: properties metadata, Unicode, dates, "
+			            L"page/rotation size, themes, "
+			            L"cache, retry, dismissal, tabs and close");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
 	}
 	void filterValues(MainWindow& owner,
 	                  const helpers::SliderValues& expected) {
@@ -1399,6 +1743,534 @@ struct TabsTest {
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void
+	deliverKeys(std::initializer_list<std::pair<unsigned, unsigned>> chords) {
+		DWORD process = 0;
+		GetWindowThreadProcessId(GetForegroundWindow(), &process);
+		check(process == GetCurrentProcessId() &&
+		          GetForegroundWindow() == inputWindow,
+		      "input check lost the reader foreground; no keys sent");
+		for (const auto modifier :
+		     {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN, VK_LBUTTON,
+		      VK_RBUTTON, VK_MBUTTON}) {
+			check(
+			    (GetAsyncKeyState(modifier) & 0x8000) == 0,
+			    "input check found a held key or pointer button; no keys sent");
+		}
+		std::vector<::INPUT> events;
+		const auto append = [&](unsigned code, bool up) {
+			::INPUT event{};
+			event.type = INPUT_KEYBOARD;
+			event.ki.wVk = static_cast<WORD>(code);
+			event.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+			if ((code >= VK_PRIOR && code <= VK_DOWN) || code == VK_INSERT ||
+			    code == VK_DELETE || code == VK_DIVIDE) {
+				event.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+			}
+			events.push_back(event);
+		};
+		for (const auto& [code, modifiers] : chords) {
+			const std::pair<unsigned, unsigned> held[] = {
+			    {helpers::SHORTCUT_CTRL, VK_CONTROL},
+			    {helpers::SHORTCUT_ALT, VK_MENU},
+			    {helpers::SHORTCUT_SHIFT, VK_SHIFT}};
+			for (const auto& [flag, modifier] : held) {
+				if (modifiers & flag) {
+					append(modifier, false);
+				}
+			}
+			append(code, false);
+			append(code, true);
+			for (auto index = std::size(held); index > 0; --index) {
+				const auto [flag, modifier] = held[index - 1];
+				if (modifiers & flag) {
+					append(modifier, true);
+				}
+			}
+		}
+		SetLastError(ERROR_SUCCESS);
+		const auto sent = SendInput(static_cast<UINT>(events.size()),
+		                            events.data(), sizeof(::INPUT));
+		const auto error = GetLastError();
+		if (sent != events.size()) {
+			std::vector<::INPUT> release;
+			for (auto index = sent; index > 0; --index) {
+				if (!(events[index - 1].ki.dwFlags & KEYEVENTF_KEYUP)) {
+					auto event = events[index - 1];
+					event.ki.dwFlags |= KEYEVENTF_KEYUP;
+					release.push_back(event);
+				}
+			}
+			if (!release.empty()) {
+				SendInput(static_cast<UINT>(release.size()), release.data(),
+				          sizeof(::INPUT));
+			}
+			check(false, "Windows input unavailable: accepted " +
+			                 std::to_string(sent) + "/" +
+			                 std::to_string(events.size()) + ", error " +
+			                 std::to_string(error));
+		}
+	}
+
+	void keyboardInputTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || ticks < 3) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+			return;
+		}
+		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
+		constexpr auto shift = helpers::SHORTCUT_SHIFT;
+		constexpr auto alt = helpers::SHORTCUT_ALT;
+		switch (step) {
+		case 0:
+			check_hresult(
+			    owner.get_strong().as<IWindowNative>()->get_WindowHandle(
+			        &inputWindow));
+			owner.Activate();
+			SetForegroundWindow(inputWindow);
+			v.Scroller().Focus(FocusState::Keyboard);
+			break;
+		case 1:
+			deliverKeys({{'J', 0}});
+			break;
+		case 2:
+			check(v.m_current == 1, "Windows-delivered J did not turn a page");
+			deliverKeys({{'K', 0}});
+			break;
+		case 3:
+			check(v.m_current == 0, "Windows-delivered K did not go back");
+			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
+			    FocusState::Keyboard);
+			deliverKeys({{'G', ctrl | alt}});
+			break;
+		case 4:
+			check(Input::FocusManager::GetFocusedElement(
+			          owner.RootGrid().XamlRoot()) == v.PageBox(),
+			      "Windows-delivered Ctrl-Alt-G lost page-box focus");
+			deliverKeys({{'3', 0}});
+			break;
+		case 5:
+			check(v.PageBox().Text() == L"3" && v.m_current == 0,
+			      "page draft navigated before Enter");
+			deliverKeys({{'R', 0}});
+			break;
+		case 6:
+			check(v.m_rotation == 0 && (v.PageBox().Text() == L"3r" ||
+			                            v.PageBox().Text() == L"3R"),
+			      "reader stole typed R");
+			deliverKeys({{'A', ctrl}, {'2', 0}, {VK_RETURN, 0}});
+			break;
+		case 7:
+			check(v.m_current == 1, "Enter did not commit the page draft");
+			v.PageBox().Focus(FocusState::Keyboard);
+			inputZoom = v.m_zoom;
+			inputText = v.PageBox().Text();
+			deliverKeys({{VK_OEM_MINUS, ctrl}});
+			break;
+		case 8:
+			check(v.m_zoom < inputZoom && v.PageBox().Text() == inputText,
+			      "Ctrl-minus edited the page box instead of zooming");
+			deliverKeys({{'0', ctrl}});
+			break;
+		case 9:
+			check(v.m_preset == helpers::ZoomPreset::Auto,
+			      "Ctrl-0 did not reset zoom");
+			v.Scroller().Focus(FocusState::Keyboard);
+			deliverKeys({{'R', 0}});
+			break;
+		case 10:
+			check(v.m_rotation == 1, "Windows-delivered R did not rotate");
+			deliverKeys({{'R', shift}});
+			break;
+		case 11:
+			check(v.m_rotation == 0,
+			      "Windows-delivered Shift-R did not restore rotation");
+			deliverKeys({{'H', 0}});
+			break;
+		case 12:
+			check(v.cursorTool() == ViewerPage::CursorTool::Hand,
+			      "H did not select Hand");
+			deliverKeys({{'S', 0}});
+			break;
+		case 13:
+			check(v.cursorTool() == ViewerPage::CursorTool::Select,
+			      "S did not select text");
+			deliverKeys({{'F', ctrl}});
+			break;
+		case 14:
+			check(v.findOpen() &&
+			          Input::FocusManager::GetFocusedElement(
+			              owner.RootGrid().XamlRoot()) == v.FindBox(),
+			      "Ctrl-F focus failed");
+			deliverKeys({{'A', shift}, {'L', 0}, {'P', 0}, {'H', 0}, {'A', 0}});
+			break;
+		case 15:
+			check(v.m_findActive && v.m_findMatches.size() > 1,
+			      "typed Find query did not produce matches");
+			inputMatch = *v.m_findActive;
+			deliverKeys({{'G', ctrl}});
+			break;
+		case 16:
+			check(v.m_findActive && v.m_findActive != inputMatch,
+			      "Ctrl-G did not advance");
+			deliverKeys({{'G', ctrl | shift}});
+			break;
+		case 17:
+			check(v.m_findActive == inputMatch, "Ctrl-Shift-G did not go back");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 18:
+			check(!v.findOpen(), "Escape did not close Find");
+			v.Scroller().Focus(FocusState::Keyboard);
+			deliverKeys({{'P', ctrl | alt}});
+			break;
+		case 19:
+			check(v.m_presentation.has_value(),
+			      "Ctrl-Alt-P did not enter presentation");
+			deliverKeys({{VK_DOWN, ctrl}});
+			break;
+		case 20:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "presentation Ctrl-Down failed");
+			deliverKeys({{VK_UP, ctrl}});
+			break;
+		case 21:
+			check(v.m_current == 0, "presentation Ctrl-Up failed");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 22:
+			check(!v.m_presentation, "Escape did not leave presentation");
+			owner.m_copyPicker = [this](hstring) {
+				++attachmentPicks;
+				return attachmentChoice(L"", {});
+			};
+			deliverKeys({{'S', ctrl}});
+			break;
+		case 23:
+			check(attachmentPicks == 1 && !owner.m_saveCopyCancel,
+			      "Windows-delivered Ctrl-S did not reach the save picker");
+			deliverKeys({{VK_F11, 0}});
+			break;
+		case 24:
+			check(owner.AppWindow().Presenter().Kind() ==
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "Windows-delivered F11 did not enter full screen");
+			deliverKeys({{VK_F11, 0}});
+			break;
+		case 25:
+			check(owner.AppWindow().Presenter().Kind() !=
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "second F11 did not leave full screen");
+			v.showProperties();
+			break;
+		case 26:
+			check(v.m_propertiesDialog != nullptr,
+			      "properties dialog did not open");
+			inputZoom = v.m_zoom;
+			deliverKeys({{VK_ADD, ctrl}, {'R', 0}});
+			break;
+		case 27:
+			check(v.m_zoom == inputZoom && v.m_rotation == 0,
+			      "modal dialog leaked OS-delivered reader keys");
+			deliverKeys({{VK_ESCAPE, 0}});
+			break;
+		case 28:
+			check(!v.m_propertiesDialog, "Escape did not dismiss properties");
+			status.Text(
+			    L"PASS: Windows input delivery, text editing, zoom, Find, "
+			    L"rotation, tools, presentation and dialog isolation");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void keyboardTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || ticks < 3) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+			return;
+		}
+		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
+		constexpr auto shift = helpers::SHORTCUT_SHIFT;
+		constexpr auto alt = helpers::SHORTCUT_ALT;
+		const auto key = [&](unsigned code, unsigned modifiers = 0) {
+			return owner.routeKey(code, modifiers);
+		};
+		switch (step) {
+		case 0: {
+			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
+			    FocusState::Keyboard);
+			check(key('G', ctrl | alt), "global page-box command missing");
+			check(Input::FocusManager::GetFocusedElement(
+			          owner.RootGrid().XamlRoot()) == v.PageBox(),
+			      "tab-header shortcut did not focus page box");
+			const auto page = v.m_current;
+			check(!key('J') && !key('R') && v.m_current == page &&
+			          v.m_rotation == 0,
+			      "reader letters changed a text field");
+			check(!key('A', ctrl) && !key('C', ctrl),
+			      "PDF commands stole native text editing");
+			const auto beforeZoom = v.m_zoom;
+			check(key(VK_OEM_MINUS, ctrl) && v.m_zoom < beforeZoom,
+			      "text-field Ctrl-minus did not zoom");
+			check(key(VK_ADD, ctrl | shift) && key(VK_SUBTRACT, ctrl | shift) &&
+			          key(VK_OEM_PLUS, ctrl) && key(VK_NUMPAD0, ctrl | shift) &&
+			          v.m_preset == helpers::ZoomPreset::Auto,
+			      "keypad or Shift zoom aliases failed");
+			v.Scroller().Focus(FocusState::Keyboard);
+			check(!key('R', helpers::SHORTCUT_WIN) && v.m_rotation == 0,
+			      "Windows chord reached the reader");
+			check(key('H') && v.cursorTool() == ViewerPage::CursorTool::Hand &&
+			          key('S') &&
+			          v.cursorTool() == ViewerPage::CursorTool::Select,
+			      "cursor-tool shortcuts failed");
+			check(key('R') && v.m_rotation == 1 && key('R', shift) &&
+			          v.m_rotation == 0,
+			      "rotation shortcuts failed");
+			const bool sidebar = v.thumbnailsOpen();
+			check(key(VK_F4) && v.thumbnailsOpen() != sidebar && key(VK_F4) &&
+			          v.thumbnailsOpen() == sidebar,
+			      "sidebar key failed");
+			v.goToPage(0);
+			break;
+		}
+		case 1:
+			key('J');
+			break;
+		case 2:
+			check(v.m_current == 1, "J did not turn a page");
+			key('K');
+			break;
+		case 3:
+			check(v.m_current == 0, "K did not turn back");
+			v.PageBox().Focus(FocusState::Keyboard);
+			key(VK_DOWN, ctrl | shift);
+			break;
+		case 4:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "Ctrl-Down missed last page");
+			key(VK_UP, ctrl);
+			break;
+		case 5:
+			check(v.m_current == 0, "Ctrl-Up missed first page");
+			v.Scroller().Focus(FocusState::Keyboard);
+			v.setPreset(helpers::ZoomPreset::PageFit);
+			key(VK_SPACE);
+			break;
+		case 6:
+			check(v.m_current == 1, "page-fit Space did not advance");
+			key(VK_SPACE, shift);
+			break;
+		case 7:
+			check(v.m_current == 0, "Shift-Space did not go back");
+			check(key('F', ctrl) && v.findOpen(), "Ctrl-F failed");
+			v.FindBox().Text(L"Alpha");
+			break;
+		case 8: {
+			check(v.m_findActive && v.m_findMatches.size() > 1,
+			      "shortcut Find query did not finish");
+			const auto before = *v.m_findActive;
+			check(key('G', ctrl) && v.m_findActive != before &&
+			          key('G', ctrl | shift) && v.m_findActive == before &&
+			          key(VK_F3) && v.m_findActive != before &&
+			          key(VK_F3, shift) && v.m_findActive == before,
+			      "Find next/previous shortcuts failed");
+			key(VK_ESCAPE);
+			check(!v.findOpen(), "Escape did not close Find");
+			v.showProperties();
+			break;
+		}
+		case 9: {
+			check(v.m_propertiesDialog != nullptr,
+			      "properties dialog did not open");
+			const auto beforeZoom = v.m_zoom;
+			check(!key('F', ctrl) && !key(VK_ADD, ctrl) && !key('R') &&
+			          !key('G', ctrl | alt) && v.m_zoom == beforeZoom &&
+			          !v.findOpen(),
+			      "modal dialog leaked reader shortcuts");
+			v.dismissProperties();
+			break;
+		}
+		case 10:
+			key('P', ctrl | alt);
+			break;
+		case 11:
+			check(v.m_presentation.has_value(),
+			      "presentation key did not enter");
+			key(VK_DOWN, ctrl);
+			break;
+		case 12:
+			check(v.m_current + 1 == v.m_sizes.size(),
+			      "presentation Ctrl-Down missed last page");
+			key(VK_UP, ctrl | shift);
+			break;
+		case 13:
+			check(v.m_current == 0, "presentation Ctrl-Up missed first page");
+			owner.m_copyPicker = [](hstring) {
+				return attachmentChoice(L"", {});
+			};
+			key('S', ctrl);
+			check(!v.m_presentation, "Save did not leave presentation");
+			break;
+		case 14:
+			check(!owner.m_saveCopyCancel,
+			      "cancelled keyboard save stayed active");
+			key(VK_F11);
+			check(owner.AppWindow().Presenter().Kind() ==
+			          Microsoft::UI::Windowing::AppWindowPresenterKind::
+			              FullScreen,
+			      "F11 did not enter full screen");
+			check(owner.routeKey(VK_F11, 0, true) &&
+			          owner.AppWindow().Presenter().Kind() ==
+			              Microsoft::UI::Windowing::AppWindowPresenterKind::
+			                  FullScreen,
+			      "repeat F11 toggled full screen");
+			key(VK_F11);
+			first.copy_from(&v);
+			owner.m_shortcuts.push_back({'J', 0, "switch-tab", "next"});
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+			owner.Tabs().SelectedIndex(0);
+			break;
+		case 15:
+			check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
+			          owner.Tabs().SelectedIndex() == 1 &&
+			          first->m_current == 0,
+			      "custom binding lost priority over viewer letters");
+			status.Text(
+			    L"PASS: global focus, navigation, zoom aliases, Find, "
+			    L"tools, modal guards, presentation and custom bindings");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void saveCopyTick(MainWindow& owner) {
+		if (ticks < 3 || owner.m_saveCopyCancel) {
+			return;
+		}
+		if (step == 8) {
+			check(first && first->m_closed, "closed save retained its viewer");
+			check(!std::filesystem::exists(attachmentTarget),
+			      "closed tab accepted a late picker result");
+			status.Text(L"PASS: PDF copy, cancel, source protection, errors "
+			            L"and late picker guards");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v)) {
+			return;
+		}
+		const auto choose = [&](const std::wstring& path) {
+			owner.m_copyPicker = [this, path](hstring name) {
+				attachmentName = name;
+				++attachmentPicks;
+				return attachmentChoice(hstring(path), attachmentGate);
+			};
+		};
+		const auto bytes = [](const std::filesystem::path& path) {
+			std::ifstream in(path, std::ios::binary);
+			return std::string((std::istreambuf_iterator<char>(in)), {});
+		};
+		switch (step) {
+		case 0:
+			attachmentTarget = settingsPath;
+			attachmentTarget.replace_extension(L".pdf");
+			choose(L"");
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 1:
+			check(attachmentPicks == 1 && attachmentName == L"pages copy.pdf" &&
+			          !std::filesystem::exists(attachmentTarget) &&
+			          !v.Message().IsOpen() && owner.SaveCopyItem().IsEnabled(),
+			      "cancel changed document state or suggested name");
+			v.rotateView(1);
+			v.zoomIn();
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.onSaveCopy(nullptr, nullptr);
+			check(attachmentPicks == 2, "duplicate save opened another picker");
+			break;
+		case 2:
+			check(bytes(attachmentTarget) == bytes(v.m_path),
+			      "saving applied view changes to the PDF");
+			choose(std::filesystem::absolute(v.m_path).wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 3:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Choose a different") == 0 &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "source protection missing or previous copy changed");
+			v.Message().IsOpen(false);
+			choose((attachmentTarget / L"missing" / L"copy.pdf").wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 4:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Couldn't save") == 0 &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "failed copy has no notice or changed existing output");
+			v.Message().IsOpen(false);
+			owner.m_copyPicker =
+			    [](hstring) -> Windows::Foundation::IAsyncOperation<hstring> {
+				throw hresult_access_denied();
+			};
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 5:
+			check(v.Message().IsOpen(), "picker failure has no notice");
+			v.Message().IsOpen(false);
+			first.copy_from(&v);
+			std::filesystem::remove(attachmentTarget);
+			attachmentGate = std::make_shared<winrt::handle>(
+			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+			check(static_cast<bool>(*attachmentGate));
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
+			SetEvent(attachmentGate->get());
+			break;
+		case 6:
+			check(!std::filesystem::exists(attachmentTarget),
+			      "tab switch accepted a late picker result");
+			owner.Tabs().SelectedIndex(0);
+			break;
+		case 7:
+			ResetEvent(attachmentGate->get());
+			choose(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			SetEvent(attachmentGate->get());
+			break;
 		}
 		++step;
 		ticks = 0;
@@ -3204,880 +4076,6 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-	void settingsCaptureTick(MainWindow& owner) {
-		if (ticks < 3) {
-			return;
-		}
-		const auto settings = owner.m_settingsWindow;
-		check(settings != nullptr, "settings closed during capture");
-		auto& settingsWindow = settings->window;
-		HWND handle{};
-		check_hresult(
-		    settingsWindow.as<IWindowNative>()->get_WindowHandle(&handle));
-		const auto capture = [&](const wchar_t* name) {
-			settingsWindow.Content().as<FrameworkElement>().UpdateLayout();
-			check(!settings->m_heading.Text().empty() &&
-			          !settings->m_description.Text().empty(),
-			      "settings page heading or description missing");
-			captureMusicWindow(handle, settingsCaptureDirectory / name);
-		};
-		switch (settingsCapturePhase) {
-		case 0: {
-			std::filesystem::create_directories(settingsCaptureDirectory);
-			const auto size = settingsWindow.AppWindow().Size();
-			settingsCaptureSize = {size.Width, size.Height};
-			settingsCaptureSnapshot = uiStore->get();
-			settings->select("version");
-			break;
-		}
-		case 1:
-			check(settings->m_version.Visibility() == Visibility::Visible &&
-			          settings->m_version.Text() ==
-			              to_hstring(helpers::versionString()),
-			      "settings About version");
-			capture(L"about.png");
-			settings->m_buildDetails.IsExpanded(true);
-			break;
-		case 2:
-			check(settings->m_buildDetails.IsExpanded(),
-			      "settings build details did not expand");
-			capture(L"about-details.png");
-			settings->m_buildDetails.IsExpanded(false);
-			settings->select("general");
-			break;
-		case 3:
-			capture(L"general.png");
-			settings->select("keybinds");
-			break;
-		case 4:
-			capture(L"keyboard-shortcuts.png");
-			settings->edit("OpenWindow", 0);
-			break;
-		case 5: {
-			check(settings->m_overlay.Visibility() == Visibility::Visible &&
-			          !settings->m_saveBinding.IsEnabled(),
-			      "shortcut capture prompt");
-			capture(L"shortcut-capture.png");
-			settings->dismiss();
-			const double scale = GetDpiForWindow(handle) / 96.0;
-			settingsWindow.AppWindow().Resize(
-			    {static_cast<int32_t>(660 * scale),
-			     static_cast<int32_t>(620 * scale)});
-			break;
-		}
-		case 6:
-			capture(L"keyboard-shortcuts-narrow.png");
-			settings->select("general");
-			break;
-		case 7: {
-			capture(L"general-narrow.png");
-			const double scale = GetDpiForWindow(handle) / 96.0;
-			settingsWindow.AppWindow().Resize(
-			    {static_cast<int32_t>(660 * scale),
-			     static_cast<int32_t>(360 * scale)});
-			break;
-		}
-		case 8:
-			check(settings->m_detailScroll.ScrollableHeight() > 0,
-			      "short General page cannot scroll");
-			settings->m_detailScroll.ChangeView(
-			    nullptr, settings->m_detailScroll.ScrollableHeight(), nullptr,
-			    true);
-			break;
-		case 9:
-			check(settings->m_detailScroll.VerticalOffset() > 0,
-			      "short General page did not scroll");
-			capture(L"general-short.png");
-			settingsWindow.AppWindow().Resize(
-			    {settingsCaptureSize.cx, settingsCaptureSize.cy});
-			settings->m_detailScroll.ChangeView(nullptr, 0., nullptr, true);
-			settings->select("version");
-			break;
-		case 10:
-			settings->select("general");
-			settings->m_theme.SelectedIndex(1);
-			break;
-		case 11: {
-			check(appearance::obsidian(), "Obsidian did not apply live");
-			capture(L"obsidian-general.png");
-			HWND reader{};
-			check_hresult(
-			    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
-			captureMusicWindow(reader, settingsCaptureDirectory /
-			                               L"obsidian-reader.png");
-			settings->select("keybinds");
-			break;
-		}
-		case 12:
-			capture(L"obsidian-shortcuts.png");
-			settings->edit("OpenWindow", 0);
-			break;
-		case 13:
-			capture(L"obsidian-capture.png");
-			settings->dismiss();
-			settings->select("version");
-			settings->m_buildDetails.IsExpanded(true);
-			break;
-		case 14:
-			capture(L"obsidian-about.png");
-			settings->m_buildDetails.IsExpanded(false);
-			settings->m_theme.SelectedIndex(0);
-			break;
-		case 15:
-			check(!appearance::obsidian(), "Dark did not restore live");
-			capture(L"dark-restored.png");
-			check(uiStore->get() == *settingsCaptureSnapshot &&
-			          settings->m_overlay.Visibility() == Visibility::Collapsed,
-			      "settings capture changed stored values or left a dialog");
-			settingsCapturePhase = -1;
-			ticks = 0;
-			return;
-		}
-		++settingsCapturePhase;
-		ticks = 0;
-	}
-
-	void propertiesTick(MainWindow& owner) {
-		if (ticks < 3) {
-			return;
-		}
-		auto current = owner.Viewer();
-		auto* viewer = current ? get_self<ViewerPage>(current) : nullptr;
-		if (viewer && !ready(*viewer)) {
-			return;
-		}
-		const auto capture = [&](const wchar_t* name) {
-			wchar_t directory[2048]{};
-			const auto count = GetEnvironmentVariableW(
-			    L"SablePropertiesCaptureDirectory", directory, 2048);
-			if (count && count < 2048) {
-				const std::filesystem::path destination(directory);
-				std::filesystem::create_directories(destination);
-				HWND reader{};
-				check_hresult(
-				    owner.try_as<IWindowNative>()->get_WindowHandle(&reader));
-				captureMusicWindow(reader, destination / name);
-			}
-		};
-		const auto value = [&](int index) {
-			const auto scroll =
-			    viewer->m_propertiesDialog.Content().as<ScrollViewer>();
-			const auto rows = scroll.Content()
-			                      .as<StackPanel>()
-			                      .Children()
-			                      .GetAt(0)
-			                      .as<Grid>();
-			const auto text =
-			    rows.Children().GetAt(index * 2 + 1).as<TextBlock>();
-			check(text.IsTextSelectionEnabled(),
-			      "property values cannot be selected");
-			return text.Text();
-		};
-		switch (step) {
-		case 0: {
-			if (!viewer) {
-				return;
-			}
-			check(owner.PropertiesItem().IsEnabled(),
-			      "properties menu is disabled");
-			first.copy_from(viewer);
-			zoom = viewer->m_zoom;
-			owner.onDocumentProperties({}, {});
-			const auto dialog = viewer->m_propertiesDialog;
-			check(dialog != nullptr, "properties dialog did not open");
-			owner.onDocumentProperties({}, {});
-			check(viewer->m_propertiesDialog == dialog,
-			      "duplicate properties dialog");
-			break;
-		}
-		case 1:
-			if (!viewer->m_properties || viewer->m_propertiesPending) {
-				return;
-			}
-			check(value(0) == L"properties.pdf" &&
-			          value(2) == L"Field notes \u03a9\U0001f600" &&
-			          value(3) == L"Abhilash \u03a9",
-			      "property filename or Unicode metadata");
-			check(value(6) == L"2026-01-02  12:34:56 UTC+05:30" &&
-			          value(10) == L"1.7" && value(11) == L"2" &&
-			          value(12) == L"279.4 x 215.9 mm (Letter, landscape)" &&
-			          value(13) == L"1",
-			      "property dates, version or crop/rotation size");
-			check(viewer->m_zoom == zoom && viewer->m_current == 0,
-			      "properties changed the document view");
-			propertiesRequest = viewer->m_propertiesVersion;
-			capture(L"properties-dark.png");
-			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
-			    nullptr, 10000., nullptr, true);
-			break;
-		case 2:
-			capture(L"properties-details.png");
-			appearance::apply(true);
-			viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
-			    nullptr, 0., nullptr, true);
-			break;
-		case 3:
-			capture(L"properties-obsidian.png");
-			owner.m_presenter.Restore();
-			owner.AppWindow().Resize({565, 620});
-			break;
-		case 4:
-			capture(L"properties-narrow.png");
-			viewer->dismissProperties();
-			appearance::apply(false);
-			viewer->rotateView(1);
-			// Keep page 2 genuinely current after the landing guard expires.
-			// At Auto both pages can fit in the viewport after the narrow
-			// resize.
-			viewer->zoomTo(1.5, {0, 0});
-			viewer->goToPage(1);
-			break;
-		case 5:
-			viewer->showProperties();
-			break;
-		case 6:
-			check(
-			    viewer->m_propertiesVersion == propertiesRequest &&
-			        value(13) == L"2" &&
-			        value(12) == L"297.0 x 210.0 mm (A4, landscape)",
-			    "cached properties did not follow current page/view rotation");
-			owner.openDocument(engine, L"tests/fixtures/properties_missing.pdf",
-			                   1);
-			check(!first->m_propertiesDialog,
-			      "hidden tab kept its properties dialog");
-			break;
-		case 7:
-			if (!viewer || viewer == first.get()) {
-				return;
-			}
-			viewer->showProperties();
-			break;
-		case 8:
-			if (!viewer->m_properties || viewer->m_propertiesPending) {
-				return;
-			}
-			check(value(2) == L"\u2014" && value(3) == L"\u2014",
-			      "missing metadata display");
-			capture(L"properties-missing.png");
-			owner.closeTab(owner.m_tabs.back().tab);
-			break;
-		case 9: {
-			check(viewer == first.get() && !viewer->m_propertiesDialog,
-			      "closed or switched properties returned");
-			viewer->m_properties.reset();
-			auto healthy = std::move(viewer->m_session);
-			viewer->m_session = std::make_unique<pdf::Session>(engine);
-			viewer->showProperties();
-			check(viewer->m_propertiesFailed &&
-			          viewer->m_propertiesDialog.PrimaryButtonText() ==
-			              L"Retry",
-			      "properties failure has no retry");
-			viewer->m_session = std::move(healthy);
-			capture(L"properties-retry.png");
-			viewer->requestProperties();
-			break;
-		}
-		case 10:
-			if (viewer->m_propertiesPending) {
-				return;
-			}
-			check(viewer->m_properties && !viewer->m_propertiesFailed &&
-			          viewer->m_propertiesDialog.PrimaryButtonText().empty(),
-			      "properties retry failed");
-			viewer->dismissProperties();
-			break;
-		case 11: {
-			// A delayed reply can populate the cache, but cannot reopen a
-			// dismissed dialog.
-			viewer->m_properties.reset();
-			auto release = std::make_shared<std::promise<void>>();
-			auto wait = release->get_future().share();
-			engine.post([wait] { wait.wait(); });
-			viewer->showProperties();
-			const bool pending = viewer->m_propertiesPending;
-			viewer->dismissProperties();
-			release->set_value();
-			check(pending, "properties request was not queued");
-			break;
-		}
-		case 12:
-			if (viewer->m_propertiesPending) {
-				return;
-			}
-			check(viewer->m_properties && !viewer->m_propertiesDialog,
-			      "late metadata resurrected the dialog");
-			viewer->showProperties();
-			break;
-		case 13:
-			check(viewer->m_propertiesDialog != nullptr);
-			owner.closeTab(owner.m_tabs.front().tab);
-			check(first->m_closed && !first->m_propertiesDialog &&
-			          !owner.PropertiesItem().IsEnabled(),
-			      "closing a document kept properties active");
-			peerWindow = app.createWindow();
-			peerWindow->openDocument(engine, L"tests/fixtures/properties.pdf",
-			                         1);
-			break;
-		case 14: {
-			const auto other = peerWindow->Viewer();
-			if (!other || !ready(*get_self<ViewerPage>(other))) {
-				return;
-			}
-			get_self<ViewerPage>(other)->showProperties();
-			break;
-		}
-		case 15: {
-			auto other =
-			    get_self<ViewerPage>(peerWindow->Viewer())->get_strong();
-			if (!other->m_properties || other->m_propertiesPending) {
-				return;
-			}
-			check(other->m_propertiesDialog != nullptr,
-			      "peer properties did not open");
-			peerWindow->Close();
-			check(other->m_closed && !other->m_propertiesDialog &&
-			          app.m_windows.size() == 1,
-			      "closing a reader kept its properties dialog alive");
-			status.Text(L"PASS: properties metadata, Unicode, dates, "
-			            L"page/rotation size, themes, "
-			            L"cache, retry, dismissal, tabs and close");
-			probePass(owner.get_strong().as<Window>());
-			timer.Stop();
-			return;
-		}
-		}
-		++step;
-		ticks = 0;
-	}
-
-	void
-	deliverKeys(std::initializer_list<std::pair<unsigned, unsigned>> chords) {
-		DWORD process = 0;
-		GetWindowThreadProcessId(GetForegroundWindow(), &process);
-		check(process == GetCurrentProcessId() &&
-		          GetForegroundWindow() == inputWindow,
-		      "input check lost the reader foreground; no keys sent");
-		for (const auto modifier :
-		     {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN, VK_LBUTTON,
-		      VK_RBUTTON, VK_MBUTTON}) {
-			check(
-			    (GetAsyncKeyState(modifier) & 0x8000) == 0,
-			    "input check found a held key or pointer button; no keys sent");
-		}
-		std::vector<::INPUT> events;
-		const auto append = [&](unsigned code, bool up) {
-			::INPUT event{};
-			event.type = INPUT_KEYBOARD;
-			event.ki.wVk = static_cast<WORD>(code);
-			event.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
-			if ((code >= VK_PRIOR && code <= VK_DOWN) || code == VK_INSERT ||
-			    code == VK_DELETE || code == VK_DIVIDE) {
-				event.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
-			}
-			events.push_back(event);
-		};
-		for (const auto& [code, modifiers] : chords) {
-			const std::pair<unsigned, unsigned> held[] = {
-			    {helpers::SHORTCUT_CTRL, VK_CONTROL},
-			    {helpers::SHORTCUT_ALT, VK_MENU},
-			    {helpers::SHORTCUT_SHIFT, VK_SHIFT}};
-			for (const auto& [flag, modifier] : held) {
-				if (modifiers & flag) {
-					append(modifier, false);
-				}
-			}
-			append(code, false);
-			append(code, true);
-			for (auto index = std::size(held); index > 0; --index) {
-				const auto [flag, modifier] = held[index - 1];
-				if (modifiers & flag) {
-					append(modifier, true);
-				}
-			}
-		}
-		SetLastError(ERROR_SUCCESS);
-		const auto sent = SendInput(static_cast<UINT>(events.size()),
-		                            events.data(), sizeof(::INPUT));
-		const auto error = GetLastError();
-		if (sent != events.size()) {
-			std::vector<::INPUT> release;
-			for (auto index = sent; index > 0; --index) {
-				if (!(events[index - 1].ki.dwFlags & KEYEVENTF_KEYUP)) {
-					auto event = events[index - 1];
-					event.ki.dwFlags |= KEYEVENTF_KEYUP;
-					release.push_back(event);
-				}
-			}
-			if (!release.empty()) {
-				SendInput(static_cast<UINT>(release.size()), release.data(),
-				          sizeof(::INPUT));
-			}
-			check(false, "Windows input unavailable: accepted " +
-			                 std::to_string(sent) + "/" +
-			                 std::to_string(events.size()) + ", error " +
-			                 std::to_string(error));
-		}
-	}
-
-	void keyboardInputTick(MainWindow& owner) {
-		const auto current = owner.Viewer();
-		if (!current || ticks < 3) {
-			return;
-		}
-		auto& v = *get_self<ViewerPage>(current);
-		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
-		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
-			return;
-		}
-		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
-		constexpr auto shift = helpers::SHORTCUT_SHIFT;
-		constexpr auto alt = helpers::SHORTCUT_ALT;
-		switch (step) {
-		case 0:
-			check_hresult(
-			    owner.get_strong().as<IWindowNative>()->get_WindowHandle(
-			        &inputWindow));
-			owner.Activate();
-			SetForegroundWindow(inputWindow);
-			v.Scroller().Focus(FocusState::Keyboard);
-			break;
-		case 1:
-			deliverKeys({{'J', 0}});
-			break;
-		case 2:
-			check(v.m_current == 1, "Windows-delivered J did not turn a page");
-			deliverKeys({{'K', 0}});
-			break;
-		case 3:
-			check(v.m_current == 0, "Windows-delivered K did not go back");
-			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
-			    FocusState::Keyboard);
-			deliverKeys({{'G', ctrl | alt}});
-			break;
-		case 4:
-			check(Input::FocusManager::GetFocusedElement(
-			          owner.RootGrid().XamlRoot()) == v.PageBox(),
-			      "Windows-delivered Ctrl-Alt-G lost page-box focus");
-			deliverKeys({{'3', 0}});
-			break;
-		case 5:
-			check(v.PageBox().Text() == L"3" && v.m_current == 0,
-			      "page draft navigated before Enter");
-			deliverKeys({{'R', 0}});
-			break;
-		case 6:
-			check(v.m_rotation == 0 && (v.PageBox().Text() == L"3r" ||
-			                            v.PageBox().Text() == L"3R"),
-			      "reader stole typed R");
-			deliverKeys({{'A', ctrl}, {'2', 0}, {VK_RETURN, 0}});
-			break;
-		case 7:
-			check(v.m_current == 1, "Enter did not commit the page draft");
-			v.PageBox().Focus(FocusState::Keyboard);
-			inputZoom = v.m_zoom;
-			inputText = v.PageBox().Text();
-			deliverKeys({{VK_OEM_MINUS, ctrl}});
-			break;
-		case 8:
-			check(v.m_zoom < inputZoom && v.PageBox().Text() == inputText,
-			      "Ctrl-minus edited the page box instead of zooming");
-			deliverKeys({{'0', ctrl}});
-			break;
-		case 9:
-			check(v.m_preset == helpers::ZoomPreset::Auto,
-			      "Ctrl-0 did not reset zoom");
-			v.Scroller().Focus(FocusState::Keyboard);
-			deliverKeys({{'R', 0}});
-			break;
-		case 10:
-			check(v.m_rotation == 1, "Windows-delivered R did not rotate");
-			deliverKeys({{'R', shift}});
-			break;
-		case 11:
-			check(v.m_rotation == 0,
-			      "Windows-delivered Shift-R did not restore rotation");
-			deliverKeys({{'H', 0}});
-			break;
-		case 12:
-			check(v.cursorTool() == ViewerPage::CursorTool::Hand,
-			      "H did not select Hand");
-			deliverKeys({{'S', 0}});
-			break;
-		case 13:
-			check(v.cursorTool() == ViewerPage::CursorTool::Select,
-			      "S did not select text");
-			deliverKeys({{'F', ctrl}});
-			break;
-		case 14:
-			check(v.findOpen() &&
-			          Input::FocusManager::GetFocusedElement(
-			              owner.RootGrid().XamlRoot()) == v.FindBox(),
-			      "Ctrl-F focus failed");
-			deliverKeys({{'A', shift}, {'L', 0}, {'P', 0}, {'H', 0}, {'A', 0}});
-			break;
-		case 15:
-			check(v.m_findActive && v.m_findMatches.size() > 1,
-			      "typed Find query did not produce matches");
-			inputMatch = *v.m_findActive;
-			deliverKeys({{'G', ctrl}});
-			break;
-		case 16:
-			check(v.m_findActive && v.m_findActive != inputMatch,
-			      "Ctrl-G did not advance");
-			deliverKeys({{'G', ctrl | shift}});
-			break;
-		case 17:
-			check(v.m_findActive == inputMatch, "Ctrl-Shift-G did not go back");
-			deliverKeys({{VK_ESCAPE, 0}});
-			break;
-		case 18:
-			check(!v.findOpen(), "Escape did not close Find");
-			v.Scroller().Focus(FocusState::Keyboard);
-			deliverKeys({{'P', ctrl | alt}});
-			break;
-		case 19:
-			check(v.m_presentation.has_value(),
-			      "Ctrl-Alt-P did not enter presentation");
-			deliverKeys({{VK_DOWN, ctrl}});
-			break;
-		case 20:
-			check(v.m_current + 1 == v.m_sizes.size(),
-			      "presentation Ctrl-Down failed");
-			deliverKeys({{VK_UP, ctrl}});
-			break;
-		case 21:
-			check(v.m_current == 0, "presentation Ctrl-Up failed");
-			deliverKeys({{VK_ESCAPE, 0}});
-			break;
-		case 22:
-			check(!v.m_presentation, "Escape did not leave presentation");
-			owner.m_copyPicker = [this](hstring) {
-				++attachmentPicks;
-				return attachmentChoice(L"", {});
-			};
-			deliverKeys({{'S', ctrl}});
-			break;
-		case 23:
-			check(attachmentPicks == 1 && !owner.m_saveCopyCancel,
-			      "Windows-delivered Ctrl-S did not reach the save picker");
-			deliverKeys({{VK_F11, 0}});
-			break;
-		case 24:
-			check(owner.AppWindow().Presenter().Kind() ==
-			          Microsoft::UI::Windowing::AppWindowPresenterKind::
-			              FullScreen,
-			      "Windows-delivered F11 did not enter full screen");
-			deliverKeys({{VK_F11, 0}});
-			break;
-		case 25:
-			check(owner.AppWindow().Presenter().Kind() !=
-			          Microsoft::UI::Windowing::AppWindowPresenterKind::
-			              FullScreen,
-			      "second F11 did not leave full screen");
-			v.showProperties();
-			break;
-		case 26:
-			check(v.m_propertiesDialog != nullptr,
-			      "properties dialog did not open");
-			inputZoom = v.m_zoom;
-			deliverKeys({{VK_ADD, ctrl}, {'R', 0}});
-			break;
-		case 27:
-			check(v.m_zoom == inputZoom && v.m_rotation == 0,
-			      "modal dialog leaked OS-delivered reader keys");
-			deliverKeys({{VK_ESCAPE, 0}});
-			break;
-		case 28:
-			check(!v.m_propertiesDialog, "Escape did not dismiss properties");
-			status.Text(
-			    L"PASS: Windows input delivery, text editing, zoom, Find, "
-			    L"rotation, tools, presentation and dialog isolation");
-			probePass(owner.get_strong().as<Window>());
-			timer.Stop();
-			return;
-		}
-		++step;
-		ticks = 0;
-	}
-
-	void keyboardTick(MainWindow& owner) {
-		const auto current = owner.Viewer();
-		if (!current || ticks < 3) {
-			return;
-		}
-		auto& v = *get_self<ViewerPage>(current);
-		if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
-		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
-			return;
-		}
-		constexpr auto ctrl = helpers::SHORTCUT_CTRL;
-		constexpr auto shift = helpers::SHORTCUT_SHIFT;
-		constexpr auto alt = helpers::SHORTCUT_ALT;
-		const auto key = [&](unsigned code, unsigned modifiers = 0) {
-			return owner.routeKey(code, modifiers);
-		};
-		switch (step) {
-		case 0: {
-			owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
-			    FocusState::Keyboard);
-			check(key('G', ctrl | alt), "global page-box command missing");
-			check(Input::FocusManager::GetFocusedElement(
-			          owner.RootGrid().XamlRoot()) == v.PageBox(),
-			      "tab-header shortcut did not focus page box");
-			const auto page = v.m_current;
-			check(!key('J') && !key('R') && v.m_current == page &&
-			          v.m_rotation == 0,
-			      "reader letters changed a text field");
-			check(!key('A', ctrl) && !key('C', ctrl),
-			      "PDF commands stole native text editing");
-			const auto beforeZoom = v.m_zoom;
-			check(key(VK_OEM_MINUS, ctrl) && v.m_zoom < beforeZoom,
-			      "text-field Ctrl-minus did not zoom");
-			check(key(VK_ADD, ctrl | shift) && key(VK_SUBTRACT, ctrl | shift) &&
-			          key(VK_OEM_PLUS, ctrl) && key(VK_NUMPAD0, ctrl | shift) &&
-			          v.m_preset == helpers::ZoomPreset::Auto,
-			      "keypad or Shift zoom aliases failed");
-			v.Scroller().Focus(FocusState::Keyboard);
-			check(!key('R', helpers::SHORTCUT_WIN) && v.m_rotation == 0,
-			      "Windows chord reached the reader");
-			check(key('H') && v.cursorTool() == ViewerPage::CursorTool::Hand &&
-			          key('S') &&
-			          v.cursorTool() == ViewerPage::CursorTool::Select,
-			      "cursor-tool shortcuts failed");
-			check(key('R') && v.m_rotation == 1 && key('R', shift) &&
-			          v.m_rotation == 0,
-			      "rotation shortcuts failed");
-			const bool sidebar = v.thumbnailsOpen();
-			check(key(VK_F4) && v.thumbnailsOpen() != sidebar && key(VK_F4) &&
-			          v.thumbnailsOpen() == sidebar,
-			      "sidebar key failed");
-			v.goToPage(0);
-			break;
-		}
-		case 1:
-			key('J');
-			break;
-		case 2:
-			check(v.m_current == 1, "J did not turn a page");
-			key('K');
-			break;
-		case 3:
-			check(v.m_current == 0, "K did not turn back");
-			v.PageBox().Focus(FocusState::Keyboard);
-			key(VK_DOWN, ctrl | shift);
-			break;
-		case 4:
-			check(v.m_current + 1 == v.m_sizes.size(),
-			      "Ctrl-Down missed last page");
-			key(VK_UP, ctrl);
-			break;
-		case 5:
-			check(v.m_current == 0, "Ctrl-Up missed first page");
-			v.Scroller().Focus(FocusState::Keyboard);
-			v.setPreset(helpers::ZoomPreset::PageFit);
-			key(VK_SPACE);
-			break;
-		case 6:
-			check(v.m_current == 1, "page-fit Space did not advance");
-			key(VK_SPACE, shift);
-			break;
-		case 7:
-			check(v.m_current == 0, "Shift-Space did not go back");
-			check(key('F', ctrl) && v.findOpen(), "Ctrl-F failed");
-			v.FindBox().Text(L"Alpha");
-			break;
-		case 8: {
-			check(v.m_findActive && v.m_findMatches.size() > 1,
-			      "shortcut Find query did not finish");
-			const auto before = *v.m_findActive;
-			check(key('G', ctrl) && v.m_findActive != before &&
-			          key('G', ctrl | shift) && v.m_findActive == before &&
-			          key(VK_F3) && v.m_findActive != before &&
-			          key(VK_F3, shift) && v.m_findActive == before,
-			      "Find next/previous shortcuts failed");
-			key(VK_ESCAPE);
-			check(!v.findOpen(), "Escape did not close Find");
-			v.showProperties();
-			break;
-		}
-		case 9: {
-			check(v.m_propertiesDialog != nullptr,
-			      "properties dialog did not open");
-			const auto beforeZoom = v.m_zoom;
-			check(!key('F', ctrl) && !key(VK_ADD, ctrl) && !key('R') &&
-			          !key('G', ctrl | alt) && v.m_zoom == beforeZoom &&
-			          !v.findOpen(),
-			      "modal dialog leaked reader shortcuts");
-			v.dismissProperties();
-			break;
-		}
-		case 10:
-			key('P', ctrl | alt);
-			break;
-		case 11:
-			check(v.m_presentation.has_value(),
-			      "presentation key did not enter");
-			key(VK_DOWN, ctrl);
-			break;
-		case 12:
-			check(v.m_current + 1 == v.m_sizes.size(),
-			      "presentation Ctrl-Down missed last page");
-			key(VK_UP, ctrl | shift);
-			break;
-		case 13:
-			check(v.m_current == 0, "presentation Ctrl-Up missed first page");
-			owner.m_copyPicker = [](hstring) {
-				return attachmentChoice(L"", {});
-			};
-			key('S', ctrl);
-			check(!v.m_presentation, "Save did not leave presentation");
-			break;
-		case 14:
-			check(!owner.m_saveCopyCancel,
-			      "cancelled keyboard save stayed active");
-			key(VK_F11);
-			check(owner.AppWindow().Presenter().Kind() ==
-			          Microsoft::UI::Windowing::AppWindowPresenterKind::
-			              FullScreen,
-			      "F11 did not enter full screen");
-			check(owner.routeKey(VK_F11, 0, true) &&
-			          owner.AppWindow().Presenter().Kind() ==
-			              Microsoft::UI::Windowing::AppWindowPresenterKind::
-			                  FullScreen,
-			      "repeat F11 toggled full screen");
-			key(VK_F11);
-			first.copy_from(&v);
-			owner.m_shortcuts.push_back({'J', 0, "switch-tab", "next"});
-			owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
-			owner.Tabs().SelectedIndex(0);
-			break;
-		case 15:
-			check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
-			          owner.Tabs().SelectedIndex() == 1 &&
-			          first->m_current == 0,
-			      "custom binding lost priority over viewer letters");
-			status.Text(
-			    L"PASS: global focus, navigation, zoom aliases, Find, "
-			    L"tools, modal guards, presentation and custom bindings");
-			probePass(owner.get_strong().as<Window>());
-			timer.Stop();
-			return;
-		}
-		++step;
-		ticks = 0;
-	}
-
-	void saveCopyTick(MainWindow& owner) {
-		if (ticks < 3 || owner.m_saveCopyCancel) {
-			return;
-		}
-		if (step == 8) {
-			check(first && first->m_closed, "closed save retained its viewer");
-			check(!std::filesystem::exists(attachmentTarget),
-			      "closed tab accepted a late picker result");
-			status.Text(L"PASS: PDF copy, cancel, source protection, errors "
-			            L"and late picker guards");
-			probePass(owner.get_strong().as<Window>());
-			timer.Stop();
-			return;
-		}
-		const auto current = owner.Viewer();
-		if (!current) {
-			return;
-		}
-		auto& v = *get_self<ViewerPage>(current);
-		if (!ready(v)) {
-			return;
-		}
-		const auto choose = [&](const std::wstring& path) {
-			owner.m_copyPicker = [this, path](hstring name) {
-				attachmentName = name;
-				++attachmentPicks;
-				return attachmentChoice(hstring(path), attachmentGate);
-			};
-		};
-		const auto bytes = [](const std::filesystem::path& path) {
-			std::ifstream in(path, std::ios::binary);
-			return std::string((std::istreambuf_iterator<char>(in)), {});
-		};
-		switch (step) {
-		case 0:
-			attachmentTarget = settingsPath;
-			attachmentTarget.replace_extension(L".pdf");
-			choose(L"");
-			owner.onSaveCopy(nullptr, nullptr);
-			break;
-		case 1:
-			check(attachmentPicks == 1 && attachmentName == L"pages copy.pdf" &&
-			          !std::filesystem::exists(attachmentTarget) &&
-			          !v.Message().IsOpen() && owner.SaveCopyItem().IsEnabled(),
-			      "cancel changed document state or suggested name");
-			v.rotateView(1);
-			v.zoomIn();
-			choose(attachmentTarget.wstring());
-			owner.onSaveCopy(nullptr, nullptr);
-			owner.onSaveCopy(nullptr, nullptr);
-			check(attachmentPicks == 2, "duplicate save opened another picker");
-			break;
-		case 2:
-			check(bytes(attachmentTarget) == bytes(v.m_path),
-			      "saving applied view changes to the PDF");
-			choose(std::filesystem::absolute(v.m_path).wstring());
-			owner.onSaveCopy(nullptr, nullptr);
-			break;
-		case 3:
-			check(v.Message().IsOpen() &&
-			          std::wstring_view(v.Message().Message())
-			                  .find(L"Choose a different") == 0 &&
-			          bytes(attachmentTarget) == bytes(v.m_path),
-			      "source protection missing or previous copy changed");
-			v.Message().IsOpen(false);
-			choose((attachmentTarget / L"missing" / L"copy.pdf").wstring());
-			owner.onSaveCopy(nullptr, nullptr);
-			break;
-		case 4:
-			check(v.Message().IsOpen() &&
-			          std::wstring_view(v.Message().Message())
-			                  .find(L"Couldn't save") == 0 &&
-			          bytes(attachmentTarget) == bytes(v.m_path),
-			      "failed copy has no notice or changed existing output");
-			v.Message().IsOpen(false);
-			owner.m_copyPicker =
-			    [](hstring) -> Windows::Foundation::IAsyncOperation<hstring> {
-				throw hresult_access_denied();
-			};
-			owner.onSaveCopy(nullptr, nullptr);
-			break;
-		case 5:
-			check(v.Message().IsOpen(), "picker failure has no notice");
-			v.Message().IsOpen(false);
-			first.copy_from(&v);
-			std::filesystem::remove(attachmentTarget);
-			attachmentGate = std::make_shared<winrt::handle>(
-			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
-			check(static_cast<bool>(*attachmentGate));
-			choose(attachmentTarget.wstring());
-			owner.onSaveCopy(nullptr, nullptr);
-			owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
-			SetEvent(attachmentGate->get());
-			break;
-		case 6:
-			check(!std::filesystem::exists(attachmentTarget),
-			      "tab switch accepted a late picker result");
-			owner.Tabs().SelectedIndex(0);
-			break;
-		case 7:
-			ResetEvent(attachmentGate->get());
-			choose(attachmentTarget.wstring());
-			owner.onSaveCopy(nullptr, nullptr);
-			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
-			SetEvent(attachmentGate->get());
-			break;
-		}
-		++step;
-		ticks = 0;
-	}
-
 	void presentationTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
