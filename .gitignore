@@ -32,9 +32,12 @@ Generated Files/
 packages/
 AppPackages/
 BundleArtifacts/
+dist/
+.tmp-gesture-fix/
 
 # vcpkg
 vcpkg_installed/
+vcpkg-cache/
 
 # fetched by update_pdfium.py
 third_party/pdfium/
