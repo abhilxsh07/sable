@@ -402,6 +402,37 @@ native zoom and restores it on exit. No new dependency or setting is needed.
 The native probe checks the real transforms and synchronization; physical
 trackpad input still needs a desktop check.
 
+## Portable alpha preparation (2026-10-18)
+
+The first review builds use portable ZIPs for x64 and ARM64. This keeps the
+existing self-contained runtime folder intact and adds no installer or
+update dependency. Choosing Velopack or MSIX, registering file associations
+and adding an updater remain separate decisions.
+
+scripts/package.py streams an existing Release folder into a ZIP. It checks
+the executable, PDFium and WinUI architectures, compares PDFium with the
+pinned input, includes the supplied license/notice texts and excludes test
+and linker outputs. File hashes, the base commit and a hash of the actual
+source snapshot go in a manifest. A separate source ZIP preserves that
+snapshot. Local candidates are named `-local-`; tagged packages require a
+clean checkout and a tag matching VERSION and HEAD. Existing ZIPs are never
+overwritten, and checksum collection rejects mixed source snapshots.
+
+release.yaml builds both targets, runs x64 and packaging checks, verifies
+the archives, checks an extracted x64 package and creates a draft prerelease.
+It does not publish, replace existing release assets, create tags or push.
+The source still has to be committed and reach GitHub through the existing
+queue before this workflow can build it. Local script checks do not count
+as a GitHub Actions run or a clean-machine/ARM64 runtime pass.
+
+The actual Windows App SDK binary package texts include Microsoft Software
+License Terms. THIRD_PARTY_NOTICES now distinguishes these from the source
+repository's MIT license, and identifies PDFium's text at its real path in
+the downloaded bundle. Both distribution questions remain open. Preserving
+the texts in a ZIP does not settle them or change Sable's GPL-2.0-only
+license. Keep public binary publication pending that review and the desktop
+checks in RELEASING.md.
+
 ## Virtual printer verification (2026-10-18)
 
 The installed Microsoft Print to PDF driver can be checked without changing
@@ -418,6 +449,27 @@ or dependency changed. The test passes in Debug and Release, and keeps the
 two output files for review. Test-supplied options and an in-memory XPS target
 remain part of this setup, so I am keeping actual dialog input, cancellation,
 physical printers and copies/collation on the desktop checklist.
+
+## Release build host and desktop checks (2026-10-18)
+
+The 32-bit compiler host kept failing while writing WinUI's LTO temporary
+files, even with a fresh TEMP folder. Using the installed 64-bit host lets
+both x64 and ARM64 Release builds finish with whole-program optimization.
+scripts/build.ps1 now sets PreferredToolArchitecture=x64. The project keeps
+its normal Release optimization settings; the local non-LTO workaround is
+no longer needed for these script builds.
+
+The desktop input check sends key chords through Windows rather than calling
+the command router. It only sends while its own reader is in the foreground
+and no modifier or pointer button is held. Chords include their key-up events;
+a partial batch releases the keys it sent. The check covers drafts, zoom,
+Find, rotation, tools, presentation, Save dispatch and modal isolation.
+
+This session rejects SendInput with access denied (5), accepting 0 of the
+first 2 events. That is a blocked input check, not a reader pass. The native
+command checks remain valid. README and READER_CHECKS.md now describe the
+implemented features and the remaining desktop, player, printer and monitor
+checks. No input-delivery claim is based on a direct handler call.
 
 ## V21: Reader shortcuts (2026-10-18)
 

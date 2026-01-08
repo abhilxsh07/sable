@@ -1,0 +1,164 @@
+# Sable, a native port of NightPDF
+# Copyright (C) 2021  Advaith Madhukar
+# Copyright (C) 2026  Abhilash Kar
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+name: Draft release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag matching VERSION
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+    env:
+      CI: 'true'
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: validate tag
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($env:RELEASE_TAG -ne $version) { throw 'Tag must match VERSION' }
+          $tagged = git rev-parse "refs/tags/$version^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw 'An existing tag is required' }
+          if ($tagged -ne (git rev-parse HEAD)) { throw 'Wrong tag checkout' }
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - uses: actions/cache@v6
+        with:
+          path: packages
+          key: nuget-${{ hashFiles('app/packages.config') }}
+      - uses: actions/cache@v6
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
+      - uses: actions/cache@v6
+        id: pdfium-cache
+        with:
+          path: third_party/pdfium
+          key: pdfium-${{ hashFiles('.pdfium_version', 'update_pdfium.py') }}
+      - name: prepare dependencies
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
+          if ('${{ steps.pdfium-cache.outputs.cache-hit }}' -ne 'true') {
+            python -m pip install requests
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python update_pdfium.py --pinned
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: check formatting and package tests
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          ./scripts/format.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s scripts -p 'test_package.py'
+      - name: build Release
+        run: ./scripts/build.ps1 -Config Release -Platform ${{ matrix.platform }}
+      - name: reader tests
+        if: matrix.platform == 'x64'
+        run: ./x64/Release/Sable.Tests.exe --gtest_brief=1
+      - name: package portable files and source
+        shell: pwsh
+        env:
+          PACKAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          $arguments = @('scripts/package.py', '--platform', $env:PACKAGE_PLATFORM,
+            '--tag', $env:RELEASE_TAG)
+          if ($env:PACKAGE_PLATFORM -eq 'x64') { $arguments += '--include-source' }
+          python @arguments
+      - name: smoke check extracted x64 package
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem dist/*-x64.zip
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath dist/check
+          $directory = (Get-ChildItem dist/check -Directory).FullName
+          ./scripts/smoke.ps1 -Directory $directory -WorkDirectory "$PWD/dist/work"
+      # Both jobs must finish before anything reaches the release draft.
+      # see: https://github.com/actions/upload-artifact
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+  draft:
+    needs: package
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      # see: https://github.com/actions/download-artifact
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: verify assets and write checksums
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $expected = @("Sable-$version-x64.zip", "Sable-$version-ARM64.zip",
+            "Sable-$version-source.zip")
+          $actual = @(Get-ChildItem dist/*.zip | Select-Object -ExpandProperty Name)
+          if (Compare-Object $expected $actual) { throw 'Unexpected release assets' }
+          foreach ($path in Get-ChildItem dist/*.zip) {
+            python scripts/package.py --verify $path.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          python scripts/package.py --checksums dist
+      - name: create draft prerelease
+        shell: pwsh
+        run: |
+          $notes = "docs/releases/$env:RELEASE_TAG.md"
+          $assets = @(Get-ChildItem dist -File | Select-Object -ExpandProperty FullName)
+          # An existing release makes this fail; it never replaces published files.
+          # see: https://cli.github.com/manual/gh_release_create
+          gh release create $env:RELEASE_TAG @assets --verify-tag --draft `
+            --prerelease --latest=false --title "Sable $env:RELEASE_TAG" `
+            --notes-file $notes

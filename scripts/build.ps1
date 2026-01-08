@@ -48,7 +48,10 @@ if (-not (Test-Path $sln)) {
 	exit 1
 }
 
-$out = & $msbuild $sln -restore "-p:RestorePackagesConfig=true" -m -nodeReuse:false -nologo -verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" 2>&1
+# the 64-bit host completes WinUI LTO where the 32-bit host fails here.
+$out = & $msbuild $sln -restore "-p:PreferredToolArchitecture=x64" `
+	"-p:RestorePackagesConfig=true" -m -nodeReuse:false -nologo `
+	-verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" 2>&1
 $code = $LASTEXITCODE
 $diag = $out | ForEach-Object { "$_" } | Where-Object { $_ -match ":\s*(fatal )?(error|warning)( [A-Z]+\d+)?\s*:" } | Select-Object -Unique
 $errors = @($diag | Where-Object { $_ -match ":\s*(fatal )?error( [A-Z]+\d+)?\s*:" }).Count
