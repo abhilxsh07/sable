@@ -1625,3 +1625,54 @@ TEST_F(SessionTest, MarkupCommentRequestsOwnSnapshotsAndKeepCloseOrder) {
 		EXPECT_FALSE(c->changed || c->index || d->contents);
 	}
 }
+
+TEST_F(SessionTest, SaveCopyIncludesNotesAndEveryTextMarkupSubtype) {
+	pdf::Session session(engine);
+	const auto source = fixturePath("text.pdf");
+	const auto original = readFile(source);
+	const auto target = writeTemp("annotated-copy.pdf", "previous");
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(session.addTextNote(0, 40, 50, u"Copy \u03a9\U0001f600", {},
+	                                note.callback()));
+	const auto added = note.wait();
+	ASSERT_TRUE(added && added->index == 0);
+	for (const auto type :
+	     {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+	      pdf::TextMarkup::StrikeOut}) {
+		Reply<pdf::MarkupResult> marked;
+		ASSERT_TRUE(
+		    session.markText({{0, 0}, {1, 4}}, type, marked.callback()));
+		const auto result = marked.wait();
+		ASSERT_TRUE(result && result->count == 2);
+	}
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveCopy(target, source, {}, saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	EXPECT_EQ(readFile(source), original);
+	engine
+	    .run([&] {
+		    const auto copy = pdf::openFile(target);
+		    ASSERT_TRUE(copy.document);
+		    for (int page = 0; page < 2; ++page) {
+			    const auto notes = copy.document->annotations(page);
+			    ASSERT_TRUE(notes);
+			    const std::size_t offset = page == 0 ? 1 : 0;
+			    ASSERT_EQ(notes->entries.size(), offset + 3);
+			    if (page == 0) {
+				    EXPECT_EQ(notes->entries[0].subtype, "Text");
+				    EXPECT_EQ(notes->entries[0].contents,
+				              "Copy \u03a9\U0001f600");
+			    }
+			    EXPECT_EQ(notes->entries[offset].subtype, "Highlight");
+			    EXPECT_EQ(notes->entries[offset + 1].subtype, "Underline");
+			    EXPECT_EQ(notes->entries[offset + 2].subtype, "StrikeOut");
+		    }
+	    })
+	    .get();
+	Reply<pdf::SaveResult> protectedSource;
+	ASSERT_TRUE(
+	    session.saveCopy(source, source, {}, protectedSource.callback()));
+	EXPECT_EQ(protectedSource.wait(), pdf::SaveResult::Source);
+	EXPECT_EQ(readFile(source), original);
+}

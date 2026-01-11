@@ -2166,10 +2166,10 @@ struct TabsTest {
 	}
 
 	void saveCopyTick(MainWindow& owner) {
-		if (ticks < 3 || owner.m_saveCopyCancel) {
+		if (ticks < 3 || owner.m_saveCopyCancel || owner.m_notesSaving) {
 			return;
 		}
-		if (step == 8) {
+		if (step == 12) {
 			check(first && first->m_closed, "closed save retained its viewer");
 			check(!std::filesystem::exists(attachmentTarget),
 			      "closed tab accepted a late picker result");
@@ -2184,7 +2184,7 @@ struct TabsTest {
 			return;
 		}
 		auto& v = *get_self<ViewerPage>(current);
-		if (!ready(v)) {
+		if (!ready(v) || v.m_noteBusy || v.m_noteSaving) {
 			return;
 		}
 		const auto choose = [&](const std::wstring& path) {
@@ -2192,6 +2192,13 @@ struct TabsTest {
 				attachmentName = name;
 				++attachmentPicks;
 				return attachmentChoice(hstring(path), attachmentGate);
+			};
+		};
+		const auto chooseNotes = [&](const std::wstring& path) {
+			owner.m_notesPicker = [this, path](hstring name) {
+				attachmentName = name;
+				++attachmentPicks;
+				return attachmentChoice(hstring(path), {});
 			};
 		};
 		const auto bytes = [](const std::filesystem::path& path) {
@@ -2249,6 +2256,55 @@ struct TabsTest {
 		case 5:
 			check(v.Message().IsOpen(), "picker failure has no notice");
 			v.Message().IsOpen(false);
+			v.submitNote(0, u"Copy retains notes", {});
+			owner.onSaveCopy(nullptr, nullptr);
+			check(!owner.m_saveCopyCancel && v.m_noteBusy &&
+			          v.Message().IsOpen(),
+			      "copy ran before the pending note finished");
+			v.Message().IsOpen(false);
+			break;
+		case 6:
+			check(v.m_notesDirty, "copy test note did not become dirty");
+			chooseNotes(L"");
+			v.Scroller().Focus(FocusState::Programmatic);
+			check(owner.routeKey('S', helpers::SHORTCUT_CTRL),
+			      "Ctrl-S did not reach edited-copy saving");
+			break;
+		case 7:
+			check(v.m_notesDirty && !v.m_noteSaving &&
+			          !owner.m_saveCopyCancel && attachmentPicks == 5 &&
+			          attachmentName == L"pages notes.pdf" &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "dirty copy cancel lost notes or opened another picker");
+			chooseNotes(
+			    (attachmentTarget / L"missing" / L"notes.pdf").wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 8:
+			check(v.m_notesDirty && !v.m_noteSaving && attachmentPicks == 6 &&
+			          v.Message().IsOpen() &&
+			          bytes(attachmentTarget) == bytes(v.m_path),
+			      "dirty copy failure lost notes or changed prior output");
+			v.Message().IsOpen(false);
+			chooseNotes(attachmentTarget.wstring());
+			owner.onSaveCopy(nullptr, nullptr);
+			break;
+		case 9:
+			check(!v.m_notesDirty && !v.m_noteSaving && attachmentPicks == 7 &&
+			          !owner.m_saveCopyCancel,
+			      "dirty copy success kept the wrong save state");
+			check(engine
+			          .run([path = attachmentTarget] {
+				          const auto saved = pdf::openFile(path);
+				          const auto notes =
+				              saved.document ? saved.document->annotations(0)
+				                             : std::nullopt;
+				          return notes && notes->entries.size() == 1 &&
+				                 notes->entries[0].contents ==
+				                     "Copy retains notes";
+			          })
+			          .get(),
+			      "Ctrl-S saved a copy without the unsaved note");
 			first.copy_from(&v);
 			std::filesystem::remove(attachmentTarget);
 			attachmentGate = std::make_shared<winrt::handle>(
@@ -2259,12 +2315,12 @@ struct TabsTest {
 			owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
 			SetEvent(attachmentGate->get());
 			break;
-		case 6:
+		case 10:
 			check(!std::filesystem::exists(attachmentTarget),
 			      "tab switch accepted a late picker result");
 			owner.Tabs().SelectedIndex(0);
 			break;
-		case 7:
+		case 11:
 			ResetEvent(attachmentGate->get());
 			choose(attachmentTarget.wstring());
 			owner.onSaveCopy(nullptr, nullptr);

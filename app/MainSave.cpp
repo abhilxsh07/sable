@@ -67,6 +67,16 @@ fire_and_forget MainWindow::saveCopy() {
 				viewer->showNotice(L"This PDF isn't ready to save yet.");
 				co_return;
 			}
+			if (m_notesSaving || viewer->m_noteBusy || viewer->m_noteSaving ||
+			    viewer->m_noteDialog || viewer->m_notePlacing) {
+				viewer->showNotice(L"Finish the open dialog or note operation "
+				                   L"before saving a copy.");
+				co_return;
+			}
+			if (viewer->m_notesDirty) {
+				co_await saveNotes(current);
+				co_return;
+			}
 			document = viewer->get_weak();
 			source = viewer->m_path;
 			session = viewer->m_session.get();

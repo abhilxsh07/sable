@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <limits>
 
 namespace pdf {
 namespace {
@@ -68,6 +69,10 @@ SaveResult Document::saveCopy(const std::filesystem::path& destination,
 	if (!Engine::onThread() || !m_handle || destination.empty() ||
 	    source.empty()) {
 		return SaveResult::Failed;
+	}
+	if (m_modified) {
+		return saveEdits(destination, source,
+		                 (std::numeric_limits<std::size_t>::max)(), canceled);
 	}
 	const auto stopped = [&] { return canceled && canceled(); };
 	if (stopped()) {
