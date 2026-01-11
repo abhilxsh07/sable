@@ -131,9 +131,6 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
 
 	// the right rail and the keys, wired up in ViewerPage.xaml
-	void onPreviewKeyDown(
-	    const winrt::Windows::Foundation::IInspectable&,
-	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
 	bool navigationKey(unsigned key, helpers::NavModifiers modifiers);
 	void onPageBoxKeyDown(
 	    const winrt::Windows::Foundation::IInspectable&,
@@ -469,7 +466,6 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// rendered once it has been still for a moment
 	bool m_settling = false;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_settle{nullptr};
-	helpers::WheelTicks m_wheelTicks;
 	std::optional<int> m_startPage;
 	// pdf.js's current page (0-based) and the labels it would have shown
 	std::size_t m_current = 0;

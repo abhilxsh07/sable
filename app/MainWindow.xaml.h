@@ -185,12 +185,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	bool m_picking = false;
 	bool m_printing = false;
 	std::function<void()> m_easterEgg;
-	bool m_easterEggInstalled = false;
 	void showEasterEgg();
 	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();
-	void setupZoomKeys();
 	bool routeKey(unsigned key, unsigned modifiers, bool repeated = false);
 	void setupPresentation();
 	bool presentationKey(unsigned key, unsigned modifiers, bool repeated);
