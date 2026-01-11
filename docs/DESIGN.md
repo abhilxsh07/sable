@@ -49,10 +49,52 @@ Windows' own Fluent icons. No copied icons or branding.
 - **Right rail**: thumbnails, bookmarks, comments, attachments and layers open
   a side panel. Page number and zoom live at the bottom of the rail.
 
-Look: NightPDF's greys (#1e1e1e, #2d2d2d), Manrope, small corner radii, quiet
-hover states. Dark by default since that's the point of the app.
+Manrope, small corner radii and quiet hover states carry through the app.
+
+## Appearance
+
+Dark is the default, with NightPDF's greys (#1e1e1e and #2d2d2d). Settings >
+General > Theme also offers **Obsidian (AMOLED)** for a true-black look.
+
+Obsidian should feel quiet and consistent across the whole app. Use solid
+#000000 for resting backgrounds: the reader canvas, title and command bars,
+side panels, Settings, menus, dialogs and the music pane. Avoid grey cards,
+artwork gradients and acrylic that make the background glow again.
+
+Black surfaces still need clear controls. Use spacing and subtle borders to
+separate groups, and keep text and icons readable. Hover, focus and selected
+states should be visible without becoming bright blocks. Buttons should
+share simple shapes, consistent heights and restrained styling.
+
+The theme changes the app around the document. PDF page colours, night
+filters, filter previews, album art and print output keep their existing
+behaviour. A theme change should appear in open windows straight away and
+carry through to windows opened later, without reopening the document.
+
+Settings follows the same approach: a quiet sidebar, clear page headings,
+short descriptions and aligned controls. Keep the pages uncluttered and let
+them scroll in smaller windows. New surfaces should use the shared theme
+colours so they stay consistent in both themes.
 
 ## Tools
+
+The reader supports two-finger trackpad scrolling and pinch to zoom. Let
+Windows handle the motion and inertia, including sideways movement across
+a magnified page. Pinching should keep the reading position steady and
+leave the PDF sharp when the gesture ends. The displayed percentage,
+zoom buttons and fit presets should agree with the gesture. Presentation
+keeps its fitted page view.
+
+Choosing a page during a pinch should still land on that page when zoom
+settles. Rotation, layout changes and presentation entry are available once
+the gesture finishes; they are not queued during it. Returning to a tab must
+not leave its zoom controls blocked by a completed pan.
+
+In Page scrolling with odd/even spreads, View > Click pages to turn spreads
+offers optional page turning. Click the left page to go back or the right
+page to go forward a whole spread. A single cover or last page uses its two
+halves. Keep links and text selection usable, and ignore clicks in the margins.
+The option starts off and stays with its document tab.
 
 | Group | Tools |
 |---|---|
@@ -82,10 +124,11 @@ drops down a small pane with:
 - a seek bar with the elapsed and remaining time
 - shuffle and repeat, when the app lets them be changed from outside
 
-The pane is frosted glass tinted with the colour of the current song's art,
-and the tint fades over to the next song's colour when the track changes.
-The colour is darkened or lightened as needed so the text on it stays
-readable, and it falls back to NightPDF's grey when a song has no art.
+In Dark, the pane is frosted glass tinted with the colour of the current
+song's art, and the tint fades over when the track changes. The colour is
+adjusted to keep the text readable, with NightPDF's grey as the fallback
+when a song has no art. In Obsidian, the background is solid #000000; the
+artwork stays visible, but its colours don't tint the pane.
 Clicking anywhere else or pressing Esc closes it, like the configurator.
 
 It goes through Windows' own media controls (the ones behind the media

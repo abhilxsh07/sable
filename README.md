@@ -10,26 +10,52 @@ and command line as NightPDF. After that it grows into a full reader, with
 comments, Fill & Sign, page organizing and more, all offline. See
 [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: early, with the native reader working. PDFs open in tabs with zoom,
-page labels, thumbnails, password prompts, night filters and internal/web
-links. Settings and keybind edits persist, printing uses original colors,
-and text can be selected and copied across pages. Find supports case, whole
-words and diacritics, live counts, navigation and highlights. The Edit menu
-works on focused text fields and PDF selections. The document outline sidebar
-preserves hierarchy and expansion and follows internal/named destinations
-and supported web links.
+The native reader opens PDFs in tabs with page labels, thumbnails, password
+prompts, night filters and internal/web links. Text selection, Find, document
+outlines and attachment saving work across tabs. Reading tools include view
+rotation, hand panning, scroll/spread layouts, presentation mode, document
+properties and Save a Copy. Saving keeps the loaded PDF's bytes intact;
+printing uses its original colors.
+
+Settings has General, Shortcuts and About pages. General offers the original
+Dark theme and **Obsidian (AMOLED)**, with pure-black resting app surfaces.
+The theme changes live and is saved for the next launch. The PDF's night
+filter stays separate from the app theme.
+
 Spotify and Apple Music sessions add a music button with playback controls,
-track information, artwork and a seek bar when the player supports it.
-Physical drag, monitor moves, printer output, notification delivery and live
-music control still need verification. Attachments and further reading tools are still planned; see
-[docs/PORTING_STATUS.md](docs/PORTING_STATUS.md) for the current handoff.
+track information, artwork and a seek bar when the player supports it. Real
+players, print-dialog input, physical printers, monitor moves and notification
+activation still need review. The Windows PDF driver passes the opt-in
+output check. PDF layers are deferred because the pinned
+PDFium API lacks visibility controls. See the [test record](docs/TEST_PLAN.md)
+for current results, [reader checks](docs/READER_CHECKS.md) for the remaining
+desktop pass and [current status](docs/PORTING_STATUS.md) for the work history.
 
-Use Ctrl+F to search, Enter/F3/Ctrl+G for the next match, and Shift with those
-keys for the previous match. Escape closes Find. Queries and match options
-stay with each document tab.
+Portable alpha packaging and the draft-release workflow are described in
+[releasing Sable](docs/RELEASING.md). Public binary publication still needs
+desktop/clean-machine sign-off and the dependency-license review recorded
+in THIRD_PARTY_NOTICES.md.
 
-Use the right rail for thumbnails or the document outline. F4 hides or reopens
-the last sidebar. Each tab keeps its outline expansion state.
+| Keys | Action |
+|---|---|
+| Ctrl+F | Open Find |
+| Enter, F3 or Ctrl+G | Next Find match; add Shift for the previous match |
+| Ctrl+Alt+G | Select the page-number box |
+| Ctrl++ / Ctrl+- / Ctrl+0 | Zoom in, out or reset; keypad aliases work too |
+| R / Shift+R | Rotate the reading view clockwise / counterclockwise |
+| H / S | Hand tool / text selection |
+| F4 | Hide or reopen the last sidebar |
+| Ctrl+S / Ctrl+P | Save a copy / print |
+| Ctrl+Alt+P | Presentation mode; Escape leaves it |
+| F11 | Toggle full screen |
+
+Text fields retain their editing keys. Each tab keeps its Find query/options,
+sidebar state, reading layout and cursor tool. The View menu offers Vertical,
+Horizontal, Wrapped and Page scrolling, plus no/odd/even spreads.
+Use two fingers on a precision trackpad to scroll, or pinch to zoom. The
+reader sharpens the PDF after the gesture; Ctrl+mouse wheel works too.
+In Page scrolling with odd/even spreads, enable View > Click pages to turn
+spreads for left-page/back and right-page/forward navigation.
 
 ## Credits
 
@@ -57,6 +83,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run.ps1 file.pdf
 ```
+
+The build script uses the 64-bit compiler host for both targets. Release
+keeps whole-program optimization enabled.
 
 Run `uv run update_pdfium.py` without `--pinned` to move to the latest
 [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) release.
