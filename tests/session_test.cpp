@@ -126,6 +126,21 @@ template <typename T> class Reply {
 	std::future<T> m_future = m_promise->get_future();
 };
 
+struct FileGate {
+	std::promise<void> entered, release;
+	std::shared_future<void> wait = release.get_future().share();
+	std::atomic<bool> started = false;
+	bool poll() {
+		if (!pdf::Engine::onThread()) {
+			if (!started.exchange(true)) {
+				entered.set_value();
+			}
+			wait.wait();
+		}
+		return false;
+	}
+};
+
 class SessionTest : public ::testing::Test {
   protected:
 	void TearDown() override {
@@ -1624,6 +1639,117 @@ TEST_F(SessionTest, MarkupCommentRequestsOwnSnapshotsAndKeepCloseOrder) {
 		EXPECT_TRUE(c->canceled && d->canceled);
 		EXPECT_FALSE(c->changed || c->index || d->contents);
 	}
+}
+
+TEST_F(SessionTest, FileWritesLeaveTheEngineFreeAndKeepTheirSnapshot) {
+	for (const bool copy : {false, true}) {
+		pdf::Session session(engine);
+		const auto source = fixturePath("pages.pdf");
+		const auto target = writeTemp("worker.pdf", "previous");
+		ASSERT_EQ(open(session, source).error, pdf::Error::None);
+		const auto gate = std::make_shared<FileGate>();
+		auto entered = gate->entered.get_future();
+		auto unblock = std::shared_ptr<void>(
+		    nullptr, [gate](void*) { gate->release.set_value(); });
+		Reply<pdf::SaveResult> reply, busy;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		const auto onThread = std::make_shared<std::atomic<bool>>(false);
+		const auto callback = [calls, onThread, cb = reply.callback()](auto r) {
+			++*calls;
+			*onThread = pdf::Engine::onThread();
+			cb(r);
+		};
+		const auto canceled = [gate] { return gate->poll(); };
+		ASSERT_TRUE(copy ? session.saveCopy(target, source, canceled, callback)
+		                 : session.saveEdits(target, source, 1024 * 1024,
+		                                     canceled, callback));
+		ASSERT_EQ(entered.wait_for(std::chrono::seconds(10)),
+		          std::future_status::ready);
+		EXPECT_FALSE(session.saveCopy(target, source, {}, busy.callback()));
+		Reply<pdf::NoteResult> note;
+		ASSERT_TRUE(session.addTextNote(0, 40, 50, u"After snapshot", {},
+		                                note.callback()));
+		const auto edited = note.wait();
+		ASSERT_TRUE(edited && edited->index);
+		unblock.reset();
+		EXPECT_EQ(reply.wait(), pdf::SaveResult::Saved);
+		EXPECT_TRUE(*onThread);
+		EXPECT_EQ(*calls, 1);
+		EXPECT_EQ(readFile(target), readFile(source));
+	}
+}
+
+TEST_F(SessionTest, CloseAndDestructionCancelWorkerWritesOnce) {
+	for (const bool copy : {false, true}) {
+		for (const bool destroy : {false, true}) {
+			auto session = std::make_unique<pdf::Session>(engine);
+			const auto source = fixturePath("pages.pdf");
+			const auto target = writeTemp("worker-close.pdf", "previous");
+			const auto previous = readFile(target);
+			ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+			const auto gate = std::make_shared<FileGate>();
+			auto entered = gate->entered.get_future();
+			auto unblock = std::shared_ptr<void>(
+			    nullptr, [gate](void*) { gate->release.set_value(); });
+			Reply<pdf::SaveResult> reply;
+			const auto calls = std::make_shared<std::atomic<int>>(0);
+			const auto callback = [calls, cb = reply.callback()](auto result) {
+				++*calls;
+				EXPECT_TRUE(pdf::Engine::onThread());
+				cb(result);
+			};
+			const auto canceled = [gate] { return gate->poll(); };
+			ASSERT_TRUE(
+			    copy ? session->saveCopy(target, source, canceled, callback)
+			         : session->saveEdits(target, source, 1024 * 1024, canceled,
+			                              callback));
+			ASSERT_EQ(entered.wait_for(std::chrono::seconds(10)),
+			          std::future_status::ready);
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+			unblock.reset();
+			EXPECT_EQ(reply.wait(), pdf::SaveResult::Canceled);
+			EXPECT_EQ(readFile(target), previous);
+			engine.run([] {}).get();
+			EXPECT_EQ(*calls, 1);
+		}
+	}
+}
+
+TEST(EngineBackground, ShutdownDrainsWorkersAndEngineCompletions) {
+	auto engine = std::make_unique<pdf::Engine>();
+	const auto gate = std::make_shared<FileGate>();
+	auto entered = gate->entered.get_future();
+	auto unblock = std::shared_ptr<void>(
+	    nullptr, [gate](void*) { gate->release.set_value(); });
+	const auto calls = std::make_shared<std::atomic<int>>(0);
+	const auto onThread = std::make_shared<std::atomic<bool>>(false);
+	engine
+	    ->run([&] {
+		    engine->background([gate] { gate->poll(); },
+		                       [calls, onThread] {
+			                       *onThread = pdf::Engine::onThread();
+			                       ++*calls;
+		                       });
+	    })
+	    .get();
+	ASSERT_EQ(entered.wait_for(std::chrono::seconds(10)),
+	          std::future_status::ready);
+	auto shutdown =
+	    std::async(std::launch::async,
+	               [engine = std::move(engine)]() mutable { engine.reset(); });
+	EXPECT_EQ(shutdown.wait_for(std::chrono::milliseconds(30)),
+	          std::future_status::timeout);
+	unblock.reset();
+	ASSERT_EQ(shutdown.wait_for(std::chrono::seconds(10)),
+	          std::future_status::ready);
+	shutdown.get();
+	EXPECT_EQ(*calls, 1);
+	EXPECT_TRUE(*onThread);
+	EXPECT_FALSE(pdf::Engine::running());
 }
 
 TEST_F(SessionTest, SaveCopyIncludesNotesAndEveryTextMarkupSubtype) {

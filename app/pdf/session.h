@@ -160,6 +160,9 @@ class Session {
 	                         CommentContents expected, std::u16string contents,
 	                         std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
+	// Serialization keeps engine queue order; file writes run on its worker.
+	// Cancellation can be polled by either thread.
+	// Completion returns on the engine thread, including during shutdown.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,
 	               std::function<bool()> canceled,

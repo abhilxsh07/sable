@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <functional>
 #include <future>
 #include <memory>
+#include <list>
 #include <mutex>
 #include <thread>
 #include <type_traits>
@@ -47,6 +48,9 @@ class Engine {
 	// queue work for the PDFium thread, it runs in the order it was posted.
 	// If it throws, the exception is dropped (there's nobody to give it to).
 	void post(std::function<void()> work);
+	// called on the engine: run I/O on a worker, then finish back here.
+	// shutdown drains both parts; the worker must never call PDFium.
+	void background(std::function<void()> work, std::function<void()> done);
 
 	// queue work and get its result, or its exception, back as a future.
 	// Don't wait on the future from the UI thread, or from work already
@@ -82,12 +86,19 @@ class Engine {
 
   private:
 	void loop();
+	void backgroundLoop();
+	struct Background {
+		std::function<void()> work, done;
+	};
 
 	std::mutex m_mutex;
 	std::condition_variable m_wake;
 	std::deque<std::function<void()>> m_queue;
-	bool m_stopping = false;
+	bool m_stopping = false, m_workerStopping = false;
+	std::condition_variable m_workerWake;
+	std::list<Background> m_background, m_completed;
+	std::size_t m_pending = 0;
 	// last, so everything the thread uses exists before it starts
-	std::thread m_thread;
+	std::thread m_worker, m_thread;
 };
 } // namespace pdf

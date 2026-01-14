@@ -700,6 +700,14 @@ bool Session::saveEdits(const std::filesystem::path& destination,
                         const std::filesystem::path& source, std::size_t limit,
                         std::function<bool()> canceled,
                         std::function<void(SaveResult)> callback) {
+	struct Job {
+		std::vector<std::uint8_t> bytes;
+		std::function<bool()> cancel;
+		SaveResult result = SaveResult::Failed;
+		bool canceled = false;
+	};
+	const auto job = std::make_shared<Job>();
+	job->cancel = std::move(canceled);
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -710,26 +718,41 @@ bool Session::saveEdits(const std::filesystem::path& destination,
 		state->m_saving = true;
 	}
 	try {
-		state->m_engine.post([state, destination, source, limit,
-		                      canceled = std::move(canceled),
+		state->m_engine.post([state, job, destination, source, limit,
 		                      callback = std::move(callback)] {
-			SaveResult result = SaveResult::Failed;
+			const auto done = [state, job, callback = std::move(callback)] {
+				{
+					std::lock_guard lock(state->m_mutex);
+					state->m_saving = false;
+				}
+				callback(job->result);
+			};
 			try {
-				const auto stopped = [&] {
-					return state->closed() || (canceled && canceled());
+				const auto stopped = [state, job] {
+					job->canceled = job->canceled || state->closed() ||
+					                (job->cancel && job->cancel());
+					return job->canceled;
 				};
-				result = stopped() ? SaveResult::Canceled
-				                   : state->m_document->saveEdits(
-				                         destination, source, limit, stopped);
+				if (!stopped()) {
+					auto bytes = state->m_document->serialize(limit, stopped);
+					if (bytes) {
+						job->bytes = std::move(*bytes);
+						state->m_engine.background(
+						    [job, destination, source, stopped] {
+							    job->result = helpers::saveFile(
+							        destination, source, job->bytes, stopped);
+						    },
+						    done);
+						return;
+					}
+				}
+				job->result =
+				    job->canceled ? SaveResult::Canceled : SaveResult::Failed;
 			} catch (...) {
 				diagnostics::write(diagnostics::Level::Error,
 				                   "Couldn't save PDF edits.");
 			}
-			{
-				std::lock_guard lock(state->m_mutex);
-				state->m_saving = false;
-			}
-			callback(result);
+			done();
 		});
 	} catch (...) {
 		std::lock_guard lock(state->m_mutex);
@@ -771,43 +794,9 @@ bool Session::saveCopy(const std::filesystem::path& destination,
                        const std::filesystem::path& source,
                        std::function<bool()> canceled,
                        std::function<void(SaveResult)> callback) {
-	const auto state = m_state;
-	{
-		std::lock_guard lock(state->m_mutex);
-		if (!callback || !state->m_ready || state->m_closed ||
-		    state->m_saving) {
-			return false;
-		}
-		state->m_saving = true;
-	}
-	try {
-		state->m_engine.post([state, destination, source,
-		                      canceled = std::move(canceled),
-		                      callback = std::move(callback)] {
-			SaveResult result = SaveResult::Failed;
-			try {
-				const auto stopped = [&] {
-					return state->closed() || (canceled && canceled());
-				};
-				result = stopped() ? SaveResult::Canceled
-				                   : state->m_document->saveCopy(
-				                         destination, source, stopped);
-			} catch (...) {
-				diagnostics::write(diagnostics::Level::Error,
-				                   "Couldn't save a PDF copy.");
-			}
-			{
-				std::lock_guard lock(state->m_mutex);
-				state->m_saving = false;
-			}
-			callback(result);
-		});
-	} catch (...) {
-		std::lock_guard lock(state->m_mutex);
-		state->m_saving = false;
-		throw;
-	}
-	return true;
+	return saveEdits(destination, source,
+	                 (std::numeric_limits<std::size_t>::max)(),
+	                 std::move(canceled), std::move(callback));
 }
 
 bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
