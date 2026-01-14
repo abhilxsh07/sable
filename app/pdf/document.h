@@ -19,12 +19,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include "text.h"
 #include "search.h"
@@ -218,6 +221,11 @@ class Document {
 	                             int rotation = 0) const;
 
   private:
+	friend struct DocumentEditTest;
+	std::optional<std::vector<int>> editCounts() const;
+	bool checkEditCounts(const std::vector<int>& expected,
+	                     const std::vector<int>& pages) const;
+	void invalidateEdits();
 	bool canSerializeEdits(const std::function<bool()>& canceled) const;
 	friend OpenResult openDocument(std::vector<std::uint8_t> data,
 	                               const std::string& password);
@@ -227,6 +235,13 @@ class Document {
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
 	bool m_modified = false;
+	// i only append annotations; verified arrays and identities stay valid.
+	mutable std::optional<bool> m_serializable;
+	mutable std::optional<std::vector<int>> m_editCounts;
+	mutable std::set<int> m_independentPages;
+	mutable std::set<std::pair<int, int>> m_uniqueMarkup;
+	// guard page loads, kept separate from actual page rendering.
+	mutable std::size_t m_editPageLoads = 0;
 	// Nonowning handles stay on the engine thread for lazy target resolution.
 	mutable std::vector<void*> m_outlineBookmarks;
 };

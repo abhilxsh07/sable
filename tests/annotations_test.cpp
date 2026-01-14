@@ -29,6 +29,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/engine.h"
 #include "pdf_test_files.h"
 
+namespace pdf {
+struct DocumentEditTest {
+	static std::size_t pageLoads(const Document& document) {
+		return document.m_editPageLoads;
+	}
+	static bool preflight(const Document& document,
+	                      const std::function<bool()>& canceled) {
+		return document.canSerializeEdits(canceled);
+	}
+};
+} // namespace pdf
+
 namespace {
 std::vector<std::uint8_t> annotationBytes(const char* name) {
 	std::ifstream file(fixturePath(name), std::ios::binary);
@@ -1546,6 +1558,72 @@ TEST(Annotations, MarkupCommentPermissionsAndTypeAreIndependentOfCopy) {
 		    ASSERT_TRUE(denied.document);
 		    EXPECT_FALSE(denied.document->markupComment(
 		        0, 0, pdf::TextMarkup::Highlight));
+	    })
+	    .get();
+}
+
+TEST(Annotations, RepeatedEditsOnlyRecheckTheirOwnPages) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("text.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addCenteredTextNote(0, u"First"), 0);
+		    const auto before = pdf::DocumentEditTest::pageLoads(doc);
+		    ASSERT_EQ(doc.addCenteredTextNote(0, u"Second"), 1);
+		    EXPECT_EQ(pdf::DocumentEditTest::pageLoads(doc) - before, 1u);
+		    const auto notes = pdf::DocumentEditTest::pageLoads(doc);
+		    ASSERT_EQ(doc.updateTextNote(0, 0, u"First", u"Changed"), true);
+		    EXPECT_EQ(pdf::DocumentEditTest::pageLoads(doc), notes);
+		    for (const auto type :
+		         {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+		          pdf::TextMarkup::StrikeOut}) {
+			    const auto start = pdf::DocumentEditTest::pageLoads(doc);
+			    ASSERT_EQ(doc.markText({{0, 0}, {0, 4}}, type), 1);
+			    EXPECT_EQ(pdf::DocumentEditTest::pageLoads(doc) - start, 1u);
+		    }
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    for (int index = 2; index < 5; ++index) {
+			    const auto type = static_cast<pdf::TextMarkup>(index - 2);
+			    auto contents = saved.document->markupComment(0, index, type);
+			    ASSERT_TRUE(contents);
+			    const auto first =
+			        pdf::DocumentEditTest::pageLoads(*saved.document);
+			    for (int edit = 0; edit < 8; ++edit) {
+				    const auto replacement = edit % 2 ? u"Second" : u"First";
+				    ASSERT_EQ(saved.document->updateMarkupComment(
+				                  0, index, type, *contents, replacement),
+				              true);
+				    contents = saved.document->markupComment(0, index, type);
+				    ASSERT_TRUE(contents);
+				    EXPECT_EQ(contents->text, replacement);
+			    }
+			    EXPECT_EQ(pdf::DocumentEditTest::pageLoads(*saved.document),
+			              first);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, CanceledPreflightDoesNotCacheARefusal) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("text.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    int calls = 0;
+		    EXPECT_FALSE(pdf::DocumentEditTest::preflight(
+		        doc, [&] { return ++calls == 3; }));
+		    EXPECT_GT(pdf::DocumentEditTest::pageLoads(doc), 0u);
+		    ASSERT_EQ(doc.addTextNote(0, 40, 40, u"Note"), 0);
+		    EXPECT_TRUE(doc.serialize(1024 * 1024));
+		    EXPECT_EQ(doc.updateTextNote(0, 0, u"Note", u"Still editable"),
+		              true);
 	    })
 	    .get();
 }

@@ -96,7 +96,8 @@ bool offThread() {
 	return true;
 }
 
-std::optional<std::vector<int>> annotationCounts(FPDF_DOCUMENT document) {
+std::optional<std::vector<int>> annotationCounts(FPDF_DOCUMENT document,
+                                                 std::size_t& pageLoads) {
 	if (offThread()) {
 		return {};
 	}
@@ -106,6 +107,7 @@ std::optional<std::vector<int>> annotationCounts(FPDF_DOCUMENT document) {
 	}
 	std::vector<int> counts(pages);
 	for (int index = 0; index < pages; ++index) {
+		++pageLoads;
 		PagePtr page(FPDF_LoadPage(document, index));
 		if (!page) {
 			return {};
@@ -119,12 +121,14 @@ std::optional<std::vector<int>> annotationCounts(FPDF_DOCUMENT document) {
 }
 
 bool matchesAnnotationCounts(FPDF_DOCUMENT document,
-                             const std::vector<int>& expected) {
+                             const std::vector<int>& expected,
+                             std::size_t& pageLoads) {
 	if (offThread() ||
 	    FPDF_GetPageCount(document) != static_cast<int>(expected.size())) {
 		return false;
 	}
 	for (int index = 0; index < static_cast<int>(expected.size()); ++index) {
+		++pageLoads;
 		PagePtr page(FPDF_LoadPage(document, index));
 		if (!page || FPDFPage_GetAnnotCount(page.get()) != expected[index]) {
 			return false;
@@ -134,7 +138,7 @@ bool matchesAnnotationCounts(FPDF_DOCUMENT document,
 }
 
 bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
-                  int index, FPDF_ANNOTATION target) {
+                  int index, FPDF_ANNOTATION target, std::size_t& pageLoads) {
 	if (offThread() || FPDFPage_GetAnnotIndex(own, target) != index) {
 		return false;
 	}
@@ -145,6 +149,7 @@ bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
 		if (page == pageIndex) {
 			continue;
 		}
+		++pageLoads;
 		PagePtr other(FPDF_LoadPage(document, page));
 		if (!other || FPDFPage_GetAnnotIndex(other.get(), target) >= 0) {
 			return false;
@@ -428,7 +433,7 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	if (count < 0 || count >= 4096) {
 		return {};
 	}
-	auto expected = annotationCounts(m_handle);
+	auto expected = editCounts();
 	if (!expected || (*expected)[index] != count) {
 		return {};
 	}
@@ -452,11 +457,12 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	    FPDFAnnot_SetStringValue(
 	        note.get(), "T", reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) &&
 	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) &&
-	    matchesAnnotationCounts(m_handle, *expected);
+	    checkEditCounts(*expected, {index});
 	note.reset();
 	if (!complete) {
 		// i remove only the appended note if a setter failed.
 		if (!FPDFPage_RemoveAnnot(page.get(), count)) {
+			invalidateEdits();
 			throw std::runtime_error("Couldn't roll back the new note.");
 		}
 		m_modified = wasModified;
@@ -533,6 +539,7 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 		if (!FPDFAnnot_SetStringValue(
 		        note.get(), "Contents",
 		        reinterpret_cast<FPDF_WIDESTRING>(previous->c_str()))) {
+			invalidateEdits();
 			throw std::runtime_error("Couldn't restore the note contents.");
 		}
 		m_modified = wasModified;
@@ -559,9 +566,12 @@ Document::markupComment(int pageIndex, int index, TextMarkup markup) const {
 	    (FPDFAnnot_GetFlags(note.get()) &
 	     (FPDF_ANNOT_FLAG_READONLY | LOCKED_CONTENTS)) ||
 	    FPDFAnnot_HasKey(note.get(), "RC") ||
-	    !uniqueMarkup(m_handle, page.get(), pageIndex, index, note.get())) {
+	    (!m_uniqueMarkup.contains({pageIndex, index}) &&
+	     !uniqueMarkup(m_handle, page.get(), pageIndex, index, note.get(),
+	                   m_editPageLoads))) {
 		return {};
 	}
+	m_uniqueMarkup.insert({pageIndex, index});
 	CommentContents result;
 	result.present = FPDFAnnot_HasKey(note.get(), "Contents") != 0;
 	if (!result.present) {
@@ -620,6 +630,7 @@ Document::updateMarkupComment(int page, int index, TextMarkup markup,
 		    !FPDFAnnot_SetStringValue(
 		        note.get(), "Contents",
 		        reinterpret_cast<FPDF_WIDESTRING>(previous->text.c_str()))) {
+			invalidateEdits();
 			throw std::runtime_error("Couldn't restore the markup comment.");
 		}
 		m_modified = wasModified;
@@ -735,12 +746,15 @@ std::optional<int> Document::markText(TextSelection selection,
 	if (targets.empty()) {
 		return {};
 	}
-	auto expected = annotationCounts(m_handle);
+	auto expected = editCounts();
 	if (!expected) {
 		return {};
 	}
+	std::vector<int> pages;
+	pages.reserve(targets.size());
 	for (const auto& target : targets) {
 		++(*expected)[target.pageIndex];
+		pages.push_back(target.pageIndex);
 	}
 	const bool wasModified = m_modified;
 	std::size_t added = 0;
@@ -753,6 +767,7 @@ std::optional<int> Document::markText(TextSelection selection,
 			}
 		}
 		if (!restored) {
+			invalidateEdits();
 			throw std::runtime_error("Couldn't roll back the text markup.");
 		}
 		m_modified = wasModified;
@@ -783,8 +798,11 @@ std::optional<int> Document::markText(TextSelection selection,
 			return rollback();
 		}
 	}
-	if (!matchesAnnotationCounts(m_handle, *expected)) {
+	if (!checkEditCounts(*expected, pages)) {
 		return rollback();
+	}
+	for (const auto& target : targets) {
+		m_uniqueMarkup.insert({target.pageIndex, target.index});
 	}
 	// i use PDFium's default markup appearances.
 	// see:
@@ -843,31 +861,90 @@ std::optional<int> Document::addTextNoteAt(int index, double x, double y,
 	return addTextNote(index, left, bottom, contents, author);
 }
 
-bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
-	// @todo: preserve empty attachment streams before allowing rewrites.
-	if (offThread() || FPDFDoc_GetAttachmentCount(m_handle) != 0) {
-		return false;
+std::optional<std::vector<int>> Document::editCounts() const {
+	if (!m_editCounts) {
+		m_editCounts = annotationCounts(m_handle, m_editPageLoads);
 	}
-	for (int index = 0; index < pageCount(); ++index) {
-		if ((canceled && canceled())) {
+	return m_editCounts;
+}
+
+bool Document::checkEditCounts(const std::vector<int>& expected,
+                               const std::vector<int>& pages) const {
+	const bool independent =
+	    std::all_of(pages.begin(), pages.end(), [this](int page) {
+		    return m_independentPages.contains(page);
+	    });
+	if (!independent) {
+		// an empty shared array has no dictionary identity to inspect yet.
+		if (!matchesAnnotationCounts(m_handle, expected, m_editPageLoads)) {
 			return false;
 		}
+	} else {
+		for (const int index : pages) {
+			++m_editPageLoads;
+			PagePtr page(FPDF_LoadPage(m_handle, index));
+			if (!page ||
+			    FPDFPage_GetAnnotCount(page.get()) != expected[index]) {
+				return false;
+			}
+		}
+	}
+	m_editCounts = expected;
+	m_independentPages.insert(pages.begin(), pages.end());
+	return true;
+}
+
+void Document::invalidateEdits() {
+	m_serializable.reset();
+	m_editCounts.reset();
+	m_independentPages.clear();
+	m_uniqueMarkup.clear();
+}
+
+bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
+	if (offThread() || (canceled && canceled())) {
+		return false;
+	}
+	if (m_serializable) {
+		return *m_serializable;
+	}
+	const auto refuse = [this] {
+		m_serializable = false;
+		return false;
+	};
+	// @todo: preserve empty attachment streams before allowing rewrites.
+	if (FPDFDoc_GetAttachmentCount(m_handle) != 0) {
+		return refuse();
+	}
+	const int pages = pageCount();
+	if (pages < 0) {
+		return refuse();
+	}
+	std::vector<int> counts(pages);
+	for (int index = 0; index < pages; ++index) {
+		if (canceled && canceled()) {
+			return false;
+		}
+		++m_editPageLoads;
 		PagePtr page(FPDF_LoadPage(m_handle, index));
 		const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
 		if (count < 0 || count > 4096) {
-			return false;
+			return refuse();
 		}
+		counts[index] = count;
 		for (int i = 0; i < count; ++i) {
-			if ((canceled && canceled())) {
+			if (canceled && canceled()) {
 				return false;
 			}
 			AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
 			if (!note ||
 			    FPDFAnnot_GetSubtype(note.get()) == FPDF_ANNOT_FILEATTACHMENT) {
-				return false;
+				return refuse();
 			}
 		}
 	}
+	m_editCounts = std::move(counts);
+	m_serializable = true;
 	return true;
 }
 
