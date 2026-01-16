@@ -1627,3 +1627,58 @@ TEST(Annotations, CanceledPreflightDoesNotCacheARefusal) {
 	    })
 	    .get();
 }
+
+TEST(Annotations, SavedMarkupHasNormalAppearancesBeforeAnyPageIsRendered) {
+	const auto directory = makeTempDir("markup_appearance");
+	const auto cleanup = std::shared_ptr<void>(nullptr, [directory](void*) {
+		std::error_code ec;
+		std::filesystem::remove_all(directory, ec);
+	});
+	pdf::Engine engine;
+	engine
+	    .run([&] {
+		    for (const auto type :
+		         {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+		          pdf::TextMarkup::StrikeOut}) {
+			    const auto source = fixturePath("text.pdf");
+			    const auto opened = pdf::openFile(source);
+			    ASSERT_TRUE(opened.document);
+			    ASSERT_EQ(
+			        opened.document->markText({{0, 0}, {3, INT_MAX}}, type), 4);
+			    const auto target =
+			        directory /
+			        (std::to_string(static_cast<int>(type)) + ".pdf");
+			    ASSERT_EQ(
+			        opened.document->saveEdits(target, source, 1024 * 1024),
+			        pdf::SaveResult::Saved);
+			    std::ifstream file(target, std::ios::binary);
+			    const std::vector<std::uint8_t> bytes{
+			        std::istreambuf_iterator<char>(file), {}};
+			    ASSERT_FALSE(bytes.empty());
+			    std::unique_ptr<fpdf_document_t__,
+			                    decltype(&FPDF_CloseDocument)>
+			        raw(FPDF_LoadMemDocument64(bytes.data(), bytes.size(),
+			                                   nullptr),
+			            &FPDF_CloseDocument);
+			    ASSERT_TRUE(raw);
+			    for (int index = 0; index < 4; ++index) {
+				    std::unique_ptr<fpdf_page_t__, decltype(&FPDF_ClosePage)>
+				        page(FPDF_LoadPage(raw.get(), index), &FPDF_ClosePage);
+				    ASSERT_TRUE(page);
+				    ASSERT_EQ(FPDFPage_GetAnnotCount(page.get()), 1);
+				    std::unique_ptr<fpdf_annotation_t__,
+				                    decltype(&FPDFPage_CloseAnnot)>
+				        note(FPDFPage_GetAnnot(page.get(), 0),
+				             &FPDFPage_CloseAnnot);
+				    ASSERT_TRUE(note);
+				    EXPECT_EQ(FPDFAnnot_GetValueType(note.get(), "AP"),
+				              FPDF_OBJECT_DICTIONARY);
+				    EXPECT_GT(FPDFAnnot_GetAP(note.get(),
+				                              FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+				                              nullptr, 0),
+				              2u);
+			    }
+		    }
+	    })
+	    .get();
+}

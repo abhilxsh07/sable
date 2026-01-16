@@ -746,6 +746,10 @@ std::optional<int> Document::markText(TextSelection selection,
 	if (targets.empty()) {
 		return {};
 	}
+	BitmapPtr appearance(FPDFBitmap_Create(1, 1, 0));
+	if (!appearance) {
+		return {};
+	}
 	auto expected = editCounts();
 	if (!expected) {
 		return {};
@@ -795,6 +799,20 @@ std::optional<int> Document::markText(TextSelection selection,
 		}
 		if (!complete) {
 			note.reset();
+			return rollback();
+		}
+	}
+	// i let PDFium make its default appearances before these pages are saved.
+	// a one-pixel render does this even when the page was never on screen.
+	for (const auto& target : targets) {
+		FPDF_RenderPageBitmap(appearance.get(), target.page.get(), 0, 0, 1, 1,
+		                      0, FPDF_ANNOT);
+		AnnotationPtr note(FPDFPage_GetAnnot(target.page.get(), target.index));
+		if (!note ||
+		    FPDFAnnot_GetValueType(note.get(), "AP") !=
+		        FPDF_OBJECT_DICTIONARY ||
+		    FPDFAnnot_GetAP(note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+		                    nullptr, 0) <= 2) {
 			return rollback();
 		}
 	}
