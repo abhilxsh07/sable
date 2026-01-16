@@ -109,9 +109,7 @@ fire_and_forget Controller::show(std::shared_ptr<Controller> self) {
 		    put_abi(operation)));
 		diagnostics::write(diagnostics::Level::Info,
 		                   "Printing through modern Windows UI");
-		if (!(co_await operation)) {
-			self->finish(pdf::PrintResult::Canceled);
-		}
+		self->shown(co_await operation);
 	} catch (const hresult_error& error) {
 		diagnostics::write(diagnostics::Level::Warning,
 		                   "Couldn't show modern print UI: " +
@@ -121,6 +119,11 @@ fire_and_forget Controller::show(std::shared_ptr<Controller> self) {
 		                 : pdf::PrintResult::Failed);
 	} catch (...) {
 		self->finish(pdf::PrintResult::Failed);
+	}
+}
+void Controller::shown(bool opened) {
+	if (!opened) {
+		finish(pdf::PrintResult::Failed);
 	}
 }
 void Controller::requested(const PrintTaskRequest& request) {

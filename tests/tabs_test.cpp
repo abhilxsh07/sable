@@ -1043,6 +1043,7 @@ struct TabsTest {
 			check(viewer.Message().IsOpen() && viewer.Message().IsClosable() &&
 			          viewer.Scroller().Visibility() == Visibility::Visible,
 			      "invalid browser link hid the document");
+			viewer.Message().IsOpen(false);
 			viewer.m_printDialog = {};
 			viewer.m_printUi = [](auto) {};
 			owner.onPrint({}, {});
@@ -1053,7 +1054,11 @@ struct TabsTest {
 				owner.onPrint({}, {});
 				check(controller == viewer.m_printController,
 				      "modern print accepted a second dialog");
-				controller->finish(pdf::PrintResult::Failed);
+				controller->shown(true);
+				check(!controller->m_finished && owner.m_printing &&
+				          !viewer.Message().IsOpen(),
+				      "opened print UI was treated as a failure");
+				controller->shown(false);
 			}
 			check(!owner.m_printing && viewer.Message().IsOpen() &&
 			          viewer.Scroller().Visibility() == Visibility::Visible,

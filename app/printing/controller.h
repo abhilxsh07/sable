@@ -43,6 +43,7 @@ class Controller : public std::enable_shared_from_this<Controller> {
 	static winrt::fire_and_forget show(std::shared_ptr<Controller> self);
 	void requested(
 	    const winrt::Windows::Graphics::Printing::PrintTaskRequest& request);
+	void shown(bool opened);
 	void finish(std::optional<pdf::PrintResult> result);
 	void* m_owner = nullptr;
 	std::wstring m_title;
