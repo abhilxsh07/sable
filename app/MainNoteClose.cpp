@@ -106,6 +106,7 @@ fire_and_forget MainWindow::closeWithNotes() {
 		co_return;
 	}
 	m_closePending = true;
+	m_allowNoteClose = false;
 	try {
 		// opening and tab removal are held while this snapshot is reviewed.
 		const auto tabs = m_tabs;
@@ -122,10 +123,19 @@ fire_and_forget MainWindow::closeWithNotes() {
 		}
 		m_allowNoteClose = true;
 		Close();
+		m_allowNoteClose = false;
 	} catch (...) {
 		m_allowNoteClose = false;
 		diagnostics::write(diagnostics::Level::Error,
 		                   "Couldn't finish closing the reader window.");
+		try {
+			if (const auto current = Viewer(); current && !m_closing) {
+				get_self<ViewerPage>(current)->showNotice(
+				    L"Couldn't review unsaved notes. Finish the open dialog "
+				    L"and try closing again.");
+			}
+		} catch (...) {
+		}
 	}
 	m_closePending = false;
 }

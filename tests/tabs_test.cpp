@@ -3278,9 +3278,28 @@ struct TabsTest {
 			choose(ContentDialogResult::None);
 			owner.closeTab(owner.m_tabs.front().tab);
 			break;
-		case 3: {
+		case 3:
+			owner.m_notesChoice = []()
+			    -> Windows::Foundation::IAsyncOperation<ContentDialogResult> {
+				throw hresult_error(E_ILLEGAL_METHOD_CALL);
+			};
+			owner.m_allowNoteClose = true;
+			owner.closeWithNotes();
+			break;
+		case 4: {
+			if (owner.m_closePending) {
+				return;
+			}
 			check(owner.m_tabs.size() == 1 && v.m_notesDirty,
 			      "Cancel lost the edited tab");
+			check(
+			    !owner.m_closing && !owner.m_allowNoteClose &&
+			        !v.m_noteDialog && v.Message().IsOpen() &&
+			        std::wstring_view(v.Message().Message())
+			                .find(L"Couldn't review unsaved notes") == 0,
+			    "close review exception lost its notice or left close allowed");
+			v.Message().IsOpen(false);
+			choose(ContentDialogResult::None);
 			HWND handle{};
 			check_hresult(
 			    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
@@ -3290,13 +3309,13 @@ struct TabsTest {
 			notesSave = owner.saveNotes(current);
 			break;
 		}
-		case 4:
+		case 5:
 			check(!notesSave.GetResults() && v.m_notesDirty,
 			      "canceled picker cleared notes");
 			pick(v.m_path);
 			notesSave = owner.saveNotes(current);
 			break;
-		case 5:
+		case 6:
 			check(!notesSave.GetResults() && v.m_notesDirty,
 			      "source destination accepted or cleared notes");
 			notesPath = std::filesystem::temp_directory_path() /
@@ -3305,7 +3324,7 @@ struct TabsTest {
 			pick(notesPath);
 			notesSave = owner.saveNotes(current);
 			break;
-		case 6:
+		case 7:
 			check(notesSave.GetResults() && !v.m_notesDirty,
 			      "successful save did not clear the UI savepoint");
 			if (!notesRefusalTried) {
@@ -3333,13 +3352,13 @@ struct TabsTest {
 			notesGate->set_value();
 			notesGate.reset();
 			break;
-		case 7:
+		case 8:
 			check(v.m_notesDirty, "later note did not mark unsaved state");
 			pick(notesPath / L"missing" / L"notes.pdf");
 			choose(ContentDialogResult::Primary);
 			owner.closeTab(owner.m_tabs.front().tab);
 			break;
-		case 8:
+		case 9:
 			if (owner.m_closePending) {
 				return;
 			}
@@ -3350,15 +3369,15 @@ struct TabsTest {
 			check(owner.m_tabs.empty(), "Discard did not close tab");
 			owner.openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 			break;
-		case 9:
+		case 10:
 			v.submitNote(0, u"Must not lose attachments", {});
 			break;
-		case 10:
+		case 11:
 			check(!v.m_notesDirty, "attachment refusal changed the document");
 			owner.closeTab(owner.m_tabs.front().tab);
 			owner.openDocument(engine, L"tests/fixtures/notes_denied.pdf", 1);
 			break;
-		case 11:
+		case 12:
 			v.setCommentsOpen(true);
 			check(!v.AddNoteButton().IsEnabled(), "denied PDF enabled notes");
 			v.editNote();
@@ -3369,7 +3388,7 @@ struct TabsTest {
 			    engine, L"tests/fixtures/comment_locations.pdf", 1);
 			peerWindow->Activate();
 			break;
-		case 12: {
+		case 13: {
 			const auto peer = peerWindow->Viewer();
 			if (!peer || !ready(*get_self<ViewerPage>(peer))) {
 				return;
@@ -3377,7 +3396,7 @@ struct TabsTest {
 			get_self<ViewerPage>(peer)->submitNote(0, u"Window close", {});
 			break;
 		}
-		case 13: {
+		case 14: {
 			const auto pdf = get_self<ViewerPage>(peerWindow->Viewer());
 			if (pdf->m_noteBusy) {
 				return;
@@ -3402,7 +3421,7 @@ struct TabsTest {
 			SendMessageW(handle, WM_CLOSE, 0, 0);
 			break;
 		}
-		case 14:
+		case 15:
 			if (peerWindow->m_closePending) {
 				return;
 			}
