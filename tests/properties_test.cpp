@@ -37,6 +37,17 @@ TEST(PropertiesFormat, DatesKeepOffsetsAndValidateCalendar) {
 		EXPECT_TRUE(helpers::propertyDate(invalid).empty()) << invalid;
 	}
 }
+TEST(PropertiesFormat, UtcDatesAcceptTheZeroOffsetSuffix) {
+	EXPECT_EQ(helpers::propertyDate("D:20261018060000Z00'00'"),
+	          "2026-10-18  06:00:00 UTC");
+	EXPECT_EQ(helpers::propertyDate("2024Z00'00'"), "2024-01-01  00:00:00 UTC");
+	for (const auto invalid :
+	     {"D:20261018060000Z01'00'", "D:20261018060000Z00'01'",
+	      "D:20261018060000Z00'00", "D:20261018060000Z00'00'junk",
+	      "D:20261018060000Z00", "D:20261018060000Z00'"}) {
+		EXPECT_TRUE(helpers::propertyDate(invalid).empty()) << invalid;
+	}
+}
 TEST(PropertiesFormat, FileSizesRetainExactBytes) {
 	EXPECT_EQ(helpers::propertyFileSize(0), "0 bytes");
 	EXPECT_EQ(helpers::propertyFileSize(1), "1 byte");

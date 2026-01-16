@@ -89,6 +89,9 @@ std::string propertyDate(std::string_view raw) {
 	if (at < raw.size()) {
 		const auto sign = raw[at++];
 		if (sign == 'Z') {
+			if (raw.substr(at) == "00'00'") {
+				at = raw.size();
+			}
 			zone = " UTC";
 		} else if (sign == '+' || sign == '-') {
 			const int hours = digits(2);
