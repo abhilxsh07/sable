@@ -750,6 +750,7 @@ std::optional<int> Document::markText(TextSelection selection,
 	if (!appearance) {
 		return {};
 	}
+	FPDFBitmap_FillRect(appearance.get(), 0, 0, 1, 1, 0xFFFFFFFF);
 	auto expected = editCounts();
 	if (!expected) {
 		return {};
