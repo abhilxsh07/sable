@@ -2,6 +2,29 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Reader save repairs (2026-10-25)
+
+Save a Copy and Ctrl+S use Save notes while a tab has unsaved edits. Cancel
+and failure retain those edits; only successful output clears the UI
+savepoint. A modified document also serializes its edits when copied through
+the lower-level API. Untouched documents still keep their exact loaded bytes.
+This replaces the original-byte-only behavior recorded in the earlier entries.
+
+I serialize on the engine, write owned bytes through the atomic writer on
+its file worker, and finish callbacks on the engine. Shutdown drains both
+parts before PDFium is torn down. Source and alias protection stay in place.
+This replaces the engine-thread file writing recorded on 24 October.
+
+Serialization preflight, annotation counts and verified dictionary identity
+are cached per document. A page's first append still checks all page counts:
+an empty shared annotation array has no public identity to compare. Once
+that page is proven independent, later edits recheck only affected pages.
+
+PDFium creates its default markup appearances during rendering. I use a
+one-pixel render on edited pages before saving, then check the normal AP
+stream. Saved Highlight, Underline and StrikeOut entries no longer depend
+on those pages having appeared on screen first.
+
 ## Editing markup comments (2026-10-25)
 
 I open the existing editor for Highlight, Underline and StrikeOut rows in

@@ -14,8 +14,8 @@ The native reader opens PDFs in tabs with page labels, thumbnails, password
 prompts, night filters and internal/web links. Text selection, Find, document
 outlines and attachment saving work across tabs. Reading tools include view
 rotation, hand panning, scroll/spread layouts, presentation mode, document
-properties and Save a Copy. Saving keeps the loaded PDF's bytes intact;
-printing uses its original colors.
+properties and Save a Copy. Untouched copies keep the loaded PDF's bytes;
+edited copies include notes and markup. Printing uses original colors.
 
 Settings has General, Shortcuts and About pages. General offers the original
 Dark theme and **Obsidian (AMOLED)**, with pure-black resting app surfaces.

@@ -2,6 +2,29 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Reader repair regressions (25 October 2026)
+
+- Dirty Save a Copy: notes and all three markup types survive reopening.
+  Ctrl+S, pending edits, canceled/failed output and success-only savepoint
+  clearing pass unit and native checks.
+- Repeated edits reuse document guards; hostile shared-array refusals and
+  canceled-preflight retries pass. The first append on a new page retains
+  the full count check needed to detect empty shared annotation arrays.
+- File writes leave the engine available. Snapshot ordering, close/cancel,
+  callback thread, exactly-once completion and worker shutdown pass.
+- UTC dates accept Z00'00' and reject malformed offsets. Print UI false
+  results show a notice. Close-review exceptions retain edits, show a
+  notice and reset close permission; later close attempts still work.
+- Never-rendered markup is saved to disk and reopened through raw PDFium.
+  Every Highlight, Underline and StrikeOut has a normal AP stream before
+  any viewer render. No cross-viewer interoperability pass is implied.
+- Mouse press/release opens the placement editor in Select and Hand modes;
+  both drafts were canceled. This checks Windows mouse input routing,
+  not a physical mouse or touch device. No placement code change was needed.
+- Hidden smoke startup succeeds; the reader activates its window. Explicit
+  process-handle acquisition also makes the full smoke pass in Windows
+  PowerShell 5 and pwsh. The original historical check groups follow.
+
 I want a repeatable record of what works, what fails and what still needs a
 real device. Passing this list reduces risk; it cannot prove the absence of
 bugs. Previous results are useful baselines, but are not fresh passes here.
