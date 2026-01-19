@@ -45,6 +45,7 @@ try {
 		$process = Start-Process -FilePath $exe -ArgumentList ('--' + $option) `
 			-WorkingDirectory $workPath -WindowStyle Hidden -PassThru `
 			-RedirectStandardOutput $out -RedirectStandardError $err
+		$null = $process.Handle
 		if (-not $process.WaitForExit(10000)) { throw "smoke: $option timed out" }
 		if ($process.ExitCode -ne 0 -or (Get-Item -LiteralPath $out).Length -eq 0) {
 			throw "smoke: $option failed"
@@ -62,6 +63,7 @@ try {
 	$pdf = Join-Path $root 'tests/fixtures/pages.pdf'
 	$process = Start-Process -FilePath $exe -ArgumentList ('"' + $pdf + '"') `
 		-WorkingDirectory $workPath -WindowStyle Hidden -PassThru
+	$null = $process.Handle
 	$deadline = [DateTime]::UtcNow.AddSeconds(15)
 	do {
 		$process.Refresh()
