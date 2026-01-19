@@ -24,6 +24,7 @@
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
+#   text_bands.pdf  mixed fonts, descenders, columns and turned text
 #   outline*.pdf    hierarchy, Unicode titles, actions, cycles and deep nesting
 #   print.pdf       original colors, print-visible and screen-only annotations
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
@@ -334,6 +335,35 @@ def text_pdf() -> bytes:
     return w.finish(1, 16)
 
 
+def text_bands_pdf() -> bytes:
+    w = Writer(md5(b"sable text bands"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [7 0 R 9 0 R 11 0 R 13 0 R] /Count 4 >>")
+    for obj, font in enumerate(("Helvetica", "Helvetica-Bold",
+                                "Helvetica-Oblique", "Times-Roman"), 3):
+        w.add(obj, f"<< /Type /Font /Subtype /Type1 /BaseFont /{font} "
+              "/Encoding /WinAnsiEncoding >>")
+    stream = content(
+        "BT 40 330 Td /F1 18 Tf (Upright ) Tj /F2 24 Tf (bold ) Tj "
+        "/F3 18 Tf (flying glyphs ) Tj /F4 18 Tf (quiet.) Tj ET",
+        "BT /F1 18 Tf 450 330 Td (Column) Tj ET",
+        "BT /F4 18 Tf 40 296 Td (Next line has gyp descenders.) Tj ET",
+        "BT /F1 18 Tf 0.984808 0.173648 -0.173648 0.984808 40 220 Tm "
+        "(Sloping run) Tj ET",
+        "BT /F1 18 Tf 0 1 -1 0 450 100 Tm (Vertical run) Tj ET",
+    )
+    for i in range(4):
+        obj = 7 + 2 * i
+        w.add(obj, "<< /Type /Page /Parent 2 0 R "
+              "/MediaBox [0 0 640 420] /CropBox [20 30 620 390] "
+              f"/Rotate {90 * i} /Resources << /Font "
+              "<< /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> "
+              f"/Contents {obj + 1} 0 R >>")
+        w.add_stream(obj + 1, stream)
+    w.add(15, "<< /Title (Sable line band fixtures) >>")
+    return w.finish(1, 15)
+
+
 def print_pdf() -> bytes:
     w = Writer(md5(b"sable print.pdf"))
     w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -580,6 +610,7 @@ def main() -> None:
         "long.pdf": build_pdf("long.pdf", long_pages),
         "pages.pdf": build_pdf("pages.pdf", [PAGE_1, PAGE_2, PAGE_3], LABELS),
         "text.pdf": text_pdf(),
+        "text_bands.pdf": text_bands_pdf(),
         "password.pdf": build_pdf(
             "password.pdf", [PAGE_1], security=(USER_PASSWORD, OWNER_PASSWORD, -4)
         ),

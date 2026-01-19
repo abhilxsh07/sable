@@ -146,6 +146,54 @@ TEST(Text, MergesAdjacentBoxesButKeepsSeparateLines) {
 	EXPECT_EQ(boxes[0], (TextRect{.1, .1, .3, .2}));
 	EXPECT_EQ(boxes[1], (TextRect{.1, .4, .2, .6}));
 }
+TEST(Text, MixedFontsShareTheWholeLineBandForPartialSelections) {
+	const TextPage page{{{U'A', {.1, .2, .12, .235}, {.1, .23, 1, 0, 20}},
+	                     {U'B', {.12, .19, .15, .24}, {.12, .23, 1, 0, 28}},
+	                     {U' ', {}},
+	                     {U'f', {.151, .198, .18, .242}, {.15, .23, 1, 0, 20}},
+	                     {U'g', {.181, .205, .2, .25}, {.18, .23, 1, 0, 20}}},
+	                    600,
+	                    400};
+	const auto all = textRects(page, 0, 5);
+	ASSERT_EQ(all.size(), 1u);
+	EXPECT_EQ(all[0], (TextRect{.1, .19, .2, .25}));
+	const auto partial = textRects(page, 3, 4);
+	ASSERT_EQ(partial.size(), 1u);
+	EXPECT_EQ(partial[0], (TextRect{.151, .19, .18, .25}));
+	EXPECT_EQ(textRects(page, 0, 1)[0].bottom, all[0].bottom);
+}
+TEST(Text, BaselinesAndPhysicalGapsKeepColumnsAndCloseLinesSeparate) {
+	const TextPage page{{{U'A', {.1, .1, .12, .2}, {.1, .18, 1, 0, 10}},
+	                     {U'B', {.14, .1, .16, .2}, {.14, .18, 1, 0, 10}},
+	                     {U'C', {.16, .13, .18, .23}, {.16, .21, 1, 0, 10}},
+	                     {U'\n', {}},
+	                     {U'D', {.18, .13, .2, .23}, {.18, .21, 1, 0, 10}}},
+	                    1000,
+	                    100};
+	const auto boxes = textRects(page, 0, 5);
+	ASSERT_EQ(boxes.size(), 4u);
+	for (int i = 0; i < 3; ++i) {
+		EXPECT_EQ(boxes[i], page.characters[i].box);
+	}
+	EXPECT_EQ(boxes[3], page.characters[4].box);
+}
+TEST(Text, VerticalBandsAreStableAndDoNotJoinOppositeOrSkewedRuns) {
+	TextPage page{{{U'A', {.2, .1, .3, .13}, {.25, .1, 0, 1, 12}},
+	               {U'B', {.18, .13, .31, .16}, {.25, .13, 0, 1, 18}}},
+	              100,
+	              600};
+	const auto all = textRects(page, 0, 2);
+	ASSERT_EQ(all.size(), 1u);
+	EXPECT_EQ(all[0], (TextRect{.18, .1, .31, .16}));
+	EXPECT_EQ(textRects(page, 0, 1)[0], (TextRect{.18, .1, .31, .13}));
+	page.characters[1].baseline.dy = -1;
+	EXPECT_EQ(textRects(page, 0, 2).size(), 2u);
+	for (auto& c : page.characters) {
+		c.baseline.dx = .6;
+		c.baseline.dy = .8;
+	}
+	EXPECT_EQ(textRects(page, 0, 2).size(), 2u);
+}
 TEST(Text, Utf8HandlesGeneratedTextAndInvalidMappings) {
 	EXPECT_EQ(textUtf8(U"A\r\n\u03A9\U0001F600"),
 	          "A\r\n\xCE\xA9\xF0\x9F\x98\x80");

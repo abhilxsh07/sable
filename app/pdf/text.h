@@ -31,12 +31,19 @@ struct TextRect {
 	double left = 0, top = 0, right = 0, bottom = 0;
 	bool operator==(const TextRect&) const = default;
 };
+struct TextBaseline {
+	double x = 0, y = 0;   // fractions of the displayed page
+	double dx = 0, dy = 0; // unit direction in displayed page points
+	double height = 0; // em height in displayed page points; zero if unknown
+};
 struct TextChar {
 	char32_t unicode = 0;
 	TextRect box; // fractions of the displayed page, after crop/rotation
+	TextBaseline baseline;
 };
 struct TextPage {
 	std::vector<TextChar> characters;
+	double width = 1, height = 1; // displayed page size in points
 };
 struct TextPosition {
 	int page = 0, index = 0;
@@ -52,6 +59,7 @@ std::pair<int, int> textSpan(const TextSelection& selection, int page,
                              int count);
 std::optional<int> hitText(const TextPage& page, double x, double y,
                            double width, double height, bool nearest = false);
+// i keep the full line's height even when only part of it is selected.
 std::vector<TextRect> textRects(const TextPage& page, int first, int end);
 std::string textUtf8(std::u32string_view text);
 } // namespace pdf

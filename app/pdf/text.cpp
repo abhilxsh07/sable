@@ -48,6 +48,63 @@ bool valid(const TextChar& c) {
 	       b.top >= 0 && b.right <= 1 && b.bottom <= 1 && b.right > b.left &&
 	       b.bottom > b.top;
 }
+TextRect unite(const TextRect& a, const TextRect& b) {
+	return {std::min(a.left, b.left), std::min(a.top, b.top),
+	        std::max(a.right, b.right), std::max(a.bottom, b.bottom)};
+}
+int axis(const TextChar& c) {
+	const auto& b = c.baseline;
+	if (!std::isfinite(b.x) || !std::isfinite(b.y) ||
+	    !std::isfinite(b.height) || b.height <= 0 || !std::isfinite(b.dx) ||
+	    !std::isfinite(b.dy)) {
+		return 0;
+	}
+	if (std::abs(b.dx) > .99 && std::abs(b.dy) < .01) {
+		return 1;
+	}
+	if (std::abs(b.dy) > .99 && std::abs(b.dx) < .01) {
+		return 2;
+	}
+	return -1; // i leave skewed characters separate.
+}
+bool sameLine(const TextPage& page, const TextChar& start,
+              const TextChar& previous, const TextChar& current,
+              const TextRect& bounds) {
+	const int direction = axis(start);
+	if (direction != axis(current) || direction < 0) {
+		return false;
+	}
+	const auto& a = previous.box;
+	const auto& b = current.box;
+	if (!direction) {
+		const double height =
+		    std::max(bounds.bottom - bounds.top, b.bottom - b.top);
+		const double width =
+		    std::max(bounds.right - bounds.left, b.right - b.left);
+		return (std::abs(bounds.top - b.top) < height * .15 &&
+		        std::abs(bounds.bottom - b.bottom) < height * .15 &&
+		        std::max(a.left, b.left) - std::min(a.right, b.right) <=
+		            height * .3) ||
+		       (std::abs(bounds.left - b.left) < width * .15 &&
+		        std::abs(bounds.right - b.right) < width * .15 &&
+		        std::max(a.top, b.top) - std::min(a.bottom, b.bottom) <=
+		            width * .3);
+	}
+	const auto& base = start.baseline;
+	const auto& next = current.baseline;
+	const double height = std::min(base.height, next.height);
+	const bool horizontal = direction == 1;
+	const double offset = horizontal ? (base.y - next.y) * page.height
+	                                 : (base.x - next.x) * page.width;
+	const double gap =
+	    horizontal ? (std::max(a.left, b.left) - std::min(a.right, b.right)) *
+	                     page.width
+	               : (std::max(a.top, b.top) - std::min(a.bottom, b.bottom)) *
+	                     page.height;
+	return base.dx * next.dx + base.dy * next.dy > .99 &&
+	       std::abs(offset) <= height * .05 &&
+	       gap <= std::min(previous.baseline.height, next.height) * .75;
+}
 } // namespace
 std::optional<int> hitText(const TextPage& page, double x, double y,
                            double width, double height, bool nearest) {
@@ -80,34 +137,52 @@ std::vector<TextRect> textRects(const TextPage& page, int first, int end) {
 	std::vector<TextRect> result;
 	first = std::clamp(first, 0, static_cast<int>(page.characters.size()));
 	end = std::clamp(end, first, static_cast<int>(page.characters.size()));
-	for (int i = first; i < end; ++i) {
+	if (first == end || !std::isfinite(page.width) || page.width <= 0 ||
+	    !std::isfinite(page.height) || page.height <= 0) {
+		return result;
+	}
+	int start = -1, previous = -1;
+	TextRect bounds;
+	std::optional<TextRect> selected;
+	const auto finish = [&] {
+		if (selected) {
+			const int direction = axis(page.characters[start]);
+			if (direction == 1) {
+				selected->top = bounds.top;
+				selected->bottom = bounds.bottom;
+			} else if (direction == 2) {
+				selected->left = bounds.left;
+				selected->right = bounds.right;
+			}
+			result.push_back(*selected);
+			selected.reset();
+		}
+		start = previous = -1;
+	};
+	for (int i = 0; i < static_cast<int>(page.characters.size()); ++i) {
 		const auto& c = page.characters[i];
 		if (!valid(c)) {
+			if (c.unicode != U' ' && c.unicode != U'\t') {
+				finish();
+			}
 			continue;
 		}
-		const auto& b = c.box;
-		if (!result.empty()) {
-			auto& a = result.back();
-			const double height = std::max(a.bottom - a.top, b.bottom - b.top);
-			const double width = std::max(a.right - a.left, b.right - b.left);
-			const bool horizontal =
-			    std::abs(a.top - b.top) < height * .15 &&
-			    std::abs(a.bottom - b.bottom) < height * .15 &&
-			    std::max(a.left, b.left) - std::min(a.right, b.right) <=
-			        height * .3;
-			const bool vertical =
-			    std::abs(a.left - b.left) < width * .15 &&
-			    std::abs(a.right - b.right) < width * .15 &&
-			    std::max(a.top, b.top) - std::min(a.bottom, b.bottom) <=
-			        width * .3;
-			if (horizontal || vertical) {
-				a = {std::min(a.left, b.left), std::min(a.top, b.top),
-				     std::max(a.right, b.right), std::max(a.bottom, b.bottom)};
-				continue;
-			}
+		if (start >= 0 && !sameLine(page, page.characters[start],
+		                            page.characters[previous], c, bounds)) {
+			finish();
 		}
-		result.push_back(b);
+		if (start < 0) {
+			start = i;
+			bounds = c.box;
+		} else {
+			bounds = unite(bounds, c.box);
+		}
+		previous = i;
+		if (i >= first && i < end) {
+			selected = selected ? unite(*selected, c.box) : c.box;
+		}
 	}
+	finish();
 	return result;
 }
 std::string textUtf8(std::u32string_view text) {
