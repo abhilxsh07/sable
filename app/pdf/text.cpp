@@ -105,6 +105,66 @@ bool sameLine(const TextPage& page, const TextChar& start,
 	       std::abs(offset) <= height * .05 &&
 	       gap <= std::min(previous.baseline.height, next.height) * .75;
 }
+std::vector<int> lineOrder(const TextPage& page) {
+	std::vector<int> order, block;
+	order.reserve(page.characters.size());
+	const auto kind = [&](int index) {
+		const auto& c = page.characters[index];
+		return axis(c) == 1 ? (c.baseline.dx < 0 ? 1 : 0)
+		                    : (c.baseline.dy < 0 ? 3 : 2);
+	};
+	const auto cross = [&](int index) {
+		const auto& c = page.characters[index];
+		return axis(c) == 1 ? c.baseline.y * page.height
+		                    : c.baseline.x * page.width;
+	};
+	const auto finish = [&] {
+		// PDFium can reverse font runs without reversing their characters.
+		std::sort(block.begin(), block.end(), [&](int a, int b) {
+			if (kind(a) != kind(b)) {
+				return kind(a) < kind(b);
+			}
+			return cross(a) != cross(b) ? cross(a) < cross(b) : a < b;
+		});
+		for (std::size_t start = 0; start < block.size();) {
+			std::size_t end = start + 1;
+			double height = page.characters[block[start]].baseline.height;
+			for (; end < block.size(); ++end) {
+				height = std::min(height,
+				                  page.characters[block[end]].baseline.height);
+				if (kind(block[start]) != kind(block[end]) ||
+				    cross(block[end]) - cross(block[start]) > height * .05) {
+					break;
+				}
+			}
+			const bool horizontal = axis(page.characters[block[start]]) == 1;
+			std::sort(block.begin() + start, block.begin() + end,
+			          [&](int a, int b) {
+				          const auto& x = page.characters[a].box;
+				          const auto& y = page.characters[b].box;
+				          const double p = horizontal ? x.left : x.top;
+				          const double q = horizontal ? y.left : y.top;
+				          return p != q ? p < q : a < b;
+			          });
+			order.insert(order.end(), block.begin() + start,
+			             block.begin() + end);
+			order.push_back(-1);
+			start = end;
+		}
+		block.clear();
+	};
+	for (int i = 0; i < static_cast<int>(page.characters.size()); ++i) {
+		const auto& c = page.characters[i];
+		if (valid(c) && axis(c) > 0) {
+			block.push_back(i);
+		} else if ((c.unicode != U' ' && c.unicode != U'\t') || valid(c)) {
+			finish();
+			order.push_back(i);
+		}
+	}
+	finish();
+	return order;
+}
 } // namespace
 std::optional<int> hitText(const TextPage& page, double x, double y,
                            double width, double height, bool nearest) {
@@ -142,6 +202,8 @@ std::vector<TextRect> textRects(const TextPage& page, int first, int end) {
 		return result;
 	}
 	int start = -1, previous = -1;
+	int selectedIndex = end;
+	std::vector<std::pair<int, TextRect>> bands;
 	TextRect bounds;
 	std::optional<TextRect> selected;
 	const auto finish = [&] {
@@ -154,12 +216,17 @@ std::vector<TextRect> textRects(const TextPage& page, int first, int end) {
 				selected->left = bounds.left;
 				selected->right = bounds.right;
 			}
-			result.push_back(*selected);
+			bands.push_back({selectedIndex, *selected});
 			selected.reset();
+			selectedIndex = end;
 		}
 		start = previous = -1;
 	};
-	for (int i = 0; i < static_cast<int>(page.characters.size()); ++i) {
+	for (const int i : lineOrder(page)) {
+		if (i < 0) {
+			finish();
+			continue;
+		}
 		const auto& c = page.characters[i];
 		if (!valid(c)) {
 			if (c.unicode != U' ' && c.unicode != U'\t') {
@@ -180,9 +247,15 @@ std::vector<TextRect> textRects(const TextPage& page, int first, int end) {
 		previous = i;
 		if (i >= first && i < end) {
 			selected = selected ? unite(*selected, c.box) : c.box;
+			selectedIndex = std::min(selectedIndex, i);
 		}
 	}
 	finish();
+	std::sort(bands.begin(), bands.end(),
+	          [](const auto& a, const auto& b) { return a.first < b.first; });
+	for (const auto& band : bands) {
+		result.push_back(band.second);
+	}
 	return result;
 }
 std::string textUtf8(std::u32string_view text) {

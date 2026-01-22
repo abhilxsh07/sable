@@ -177,6 +177,28 @@ TEST(Text, BaselinesAndPhysicalGapsKeepColumnsAndCloseLinesSeparate) {
 	}
 	EXPECT_EQ(boxes[3], page.characters[4].box);
 }
+TEST(Text, ReversedFontRunsKeepOneBandWithoutJoiningColumnsOrNewlines) {
+	const TextPage page{{{U'E', {.18, .2, .2, .24}, {.18, .23, -1, 0, 18}},
+	                     {U'F', {.2, .2, .22, .24}, {.2, .23, -1, 0, 18}},
+	                     {U'C', {.14, .18, .16, .245}, {.14, .23, -1, 0, 24}},
+	                     {U'D', {.16, .18, .18, .245}, {.16, .23, -1, 0, 24}},
+	                     {U'A', {.1, .19, .12, .26}, {.1, .23, -1, 0, 30}},
+	                     {U'B', {.12, .19, .14, .26}, {.12, .23, -1, 0, 30}},
+	                     {U'X', {.6, .2, .62, .24}, {.6, .23, -1, 0, 18}},
+	                     {U'\n', {}},
+	                     {U'Z', {.22, .2, .24, .24}, {.22, .23, -1, 0, 18}}},
+	                    600,
+	                    400};
+	const auto all = textRects(page, 0, 9);
+	ASSERT_EQ(all.size(), 3u);
+	EXPECT_EQ(all[0], (TextRect{.1, .18, .22, .26}));
+	EXPECT_EQ(all[1], page.characters[6].box);
+	EXPECT_EQ(all[2], page.characters[8].box);
+	EXPECT_EQ(textRects(page, 0, 2),
+	          (std::vector<TextRect>{{.18, .18, .22, .26}}));
+	EXPECT_EQ(textRects(page, 4, 5),
+	          (std::vector<TextRect>{{.1, .18, .12, .26}}));
+}
 TEST(Text, VerticalBandsAreStableAndDoNotJoinOppositeOrSkewedRuns) {
 	TextPage page{{{U'A', {.2, .1, .3, .13}, {.25, .1, 0, 1, 12}},
 	               {U'B', {.18, .13, .31, .16}, {.25, .13, 0, 1, 18}}},
@@ -193,6 +215,74 @@ TEST(Text, VerticalBandsAreStableAndDoNotJoinOppositeOrSkewedRuns) {
 		c.baseline.dy = .8;
 	}
 	EXPECT_EQ(textRects(page, 0, 2).size(), 2u);
+}
+TEST(Text, CroppedMixedFontBandsFollowEveryPageRotation) {
+	Engine engine;
+	engine
+	    .run([] {
+		    auto opened = openFile(fixturePath("text_bands.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    std::array<TextRect, 4> bands;
+		    for (int turn = 0; turn < 4; ++turn) {
+			    const auto page = opened.document->textPage(turn);
+			    ASSERT_TRUE(page);
+			    const auto letter = std::find_if(
+			        page->characters.begin(), page->characters.end(),
+			        [](const auto& c) { return c.unicode == U'U'; });
+			    ASSERT_NE(letter, page->characters.end());
+			    EXPECT_GT(letter->baseline.height, 0);
+			    const int index =
+			        static_cast<int>(letter - page->characters.begin());
+			    const auto selected = textRects(*page, index, index + 1);
+			    ASSERT_EQ(selected.size(), 1u);
+			    const auto all = textRects(
+			        *page, 0, static_cast<int>(page->characters.size()));
+			    const auto band =
+			        std::find_if(all.begin(), all.end(), [&](const auto& b) {
+				        const auto& s = selected[0];
+				        return b.left <= s.left && b.top <= s.top &&
+				               b.right >= s.right && b.bottom >= s.bottom;
+			        });
+			    ASSERT_NE(band, all.end());
+			    bands[turn] = *band;
+			    for (const auto glyph : {U'b', U'f', U'q'}) {
+				    const auto other = std::find_if(
+				        page->characters.begin(), page->characters.end(),
+				        [glyph](const auto& c) { return c.unicode == glyph; });
+				    ASSERT_NE(other, page->characters.end());
+				    const int n =
+				        static_cast<int>(other - page->characters.begin());
+				    const auto part = textRects(*page, n, n + 1);
+				    ASSERT_EQ(part.size(), 1u);
+				    if (turn % 2 == 0) {
+					    EXPECT_EQ(part[0].top, band->top);
+					    EXPECT_EQ(part[0].bottom, band->bottom);
+				    } else {
+					    EXPECT_EQ(part[0].left, band->left);
+					    EXPECT_EQ(part[0].right, band->right);
+				    }
+			    }
+			    if (turn % 2 == 0) {
+				    EXPECT_EQ(selected[0].top, band->top);
+				    EXPECT_EQ(selected[0].bottom, band->bottom);
+				    EXPECT_LT(selected[0].right - selected[0].left,
+				              band->right - band->left);
+			    } else {
+				    EXPECT_EQ(selected[0].left, band->left);
+				    EXPECT_EQ(selected[0].right, band->right);
+				    EXPECT_LT(selected[0].bottom - selected[0].top,
+				              band->bottom - band->top);
+			    }
+		    }
+		    const auto& a = bands[0];
+		    EXPECT_NEAR(bands[1].left, 1 - a.bottom, .00001);
+		    EXPECT_NEAR(bands[1].top, a.left, .00001);
+		    EXPECT_NEAR(bands[2].left, 1 - a.right, .00001);
+		    EXPECT_NEAR(bands[2].top, 1 - a.bottom, .00001);
+		    EXPECT_NEAR(bands[3].left, a.top, .00001);
+		    EXPECT_NEAR(bands[3].top, 1 - a.right, .00001);
+	    })
+	    .get();
 }
 TEST(Text, Utf8HandlesGeneratedTextAndInvalidMappings) {
 	EXPECT_EQ(textUtf8(U"A\r\n\u03A9\U0001F600"),

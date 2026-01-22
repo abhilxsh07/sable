@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 #include <fpdf_annot.h>
 #include <fpdfview.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -1677,6 +1678,91 @@ TEST(Annotations, SavedMarkupHasNormalAppearancesBeforeAnyPageIsRendered) {
 				                              FPDF_ANNOT_APPEARANCEMODE_NORMAL,
 				                              nullptr, 0),
 				              2u);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, MixedFontMarkupUsesTheSelectionBandsAfterSaving) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto type :
+		         {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+		          pdf::TextMarkup::StrikeOut}) {
+			    const auto opened =
+			        pdf::openFile(fixturePath("text_bands.pdf"));
+			    ASSERT_TRUE(opened.document);
+			    std::vector<std::vector<pdf::TextRect>> bands;
+			    for (int index = 0; index < 4; ++index) {
+				    const auto text = opened.document->textPage(index);
+				    ASSERT_TRUE(text);
+				    bands.push_back(pdf::textRects(
+				        *text, 0, static_cast<int>(text->characters.size())));
+			    }
+			    ASSERT_EQ(
+			        opened.document->markText({{0, 0}, {3, INT_MAX}}, type), 4);
+			    const auto bytes = opened.document->serialize(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    std::unique_ptr<fpdf_document_t__,
+			                    decltype(&FPDF_CloseDocument)>
+			        raw(FPDF_LoadMemDocument64(bytes->data(), bytes->size(),
+			                                   nullptr),
+			            &FPDF_CloseDocument);
+			    ASSERT_TRUE(raw);
+			    for (int index = 0; index < 4; ++index) {
+				    std::unique_ptr<fpdf_page_t__, decltype(&FPDF_ClosePage)>
+				        page(FPDF_LoadPage(raw.get(), index), &FPDF_ClosePage);
+				    ASSERT_TRUE(page);
+				    std::unique_ptr<fpdf_annotation_t__,
+				                    decltype(&FPDFPage_CloseAnnot)>
+				        note(FPDFPage_GetAnnot(page.get(), 0),
+				             &FPDFPage_CloseAnnot);
+				    ASSERT_TRUE(note);
+				    ASSERT_EQ(FPDFAnnot_CountAttachmentPoints(note.get()),
+				              bands[index].size());
+				    EXPECT_EQ(FPDFAnnot_GetValueType(note.get(), "AP"),
+				              FPDF_OBJECT_DICTIONARY);
+				    EXPECT_GT(FPDFAnnot_GetAP(note.get(),
+				                              FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+				                              nullptr, 0),
+				              2u);
+				    for (std::size_t n = 0; n < bands[index].size(); ++n) {
+					    FS_QUADPOINTSF q{};
+					    ASSERT_TRUE(
+					        FPDFAnnot_GetAttachmentPoints(note.get(), n, &q));
+					    const std::pair<float, float> points[] = {{q.x1, q.y1},
+					                                              {q.x2, q.y2},
+					                                              {q.x3, q.y3},
+					                                              {q.x4, q.y4}};
+					    constexpr int grid = 1 << 20;
+					    pdf::TextRect actual{1, 1, 0, 0};
+					    for (const auto& [x, y] : points) {
+						    int dx = 0, dy = 0;
+						    ASSERT_TRUE(FPDF_PageToDevice(page.get(), 0, 0,
+						                                  grid, grid, 0, x, y,
+						                                  &dx, &dy));
+						    actual.left =
+						        (std::min)(actual.left, dx / double(grid));
+						    actual.right =
+						        (std::max)(actual.right, dx / double(grid));
+						    actual.top =
+						        (std::min)(actual.top, dy / double(grid));
+						    actual.bottom =
+						        (std::max)(actual.bottom, dy / double(grid));
+					    }
+					    const auto& selected = bands[index][n];
+					    EXPECT_NEAR(actual.left, selected.left, .00001);
+					    EXPECT_NEAR(actual.right, selected.right, .00001);
+					    EXPECT_NEAR(actual.top, selected.top, .00001);
+					    EXPECT_NEAR(actual.bottom, selected.bottom, .00001);
+					    // the quad keeps its top above its baseline in PDF
+					    // space.
+					    EXPECT_GT((q.x2 - q.x1) * (q.y1 - q.y3) -
+					                  (q.y2 - q.y1) * (q.x1 - q.x3),
+					              0);
+				    }
 			    }
 		    }
 	    })

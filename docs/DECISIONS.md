@@ -1727,3 +1727,12 @@ selection/navigation, cache/zoom, panel switching, empty/retry and stale results
 Browser launches are intercepted; physical tree/keyboard appearance and input
 remain unverified. Release ARM64 validation uses the local non-LTO variant
 noted above; the source project keeps its normal optimization settings.
+
+## Text selection and markup bands (2026-10-26)
+
+The approved reader changes use one line-band calculation for selection and
+saved Highlight, Underline and StrikeOut quads. PDFium's rectangle list splits
+at font changes, which left uneven patches inside a single line. I keep the
+whole line's cross-axis bounds for partial selections, with separate runs for
+columns, baselines and text directions. Cropped and rotated pages map those
+same bands back to PDF coordinates. Skewed runs retain individual bounds.

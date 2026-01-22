@@ -73,6 +73,69 @@ struct TextCloser {
 };
 using TextPtr = std::unique_ptr<fpdf_textpage_t__, TextCloser>;
 
+constexpr int TEXT_GRID = 1 << 20;
+
+std::optional<TextPage> pageText(FPDF_PAGE page, FPDF_TEXTPAGE text) {
+	const int count = FPDFText_CountChars(text);
+	TextPage result;
+	result.width = FPDF_GetPageWidthF(page);
+	result.height = FPDF_GetPageHeightF(page);
+	if (count < 0 || count > 200'000 || !std::isfinite(result.width) ||
+	    !std::isfinite(result.height) || result.width <= 0 ||
+	    result.height <= 0) {
+		return {};
+	}
+	result.characters.reserve(count);
+	const auto point = [&](double x, double y, int& dx, int& dy) {
+		return FPDF_PageToDevice(page, 0, 0, TEXT_GRID, TEXT_GRID, 0, x, y, &dx,
+		                         &dy);
+	};
+	for (int i = 0; i < count; ++i) {
+		TextChar character;
+		character.unicode = FPDFText_GetUnicode(text, i);
+		FS_RECTF box{};
+		if (FPDFText_GetLooseCharBox(text, i, &box) &&
+		    std::isfinite(box.left) && std::isfinite(box.right) &&
+		    std::isfinite(box.top) && std::isfinite(box.bottom)) {
+			int ax = 0, ay = 0, bx = 0, by = 0;
+			if (point(box.left, box.top, ax, ay) &&
+			    point(box.right, box.bottom, bx, by)) {
+				character.box = {
+				    std::clamp((std::min)(ax, bx) / double(TEXT_GRID), 0., 1.),
+				    std::clamp((std::min)(ay, by) / double(TEXT_GRID), 0., 1.),
+				    std::clamp((std::max)(ax, bx) / double(TEXT_GRID), 0., 1.),
+				    std::clamp((std::max)(ay, by) / double(TEXT_GRID), 0., 1.)};
+			}
+		}
+		double x = 0, y = 0;
+		FS_MATRIX matrix{};
+		if (FPDFText_GetCharOrigin(text, i, &x, &y) && std::isfinite(x) &&
+		    std::isfinite(y) && FPDFText_GetMatrix(text, i, &matrix) &&
+		    std::isfinite(matrix.a) && std::isfinite(matrix.b)) {
+			const double length = std::hypot(matrix.a, matrix.b);
+			int ax = 0, ay = 0, bx = 0, by = 0;
+			if (length > 0 && point(x, y, ax, ay) &&
+			    point(x + matrix.a / length, y + matrix.b / length, bx, by)) {
+				const double dx = (double(bx) - ax) * result.width;
+				const double dy = (double(by) - ay) * result.height;
+				const double displayed = std::hypot(dx, dy);
+				if (displayed > 0) {
+					const auto& b = character.box;
+					const double height =
+					    std::abs(dx) >= std::abs(dy)
+					        ? (b.bottom - b.top) * result.height
+					        : (b.right - b.left) * result.width;
+					character.baseline = {
+					    ax / double(TEXT_GRID), ay / double(TEXT_GRID),
+					    dx / displayed, dy / displayed, height};
+				}
+			}
+		}
+		result.characters.push_back(character);
+	}
+	return result;
+}
+
 std::optional<FPDF_ANNOTATION_SUBTYPE> markupSubtype(TextMarkup markup) {
 	switch (markup) {
 	case TextMarkup::Highlight:
@@ -675,9 +738,12 @@ std::optional<int> Document::markText(TextSelection selection,
 		if (!text) {
 			return {};
 		}
-		const int chars = FPDFText_CountChars(text.get());
-		if (chars < 0 || chars > 200'000 ||
-		    (index == first.page && first.index > chars)) {
+		const auto snapshot = pageText(target.page.get(), text.get());
+		if (!snapshot) {
+			return {};
+		}
+		const int chars = static_cast<int>(snapshot->characters.size());
+		if (index == first.page && first.index > chars) {
 			return {};
 		}
 		const auto [begin, end] = textSpan(selection, index, chars);
@@ -697,28 +763,67 @@ std::optional<int> Document::markText(TextSelection selection,
 		    box.left >= box.right || box.bottom >= box.top) {
 			return {};
 		}
-		const int count = FPDFText_CountRects(text.get(), begin, end - begin);
-		if (count < 0 || static_cast<std::size_t>(count) > 4096 - totalQuads) {
+		const auto bands = textRects(*snapshot, begin, end);
+		if (bands.size() > 4096 - totalQuads) {
 			return {};
 		}
-		target.quads.reserve(count);
-		for (int rect = 0; rect < count; ++rect) {
-			double left = 0, top = 0, right = 0, bottom = 0;
-			if (!FPDFText_GetRect(text.get(), rect, &left, &top, &right,
-			                      &bottom) ||
-			    !std::isfinite(left) || !std::isfinite(top) ||
-			    !std::isfinite(right) || !std::isfinite(bottom)) {
-				return {};
+		target.quads.reserve(bands.size());
+		int cursor = begin;
+		const int turn = FPDFPage_GetRotation(target.page.get());
+		for (const auto& band : bands) {
+			// i keep the text's top edge when the page or text is rotated.
+			double dx = turn % 2 ? 0 : (turn == 2 ? -1 : 1);
+			double dy = turn % 2 ? (turn == 3 ? -1 : 1) : 0;
+			for (; cursor < end; ++cursor) {
+				const auto& character = snapshot->characters[cursor];
+				const auto& b = character.box;
+				const double x = (b.left + b.right) / 2;
+				const double y = (b.top + b.bottom) / 2;
+				if (character.baseline.height > 0 && b.right > b.left &&
+				    b.bottom > b.top && x >= band.left && x <= band.right &&
+				    y >= band.top && y <= band.bottom) {
+					dx = character.baseline.dx;
+					dy = character.baseline.dy;
+					++cursor;
+					break;
+				}
 			}
-			FS_RECTF clipped{
-			    static_cast<float>(
-			        std::clamp(left, double(box.left), double(box.right))),
-			    static_cast<float>(
-			        std::clamp(top, double(box.bottom), double(box.top))),
-			    static_cast<float>(
-			        std::clamp(right, double(box.left), double(box.right))),
-			    static_cast<float>(
-			        std::clamp(bottom, double(box.bottom), double(box.top)))};
+			const std::pair<double, double> corners[] = {
+			    {band.left, band.top},
+			    {band.right, band.top},
+			    {band.left, band.bottom},
+			    {band.right, band.bottom}};
+			const int order = std::abs(dx) >= std::abs(dy) ? (dx < 0 ? 2 : 0)
+			                                               : (dy < 0 ? 3 : 1);
+			constexpr int indices[4][4] = {
+			    {0, 1, 2, 3}, {1, 3, 0, 2}, {3, 2, 1, 0}, {2, 0, 3, 1}};
+			FS_QUADPOINTSF quad{};
+			float* const coordinates[] = {&quad.x1, &quad.y1, &quad.x2,
+			                              &quad.y2, &quad.x3, &quad.y3,
+			                              &quad.x4, &quad.y4};
+			FS_RECTF clipped{box.right, box.bottom, box.left, box.top};
+			for (int p = 0; p < 4; ++p) {
+				const auto& [x, y] = corners[indices[order][p]];
+				double px = 0, py = 0;
+				if (!FPDF_DeviceToPage(
+				        target.page.get(), 0, 0, TEXT_GRID, TEXT_GRID, 0,
+				        static_cast<int>(std::lround(x * TEXT_GRID)),
+				        static_cast<int>(std::lround(y * TEXT_GRID)), &px,
+				        &py) ||
+				    !std::isfinite(px) || !std::isfinite(py)) {
+					return {};
+				}
+				const float qx = static_cast<float>(
+				    std::clamp(px, double(box.left), double(box.right)));
+				const float qy = static_cast<float>(
+				    std::clamp(py, double(box.bottom), double(box.top)));
+				*coordinates[p * 2] = qx;
+				*coordinates[p * 2 + 1] = qy;
+				clipped.left = (std::min)(clipped.left, qx);
+				clipped.right = (std::max)(clipped.right, qx);
+				clipped.bottom = (std::min)(clipped.bottom, qy);
+				clipped.top = (std::max)(clipped.top, qy);
+			}
 			if (clipped.left >= clipped.right ||
 			    clipped.bottom >= clipped.top) {
 				continue;
@@ -734,9 +839,7 @@ std::optional<int> Document::markText(TextSelection selection,
 				    (std::min)(target.bounds.bottom, clipped.bottom);
 				target.bounds.top = (std::max)(target.bounds.top, clipped.top);
 			}
-			target.quads.push_back({clipped.left, clipped.top, clipped.right,
-			                        clipped.top, clipped.left, clipped.bottom,
-			                        clipped.right, clipped.bottom});
+			target.quads.push_back(quad);
 		}
 		totalQuads += target.quads.size();
 		if (!target.quads.empty()) {
@@ -1098,35 +1201,7 @@ std::optional<TextPage> Document::textPage(int index) const {
 	if (!text) {
 		return {};
 	}
-	const int count = FPDFText_CountChars(text.get());
-	if (count < 0 || count > 200'000) {
-		return {};
-	}
-	TextPage result;
-	result.characters.reserve(count);
-	constexpr int grid = 1 << 20;
-	for (int i = 0; i < count; ++i) {
-		TextChar character;
-		character.unicode = FPDFText_GetUnicode(text.get(), i);
-		FS_RECTF box{};
-		if (FPDFText_GetLooseCharBox(text.get(), i, &box) &&
-		    std::isfinite(box.left) && std::isfinite(box.right) &&
-		    std::isfinite(box.top) && std::isfinite(box.bottom)) {
-			int ax = 0, ay = 0, bx = 0, by = 0;
-			if (FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0, box.left,
-			                      box.top, &ax, &ay) &&
-			    FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0, box.right,
-			                      box.bottom, &bx, &by)) {
-				character.box = {
-				    std::clamp((std::min)(ax, bx) / double(grid), 0., 1.),
-				    std::clamp((std::min)(ay, by) / double(grid), 0., 1.),
-				    std::clamp((std::max)(ax, bx) / double(grid), 0., 1.),
-				    std::clamp((std::max)(ay, by) / double(grid), 0., 1.)};
-			}
-		}
-		result.characters.push_back(character);
-	}
-	return result;
+	return pageText(page.get(), text.get());
 }
 
 std::optional<std::string> Document::textRange(int index, int first,

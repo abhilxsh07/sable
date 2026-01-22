@@ -34,7 +34,7 @@ struct TextRect {
 struct TextBaseline {
 	double x = 0, y = 0;   // fractions of the displayed page
 	double dx = 0, dy = 0; // unit direction in displayed page points
-	double height = 0; // em height in displayed page points; zero if unknown
+	double height = 0;     // loose character height in points; zero if unknown
 };
 struct TextChar {
 	char32_t unicode = 0;
