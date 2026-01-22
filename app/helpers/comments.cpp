@@ -63,6 +63,25 @@ void sanitize(std::string& value, bool multiline) {
 }
 } // namespace
 
+std::string_view commentLabel(std::string_view subtype) {
+	if (subtype == "Text") {
+		return "Note";
+	}
+	if (subtype == "StrikeOut") {
+		return "Strikethrough";
+	}
+	if (subtype == "FreeText") {
+		return "Text box";
+	}
+	if (subtype == "PolyLine") {
+		return "Polyline";
+	}
+	if (subtype == "FileAttachment") {
+		return "Attachment";
+	}
+	return subtype;
+}
+
 CommentScan::CommentScan(int pages) {
 	reset(pages);
 }
@@ -90,8 +109,8 @@ bool CommentScan::append(pdf::Annotations snapshot) {
 		sanitize(entry.author, false);
 		sanitize(entry.contents, true);
 		std::size_t remaining = BYTE_LIMIT - m_bytes;
-		for (const auto* field :
-		     {&entry.subtype, &entry.author, &entry.contents}) {
+		for (const auto* field : {&entry.subtype, &entry.author,
+		                          &entry.contents, &entry.target.subtype}) {
 			if (field->size() > remaining) {
 				m_stopped = true;
 				break;
@@ -103,7 +122,8 @@ bool CommentScan::append(pdf::Annotations snapshot) {
 		}
 		m_rows.push_back({snapshot.page, entry.index, std::move(entry.subtype),
 		                  std::move(entry.author), std::move(entry.contents),
-		                  entry.position});
+		                  entry.position, std::move(entry.target),
+		                  entry.color});
 		m_bytes = BYTE_LIMIT - remaining;
 		if (m_rows.size() == ROW_LIMIT || m_bytes == BYTE_LIMIT) {
 			m_stopped = true;

@@ -58,6 +58,37 @@ TEST(CommentScan, SequentialPagesRetryAndReset) {
 	EXPECT_EQ(helpers::CommentScan(-1).pageCount(), 0);
 }
 
+TEST(CommentScan, ReadableLabelsKeepUnknownTypes) {
+	EXPECT_EQ(helpers::commentLabel("Text"), "Note");
+	EXPECT_EQ(helpers::commentLabel("StrikeOut"), "Strikethrough");
+	EXPECT_EQ(helpers::commentLabel("FreeText"), "Text box");
+	EXPECT_EQ(helpers::commentLabel("FileAttachment"), "Attachment");
+	EXPECT_EQ(helpers::commentLabel("PolyLine"), "Polyline");
+	EXPECT_EQ(helpers::commentLabel("Highlight"), "Highlight");
+	EXPECT_EQ(helpers::commentLabel("Underline"), "Underline");
+	EXPECT_EQ(helpers::commentLabel("Future"), "Future");
+}
+
+TEST(CommentScan, KeepsMutationTargetAndAnnotationColor) {
+	auto entry = note("StrikeOut", "preview");
+	entry.target = {0, 7, "StrikeOut", 19};
+	entry.color = pdf::AnnotationColor{211, 34, 55, 128};
+	helpers::CommentScan scan(1);
+	ASSERT_TRUE(scan.append({0, {entry, note()}}));
+	ASSERT_EQ(scan.rows().size(), 2u);
+	const auto& row = scan.rows().front();
+	EXPECT_EQ(row.target.page, 0);
+	EXPECT_EQ(row.target.index, 7);
+	EXPECT_EQ(row.target.subtype, "StrikeOut");
+	EXPECT_EQ(row.target.revision, 19u);
+	ASSERT_TRUE(row.color);
+	EXPECT_EQ(row.color->red, 211u);
+	EXPECT_EQ(row.color->green, 34u);
+	EXPECT_EQ(row.color->blue, 55u);
+	EXPECT_EQ(row.color->alpha, 128u);
+	EXPECT_FALSE(scan.rows()[1].color);
+}
+
 TEST(CommentScan, TypesAndTextDetermineCommentRows) {
 	pdf::Annotations page;
 	for (const auto* type :

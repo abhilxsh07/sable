@@ -1379,6 +1379,7 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 	}
 	Annotations result;
 	result.page = index;
+	result.revision = m_annotationRevision;
 	result.limited = count > 4096;
 	FS_RECTF pageBox{};
 	const float width = FPDF_GetPageWidthF(page.get());
@@ -1389,7 +1390,25 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 	    std::isfinite(pageBox.left) && std::isfinite(pageBox.right) &&
 	    std::isfinite(pageBox.bottom) && std::isfinite(pageBox.top) &&
 	    pageBox.left < pageBox.right && pageBox.bottom < pageBox.top;
-	std::size_t total = 0;
+	constexpr int grid = 1 << 20;
+	const auto displayPoint = [&](float px, float py, float& dx, float& dy) {
+		const double padX = 16 * (double(pageBox.right) - pageBox.left);
+		const double padY = 16 * (double(pageBox.top) - pageBox.bottom);
+		if (!usablePage || px < pageBox.left - padX ||
+		    px > pageBox.right + padX || py < pageBox.bottom - padY ||
+		    py > pageBox.top + padY) {
+			return false;
+		}
+		int x = 0, y = 0;
+		if (!FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0, px, py, &x,
+		                       &y)) {
+			return false;
+		}
+		dx = x / float(grid);
+		dy = y / float(grid);
+		return true;
+	};
+	std::size_t total = 0, totalQuads = 0;
 	const auto text = [&](FPDF_ANNOTATION annotation, const char* key) {
 		std::string value;
 		const auto size = FPDFAnnot_GetStringValue(annotation, key, nullptr, 0);
@@ -1424,6 +1443,49 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 		annotation.index = i;
 		annotation.flags = FPDFAnnot_GetFlags(handle.get());
 		annotation.subtype = text(handle.get(), "Subtype");
+		annotation.target = {index, i, annotation.subtype,
+		                     m_annotationRevision};
+		AnnotationColor color;
+		if (FPDFAnnot_GetColor(handle.get(), FPDFANNOT_COLORTYPE_Color,
+		                       &color.red, &color.green, &color.blue,
+		                       &color.alpha)) {
+			annotation.color = color;
+		}
+		const auto quads = FPDFAnnot_CountAttachmentPoints(handle.get());
+		if (quads > 4096 - totalQuads) {
+			result.limited = true;
+		} else {
+			totalQuads += quads;
+			annotation.quads.reserve(quads);
+			for (std::size_t q = 0; q < quads; ++q) {
+				FS_QUADPOINTSF quad{};
+				if (!FPDFAnnot_GetAttachmentPoints(handle.get(), q, &quad) ||
+				    !std::isfinite(quad.x1) || !std::isfinite(quad.y1) ||
+				    !std::isfinite(quad.x2) || !std::isfinite(quad.y2) ||
+				    !std::isfinite(quad.x3) || !std::isfinite(quad.y3) ||
+				    !std::isfinite(quad.x4) || !std::isfinite(quad.y4)) {
+					result.limited = true;
+					annotation.quads.clear();
+					break;
+				}
+				annotation.quads.push_back({quad.x1, quad.y1, quad.x2, quad.y2,
+				                            quad.x3, quad.y3, quad.x4,
+				                            quad.y4});
+			}
+		}
+		annotation.displayQuads.reserve(annotation.quads.size());
+		for (const auto& quad : annotation.quads) {
+			AnnotationQuad shown;
+			if (!displayPoint(quad.x1, quad.y1, shown.x1, shown.y1) ||
+			    !displayPoint(quad.x2, quad.y2, shown.x2, shown.y2) ||
+			    !displayPoint(quad.x3, quad.y3, shown.x3, shown.y3) ||
+			    !displayPoint(quad.x4, quad.y4, shown.x4, shown.y4)) {
+				result.limited = true;
+				annotation.displayQuads.clear();
+				break;
+			}
+			annotation.displayQuads.push_back(shown);
+		}
 		annotation.contents = text(handle.get(), "Contents");
 		annotation.author = text(handle.get(), "T");
 		FS_RECTF rect{};
@@ -1434,6 +1496,13 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 		    rect.left <= rect.right && rect.bottom <= rect.top) {
 			annotation.bounds =
 			    AnnotationBounds{rect.left, rect.bottom, rect.right, rect.top};
+			float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+			if (displayPoint(rect.left, rect.bottom, x1, y1) &&
+			    displayPoint(rect.right, rect.top, x2, y2)) {
+				annotation.displayBounds =
+				    AnnotationRect{(std::min)(x1, x2), (std::min)(y1, y2),
+				                   (std::max)(x1, x2), (std::max)(y1, y2)};
+			}
 			if (usablePage) {
 				auto visible = rect;
 				if (annotation.subtype == "Text" &&
@@ -1448,7 +1517,6 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 				const double bottom =
 				    (std::max)(visible.bottom, pageBox.bottom);
 				const double top = (std::min)(visible.top, pageBox.top);
-				constexpr int grid = 1 << 20;
 				int x = 0, y = 0;
 				// i clip before conversion so remote bounds stay in range.
 				if (rect.left < rect.right && rect.bottom < rect.top &&

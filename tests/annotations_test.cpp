@@ -1768,3 +1768,47 @@ TEST(Annotations, MixedFontMarkupUsesTheSelectionBandsAfterSaving) {
 	    })
 	    .get();
 }
+
+TEST(AnnotationTargets, DisplayQuadsFollowIntrinsicCropAndRotation) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("text_bands.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    for (int page = 0; page < doc.pageCount(); ++page) {
+			    ASSERT_EQ(doc.markText({{page, 0}, {page, 10}},
+			                           pdf::TextMarkup::Highlight),
+			              1);
+			    const auto notes = doc.annotations(page);
+			    ASSERT_TRUE(notes && notes->entries.size() == 1);
+			    const auto& note = notes->entries[0];
+			    ASSERT_FALSE(note.quads.empty());
+			    ASSERT_EQ(note.displayQuads.size(), note.quads.size());
+			    ASSERT_TRUE(note.displayBounds);
+			    const auto& bounds = *note.displayBounds;
+			    EXPECT_LT(bounds.left, bounds.right);
+			    EXPECT_LT(bounds.top, bounds.bottom);
+			    const auto text = doc.textPage(page);
+			    ASSERT_TRUE(text && !text->characters.empty());
+			    const auto& first = text->characters[0].box;
+			    const double cx = (first.left + first.right) / 2;
+			    const double cy = (first.top + first.bottom) / 2;
+			    EXPECT_LE(bounds.left, cx);
+			    EXPECT_GE(bounds.right, cx);
+			    EXPECT_LE(bounds.top, cy);
+			    EXPECT_GE(bounds.bottom, cy);
+			    for (const auto& quad : note.displayQuads) {
+				    for (const auto x : {quad.x1, quad.x2, quad.x3, quad.x4}) {
+					    EXPECT_GE(x, bounds.left - .00001);
+					    EXPECT_LE(x, bounds.right + .00001);
+				    }
+				    for (const auto y : {quad.y1, quad.y2, quad.y3, quad.y4}) {
+					    EXPECT_GE(y, bounds.top - .00001);
+					    EXPECT_LE(y, bounds.bottom + .00001);
+				    }
+			    }
+		    }
+	    })
+	    .get();
+}

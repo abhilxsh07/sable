@@ -23,13 +23,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace helpers {
+std::string_view commentLabel(std::string_view subtype);
 struct CommentRow {
 	int page = 0, index = 0;
 	std::string subtype, author, text;
 	std::optional<pdf::AnnotationPoint> position;
+	pdf::AnnotationTarget target;
+	std::optional<pdf::AnnotationColor> color;
 };
 
 // i keep at most 2000 rows and 4 MiB of their stored text.

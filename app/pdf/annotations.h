@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,8 +33,34 @@ struct AnnotationPoint {
 	double x = 0, y = 0;
 };
 
+// Fractions from the top left of the cropped, intrinsically rotated page.
+struct AnnotationRect {
+	double left = 0, top = 0, right = 0, bottom = 0;
+};
+
+struct AnnotationTarget {
+	int page = -1, index = -1;
+	std::string subtype;
+	std::uint64_t revision = 0;
+	bool operator==(const AnnotationTarget&) const = default;
+};
+struct AnnotationQuad {
+	float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+	float x3 = 0, y3 = 0, x4 = 0, y4 = 0;
+};
+struct AnnotationColor {
+	unsigned int red = 0, green = 0, blue = 0, alpha = 255;
+	bool operator==(const AnnotationColor&) const = default;
+};
+enum class HighlightColor { Yellow, Green, LightBlue, Pink, Red };
+
 // These snapshots own their text and can outlive the document and engine.
 struct Annotation {
+	AnnotationTarget target;
+	// quads are PDF points; displayQuads keep the same corner order.
+	std::vector<AnnotationQuad> quads, displayQuads;
+	std::optional<AnnotationRect> displayBounds;
+	std::optional<AnnotationColor> color;
 	int index = 0, flags = 0;
 	// The PDF subtype name, including names this reader doesn't recognize.
 	std::string subtype, contents, author;
@@ -44,5 +71,6 @@ struct Annotations {
 	int page = 0;
 	std::vector<Annotation> entries;
 	bool limited = false;
+	std::uint64_t revision = 0;
 };
 } // namespace pdf

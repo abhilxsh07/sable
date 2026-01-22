@@ -235,6 +235,7 @@ class Document {
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
 	bool m_modified = false;
+	std::uint64_t m_annotationRevision = 1;
 	// i only append annotations; verified arrays and identities stay valid.
 	mutable std::optional<bool> m_serializable;
 	mutable std::optional<std::vector<int>> m_editCounts;
