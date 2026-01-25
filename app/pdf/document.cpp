@@ -229,6 +229,40 @@ bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
 	return true;
 }
 
+bool unlinkedAnnotation(FPDF_DOCUMENT document, FPDF_PAGE own, int targetIndex,
+                        FPDF_ANNOTATION target) {
+	for (const auto key : {"Popup", "IRT", "Parent", "RT"}) {
+		if (FPDFAnnot_HasKey(target, key)) {
+			return false;
+		}
+	}
+	for (int index = 0; index < FPDF_GetPageCount(document); ++index) {
+		PagePtr page(FPDF_LoadPage(document, index));
+		const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
+		if (count < 0 || count > 4096) {
+			return false;
+		}
+		for (int i = 0; i < count; ++i) {
+			AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
+			if (!note) {
+				return false;
+			}
+			// i leave references to this comment intact until i handle threads.
+			for (const auto key : {"Popup", "IRT", "Parent"}) {
+				if (FPDFAnnot_HasKey(note.get(), key)) {
+					AnnotationPtr linked(
+					    FPDFAnnot_GetLinkedAnnot(note.get(), key));
+					if (!linked || FPDFPage_GetAnnotIndex(own, linked.get()) ==
+					                   targetIndex) {
+						return false;
+					}
+				}
+			}
+		}
+	}
+	return true;
+}
+
 // FPDF_ERR_PASSWORD covers both "needs one" and "that wasn't it"
 Error fromPdfium(unsigned long code, bool gavePassword) {
 	switch (code) {
@@ -534,10 +568,11 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	return count;
 }
 
-std::optional<std::u16string> Document::textNote(int index,
-                                                 int noteIndex) const {
-	if (offThread() || index < 0 || index >= pageCount() || noteIndex < 0 ||
-	    !canAnnotate() || !canSerializeEdits({})) {
+std::optional<std::u16string> Document::textNote(int index, int noteIndex,
+                                                 std::uint64_t revision) const {
+	if (offThread() || !currentRevision(revision) || index < 0 ||
+	    index >= pageCount() || noteIndex < 0 || !canAnnotate() ||
+	    !canSerializeEdits({})) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, index));
@@ -574,12 +609,13 @@ std::optional<std::u16string> Document::textNote(int index,
 
 std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
                                              std::u16string_view expected,
-                                             std::u16string_view contents) {
-	if (offThread() || contents.empty() || !validNoteText(contents) ||
-	    !validNoteText(expected)) {
+                                             std::u16string_view contents,
+                                             std::uint64_t revision) {
+	if (offThread() || !currentRevision(revision) || contents.empty() ||
+	    !validNoteText(contents) || !validNoteText(expected)) {
 		return {};
 	}
-	const auto previous = textNote(pageIndex, noteIndex);
+	const auto previous = textNote(pageIndex, noteIndex, revision);
 	if (!previous || *previous != expected) {
 		return {};
 	}
@@ -616,10 +652,12 @@ std::optional<int> Document::highlightText(TextSelection selection) {
 }
 
 std::optional<CommentContents>
-Document::markupComment(int pageIndex, int index, TextMarkup markup) const {
+Document::markupComment(int pageIndex, int index, TextMarkup markup,
+                        std::uint64_t revision) const {
 	const auto subtype = markupSubtype(markup);
-	if (offThread() || !subtype || pageIndex < 0 || pageIndex >= pageCount() ||
-	    index < 0 || !canAnnotate() || !canSerializeEdits({})) {
+	if (offThread() || !currentRevision(revision) || !subtype ||
+	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
+	    !canAnnotate() || !canSerializeEdits({})) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, pageIndex));
@@ -659,15 +697,25 @@ Document::markupComment(int pageIndex, int index, TextMarkup markup) const {
 	                                  : std::nullopt;
 }
 
-std::optional<bool>
-Document::updateMarkupComment(int page, int index, TextMarkup markup,
-                              const CommentContents& expected,
-                              std::u16string_view contents) {
-	if (offThread() || contents.empty() || !validNoteText(contents) ||
+std::optional<bool> Document::updateMarkupComment(
+    int page, int index, TextMarkup markup, const CommentContents& expected,
+    std::u16string_view contents, std::uint64_t revision) {
+	if (contents.empty()) {
+		return {};
+	}
+	return setMarkupComment(page, index, markup, expected, contents, revision);
+}
+
+std::optional<bool> Document::setMarkupComment(int page, int index,
+                                               TextMarkup markup,
+                                               const CommentContents& expected,
+                                               std::u16string_view contents,
+                                               std::uint64_t revision) {
+	if (offThread() || !currentRevision(revision) || !validNoteText(contents) ||
 	    !validNoteText(expected.text)) {
 		return {};
 	}
-	const auto previous = markupComment(page, index, markup);
+	const auto previous = markupComment(page, index, markup, revision);
 	if (!previous || *previous != expected) {
 		return {};
 	}
@@ -930,6 +978,81 @@ std::optional<int> Document::markText(TextSelection selection,
 	// see:
 	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
 	return static_cast<int>(added);
+}
+
+bool Document::currentRevision(std::uint64_t revision) const {
+	// i accept old callers only until the first index-changing edit.
+	return revision == m_annotationRevision ||
+	       (revision == 0 && m_annotationRevision == 1);
+}
+
+std::uint64_t Document::annotationRevision() const {
+	return offThread() ? 0 : m_annotationRevision;
+}
+
+bool Document::matchesTarget(const AnnotationTarget& target) const {
+	if (offThread() || target.revision == 0 ||
+	    target.revision != m_annotationRevision || target.page < 0 ||
+	    target.page >= pageCount() || target.index < 0) {
+		return false;
+	}
+	const auto snapshot = annotations(target.page);
+	if (!snapshot || snapshot->limited) {
+		return false;
+	}
+	const auto found = std::find_if(
+	    snapshot->entries.begin(), snapshot->entries.end(),
+	    [&](const Annotation& note) { return note.target == target; });
+	return found != snapshot->entries.end();
+}
+
+std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
+	if (offThread() || !matchesTarget(target) || !canAnnotate() ||
+	    !canSerializeEdits({}) ||
+	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
+	    (target.subtype != "Text" && target.subtype != "Highlight" &&
+	     target.subtype != "Underline" && target.subtype != "StrikeOut")) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, target.page));
+	AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+	                        : nullptr);
+	constexpr int LOCKED_CONTENTS = 0x200;
+	if (!note ||
+	    (FPDFAnnot_GetFlags(note.get()) &
+	     (FPDF_ANNOT_FLAG_READONLY | FPDF_ANNOT_FLAG_LOCKED |
+	      LOCKED_CONTENTS)) ||
+	    !uniqueMarkup(m_handle, page.get(), target.page, target.index,
+	                  note.get(), m_editPageLoads) ||
+	    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get())) {
+		return {};
+	}
+	note.reset();
+	// i finish every refusal check before removing the dictionary reference.
+	if (!FPDFPage_RemoveAnnot(page.get(), target.index)) {
+		return {};
+	}
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return true;
+}
+
+std::optional<bool>
+Document::clearMarkupComment(const AnnotationTarget& target,
+                             const CommentContents& expected) {
+	if (!matchesTarget(target)) {
+		return {};
+	}
+	const auto markup = target.subtype == "Highlight"   ? TextMarkup::Highlight
+	                    : target.subtype == "Underline" ? TextMarkup::Underline
+	                                                    : TextMarkup::StrikeOut;
+	if (target.subtype != "Highlight" && target.subtype != "Underline" &&
+	    target.subtype != "StrikeOut") {
+		return {};
+	}
+	return setMarkupComment(target.page, target.index, markup, expected, {},
+	                        target.revision);
 }
 
 std::optional<int> Document::addCenteredTextNote(int index,

@@ -154,22 +154,31 @@ class Document {
 	                                 std::u16string_view contents,
 	                                 std::u16string_view author = {});
 	// Exact plain contents for an editable Text note, within 64 KiB.
-	std::optional<std::u16string> textNote(int page, int index) const;
+	std::optional<std::u16string> textNote(int page, int index,
+	                                       std::uint64_t revision = 0) const;
 	// nullopt refuses; false accepts unchanged contents; true changed them.
 	std::optional<bool> updateTextNote(int page, int index,
 	                                   std::u16string_view expected,
-	                                   std::u16string_view contents);
+	                                   std::u16string_view contents,
+	                                   std::uint64_t revision = 0);
 	// One Highlight per visible selected page; all pages preflight first.
 	// Returns the number added, or nullopt. Failed rollback throws.
 	std::optional<int> highlightText(TextSelection selection);
 	// i use the same page transaction for all three text markup types.
 	std::optional<int> markText(TextSelection selection, TextMarkup markup);
-	std::optional<CommentContents> markupComment(int page, int index,
-	                                             TextMarkup markup) const;
+	std::optional<CommentContents>
+	markupComment(int page, int index, TextMarkup markup,
+	              std::uint64_t revision = 0) const;
 	std::optional<bool> updateMarkupComment(int page, int index,
 	                                        TextMarkup markup,
 	                                        const CommentContents& expected,
-	                                        std::u16string_view contents);
+	                                        std::u16string_view contents,
+	                                        std::uint64_t revision = 0);
+	// Exact nonzero snapshots are required when annotation indices can move.
+	std::uint64_t annotationRevision() const;
+	std::optional<bool> removeAnnotation(const AnnotationTarget& target);
+	std::optional<bool> clearMarkupComment(const AnnotationTarget& target,
+	                                       const CommentContents& expected);
 	bool modified() const;
 	// Centered notes refuse documents whose edits cannot be preserved.
 	std::optional<int> addCenteredTextNote(int page,
@@ -235,8 +244,14 @@ class Document {
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
 	bool m_modified = false;
+	// i invalidate index identities after removal, before another edit runs.
 	std::uint64_t m_annotationRevision = 1;
-	// i only append annotations; verified arrays and identities stay valid.
+	std::optional<bool> setMarkupComment(int page, int index, TextMarkup markup,
+	                                     const CommentContents& expected,
+	                                     std::u16string_view contents,
+	                                     std::uint64_t revision);
+	bool currentRevision(std::uint64_t revision) const;
+	bool matchesTarget(const AnnotationTarget& target) const;
 	mutable std::optional<bool> m_serializable;
 	mutable std::optional<std::vector<int>> m_editCounts;
 	mutable std::set<int> m_independentPages;

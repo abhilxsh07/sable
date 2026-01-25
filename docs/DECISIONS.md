@@ -1736,3 +1736,12 @@ at font changes, which left uneven patches inside a single line. I keep the
 whole line's cross-axis bounds for partial selections, with separate runs for
 columns, baselines and text directions. Cropped and rotated pages map those
 same bands back to PDF coordinates. Skewed runs retain individual bounds.
+
+## Annotation removal (2026-10-26)
+
+The approved delete action captures page, index, subtype and a document
+revision. Removing an annotation advances the revision and drops index-based
+edit caches. Stale editors and menus cannot redirect to a shifted index.
+I refuse protected, shared or threaded annotation removal until those
+relationships can be preserved. Removing comment text keeps the markup,
+its appearance and its popup references, using the existing edit checks.
