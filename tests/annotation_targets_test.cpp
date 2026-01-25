@@ -197,3 +197,89 @@ TEST(AnnotationTargets, ClearingCommentTextKeepsItsPopupReferences) {
 	    })
 	    .get();
 }
+
+TEST(AnnotationTargets, SavedSidebarNotesHaveNoScreenOrPrintIcon) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto plain = doc.render(1, 360, 280);
+		    const auto print = doc.printRaster(1, 360, 280, 0, 0, 360, 280);
+		    ASSERT_TRUE(plain && print);
+		    ASSERT_EQ(doc.addTextNote(1, 40, 50, u"Sidebar only"), 0);
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto notes = reopened.document->annotations(1);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    EXPECT_EQ(notes->entries[0].flags & FPDF_ANNOT_FLAG_NOVIEW,
+		              FPDF_ANNOT_FLAG_NOVIEW);
+		    EXPECT_EQ(notes->entries[0].flags & FPDF_ANNOT_FLAG_PRINT, 0);
+		    EXPECT_EQ(notes->entries[0].contents, "Sidebar only");
+		    const auto screen = reopened.document->render(1, 360, 280);
+		    const auto printed =
+		        reopened.document->printRaster(1, 360, 280, 0, 0, 360, 280);
+		    ASSERT_TRUE(screen && printed);
+		    EXPECT_EQ(screen->pixels, plain->pixels);
+		    EXPECT_EQ(printed->pixels, print->pixels);
+	    })
+	    .get();
+}
+
+TEST(AnnotationTargets, EditingAnImportedNoteHidesOnlyItsIconFlags) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(deletionBytes("/F 132"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.annotations(0);
+		    ASSERT_TRUE(before && before->entries.size() == 3);
+		    ASSERT_EQ(before->entries[0].flags, 132);
+		    ASSERT_EQ(doc.updateTextNote(0, 0, u"Same", u"Changed"), true);
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto notes = reopened.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[0].contents, "Changed");
+		    EXPECT_EQ(notes->entries[0].flags, 160);
+		    EXPECT_EQ(notes->entries[1].flags, before->entries[1].flags);
+		    EXPECT_EQ(notes->entries[1].contents, "Same");
+	    })
+	    .get();
+}
+
+TEST(AnnotationTargets, FiveHighlightColorsPersistBeforeAnyViewerRender) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    std::set<std::vector<std::uint8_t>> images;
+		    for (const auto color :
+		         {pdf::HighlightColor::Yellow, pdf::HighlightColor::Green,
+		          pdf::HighlightColor::LightBlue, pdf::HighlightColor::Pink,
+		          pdf::HighlightColor::Red}) {
+			    const auto opened = pdf::openFile(fixturePath("text.pdf"));
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    ASSERT_EQ(doc.markText({{0, 0}, {0, 4}},
+			                           pdf::TextMarkup::Highlight, color),
+			              1);
+			    const auto bytes = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    const auto reopened = pdf::openDocument(*bytes);
+			    ASSERT_TRUE(reopened.document);
+			    const auto before = doc.render(0, 400, 300);
+			    const auto after = reopened.document->render(0, 400, 300);
+			    ASSERT_TRUE(before && after);
+			    EXPECT_EQ(after->pixels, before->pixels);
+			    images.insert(after->pixels);
+		    }
+		    EXPECT_EQ(images.size(), 5u);
+	    })
+	    .get();
+}

@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document.h"
+#include "note_visibility.h"
 #include "engine.h"
 #include <fpdfview.h>
 #include <memory>
@@ -51,8 +52,14 @@ std::optional<Bitmap> Document::printRaster(int index, int pageWidth,
 	}
 	FPDFBitmap_FillRect(bitmap.get(), 0, 0, width, height, 0xffffffff);
 	// same print flags as the printer HDC, including print-only annotations
-	FPDF_RenderPageBitmap(bitmap.get(), page.get(), -x, -y, pageWidth,
-	                      pageHeight, 0, FPDF_ANNOT | FPDF_PRINTING);
+	detail::NoteVisibility notes;
+	if (!notes.collect(page.get()) || !notes.run([&] {
+		    FPDF_RenderPageBitmap(bitmap.get(), page.get(), -x, -y, pageWidth,
+		                          pageHeight, 0, FPDF_ANNOT | FPDF_PRINTING);
+		    return true;
+	    })) {
+		return {};
+	}
 	return result;
 }
 } // namespace pdf

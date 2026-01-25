@@ -1745,3 +1745,13 @@ edit caches. Stale editors and menus cannot redirect to a shifted index.
 I refuse protected, shared or threaded annotation removal until those
 relationships can be preserved. Removing comment text keeps the markup,
 its appearance and its popup references, using the existing edit checks.
+
+## Sidebar notes and highlight colors (2026-10-26)
+
+The approved note presentation keeps Text contents in Comments and hides the
+page icon, including print output. New and edited notes store NoView without
+Print; existing notes are masked only during rendering and their original
+flags are restored. The five highlight choices use the supplied reference:
+yellow #FFF066, green #7DF066, light blue #8FDEF9, pink #F799D1 and red #EB4949.
+Line markup keeps its existing black appearance. Saving copies follows the
+same note-visibility policy without altering the opened document's flags.

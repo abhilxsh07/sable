@@ -165,7 +165,8 @@ class Document {
 	// Returns the number added, or nullopt. Failed rollback throws.
 	std::optional<int> highlightText(TextSelection selection);
 	// i use the same page transaction for all three text markup types.
-	std::optional<int> markText(TextSelection selection, TextMarkup markup);
+	std::optional<int> markText(TextSelection selection, TextMarkup markup,
+	                            HighlightColor color = HighlightColor::Yellow);
 	std::optional<CommentContents>
 	markupComment(int page, int index, TextMarkup markup,
 	              std::uint64_t revision = 0) const;

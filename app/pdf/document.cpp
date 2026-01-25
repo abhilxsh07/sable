@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document.h"
+#include "note_visibility.h"
 
 #include <cassert>
 #include <algorithm>
@@ -227,6 +228,23 @@ bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
 		}
 	}
 	return true;
+}
+
+std::optional<AnnotationColor> markupColor(HighlightColor color) {
+	switch (color) {
+	case HighlightColor::Yellow:
+		return AnnotationColor{255, 240, 102, 255};
+	case HighlightColor::Green:
+		return AnnotationColor{125, 240, 102, 255};
+	case HighlightColor::LightBlue:
+		return AnnotationColor{143, 222, 249, 255};
+	case HighlightColor::Pink:
+		return AnnotationColor{247, 153, 209, 255};
+	case HighlightColor::Red:
+		return AnnotationColor{235, 73, 73, 255};
+	default:
+		return {};
+	}
 }
 
 bool unlinkedAnnotation(FPDF_DOCUMENT document, FPDF_PAGE own, int targetIndex,
@@ -493,8 +511,14 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	FPDFBitmap_FillRect(bitmap.get(), 0, 0, width, height, 0xFFFFFFFF);
 	// No FPDF_LCD_TEXT: sub-pixel text has coloured fringes, and they get
 	// very visible once the night filter inverts or hue-rotates the page.
-	FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, height,
-	                      rotation, FPDF_ANNOT);
+	detail::NoteVisibility notes;
+	if (!notes.collect(page.get()) || !notes.run([&] {
+		    FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, height,
+		                          rotation, FPDF_ANNOT);
+		    return true;
+	    })) {
+		return {};
+	}
 	return out;
 }
 
@@ -553,7 +577,7 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	        reinterpret_cast<FPDF_WIDESTRING>(text.c_str())) &&
 	    FPDFAnnot_SetStringValue(
 	        note.get(), "T", reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) &&
-	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) &&
+	    FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_NOVIEW) &&
 	    checkEditCounts(*expected, {index});
 	note.reset();
 	if (!complete) {
@@ -630,14 +654,24 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 	if (!note) {
 		return {};
 	}
+	const int flags = FPDFAnnot_GetFlags(note.get());
+	const int hidden =
+	    (flags | FPDF_ANNOT_FLAG_NOVIEW) & ~FPDF_ANNOT_FLAG_PRINT;
+	if (*previous == contents && flags == hidden) {
+		return false;
+	}
 	const bool wasModified = m_modified;
 	m_modified = true;
 	if (!FPDFAnnot_SetStringValue(
 	        note.get(), "Contents",
-	        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()))) {
-		if (!FPDFAnnot_SetStringValue(
+	        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str())) ||
+	    !FPDFAnnot_SetFlags(note.get(), hidden)) {
+		const bool restoredText =
+		    FPDFAnnot_SetStringValue(
 		        note.get(), "Contents",
-		        reinterpret_cast<FPDF_WIDESTRING>(previous->c_str()))) {
+		        reinterpret_cast<FPDF_WIDESTRING>(previous->c_str())) != 0;
+		const bool restoredFlags = FPDFAnnot_SetFlags(note.get(), flags) != 0;
+		if (!restoredText || !restoredFlags) {
 			invalidateEdits();
 			throw std::runtime_error("Couldn't restore the note contents.");
 		}
@@ -751,12 +785,13 @@ std::optional<bool> Document::setMarkupComment(int page, int index,
 }
 
 std::optional<int> Document::markText(TextSelection selection,
-                                      TextMarkup markup) {
+                                      TextMarkup markup, HighlightColor color) {
 	if (offThread() || !canAnnotate()) {
 		return {};
 	}
 	const auto subtype = markupSubtype(markup);
-	if (!subtype) {
+	const auto rgb = markupColor(color);
+	if (!subtype || !rgb) {
 		return {};
 	}
 	const auto [first, last] = ordered(selection);
@@ -940,7 +975,11 @@ std::optional<int> Document::markText(TextSelection selection,
 			++added;
 			m_modified = true;
 			complete = FPDFAnnot_SetRect(note.get(), &target.bounds) &&
-			           FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT);
+			           FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) &&
+			           (markup != TextMarkup::Highlight ||
+			            FPDFAnnot_SetColor(note.get(),
+			                               FPDFANNOT_COLORTYPE_Color, rgb->red,
+			                               rgb->green, rgb->blue, rgb->alpha));
 			for (const auto& quad : target.quads) {
 				if (!complete ||
 				    !FPDFAnnot_AppendAttachmentPoints(note.get(), &quad)) {
@@ -1364,8 +1403,12 @@ bool Document::printPage(int index, void* device, int x, int y, int width,
 	if (!page) {
 		return false;
 	}
-	return FPDF_RenderPage(static_cast<HDC>(device), page.get(), x, y, width,
-	                       height, 0, FPDF_ANNOT | FPDF_PRINTING) != 0;
+	detail::NoteVisibility notes;
+	return notes.collect(page.get()) && notes.run([&] {
+		return FPDF_RenderPage(static_cast<HDC>(device), page.get(), x, y,
+		                       width, height, 0,
+		                       FPDF_ANNOT | FPDF_PRINTING) != 0;
+	});
 }
 
 namespace {
