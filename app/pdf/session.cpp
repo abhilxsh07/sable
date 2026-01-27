@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "session.h"
 
 #include <cstdint>
+#include <cmath>
 #include <limits>
 #include <mutex>
 #include <utility>
@@ -29,6 +30,27 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../helpers/logging.h"
 
 namespace pdf {
+namespace {
+bool insideQuad(const AnnotationQuad& q, double x, double y) {
+	const double xs[]{q.x1, q.x2, q.x4, q.x3};
+	const double ys[]{q.y1, q.y2, q.y4, q.y3};
+	bool positive = false, negative = false;
+	double area = 0;
+	for (int i = 0; i < 4; ++i) {
+		const auto next = (i + 1) % 4;
+		const auto side =
+		    (xs[next] - xs[i]) * (y - ys[i]) - (ys[next] - ys[i]) * (x - xs[i]);
+		if (!std::isfinite(side)) {
+			return false;
+		}
+		positive = positive || side > 1e-12;
+		negative = negative || side < -1e-12;
+		area += xs[i] * ys[next] - xs[next] * ys[i];
+	}
+	return !(positive && negative) && std::abs(area) > 1e-12;
+}
+} // namespace
+
 struct Session::State {
 	explicit State(Engine& engine) : m_engine(engine) {}
 	bool closed() {
@@ -47,6 +69,7 @@ struct Session::State {
 	std::uint64_t m_findGeneration = 0;
 	std::uint64_t m_outlineGeneration = 0;
 	std::uint64_t m_annotationGeneration = 0;
+	std::uint64_t m_annotationRevision = 1;
 	struct FindJob;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
@@ -523,13 +546,62 @@ bool Session::writeTextNote(int page,
 	return true;
 }
 
+bool Session::annotationAt(int page, double x, double y,
+                           std::function<void(AnnotationHitResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    !std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 ||
+		    y > 1) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, x, y, callback = std::move(callback)] {
+		AnnotationHitResult result;
+		try {
+			if (!state->closed()) {
+				if (auto notes = state->m_document->annotations(page)) {
+					for (auto it = notes->entries.rbegin();
+					     it != notes->entries.rend(); ++it) {
+						if (it->subtype != "Highlight" &&
+						    it->subtype != "Underline" &&
+						    it->subtype != "StrikeOut") {
+							continue;
+						}
+						for (const auto& quad : it->displayQuads) {
+							if (insideQuad(quad, x, y)) {
+								result.annotation = std::move(*it);
+								break;
+							}
+						}
+						if (result.annotation) {
+							break;
+						}
+					}
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't select a PDF annotation.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.annotation.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::highlightText(TextSelection selection,
                             std::function<void(HighlightResult)> callback) {
 	return markText(selection, TextMarkup::Highlight, std::move(callback));
 }
 
 bool Session::markText(TextSelection selection, TextMarkup markup,
-                       std::function<void(MarkupResult)> callback) {
+                       std::function<void(MarkupResult)> callback,
+                       HighlightColor color) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -537,14 +609,14 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 			return false;
 		}
 	}
-	state->m_engine.post([state, selection, markup,
+	state->m_engine.post([state, selection, markup, color,
 	                      callback = std::move(callback)] {
 		MarkupResult result;
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
 				if (const auto added =
-				        state->m_document->markText(selection, markup)) {
+				        state->m_document->markText(selection, markup, color)) {
 					result.count = *added;
 					result.changed = *added > 0;
 				}
@@ -560,38 +632,50 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 }
 
 bool Session::textNote(int page, int index,
-                       std::function<void(TextNoteResult)> callback) {
+                       std::function<void(TextNoteResult)> callback,
+                       std::uint64_t revision) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
 		if (!callback || !state->m_ready || state->m_closed) {
 			return false;
 		}
+		if (!revision) {
+			revision = state->m_annotationRevision;
+		}
 	}
-	state->m_engine.post([state, page, index, callback = std::move(callback)] {
-		TextNoteResult result;
-		result.page = page;
-		result.index = index;
-		try {
-			if (!state->closed()) {
-				result.contents = state->m_document->textNote(page, index);
-			}
-		} catch (...) {
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't read a PDF text note.");
-		}
-		result.canceled = state->closed();
-		if (result.canceled) {
-			result.contents.reset();
-		}
-		callback(std::move(result));
-	});
+	state->m_engine.post(
+	    [state, page, index, revision, callback = std::move(callback)] {
+		    TextNoteResult result;
+		    result.page = page;
+		    result.index = index;
+		    try {
+			    if (!state->closed()) {
+				    result.contents =
+				        state->m_document->textNote(page, index, revision);
+				    if (result.contents) {
+					    result.target =
+					        AnnotationTarget{page, index, "Text", revision};
+				    }
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't read a PDF text note.");
+		    }
+		    result.canceled = state->closed();
+		    if (result.canceled) {
+			    result.contents.reset();
+			    result.target.reset();
+		    }
+		    callback(std::move(result));
+	    });
 	return true;
 }
 
 bool Session::updateTextNote(int page, int index, std::u16string expected,
                              std::u16string contents,
-                             std::function<void(NoteResult)> callback) {
+                             std::function<void(NoteResult)> callback,
+                             std::uint64_t revision) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -599,70 +683,86 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 		    expected.size() > 32767 || contents.size() > 32767) {
 			return false;
 		}
-	}
-	state->m_engine.post([state, page, index, expected = std::move(expected),
-	                      contents = std::move(contents),
-	                      callback = std::move(callback)] {
-		NoteResult result;
-		result.page = page;
-		result.canceled = state->closed();
-		try {
-			if (!result.canceled) {
-				if (const auto changed = state->m_document->updateTextNote(
-				        page, index, expected, contents)) {
-					result.index = index;
-					result.changed = *changed;
-				}
-			}
-		} catch (...) {
-			result.changed = state->m_document && state->m_document->modified();
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't update a PDF text note.");
+		if (!revision) {
+			revision = state->m_annotationRevision;
 		}
-		callback(std::move(result));
-	});
+	}
+	state->m_engine.post(
+	    [state, page, index, revision, expected = std::move(expected),
+	     contents = std::move(contents), callback = std::move(callback)] {
+		    NoteResult result;
+		    result.page = page;
+		    result.canceled = state->closed();
+		    try {
+			    if (!result.canceled) {
+				    if (const auto changed = state->m_document->updateTextNote(
+				            page, index, expected, contents, revision)) {
+					    result.index = index;
+					    result.changed = *changed;
+				    }
+			    }
+		    } catch (...) {
+			    result.changed =
+			        state->m_document && state->m_document->modified();
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't update a PDF text note.");
+		    }
+		    callback(std::move(result));
+	    });
 	return true;
 }
 
 bool Session::markupComment(int page, int index, TextMarkup markup,
-                            std::function<void(TextNoteResult)> callback) {
+                            std::function<void(TextNoteResult)> callback,
+                            std::uint64_t revision) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
 		if (!callback || !state->m_ready || state->m_closed) {
 			return false;
 		}
+		if (!revision) {
+			revision = state->m_annotationRevision;
+		}
 	}
-	state->m_engine.post([state, page, index, markup,
-	                      callback = std::move(callback)] {
-		TextNoteResult result;
-		result.page = page;
-		result.index = index;
-		try {
-			if (!state->closed()) {
-				if (auto value =
-				        state->m_document->markupComment(page, index, markup)) {
-					result.contents = std::move(value->text);
-					result.contentsPresent = value->present;
-				}
-			}
-		} catch (...) {
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't read a PDF markup comment.");
-		}
-		result.canceled = state->closed();
-		if (result.canceled) {
-			result.contents.reset();
-		}
-		callback(std::move(result));
-	});
+	state->m_engine.post(
+	    [state, page, index, revision, markup, callback = std::move(callback)] {
+		    TextNoteResult result;
+		    result.page = page;
+		    result.index = index;
+		    try {
+			    if (!state->closed()) {
+				    if (auto value = state->m_document->markupComment(
+				            page, index, markup, revision)) {
+					    result.contents = std::move(value->text);
+					    result.contentsPresent = value->present;
+					    const auto subtype =
+					        markup == TextMarkup::Highlight   ? "Highlight"
+					        : markup == TextMarkup::Underline ? "Underline"
+					                                          : "StrikeOut";
+					    result.target =
+					        AnnotationTarget{page, index, subtype, revision};
+				    }
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't read a PDF markup comment.");
+		    }
+		    result.canceled = state->closed();
+		    if (result.canceled) {
+			    result.contents.reset();
+			    result.target.reset();
+		    }
+		    callback(std::move(result));
+	    });
 	return true;
 }
 
 bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
                                   CommentContents expected,
                                   std::u16string contents,
-                                  std::function<void(NoteResult)> callback) {
+                                  std::function<void(NoteResult)> callback,
+                                  std::uint64_t revision) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -670,8 +770,11 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 		    expected.text.size() > 32767 || contents.size() > 32767) {
 			return false;
 		}
+		if (!revision) {
+			revision = state->m_annotationRevision;
+		}
 	}
-	state->m_engine.post([state, page, index, markup,
+	state->m_engine.post([state, page, index, revision, markup,
 	                      expected = std::move(expected),
 	                      contents = std::move(contents),
 	                      callback = std::move(callback)] {
@@ -681,7 +784,7 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 		try {
 			if (!result.canceled) {
 				if (const auto changed = state->m_document->updateMarkupComment(
-				        page, index, markup, expected, contents)) {
+				        page, index, markup, expected, contents, revision)) {
 					result.index = index;
 					result.changed = *changed;
 				}
@@ -690,6 +793,62 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 			result.changed = state->m_document && state->m_document->modified();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't update a PDF markup comment.");
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::removeAnnotation(AnnotationTarget target,
+                               std::function<void(NoteResult)> callback) {
+	return changeAnnotation(std::move(target), {}, std::move(callback));
+}
+
+bool Session::clearMarkupComment(AnnotationTarget target,
+                                 CommentContents expected,
+                                 std::function<void(NoteResult)> callback) {
+	return changeAnnotation(std::move(target), std::move(expected),
+	                        std::move(callback));
+}
+
+bool Session::changeAnnotation(AnnotationTarget target,
+                               std::optional<CommentContents> expected,
+                               std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    !target.revision ||
+		    target.revision != state->m_annotationRevision ||
+		    (expected && expected->text.size() > 32767)) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, target = std::move(target),
+	                      expected = std::move(expected),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = target.page;
+		result.canceled = state->closed();
+		try {
+			if (!result.canceled) {
+				const auto changed =
+				    expected ? state->m_document->clearMarkupComment(target,
+				                                                     *expected)
+				             : state->m_document->removeAnnotation(target);
+				if (changed) {
+					result.changed = *changed;
+					if (expected) {
+						result.index = target.index;
+					}
+					std::lock_guard lock(state->m_mutex);
+					state->m_annotationRevision =
+					    state->m_document->annotationRevision();
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't change a PDF annotation.");
 		}
 		callback(std::move(result));
 	});

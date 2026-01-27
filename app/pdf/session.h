@@ -72,6 +72,10 @@ struct AnnotationsResult {
 	std::optional<Annotations> annotations;
 	bool canceled = false;
 };
+struct AnnotationHitResult {
+	std::optional<Annotation> annotation;
+	bool canceled = false;
+};
 struct MarkupResult {
 	int count = 0;
 	bool changed = false, canceled = false;
@@ -80,6 +84,7 @@ using HighlightResult = MarkupResult;
 struct TextNoteResult {
 	int page = 0, index = 0;
 	std::optional<std::u16string> contents;
+	std::optional<AnnotationTarget> target;
 	bool canceled = false;
 	bool contentsPresent = true;
 };
@@ -131,6 +136,8 @@ class Session {
 	// New requests supersede older annotation reads, independently of Find
 	// and rendering. Completed replies can still arrive after cancellation.
 	bool annotations(int page, std::function<void(AnnotationsResult)> callback);
+	bool annotationAt(int page, double x, double y,
+	                  std::function<void(AnnotationHitResult)> callback);
 	void cancelAnnotations();
 	// Writes keep queue order, independently of annotation reads. Close only
 	// cancels jobs that have not started; started edits keep their outcome.
@@ -148,17 +155,26 @@ class Session {
 	bool highlightText(TextSelection selection,
 	                   std::function<void(HighlightResult)> callback);
 	bool markText(TextSelection selection, TextMarkup markup,
-	              std::function<void(MarkupResult)> callback);
+	              std::function<void(MarkupResult)> callback,
+	              HighlightColor color = HighlightColor::Yellow);
 	bool textNote(int page, int index,
-	              std::function<void(TextNoteResult)> callback);
+	              std::function<void(TextNoteResult)> callback,
+	              std::uint64_t revision = 0);
 	bool updateTextNote(int page, int index, std::u16string expected,
 	                    std::u16string contents,
-	                    std::function<void(NoteResult)> callback);
+	                    std::function<void(NoteResult)> callback,
+	                    std::uint64_t revision = 0);
 	bool markupComment(int page, int index, TextMarkup markup,
-	                   std::function<void(TextNoteResult)> callback);
+	                   std::function<void(TextNoteResult)> callback,
+	                   std::uint64_t revision = 0);
 	bool updateMarkupComment(int page, int index, TextMarkup markup,
 	                         CommentContents expected, std::u16string contents,
-	                         std::function<void(NoteResult)> callback);
+	                         std::function<void(NoteResult)> callback,
+	                         std::uint64_t revision = 0);
+	bool removeAnnotation(AnnotationTarget target,
+	                      std::function<void(NoteResult)> callback);
+	bool clearMarkupComment(AnnotationTarget target, CommentContents expected,
+	                        std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
 	// Serialization keeps engine queue order; file writes run on its worker.
 	// Cancellation can be polled by either thread.
@@ -196,6 +212,9 @@ class Session {
 	void close();
 
   private:
+	bool changeAnnotation(AnnotationTarget target,
+	                      std::optional<CommentContents> expected,
+	                      std::function<void(NoteResult)> callback);
 	bool writeTextNote(int page, std::optional<std::pair<double, double>> point,
 	                   std::u16string contents, std::u16string author,
 	                   std::function<void(NoteResult)> callback,

@@ -1641,6 +1641,102 @@ TEST_F(SessionTest, MarkupCommentRequestsOwnSnapshotsAndKeepCloseOrder) {
 	}
 }
 
+TEST_F(SessionTest, DeletionRejectsQueuedAndRetainedAnnotationIndices) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("pages.pdf")).error, pdf::Error::None);
+	for (int i = 0; i < 2; ++i) {
+		Reply<pdf::NoteResult> added;
+		ASSERT_TRUE(session.addTextNote(0, 40.0f + i * 30.0f, 50, u"Same", {},
+		                                added.callback()));
+		ASSERT_TRUE(added.wait()->changed);
+	}
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(session.annotations(0, inventory.callback()));
+	const auto before = inventory.wait();
+	ASSERT_TRUE(before && before->annotations);
+	ASSERT_EQ(before->annotations->entries.size(), 2u);
+	const auto first = before->annotations->entries[0].target;
+	const auto second = before->annotations->entries[1].target;
+	Gate gate(engine);
+	Reply<pdf::NoteResult> removed, staleEdit, staleDelete;
+	Reply<pdf::TextNoteResult> staleRead;
+	ASSERT_TRUE(session.removeAnnotation(first, removed.callback()));
+	ASSERT_TRUE(session.updateTextNote(0, 1, u"Same", u"Wrong note",
+	                                   staleEdit.callback()));
+	ASSERT_TRUE(session.textNote(0, 0, staleRead.callback()));
+	ASSERT_TRUE(session.removeAnnotation(second, staleDelete.callback()));
+	gate.open();
+	const auto a = removed.wait(), b = staleEdit.wait(), c = staleDelete.wait();
+	const auto d = staleRead.wait();
+	ASSERT_TRUE(a && b && c && d);
+	EXPECT_TRUE(a->changed);
+	EXPECT_FALSE(a->index);
+	EXPECT_FALSE(b->changed || b->index || c->changed || c->index);
+	EXPECT_FALSE(d->contents || d->target);
+	Reply<pdf::TextNoteResult> retained;
+	ASSERT_TRUE(session.textNote(0, 0, retained.callback(), second.revision));
+	const auto old = retained.wait();
+	ASSERT_TRUE(old);
+	EXPECT_FALSE(old->contents || old->target);
+	Reply<pdf::AnnotationsResult> current;
+	ASSERT_TRUE(session.annotations(0, current.callback()));
+	const auto after = current.wait();
+	ASSERT_TRUE(after && after->annotations);
+	ASSERT_EQ(after->annotations->entries.size(), 1u);
+	const auto fresh = after->annotations->entries[0].target;
+	EXPECT_NE(fresh.revision, second.revision);
+	Reply<pdf::TextNoteResult> read;
+	ASSERT_TRUE(session.textNote(0, 0, read.callback(), fresh.revision));
+	const auto value = read.wait();
+	ASSERT_TRUE(value && value->contents && value->target);
+	EXPECT_EQ(*value->contents, u"Same");
+	EXPECT_EQ(*value->target, fresh);
+}
+
+TEST_F(SessionTest, MarkupHitAndCommentRemovalKeepTheirConcreteTarget) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("text.pdf")).error, pdf::Error::None);
+	Reply<pdf::MarkupResult> mark;
+	ASSERT_TRUE(session.markText({{0, 0}, {0, 4}}, pdf::TextMarkup::Highlight,
+	                             mark.callback(), pdf::HighlightColor::Pink));
+	ASSERT_TRUE(mark.wait()->changed);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(session.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations);
+	ASSERT_EQ(notes->annotations->entries.size(), 1u);
+	const auto& item = notes->annotations->entries[0];
+	ASSERT_FALSE(item.displayQuads.empty());
+	const auto& q = item.displayQuads[0];
+	Reply<pdf::AnnotationHitResult> hit;
+	ASSERT_TRUE(session.annotationAt(0, (q.x1 + q.x4) / 2, (q.y1 + q.y4) / 2,
+	                                 hit.callback()));
+	session.cancelAnnotations();
+	const auto selected = hit.wait();
+	ASSERT_TRUE(selected && selected->annotation);
+	EXPECT_EQ(selected->annotation->target, item.target);
+	Reply<pdf::NoteResult> edit;
+	ASSERT_TRUE(session.updateMarkupComment(
+	    0, item.index, pdf::TextMarkup::Highlight, {{}, false}, u"Comment",
+	    edit.callback(), item.target.revision));
+	ASSERT_TRUE(edit.wait()->changed);
+	Reply<pdf::NoteResult> clear;
+	ASSERT_TRUE(session.clearMarkupComment(item.target, {u"Comment", true},
+	                                       clear.callback()));
+	const auto cleared = clear.wait();
+	ASSERT_TRUE(cleared);
+	EXPECT_TRUE(cleared->changed);
+	EXPECT_EQ(cleared->index, item.index);
+	Reply<pdf::TextNoteResult> contents;
+	ASSERT_TRUE(session.markupComment(0, item.index, pdf::TextMarkup::Highlight,
+	                                  contents.callback(),
+	                                  item.target.revision));
+	const auto empty = contents.wait();
+	ASSERT_TRUE(empty && empty->contents);
+	EXPECT_TRUE(empty->contents->empty());
+	EXPECT_EQ(empty->target, std::optional(item.target));
+}
+
 TEST_F(SessionTest, FileWritesLeaveTheEngineFreeAndKeepTheirSnapshot) {
 	for (const bool copy : {false, true}) {
 		pdf::Session session(engine);
