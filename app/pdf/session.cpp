@@ -734,7 +734,8 @@ bool Session::saveEdits(const std::filesystem::path& destination,
 					return job->canceled;
 				};
 				if (!stopped()) {
-					auto bytes = state->m_document->serialize(limit, stopped);
+					auto bytes =
+					    state->m_document->serializeForCopy(limit, stopped);
 					if (bytes) {
 						job->bytes = std::move(*bytes);
 						state->m_engine.background(

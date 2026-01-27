@@ -31,7 +31,7 @@ class NoteVisibility {
   public:
 	bool collect(FPDF_PAGE page) {
 		const int count = FPDFPage_GetAnnotCount(page);
-		if (count < 0 || count > 4096) {
+		if (count < 0) {
 			return false;
 		}
 		for (int index = 0; index < count; ++index) {

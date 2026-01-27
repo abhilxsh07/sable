@@ -190,6 +190,10 @@ class Document {
 	std::optional<std::vector<std::uint8_t>>
 	serialize(std::size_t limit,
 	          const std::function<bool()>& canceled = {}) const;
+	// Copies hide Text icons without changing live flags or the dirty state.
+	std::optional<std::vector<std::uint8_t>>
+	serializeForCopy(std::size_t limit,
+	                 const std::function<bool()>& canceled = {}) const;
 	// Writes edited bytes to a different file, keeping this document modified.
 	SaveResult saveEdits(const std::filesystem::path& destination,
 	                     const std::filesystem::path& source, std::size_t limit,
@@ -232,6 +236,9 @@ class Document {
 
   private:
 	friend struct DocumentEditTest;
+	std::optional<std::vector<std::uint8_t>>
+	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
+	                bool hideNotes) const;
 	std::optional<std::vector<int>> editCounts() const;
 	bool checkEditCounts(const std::vector<int>& expected,
 	                     const std::vector<int>& pages) const;

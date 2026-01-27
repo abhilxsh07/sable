@@ -1241,7 +1241,7 @@ SaveResult Document::saveEdits(const std::filesystem::path& destination,
 		wasCanceled = wasCanceled || (canceled && canceled());
 		return wasCanceled;
 	};
-	const auto bytes = serialize(limit, stopped);
+	const auto bytes = serializeForCopy(limit, stopped);
 	if (!bytes) {
 		return wasCanceled ? SaveResult::Canceled : SaveResult::Failed;
 	}
@@ -1255,6 +1255,19 @@ bool Document::modified() const {
 std::optional<std::vector<std::uint8_t>>
 Document::serialize(std::size_t limit,
                     const std::function<bool()>& canceled) const {
+	return serializeOutput(limit, canceled, false);
+}
+
+std::optional<std::vector<std::uint8_t>>
+Document::serializeForCopy(std::size_t limit,
+                           const std::function<bool()>& canceled) const {
+	return serializeOutput(limit, canceled, true);
+}
+
+std::optional<std::vector<std::uint8_t>>
+Document::serializeOutput(std::size_t limit,
+                          const std::function<bool()>& canceled,
+                          bool hideNotes) const {
 	if (offThread()) {
 		return {};
 	}
@@ -1298,7 +1311,12 @@ Document::serialize(std::size_t limit,
 	if (writer.stopped()) {
 		return {};
 	}
-	if (!m_modified) {
+	detail::NoteVisibility notes;
+	if (hideNotes &&
+	    !notes.collect(m_handle, [&writer] { return writer.stopped(); })) {
+		return {};
+	}
+	if (!m_modified && notes.empty()) {
 		if (m_data.size() > limit) {
 			return {};
 		}
@@ -1307,7 +1325,8 @@ Document::serialize(std::size_t limit,
 		if (!canSerializeEdits([&writer] { return writer.stopped(); })) {
 			return {};
 		}
-		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
+		if (!notes.run(
+		        [&] { return FPDF_SaveAsCopy(m_handle, &writer, 0) != 0; })) {
 			return {};
 		}
 	}
