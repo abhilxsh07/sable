@@ -88,6 +88,12 @@ void ViewerPage::setupComments() {
 			self->showComments();
 		}
 	});
+	CommentsList().SelectionChanged([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->clearAnnotationSelection();
+			self->showComments();
+		}
+	});
 	PlaceNoteButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement();

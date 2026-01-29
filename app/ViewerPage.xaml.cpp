@@ -114,6 +114,7 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 // a session opens once, so every password tried gets a new one
 void ViewerPage::startOpen(const std::string& password) {
 	try {
+		clearAnnotationSelection();
 		m_session = std::make_unique<pdf::Session>(*m_engine);
 		const bool queued = m_session->open(
 		    m_path, password,
@@ -287,6 +288,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 }
 
 void ViewerPage::close() {
+	clearAnnotationSelection();
 	if (m_presentationTimer) {
 		m_presentationTimer.Stop();
 	}
@@ -723,12 +725,11 @@ void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
 	}
 	if (args.PointerDeviceType() !=
 	        Microsoft::UI::Input::PointerDeviceType::Touch &&
-	    (m_ignoreTextTap || m_ignorePanTap ||
-	     m_cursorTool == CursorTool::Hand)) {
+	    (m_ignoreTextTap || m_ignorePanTap)) {
 		return;
 	}
 	const auto point = args.GetPosition(Pages());
-	requestLink(point, m_clickSpreads ? spreadClickDirection(point) : 0);
+	requestAnnotationAt(point);
 }
 
 // Image-local DIPs already account for scrolling and display scale. Only the
@@ -1733,6 +1734,14 @@ ViewerPage::Device ViewerPage::makeDevice() {
 	check_hresult(device.context->CreateSolidColorBrush(
 	    D2D1::ColorF(0.20f, 0.50f, 1.0f, 0.40f), device.selection.put()));
 	check_hresult(device.context->CreateSolidColorBrush(
+	    D2D1::ColorF(D2D1::ColorF::Black), device.annotationOutline.put()));
+	check_hresult(device.context->CreateSolidColorBrush(
+	    D2D1::ColorF(D2D1::ColorF::White), device.annotationBackground.put()));
+	auto stroke = D2D1::StrokeStyleProperties();
+	stroke.dashStyle = D2D1_DASH_STYLE_DASH;
+	check_hresult(factory->CreateStrokeStyle(stroke, nullptr, 0,
+	                                         device.annotationDashes.put()));
+	check_hresult(device.context->CreateSolidColorBrush(
 	    D2D1::ColorF(1.f, .85f, .05f, .45f), device.findMatch.put()));
 	check_hresult(device.context->CreateSolidColorBrush(
 	    D2D1::ColorF(1.f, .40f, .05f, .65f), device.findActive.put()));
@@ -2050,6 +2059,7 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 			}
 		}
 	}
+	drawSelectedAnnotation(context, pages);
 }
 
 helpers::PixelRect ViewerPage::pixels(std::size_t page) const {

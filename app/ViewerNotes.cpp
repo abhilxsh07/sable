@@ -29,6 +29,7 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::beginNotePlacement() {
+	clearAnnotationSelection();
 	if (m_notePlacing) {
 		cancelNotePlacement();
 		return;
@@ -107,9 +108,7 @@ fire_and_forget ViewerPage::editNote(std::optional<NoteTarget> target) {
 		StackPanel fields;
 		fields.Spacing(12);
 		TextBlock location;
-		location.Text((target ? L"Adds a note at the selected position on page "
-		                      : L"Adds a note at the center of page ") +
-		              to_hstring(page + 1) + L".");
+		location.Text(L"Page " + to_hstring(page + 1));
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
 		TextBox author;
@@ -222,6 +221,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
 }
 
 void ViewerPage::refreshNotes() {
+	clearAnnotationSelection();
 	// i discard old replies even when their page dimensions still match.
 	++m_renderVersion;
 	m_session->cancelRender();

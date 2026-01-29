@@ -39,6 +39,7 @@ bool ViewerPage::beginPresentation(std::function<void()> exit) {
 	dismissProperties();
 	closeFind();
 	clearTextSelection();
+	clearAnnotationSelection();
 	if (m_textMenu) {
 		m_textMenu.Hide();
 	}

@@ -1762,3 +1762,11 @@ The approved editor treats empty existing Text contents as Delete and labels
 that action explicitly. It keeps the draft when removal is refused. Markup
 has a separate Remove comment action, so clearing its text keeps the visible
 highlight or line. Both actions retain the editor's concrete revision.
+
+## Selecting page annotations (2026-10-26)
+
+The approved page action hits the actual markup quads and shows a dashed
+outline with Edit comment and Delete. A page selection clears the sidebar
+row; choosing a sidebar row clears the page selection. Delete stays out of
+text-entry controls and repeated keys. Late hit replies recheck interaction,
+visibility, layout and session state before opening a menu.

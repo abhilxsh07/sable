@@ -198,6 +198,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		std::unique_ptr<pdf::PageFilter> filter;
 		winrt::com_ptr<ID2D1SolidColorBrush> placeholder;
 		winrt::com_ptr<ID2D1SolidColorBrush> selection;
+		winrt::com_ptr<ID2D1SolidColorBrush> annotationOutline,
+		    annotationBackground;
+		winrt::com_ptr<ID2D1StrokeStyle> annotationDashes;
 		winrt::com_ptr<ID2D1SolidColorBrush> findMatch, findActive;
 		std::map<std::size_t, winrt::com_ptr<ID2D1Bitmap1>> bitmaps;
 	};
@@ -240,6 +243,22 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                std::optional<NoteTarget> target = {});
 	bool canMarkSelection() const;
 	void markSelection(pdf::TextMarkup markup);
+	bool canDeleteAnnotation();
+	void deleteAnnotation();
+	std::optional<pdf::AnnotationTarget> annotationTarget();
+	void clearAnnotationSelection();
+	void requestAnnotationAt(winrt::Windows::Foundation::Point point,
+	                         bool context = false);
+	void showAnnotationMenu(winrt::Windows::Foundation::Point point);
+	void editAnnotation(pdf::AnnotationTarget target);
+	void drawSelectedAnnotation(ID2D1DeviceContext& context,
+	                            helpers::PageRange pages);
+	std::optional<pdf::Annotation> m_selectedAnnotation;
+	std::uint64_t m_annotationVersion = 0;
+	bool m_annotationPending = false;
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_annotationMenu{nullptr};
+	void showSelectionMenu();
+	bool m_selectionMenuPending = false;
 	void beginNoteEdit();
 	winrt::fire_and_forget
 	editExistingNote(int page, int index, std::u16string expected,

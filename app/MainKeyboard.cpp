@@ -95,6 +95,19 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 				pdf->copySelection();
 				return true;
 			}
+			if (modifiers == 0 && key == VK_DELETE &&
+			    pdf->canDeleteAnnotation() &&
+			    (pdf->m_selectedAnnotation || pdf->commentsHasFocus())) {
+				if (!repeated) {
+					pdf->deleteAnnotation();
+				}
+				return true;
+			}
+			if (modifiers == 0 && key == VK_ESCAPE &&
+			    pdf->m_selectedAnnotation) {
+				pdf->clearAnnotationSelection();
+				return true;
+			}
 			if (modifiers == 0 && key == VK_ESCAPE && pdf->hasTextSelection()) {
 				pdf->clearTextSelection();
 				return true;
