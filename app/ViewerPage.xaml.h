@@ -244,7 +244,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget
 	editExistingNote(int page, int index, std::u16string expected,
 	                 std::optional<pdf::TextMarkup> markup = {},
-	                 bool contentsPresent = true);
+	                 bool contentsPresent = true,
+	                 std::optional<pdf::AnnotationTarget> target = {});
 	void refreshNotes();
 	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
 	     m_noteSaving = false;

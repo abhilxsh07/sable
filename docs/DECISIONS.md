@@ -1755,3 +1755,10 @@ flags are restored. The five highlight choices use the supplied reference:
 yellow #FFF066, green #7DF066, light blue #8FDEF9, pink #F799D1 and red #EB4949.
 Line markup keeps its existing black appearance. Saving copies follows the
 same note-visibility policy without altering the opened document's flags.
+
+## Empty notes and markup comments (2026-10-26)
+
+The approved editor treats empty existing Text contents as Delete and labels
+that action explicitly. It keeps the draft when removal is refused. Markup
+has a separate Remove comment action, so clearing its text keeps the visible
+highlight or line. Both actions retain the editor's concrete revision.
