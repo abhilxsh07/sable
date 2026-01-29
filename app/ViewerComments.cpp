@@ -23,12 +23,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.Text.h>
+#include <string_view>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace winrt::Sable::implementation {
+namespace {
+Symbol commentSymbol(std::string_view subtype) {
+	if (subtype == "Text") {
+		return Symbol::Comment;
+	}
+	if (subtype == "Highlight") {
+		return Symbol::Highlight;
+	}
+	if (subtype == "Underline") {
+		return Symbol::Underline;
+	}
+	if (subtype == "FreeText") {
+		return Symbol::Font;
+	}
+	if (subtype == "FileAttachment") {
+		return Symbol::Attach;
+	}
+	return Symbol::Document;
+}
+} // namespace
 bool ViewerPage::commentsOpen() {
 	return unbox_value_or<bool>(CommentsButton().IsChecked(), false);
 }
@@ -80,12 +102,16 @@ void ViewerPage::setupComments() {
 	});
 	EditNoteButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->beginNoteEdit();
+			if (self->m_selectedAnnotation) {
+				self->editAnnotation(self->m_selectedAnnotation->target);
+			} else {
+				self->beginNoteEdit();
+			}
 		}
 	});
-	CommentsList().SelectionChanged([weak](auto&&, auto&&) {
+	DeleteNoteButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->showComments();
+			self->deleteAnnotation();
 		}
 	});
 	CommentsList().SelectionChanged([weak](auto&&, auto&&) {
@@ -179,8 +205,8 @@ void ViewerPage::showComments() {
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
-	PlaceNoteButton().Content(
-	    box_value(m_notePlacing ? L"Cancel placement" : L"Place note on page"));
+	PlaceNoteButton().Text(m_notePlacing ? L"Cancel placement"
+	                                     : L"Place note on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
@@ -188,23 +214,39 @@ void ViewerPage::showComments() {
 	const auto selected = CommentsList().SelectedIndex();
 	const auto& notes = m_commentScan.rows();
 	const bool selectedMarkup =
-	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
-	    (notes[selected].subtype == "Highlight" ||
-	     notes[selected].subtype == "Underline" ||
-	     notes[selected].subtype == "StrikeOut");
-	EditNoteButton().Content(box_value(selectedMarkup ? L"Edit selected comment"
-	                                                  : L"Edit selected note"));
+	    m_selectedAnnotation.has_value() ||
+	    (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	     (notes[selected].subtype == "Highlight" ||
+	      notes[selected].subtype == "Underline" ||
+	      notes[selected].subtype == "StrikeOut"));
+	const bool selectedRow =
+	    m_selectedAnnotation.has_value() ||
+	    (selected >= 0 && static_cast<std::size_t>(selected) < notes.size());
+	CommentActions().Visibility(selectedRow ? XVisibility::Visible
+	                                        : XVisibility::Collapsed);
+	Automation::AutomationProperties::SetName(
+	    EditNoteButton(),
+	    selectedMarkup ? L"Edit selected comment" : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
-	    !m_notePlacing && selected >= 0 &&
-	    static_cast<std::size_t>(selected) < notes.size() &&
-	    (notes[selected].subtype == "Text" || selectedMarkup));
+	    !m_notePlacing &&
+	    (selectedMarkup ||
+	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	      notes[selected].subtype == "Text")));
+	DeleteNoteButton().IsEnabled(canDeleteAnnotation());
+	CommentsCount().Text(
+	    to_hstring(notes.size()) +
+	    (m_commentScan.done() && !m_commentScan.limited() ? L"" : L"+"));
+	Automation::AutomationProperties::SetName(
+	    CommentsCount(), to_hstring(notes.size()) + L" comments loaded");
 	NotesState().Text(m_notePlacing
 	                      ? L"Click a page to place a note. Esc cancels."
-	                  : m_noteBusy   ? L"Updating note\u2026"
-	                  : m_noteSaving ? L"Saving notes\u2026"
-	                  : m_notesDirty ? L"Unsaved notes"
+	                  : m_noteBusy   ? L"Updating comments\u2026"
+	                  : m_noteSaving ? L"Saving comments\u2026"
+	                  : m_notesDirty ? L"Unsaved changes"
 	                                 : L"");
+	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
+	                                                    : XVisibility::Visible);
 	const bool visible = commentsOpen() &&
 	                     Visibility() == XVisibility::Visible &&
 	                     Rail().Visibility() == XVisibility::Visible;
@@ -217,23 +259,69 @@ void ViewerPage::showComments() {
 	const auto& rows = m_commentScan.rows();
 	for (auto i = CommentsList().Items().Size(); i < rows.size(); ++i) {
 		const auto& entry = rows[i];
-		StackPanel content;
+		Grid content;
 		content.Tag(box_value(static_cast<int>(i)));
-		content.Spacing(4);
+		content.ColumnSpacing(8);
+		content.Margin(Thickness{0, 6, 0, 6});
+		ColumnDefinition marker;
+		marker.Width(GridLength{22, GridUnitType::Pixel});
+		content.ColumnDefinitions().Append(marker);
+		ColumnDefinition body;
+		body.Width(GridLength{1, GridUnitType::Star});
+		content.ColumnDefinitions().Append(body);
+		StackPanel marks;
+		marks.Spacing(6);
+		if (entry.subtype == "StrikeOut") {
+			TextBlock icon;
+			icon.Text(L"S");
+			icon.FontSize(16);
+			icon.TextDecorations(
+			    Windows::UI::Text::TextDecorations::Strikethrough);
+			icon.HorizontalAlignment(HorizontalAlignment::Center);
+			marks.Children().Append(icon);
+		} else {
+			SymbolIcon icon{commentSymbol(entry.subtype)};
+			icon.Width(20);
+			icon.Height(20);
+			marks.Children().Append(icon);
+		}
+		if (entry.color) {
+			Border swatch;
+			swatch.Width(12);
+			swatch.Height(4);
+			swatch.CornerRadius(Microsoft::UI::Xaml::CornerRadius{2});
+			swatch.Background(Media::SolidColorBrush(Windows::UI::Color{
+			    static_cast<std::uint8_t>(entry.color->alpha),
+			    static_cast<std::uint8_t>(entry.color->red),
+			    static_cast<std::uint8_t>(entry.color->green),
+			    static_cast<std::uint8_t>(entry.color->blue)}));
+			marks.Children().Append(swatch);
+		}
+		content.Children().Append(marks);
+		StackPanel detail;
+		detail.Spacing(4);
+		Grid::SetColumn(detail, 1);
 		TextBlock heading;
 		heading.Text(L"Page " + to_hstring(entry.page + 1) + L" \u00b7 " +
-		             to_hstring(entry.subtype));
+		             to_hstring(helpers::commentLabel(entry.subtype)));
 		heading.FontSize(12);
 		heading.TextWrapping(TextWrapping::Wrap);
-		content.Children().Append(heading);
+		detail.Children().Append(heading);
 		for (const auto* text : {&entry.author, &entry.text}) {
 			if (!text->empty()) {
 				TextBlock block;
 				block.Text(to_hstring(*text));
 				block.TextWrapping(TextWrapping::Wrap);
-				content.Children().Append(block);
+				block.MaxLines(text == &entry.author ? 1 : 3);
+				block.TextTrimming(TextTrimming::CharacterEllipsis);
+				if (text == &entry.author) {
+					block.FontSize(12);
+					block.Opacity(.7);
+				}
+				detail.Children().Append(block);
 			}
 		}
+		content.Children().Append(detail);
 		ListViewItem item;
 		item.Content(content);
 		item.Tag(box_value(static_cast<int>(i)));
@@ -242,6 +330,59 @@ void ViewerPage::showComments() {
 		Automation::AutomationProperties::SetName(
 		    item, heading.Text() + L" " + to_hstring(entry.author) + L" " +
 		              to_hstring(entry.text));
+		MenuFlyout menu;
+		const auto choose = [weak = get_weak(), row = static_cast<int>(i),
+		                     target = entry.target]() {
+			const auto self = weak.get();
+			if (!self || self->m_closed) {
+				return false;
+			}
+			const auto& rows = self->m_commentScan.rows();
+			if (static_cast<std::size_t>(row) >= rows.size() ||
+			    rows[row].target.page != target.page ||
+			    rows[row].target.index != target.index ||
+			    rows[row].target.subtype != target.subtype ||
+			    rows[row].target.revision != target.revision) {
+				return false;
+			}
+			self->clearAnnotationSelection();
+			self->CommentsList().SelectedIndex(row);
+			self->showComments();
+			return true;
+		};
+		MenuFlyoutItem edit;
+		edit.Text(L"Edit");
+		edit.Icon(SymbolIcon{Symbol::Edit});
+		edit.Click([weak = get_weak(), choose](auto&&, auto&&) {
+			if (const auto self = weak.get(); self && choose()) {
+				self->beginNoteEdit();
+			}
+		});
+		MenuFlyoutItem remove;
+		remove.Text(L"Delete annotation");
+		remove.Icon(SymbolIcon{Symbol::Delete});
+		remove.Click([weak = get_weak(), choose](auto&&, auto&&) {
+			if (const auto self = weak.get(); self && choose()) {
+				self->deleteAnnotation();
+			}
+		});
+		menu.Items().Append(edit);
+		menu.Items().Append(remove);
+		menu.Opening([weak = get_weak(), choose, edit = make_weak(edit),
+		              remove = make_weak(remove)](auto&&, auto&&) {
+			const auto self = weak.get();
+			const bool current = self && choose();
+			if (self) {
+				if (const auto action = edit.get()) {
+					action.IsEnabled(current &&
+					                 self->EditNoteButton().IsEnabled());
+				}
+				if (const auto action = remove.get()) {
+					action.IsEnabled(current && self->canDeleteAnnotation());
+				}
+			}
+		});
+		item.ContextFlyout(menu);
 		CommentsList().Items().Append(item);
 	}
 	CommentsRetry().Visibility(m_commentScan.failed() ? XVisibility::Visible
@@ -256,9 +397,13 @@ void ViewerPage::showComments() {
 	} else {
 		CommentsStatus().Text(
 		    m_commentScan.limited() ? L"Some comments could not be listed."
-		    : rows.empty()          ? L"No comments."
-		                            : to_hstring(rows.size()) + L" comments.");
+		    : rows.empty() ? L"No comments yet. Add a note or select text "
+		                     L"on a page to highlight it."
+		                   : L"");
 	}
+	CommentsStatus().Visibility(CommentsStatus().Text().empty()
+	                                ? XVisibility::Collapsed
+	                                : XVisibility::Visible);
 	if (!m_commentScan.done() && !m_commentScan.failed() &&
 	    !m_commentsPending) {
 		requestComments();

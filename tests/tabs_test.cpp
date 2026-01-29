@@ -3265,7 +3265,7 @@ struct TabsTest {
 			}
 			check(v.m_notesDirty && v.m_renderVersion > 0 &&
 			          v.SaveNotesButton().IsEnabled() &&
-			          v.NotesState().Text() == L"Unsaved notes",
+			          v.NotesState().Text() == L"Unsaved changes",
 			      "completed note did not mark unsaved state");
 			check(std::any_of(v.m_commentScan.rows().begin(),
 			                  v.m_commentScan.rows().end(),
@@ -3516,7 +3516,8 @@ struct TabsTest {
 			const auto& rows = v.m_commentScan.rows();
 			check(rows.size() == 3 && rows[0].page == 0 && rows[1].page == 1 &&
 			          rows[2].page == 2 && rows[1].subtype == "Highlight" &&
-			          v.CommentsStatus().Text() == L"3 comments.",
+			          v.CommentsCount().Text() == L"3" &&
+			          v.CommentsStatus().Text().empty(),
 			      "document-wide comment count or order");
 			const auto row =
 			    v.CommentsList().Items().GetAt(0).as<ListViewItem>();
@@ -3619,7 +3620,8 @@ struct TabsTest {
 			if (!v.m_commentScan.done()) {
 				return;
 			}
-			check(v.CommentsStatus().Text() == L"No comments." &&
+			check(std::wstring_view(v.CommentsStatus().Text())
+			              .starts_with(L"No comments yet.") &&
 			          v.CommentsList().Items().Size() == 0,
 			      "empty document comments state");
 			break;

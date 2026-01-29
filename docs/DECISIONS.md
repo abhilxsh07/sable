@@ -1770,3 +1770,10 @@ outline with Edit comment and Delete. A page selection clears the sidebar
 row; choosing a sidebar row clears the page selection. Delete stays out of
 text-entry controls and repeated keys. Late hit replies recheck interaction,
 visibility, layout and session state before opening a menu.
+
+## Comments toolbar and rows (2026-10-26)
+
+The approved Comments refresh puts count, save state and the primary Add note
+and Save actions together. Placement stays in More actions. Readable type
+labels, native icons and short previews replace raw subtype-only rows;
+contextual Edit/Delete controls and row menus retain concrete targets.

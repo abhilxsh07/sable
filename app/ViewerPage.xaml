@@ -43,7 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    <StackPanel Spacing="4">
     <Grid ColumnSpacing="4">
      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in document…"
+     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in documentâ€¦"
       IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" AutomationProperties.Name="Find in document" />
      <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center" FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
      <Button x:Name="FindPrevious" Grid.Column="2" ToolTipService.ToolTip="Previous match (Shift+Enter)" AutomationProperties.Name="Previous match"><FontIcon Glyph="&#xE70E;" FontSize="12" /></Button>
@@ -150,26 +150,72 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<RowDefinition Height="*" />
 					<RowDefinition Height="Auto" />
 				</Grid.RowDefinitions>
-				<TextBlock Text="Comments" Margin="12,12,12,8" FontSize="13"
-					FontWeight="SemiBold" />
-				<TextBlock x:Name="CommentsStatus" Grid.Row="1" Margin="12,4,12,12"
-					TextWrapping="Wrap" Foreground="{ThemeResource SableTextSecondaryBrush}"
-					AutomationProperties.LiveSetting="Polite" />
-				<ListView x:Name="CommentsList" Grid.Row="2" SelectionMode="Single"
-					IsItemClickEnabled="True" AutomationProperties.Name="Comments"
-					ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-				<StackPanel Grid.Row="3" Margin="12" Spacing="8">
-					<TextBlock x:Name="NotesState" TextWrapping="Wrap"
-						AutomationProperties.LiveSetting="Polite" />
+				<StackPanel Margin="12,12,12,8" Spacing="8">
 					<StackPanel Orientation="Horizontal" Spacing="8">
-						<Button x:Name="AddNoteButton" Content="Add note" />
-						<Button x:Name="SaveNotesButton" Content="Save notes" />
+						<TextBlock Text="Comments" FontSize="14"
+							FontWeight="SemiBold" VerticalAlignment="Center" />
+						<Border Background="{ThemeResource SableCardBrush}"
+							CornerRadius="8" Padding="6,1">
+							<TextBlock x:Name="CommentsCount" Text="0"
+								FontSize="11" Opacity="0.7" />
+						</Border>
 					</StackPanel>
-					<Button x:Name="EditNoteButton" Content="Edit selected note" />
-					<Button x:Name="PlaceNoteButton" Content="Place note on page" />
-					<Button x:Name="CommentsRetry" Content="Retry"
-						Visibility="Collapsed" HorizontalAlignment="Left" />
+					<TextBlock x:Name="NotesState" FontSize="12"
+						Foreground="{ThemeResource SableTextSecondaryBrush}"
+						TextWrapping="Wrap"
+						AutomationProperties.LiveSetting="Polite" />
+					<Grid ColumnSpacing="6">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="Auto" />
+						</Grid.ColumnDefinitions>
+						<Button x:Name="AddNoteButton" Content="Add note"
+							HorizontalAlignment="Stretch" Padding="8,5" />
+						<Button x:Name="SaveNotesButton" Grid.Column="1"
+							Content="Save"
+							AutomationProperties.Name="Save comments"
+							HorizontalAlignment="Stretch" Padding="8,5" />
+						<Button x:Name="CommentsMoreButton" Grid.Column="2"
+							Padding="7,5"
+							AutomationProperties.Name="More comment actions"
+							ToolTipService.ToolTip="More comment actions">
+							<SymbolIcon Symbol="More" />
+							<Button.Flyout>
+								<MenuFlyout>
+									<MenuFlyoutItem x:Name="PlaceNoteButton"
+										Text="Place note on page" />
+								</MenuFlyout>
+							</Button.Flyout>
+						</Button>
+					</Grid>
+					<Grid x:Name="CommentActions" ColumnSpacing="6"
+						Visibility="Collapsed">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="*" />
+						</Grid.ColumnDefinitions>
+						<Button x:Name="EditNoteButton" Content="Edit"
+							HorizontalAlignment="Stretch" Padding="8,5"
+							AutomationProperties.Name="Edit selected comment" />
+						<Button x:Name="DeleteNoteButton" Grid.Column="1"
+							Content="Delete"
+							HorizontalAlignment="Stretch" Padding="8,5"
+							AutomationProperties.Name="Delete annotation" />
+					</Grid>
 				</StackPanel>
+				<TextBlock x:Name="CommentsStatus" Grid.Row="1"
+					Margin="12,0,12,8"
+					FontSize="12" TextWrapping="Wrap"
+					Foreground="{ThemeResource SableTextSecondaryBrush}"
+					AutomationProperties.LiveSetting="Polite" />
+				<ListView x:Name="CommentsList" Grid.Row="2"
+					SelectionMode="Single" IsItemClickEnabled="True"
+					AutomationProperties.Name="Comments"
+					ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+				<Button x:Name="CommentsRetry" Grid.Row="3" Content="Retry"
+					Margin="12,8" Visibility="Collapsed"
+					HorizontalAlignment="Left" />
 			</Grid>
 		</Border>
 
