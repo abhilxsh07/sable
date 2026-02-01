@@ -1812,3 +1812,110 @@ TEST(AnnotationTargets, DisplayQuadsFollowIntrinsicCropAndRotation) {
 	    })
 	    .get();
 }
+
+namespace {
+std::vector<std::uint8_t> deletionBook(int notes) {
+	constexpr int pages = 200;
+	const int firstNote = pages + 3;
+	const int linkedNote = firstNote + notes;
+	std::string kids = "[", noteRefs = "[";
+	for (int page = 0; page < pages; ++page) {
+		kids += std::to_string(page + 3) + " 0 R ";
+	}
+	for (int note = 0; note < notes; ++note) {
+		noteRefs += std::to_string(firstNote + note) + " 0 R ";
+	}
+	kids += "]";
+	noteRefs += "]";
+	std::vector<std::string> objects{"<< /Type /Catalog /Pages 2 0 R >>",
+	                                 "<< /Type /Pages /Count 200 /Kids " +
+	                                     kids + " >>"};
+	for (int page = 0; page < pages; ++page) {
+		const auto refs = page == 0 ? noteRefs
+		                  : page == pages - 1
+		                      ? "[" + std::to_string(linkedNote) + " 0 R " +
+		                            std::to_string(linkedNote + 1) + " 0 R]"
+		                      : "[]";
+		objects.push_back("<< /Type /Page /Parent 2 0 R "
+		                  "/MediaBox [0 0 200 300] /Annots " +
+		                  refs + " >>");
+	}
+	for (int note = 0; note < notes; ++note) {
+		objects.push_back("<< /Type /Annot /Subtype /Text /F 32 "
+		                  "/Rect [40 50 60 70] /Contents (Imported) >>");
+	}
+	objects.push_back("<< /Type /Annot /Subtype /Text /Rect [40 50 60 70] "
+	                  "/Contents (Keep thread) /Popup " +
+	                  std::to_string(linkedNote + 1) + " 0 R >>");
+	objects.push_back("<< /Type /Annot /Subtype /Popup /Rect [40 50 60 70] "
+	                  "/Contents (Keep popup) /Parent " +
+	                  std::to_string(linkedNote) + " 0 R >>");
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets{0};
+	for (const auto& body : objects) {
+		offsets.push_back(data.size());
+		data += std::to_string(offsets.size() - 1) + " 0 obj\n" + body +
+		        "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data +=
+	    "xref\n0 " + std::to_string(offsets.size()) + "\n0000000000 65535 f \n";
+	for (std::size_t index = 1; index < offsets.size(); ++index) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offsets[index]);
+		data += line;
+	}
+	data += "trailer\n<< /Size " + std::to_string(offsets.size()) +
+	        " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+	return {data.begin(), data.end()};
+}
+} // namespace
+
+TEST(AnnotationTargets, DeletionProofsSurviveIndexShiftsWithoutBookScans) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const bool imported : {false, true}) {
+			    const auto opened =
+			        pdf::openDocument(deletionBook(imported ? 12 : 0));
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    if (!imported) {
+				    for (int note = 0; note < 12; ++note) {
+					    ASSERT_EQ(doc.addTextNote(0, 40, 50, u"Created"), note);
+				    }
+			    }
+			    for (int removed = 0; removed < 12; ++removed) {
+				    const auto notes = doc.annotations(0);
+				    ASSERT_TRUE(notes);
+				    ASSERT_EQ(notes->entries.size(),
+				              static_cast<std::size_t>(12 - removed));
+				    const auto target = removed % 2
+				                            ? notes->entries.back().target
+				                            : notes->entries.front().target;
+				    const auto before = pdf::DocumentEditTest::pageLoads(doc);
+				    ASSERT_EQ(doc.removeAnnotation(target), true);
+				    const auto loads =
+				        pdf::DocumentEditTest::pageLoads(doc) - before;
+				    if (!removed) {
+					    EXPECT_LE(loads, imported ? 401u : 201u);
+				    } else {
+					    // only the unrelated thread's page needs another look.
+					    EXPECT_EQ(loads, 1u);
+				    }
+			    }
+			    const auto before = pdf::DocumentEditTest::pageLoads(doc);
+			    ASSERT_EQ(doc.addTextNote(0, 80, 100, u"After removal"), 0);
+			    EXPECT_LE(pdf::DocumentEditTest::pageLoads(doc) - before, 1u);
+			    const auto saved = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    const auto kept = reopened.document->annotations(199);
+			    ASSERT_TRUE(kept && kept->entries.size() == 2);
+			    EXPECT_EQ(kept->entries[0].contents, "Keep thread");
+			    EXPECT_EQ(kept->entries[1].contents, "Keep popup");
+		    }
+	    })
+	    .get();
+}

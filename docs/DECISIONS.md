@@ -1784,3 +1784,12 @@ The approved selection menu opens after a completed mouse drag or Select All,
 including when text extraction finishes later. Canceled drags do not open it.
 The highlight submenu shows the five reference colors. Right-clicking page
 markup selects that annotation first; otherwise it keeps the text menu.
+
+## Reusing deletion proofs (2026-10-26)
+
+I cache the pages with popup or reply references during the document's first
+serialization check, and prove imported dictionary identities together for
+an edited page. Safe removal shifts the cached indices and counts instead
+of discarding them. It cannot introduce sharing or references. Repeated
+removal revisits the edited page and existing relationship pages, keeping
+shared, protected and threaded targets refused.

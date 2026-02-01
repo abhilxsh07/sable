@@ -252,7 +252,7 @@ class Document {
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
 	bool m_modified = false;
-	// i invalidate index identities after removal, before another edit runs.
+	// i shift index proofs after removal, before another edit runs.
 	std::uint64_t m_annotationRevision = 1;
 	std::optional<bool> setMarkupComment(int page, int index, TextMarkup markup,
 	                                     const CommentContents& expected,
@@ -264,6 +264,10 @@ class Document {
 	mutable std::optional<std::vector<int>> m_editCounts;
 	mutable std::set<int> m_independentPages;
 	mutable std::set<std::pair<int, int>> m_uniqueMarkup;
+	bool provenUnique(int page, int index) const;
+	mutable std::set<int> m_identityPages;
+	// i only revisit pages with reply or popup references after the first scan.
+	mutable std::optional<std::vector<int>> m_linkedPages;
 	// guard page loads, kept separate from actual page rendering.
 	mutable std::size_t m_editPageLoads = 0;
 	// Nonowning handles stay on the engine thread for lazy target resolution.

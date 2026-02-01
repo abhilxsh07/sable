@@ -248,13 +248,16 @@ std::optional<AnnotationColor> markupColor(HighlightColor color) {
 }
 
 bool unlinkedAnnotation(FPDF_DOCUMENT document, FPDF_PAGE own, int targetIndex,
-                        FPDF_ANNOTATION target) {
+                        FPDF_ANNOTATION target,
+                        const std::vector<int>& linkedPages,
+                        std::size_t& pageLoads) {
 	for (const auto key : {"Popup", "IRT", "Parent", "RT"}) {
 		if (FPDFAnnot_HasKey(target, key)) {
 			return false;
 		}
 	}
-	for (int index = 0; index < FPDF_GetPageCount(document); ++index) {
+	for (const int index : linkedPages) {
+		++pageLoads;
 		PagePtr page(FPDF_LoadPage(document, index));
 		const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
 		if (count < 0 || count > 4096) {
@@ -589,6 +592,7 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 		m_modified = wasModified;
 		return {};
 	}
+	m_uniqueMarkup.insert({index, count});
 	return count;
 }
 
@@ -1045,6 +1049,70 @@ bool Document::matchesTarget(const AnnotationTarget& target) const {
 	return found != snapshot->entries.end();
 }
 
+bool Document::provenUnique(int pageIndex, int index) const {
+	if (m_uniqueMarkup.contains({pageIndex, index})) {
+		return true;
+	}
+	if (m_identityPages.contains(pageIndex) || !m_editCounts || index < 0 ||
+	    pageIndex < 0 || pageIndex >= static_cast<int>(m_editCounts->size())) {
+		return false;
+	}
+	++m_editPageLoads;
+	PagePtr own(FPDF_LoadPage(m_handle, pageIndex));
+	const int count = own ? FPDFPage_GetAnnotCount(own.get()) : -1;
+	if (count < 0 || count > 4096 || index >= count ||
+	    count != (*m_editCounts)[pageIndex]) {
+		return false;
+	}
+	std::vector<AnnotationPtr> notes;
+	std::vector<bool> unique(count, true);
+	notes.reserve(count);
+	for (int candidate = 0; candidate < count; ++candidate) {
+		AnnotationPtr note(FPDFPage_GetAnnot(own.get(), candidate));
+		const int first =
+		    note ? FPDFPage_GetAnnotIndex(own.get(), note.get()) : -1;
+		if (first < 0 || first > candidate) {
+			return false;
+		}
+		if (first != candidate) {
+			unique[first] = unique[candidate] = false;
+		}
+		notes.push_back(std::move(note));
+	}
+	// i prove this page's dictionaries together, then discard every handle.
+	for (int pageIndexOther = 0; pageIndexOther < pageCount();
+	     ++pageIndexOther) {
+		if (pageIndexOther == pageIndex) {
+			continue;
+		}
+		++m_editPageLoads;
+		PagePtr other(FPDF_LoadPage(m_handle, pageIndexOther));
+		const int otherCount = other ? FPDFPage_GetAnnotCount(other.get()) : -1;
+		if (otherCount < 0 || otherCount != (*m_editCounts)[pageIndexOther]) {
+			return false;
+		}
+		if (!otherCount) {
+			continue;
+		}
+		for (int candidate = 0; candidate < count; ++candidate) {
+			if (unique[candidate] &&
+			    FPDFPage_GetAnnotIndex(other.get(), notes[candidate].get()) >=
+			        0) {
+				unique[candidate] = false;
+			}
+		}
+	}
+	std::set<std::pair<int, int>> proven;
+	for (int candidate = 0; candidate < count; ++candidate) {
+		if (unique[candidate]) {
+			proven.insert({pageIndex, candidate});
+		}
+	}
+	m_identityPages.insert(pageIndex);
+	m_uniqueMarkup.merge(proven);
+	return m_uniqueMarkup.contains({pageIndex, index});
+}
+
 std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	if (offThread() || !matchesTarget(target) || !canAnnotate() ||
 	    !canSerializeEdits({}) ||
@@ -1057,21 +1125,35 @@ std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
 	                        : nullptr);
 	constexpr int LOCKED_CONTENTS = 0x200;
-	if (!note ||
+	if (!note || !m_editCounts || !m_linkedPages ||
+	    target.page >= static_cast<int>(m_editCounts->size()) ||
+	    FPDFPage_GetAnnotCount(page.get()) != (*m_editCounts)[target.page] ||
 	    (FPDFAnnot_GetFlags(note.get()) &
 	     (FPDF_ANNOT_FLAG_READONLY | FPDF_ANNOT_FLAG_LOCKED |
 	      LOCKED_CONTENTS)) ||
-	    !uniqueMarkup(m_handle, page.get(), target.page, target.index,
-	                  note.get(), m_editPageLoads) ||
-	    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get())) {
+	    (!m_uniqueMarkup.contains({target.page, target.index}) &&
+	     !provenUnique(target.page, target.index)) ||
+	    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get(),
+	                        *m_linkedPages, m_editPageLoads)) {
 		return {};
 	}
+	m_independentPages.insert(target.page);
 	note.reset();
 	// i finish every refusal check before removing the dictionary reference.
 	if (!FPDFPage_RemoveAnnot(page.get(), target.index)) {
+		invalidateEdits();
 		return {};
 	}
-	invalidateEdits();
+	// i keep the other proofs: removal cannot add sharing or reply links.
+	--(*m_editCounts)[target.page];
+	auto next = m_uniqueMarkup.lower_bound({target.page, target.index});
+	while (next != m_uniqueMarkup.end() && next->first == target.page) {
+		auto entry = m_uniqueMarkup.extract(next++);
+		if (entry.value().second != target.index) {
+			--entry.value().second;
+			m_uniqueMarkup.insert(std::move(entry));
+		}
+	}
 	++m_annotationRevision;
 	m_modified = true;
 	return true;
@@ -1183,6 +1265,8 @@ void Document::invalidateEdits() {
 	m_editCounts.reset();
 	m_independentPages.clear();
 	m_uniqueMarkup.clear();
+	m_identityPages.clear();
+	m_linkedPages.reset();
 }
 
 bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
@@ -1204,7 +1288,7 @@ bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
 	if (pages < 0) {
 		return refuse();
 	}
-	std::vector<int> counts(pages);
+	std::vector<int> counts(pages), linkedPages;
 	for (int index = 0; index < pages; ++index) {
 		if (canceled && canceled()) {
 			return false;
@@ -1216,6 +1300,7 @@ bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
 			return refuse();
 		}
 		counts[index] = count;
+		bool linked = false;
 		for (int i = 0; i < count; ++i) {
 			if (canceled && canceled()) {
 				return false;
@@ -1225,8 +1310,15 @@ bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
 			    FPDFAnnot_GetSubtype(note.get()) == FPDF_ANNOT_FILEATTACHMENT) {
 				return refuse();
 			}
+			linked = linked || FPDFAnnot_HasKey(note.get(), "Popup") ||
+			         FPDFAnnot_HasKey(note.get(), "IRT") ||
+			         FPDFAnnot_HasKey(note.get(), "Parent");
+		}
+		if (linked) {
+			linkedPages.push_back(index);
 		}
 	}
+	m_linkedPages = std::move(linkedPages);
 	m_editCounts = std::move(counts);
 	m_serializable = true;
 	return true;
