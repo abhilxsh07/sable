@@ -100,6 +100,10 @@ struct TabsTest {
 	bool findOnly = false;
 	bool outlineOnly = false;
 	bool highlightOnly = false;
+	bool annotationActionsOnly = false;
+	int annotationMenus = 0;
+	ListViewItem annotationRow{nullptr};
+	std::optional<pdf::Annotation> annotationSnapshot;
 	pdf::TextMarkup selectionMarkup = pdf::TextMarkup::Highlight;
 	std::string markupSubtype = "Highlight";
 	bool noteEditOnly = false;
@@ -2600,6 +2604,313 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void annotationActionsTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    v.m_annotationPending) {
+			return;
+		}
+		const auto invoke = [&](const FrameworkElement& item) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto dialogButton = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& node) -> Button {
+				if (const auto button = node.try_as<Button>();
+				    button && button.Name() == name) {
+					return button;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(node); ++i) {
+					if (const auto button =
+					        find(Media::VisualTreeHelper::GetChild(node, i))) {
+						return button;
+					}
+				}
+				return nullptr;
+			};
+			const auto button = find(v.m_noteDialog);
+			check(button && button.IsEnabled(), "annotation dialog action");
+			invoke(button);
+		};
+		const auto annotations = [&] {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::AnnotationsResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->annotations(0,
+			                               [reply](auto value) {
+				                               reply->set_value(
+				                                   std::move(value));
+			                               }),
+			      "annotation snapshot not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "annotation snapshot timed out");
+			auto result = future.get();
+			check(!result.canceled && result.annotations.has_value(),
+			      "annotation snapshot missing");
+			return std::move(*result.annotations);
+		};
+		switch (step) {
+		case 0: {
+			check(v.m_textHighlight.Items().Size() == 5,
+			      "highlight palette is incomplete");
+			const wchar_t* labels[]{L"Yellow", L"Green", L"Light blue", L"Pink",
+			                        L"Red"};
+			const Windows::UI::Color colors[]{{255, 255, 240, 102},
+			                                  {255, 125, 240, 102},
+			                                  {255, 143, 222, 249},
+			                                  {255, 247, 153, 209},
+			                                  {255, 235, 73, 73}};
+			for (unsigned i = 0; i < 5; ++i) {
+				const auto item =
+				    v.m_textHighlight.Items().GetAt(i).as<MenuFlyoutItem>();
+				check(item.Text() == labels[i] && item.Icon() &&
+				          item.Icon()
+				                  .as<FontIcon>()
+				                  .Foreground()
+				                  .as<Media::SolidColorBrush>()
+				                  .Color() == colors[i],
+				      "highlight color label or swatch differs");
+			}
+			v.m_textMenu.Opened([this](auto&&, auto&&) { ++annotationMenus; });
+			v.requestText(0);
+			break;
+		}
+		case 1: {
+			if (!v.m_text.contains(0)) {
+				return;
+			}
+			const auto point = [&](int index) {
+				const auto box =
+				    v.viewBox(v.m_text.at(0).text->characters[index].box);
+				const auto& page = v.m_layout->pages()[0];
+				return Windows::Foundation::Point{
+				    static_cast<float>(page.x +
+				                       (box.left + box.right) / 2 * page.width),
+				    static_cast<float>(page.y + (box.top + box.bottom) / 2 *
+				                                    page.height)};
+			};
+			v.beginSelection(point(0));
+			v.extendSelection(point(4));
+			v.endSelection();
+			break;
+		}
+		case 2:
+			check(annotationMenus == 1 && v.m_selection &&
+			          !v.m_selectionMenuPending,
+			      "completed selection did not open its menu once");
+			v.m_textMenu.Hide();
+			v.Scroller().Focus(FocusState::Programmatic);
+			break;
+		case 3:
+			check(owner.routeKey('A', helpers::SHORTCUT_CTRL, false),
+			      "Ctrl+A did not reach the viewer");
+			break;
+		case 4:
+			check(annotationMenus == 2 && v.m_selection &&
+			          v.m_selection->anchor.page == 0 &&
+			          v.m_selection->focus.page ==
+			              static_cast<int>(v.m_sizes.size() - 1),
+			      "Select All menu or document range missing");
+			v.m_selection = pdf::TextSelection{{0, 0}, {0, 4}};
+			++v.m_selectionVersion;
+			invoke(v.m_textHighlight.Items().GetAt(3).as<MenuFlyoutItem>());
+			v.m_textMenu.Hide();
+			v.setCommentsOpen(true);
+			break;
+		case 5: {
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			const auto snapshot = annotations();
+			check(snapshot.entries.size() == 1 &&
+			          snapshot.entries[0].subtype == "Highlight",
+			      "palette item did not create a highlight");
+			annotationSnapshot = snapshot.entries[0];
+			check(!annotationSnapshot->displayQuads.empty() &&
+			          annotationSnapshot->displayBounds.has_value(),
+			      "markup lacks display hit and outline geometry");
+			const auto& q = annotationSnapshot->displayQuads[0];
+			const auto center =
+			    helpers::rotatePoint({(q.x1 + q.x2 + q.x3 + q.x4) / 4.,
+			                          (q.y1 + q.y2 + q.y3 + q.y4) / 4.},
+			                         v.m_rotation);
+			const auto& page = v.m_layout->pages()[0];
+			v.requestAnnotationAt(
+			    {static_cast<float>(page.x + center.x * page.width),
+			     static_cast<float>(page.y + center.y * page.height)});
+			break;
+		}
+		case 6:
+			check(v.m_selectedAnnotation &&
+			          v.m_selectedAnnotation->target ==
+			              annotationSnapshot->target &&
+			          v.m_annotationMenu.Items().Size() == 2 &&
+			          v.m_device.annotationDashes &&
+			          v.m_device.annotationOutline,
+			      "markup click did not select its menu and dashed outline");
+			v.m_annotationMenu.Hide();
+			v.PageBox().Focus(FocusState::Programmatic);
+			check(!owner.routeKey(VK_DELETE, 0, false) && !v.m_noteBusy &&
+			          v.m_selectedAnnotation,
+			      "Delete in a text field reached the annotation");
+			v.Scroller().Focus(FocusState::Programmatic);
+			check(owner.routeKey(VK_DELETE, 0, true) && !v.m_noteBusy,
+			      "repeated Delete removed an annotation");
+			annotationRow =
+			    v.CommentsList().Items().GetAt(0).as<ListViewItem>();
+			check(owner.routeKey(VK_DELETE, 0, false) && v.m_noteBusy,
+			      "Delete did not queue the selected markup");
+			break;
+		case 7: {
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(annotations().entries.empty() && v.m_notesDirty &&
+			          !v.m_selectedAnnotation,
+			      "markup deletion kept an annotation or stale selection");
+			const auto stale = annotationRow.ContextFlyout().as<MenuFlyout>();
+			stale.ShowAt(v.CommentsList());
+			check(!stale.Items().GetAt(1).as<MenuFlyoutItem>().IsEnabled(),
+			      "stale row context menu can redirect a deletion");
+			stale.Hide();
+			v.submitNote(0, u"native note", {});
+			break;
+		}
+		case 8:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_commentScan.rows().size() == 1 &&
+			          v.m_commentScan.rows()[0].subtype == "Text",
+			      "new hidden note missing from Comments");
+			v.CommentsList().SelectedIndex(0);
+			invoke(v.EditNoteButton());
+			break;
+		case 9:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			v.m_noteDialog.Content()
+			    .as<StackPanel>()
+			    .Children()
+			    .GetAt(1)
+			    .as<TextBox>()
+			    .Text(L"");
+			if (v.m_noteDialog.PrimaryButtonText() != L"Delete" ||
+			    !v.m_noteDialog.IsPrimaryButtonEnabled()) {
+				check(ticks < 20, "blank existing note did not offer Delete");
+				return;
+			}
+			check(v.m_noteDialog.PrimaryButtonText() == L"Delete" &&
+			          v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "blank existing note did not offer Delete");
+			dialogButton(L"PrimaryButton");
+			break;
+		case 10:
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			check(annotations().entries.empty(), "blank note was not deleted");
+			v.m_selection = pdf::TextSelection{{0, 0}, {0, 4}};
+			++v.m_selectionVersion;
+			v.markSelection(pdf::TextMarkup::Underline);
+			break;
+		case 11: {
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			const auto snapshot = annotations();
+			check(snapshot.entries.size() == 1 &&
+			          snapshot.entries[0].subtype == "Underline",
+			      "comment-removal markup setup failed");
+			annotationSnapshot = snapshot.entries[0];
+			const auto target = annotationSnapshot->target;
+			const auto reply =
+			    std::make_shared<std::promise<pdf::NoteResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->updateMarkupComment(
+			          0, target.index, pdf::TextMarkup::Underline, {u"", false},
+			          u"native comment",
+			          [reply](auto r) { reply->set_value(r); },
+			          target.revision),
+			      "comment setup not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			              std::future_status::ready &&
+			          future.get().changed,
+			      "comment setup failed");
+			v.refreshNotes();
+			v.showComments();
+			break;
+		}
+		case 12:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			v.CommentsList().SelectedIndex(0);
+			invoke(v.EditNoteButton());
+			break;
+		case 13:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(v.m_noteDialog.SecondaryButtonText() == L"Remove comment" &&
+			          v.m_noteDialog.IsSecondaryButtonEnabled(),
+			      "markup editor lacks Remove comment");
+			dialogButton(L"SecondaryButton");
+			break;
+		case 14: {
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			const auto snapshot = annotations();
+			check(snapshot.entries.size() == 1 &&
+			          snapshot.entries[0].contents.empty() &&
+			          !snapshot.entries[0].quads.empty() &&
+			          snapshot.entries[0].quads.size() ==
+			              annotationSnapshot->quads.size() &&
+			          snapshot.entries[0].quads[0].x1 ==
+			              annotationSnapshot->quads[0].x1 &&
+			          snapshot.entries[0].quads[0].y4 ==
+			              annotationSnapshot->quads[0].y4,
+			      "removing comment deleted or moved its markup");
+			const auto row =
+			    v.CommentsList().Items().GetAt(0).as<ListViewItem>();
+			const auto menu = row.ContextFlyout().as<MenuFlyout>();
+			menu.ShowAt(v.CommentsList());
+			check(v.annotationTarget() == snapshot.entries[0].target &&
+			          menu.Items().GetAt(1).as<MenuFlyoutItem>().IsEnabled(),
+			      "row context menu did not capture its exact target");
+			invoke(menu.Items().GetAt(1).as<MenuFlyoutItem>());
+			menu.Hide();
+			break;
+		}
+		case 15:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(annotations().entries.empty() &&
+			          !v.DeleteNoteButton().IsEnabled(),
+			      "row context deletion kept its target or enabled Delete");
+			status.Text(L"PASS: selection menus, palette, markup hit/outline, "
+			            L"Delete focus/repeat guards, stale row, blank-note "
+			            L"deletion and comment removal preserving markup");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void highlightTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -2619,9 +2930,10 @@ struct TabsTest {
 			    .Invoke();
 		};
 		const auto item =
-		    selectionMarkup == pdf::TextMarkup::Underline   ? v.m_textUnderline
-		    : selectionMarkup == pdf::TextMarkup::StrikeOut ? v.m_textStrikeOut
-		                                                    : v.m_textHighlight;
+		    selectionMarkup == pdf::TextMarkup::Underline ? v.m_textUnderline
+		    : selectionMarkup == pdf::TextMarkup::StrikeOut
+		        ? v.m_textStrikeOut
+		        : v.m_textHighlight.Items().GetAt(0).as<MenuFlyoutItem>();
 		switch (step) {
 		case 0:
 			check(!v.canMarkSelection(), "empty selection could highlight");
@@ -3112,7 +3424,7 @@ struct TabsTest {
 		case 3: {
 			const auto fields = v.m_noteDialog.Content().as<StackPanel>();
 			check(fields.Children().GetAt(0).as<TextBlock>().Text() ==
-			          L"Adds a note at the selected position on page 2.",
+			          L"Page 2",
 			      "wrong placement target in editor");
 			fields.Children().GetAt(1).as<TextBox>().Text(L"Author");
 			fields.Children().GetAt(2).as<TextBox>().Text(
@@ -4084,6 +4396,7 @@ struct TabsTest {
 			check(viewer.canCopySelection() && viewer.m_ignoreTextTap,
 			      "drag did not select text or suppress link taps");
 			viewer.copySelection();
+			viewer.m_textMenu.Hide();
 			break;
 		case 2:
 			check(copiedText == "Alpha" && copyCalls == 1,
@@ -5424,6 +5737,10 @@ struct TabsTest {
 				attachmentsTick(*self);
 				return;
 			}
+			if (annotationActionsOnly) {
+				annotationActionsTick(*self);
+				return;
+			}
 			if (highlightOnly) {
 				highlightTick(*self);
 				return;
@@ -6051,6 +6368,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->annotationActionsOnly =
+	    GetEnvironmentVariableW(L"SableAnnotationActionsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->highlightOnly =
 	    GetEnvironmentVariableW(L"SableHighlightTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -6130,10 +6450,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->editOnly || state->musicOnly || state->selectionOnly ||
 	    state->findOnly || state->outlineOnly || state->attachmentsOnly ||
 	    state->commentsOnly || state->attachmentSaveOnly ||
-	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
-	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
-	    state->keyboardOnly || state->keyboardInputOnly ||
-	    state->gesturesOnly || state->longGesturesOnly) {
+	    state->annotationActionsOnly || state->rotationOnly ||
+	    state->propertiesOnly || state->panOnly || state->layoutOnly ||
+	    state->presentationOnly || state->saveCopyOnly || state->keyboardOnly ||
+	    state->keyboardInputOnly || state->gesturesOnly ||
+	    state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -6193,7 +6514,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
-	} else if (state->highlightOnly || state->markupCommentOnly) {
+	} else if (state->highlightOnly || state->markupCommentOnly ||
+	           state->annotationActionsOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->notesOnly) {
 		window->openDocument(engine, L"tests/fixtures/comment_locations.pdf",

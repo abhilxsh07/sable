@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cmath>
 #include <limits>
 #include <winrt/Microsoft.UI.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 using namespace winrt;
@@ -77,8 +78,8 @@ void ViewerPage::setupSelection() {
 		    }
 	    });
 	Pages().PointerCaptureLost([weak](auto&&, auto&&) {
-		if (auto self = weak.get()) {
-			self->endSelection();
+		if (auto self = weak.get(); self && self->m_textPointerDown) {
+			self->cancelSelectionDrag();
 		}
 	});
 	Pages().PointerCanceled([weak](auto&&, auto&&) {
@@ -139,13 +140,29 @@ void ViewerPage::setupSelection() {
 			self->selectAllText();
 		}
 	});
-	m_textHighlight = MenuFlyoutItem();
+	m_textHighlight = MenuFlyoutSubItem();
 	m_textHighlight.Text(L"Highlight");
-	m_textHighlight.Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->markSelection(pdf::TextMarkup::Highlight);
-		}
-	});
+	const auto color = [&](const wchar_t* label, pdf::HighlightColor shade,
+	                       Windows::UI::Color value) {
+		MenuFlyoutItem item;
+		item.Text(label);
+		FontIcon dot;
+		dot.Glyph(L"\x25cf");
+		dot.FontFamily(Media::FontFamily(L"Segoe UI"));
+		dot.Foreground(Media::SolidColorBrush(value));
+		item.Icon(dot);
+		item.Click([weak, shade](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->markSelection(pdf::TextMarkup::Highlight, shade);
+			}
+		});
+		m_textHighlight.Items().Append(item);
+	};
+	color(L"Yellow", pdf::HighlightColor::Yellow, {255, 255, 240, 102});
+	color(L"Green", pdf::HighlightColor::Green, {255, 125, 240, 102});
+	color(L"Light blue", pdf::HighlightColor::LightBlue, {255, 143, 222, 249});
+	color(L"Pink", pdf::HighlightColor::Pink, {255, 247, 153, 209});
+	color(L"Red", pdf::HighlightColor::Red, {255, 235, 73, 73});
 	m_textMenu.Items().Append(m_textHighlight);
 	m_textUnderline = MenuFlyoutItem();
 	m_textUnderline.Text(L"Underline");
@@ -175,6 +192,13 @@ void ViewerPage::setupSelection() {
 		}
 	});
 	Pages().ContextFlyout(m_textMenu);
+	Pages().RightTapped([weak](auto&&,
+	                           const Input::RightTappedRoutedEventArgs& args) {
+		if (const auto self = weak.get(); self && !self->m_presentation) {
+			self->requestAnnotationAt(args.GetPosition(self->Pages()), true);
+			args.Handled(true);
+		}
+	});
 }
 bool ViewerPage::hasTextSelection() const {
 	return !m_closed && m_selection.has_value();
@@ -198,6 +222,7 @@ void ViewerPage::clearTextSelection() {
 	invalidateSelection();
 }
 void ViewerPage::cancelSelectionDrag() {
+	m_selectionMenuPending = false;
 	m_textPointerDown = false;
 	m_textStart.reset();
 	m_textPoint.reset();
@@ -214,6 +239,7 @@ void ViewerPage::beginSelection(Windows::Foundation::Point point) {
 		return;
 	}
 	clearTextSelection();
+	clearAnnotationSelection();
 	m_ignoreTextTap = false;
 	const auto page = m_layout->pageAt(point.X, point.Y);
 	const auto& bounds = m_layout->pages()[page];
@@ -256,6 +282,7 @@ void ViewerPage::endSelection() {
 		m_textAnchor.reset();
 		return;
 	}
+	m_selectionMenuPending = true;
 	updateSelection();
 }
 void ViewerPage::updateSelection() {
@@ -312,6 +339,7 @@ void ViewerPage::updateSelection() {
 		m_textStart.reset();
 		m_textPoint.reset();
 		m_textAnchor.reset();
+		showSelectionMenu();
 	}
 	prefetchSelectedText();
 }
@@ -384,6 +412,7 @@ void ViewerPage::requestText(int page) {
 				    self->updateSelection();
 				    self->revealFindMatch();
 				    self->prefetchSelectedText();
+				    self->showSelectionMenu();
 			    });
 		    })) {
 			return;
@@ -422,12 +451,48 @@ void ViewerPage::selectAllText() {
 		return;
 	}
 	cancelSelectionDrag();
+	clearAnnotationSelection();
+	m_textViewport = {
+	    static_cast<float>(Scroller().ViewportWidth() / 2),
+	    static_cast<float>((std::min)(64., Scroller().ViewportHeight() / 2))};
+	m_selectionMenuPending = true;
 	m_selection = pdf::TextSelection{{0, 0},
 	                                 {static_cast<int>(m_sizes.size() - 1),
 	                                  (std::numeric_limits<int>::max)()}};
 	++m_selectionVersion;
 	invalidateSelection();
 	prefetchSelectedText();
+	showSelectionMenu();
+}
+void ViewerPage::showSelectionMenu() {
+	if (!m_selectionMenuPending || !m_selection || m_textPointerDown ||
+	    m_textStart || m_closed || m_presentation || !m_layout ||
+	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+	    !m_textMenu) {
+		return;
+	}
+	const auto visible = m_layout->visiblePages(viewport(), 0);
+	const auto [first, last] = pdf::ordered(*m_selection);
+	bool ready = false;
+	for (auto page = visible.first; page < visible.end; ++page) {
+		const auto index = static_cast<int>(page);
+		if (index >= first.page && index <= last.page &&
+		    m_text.contains(index)) {
+			ready = true;
+			break;
+		}
+	}
+	if (!ready) {
+		return;
+	}
+	m_selectionMenuPending = false;
+	Primitives::FlyoutShowOptions options;
+	options.Position(Windows::Foundation::Point{
+	    static_cast<float>((std::clamp)(double(m_textViewport.X), 0.,
+	                                    Scroller().ViewportWidth())),
+	    static_cast<float>((std::clamp)(double(m_textViewport.Y), 0.,
+	                                    Scroller().ViewportHeight()))});
+	m_textMenu.ShowAt(Scroller(), options);
 }
 void ViewerPage::copySelection() {
 	if (!canCopySelection() || !m_session ||

@@ -1777,3 +1777,10 @@ The approved Comments refresh puts count, save state and the primary Add note
 and Save actions together. Placement stays in More actions. Readable type
 labels, native icons and short previews replace raw subtype-only rows;
 contextual Edit/Delete controls and row menus retain concrete targets.
+
+## Selection action menus (2026-10-26)
+
+The approved selection menu opens after a completed mouse drag or Select All,
+including when text extraction finishes later. Canceled drags do not open it.
+The highlight submenu shows the five reference colors. Right-clicking page
+markup selects that annotation first; otherwise it keeps the text menu.

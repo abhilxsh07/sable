@@ -43,7 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    <StackPanel Spacing="4">
     <Grid ColumnSpacing="4">
      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in documentâ€¦"
+     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in document…"
       IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" AutomationProperties.Name="Find in document" />
      <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center" FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
      <Button x:Name="FindPrevious" Grid.Column="2" ToolTipService.ToolTip="Previous match (Shift+Enter)" AutomationProperties.Name="Previous match"><FontIcon Glyph="&#xE70E;" FontSize="12" /></Button>

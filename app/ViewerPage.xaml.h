@@ -242,7 +242,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});
 	bool canMarkSelection() const;
-	void markSelection(pdf::TextMarkup markup);
+	void markSelection(pdf::TextMarkup markup,
+	                   pdf::HighlightColor color = pdf::HighlightColor::Yellow);
 	bool canDeleteAnnotation();
 	void deleteAnnotation();
 	std::optional<pdf::AnnotationTarget> annotationTarget();
@@ -364,7 +365,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_textMenu{nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textCopy{nullptr};
-	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textHighlight{
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutSubItem m_textHighlight{
 	    nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textUnderline{
 	    nullptr};

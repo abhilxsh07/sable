@@ -31,7 +31,8 @@ bool ViewerPage::canMarkSelection() const {
 	       (!m_notesAvailable || m_notesAvailable());
 }
 
-void ViewerPage::markSelection(pdf::TextMarkup markup) {
+void ViewerPage::markSelection(pdf::TextMarkup markup,
+                               pdf::HighlightColor color) {
 	if (!canMarkSelection()) {
 		return;
 	}
@@ -78,7 +79,8 @@ void ViewerPage::markSelection(pdf::TextMarkup markup) {
 					            "Couldn't refresh the marked PDF.");
 				        }
 			        });
-		        })) {
+		        },
+		        color)) {
 			showComments();
 			return;
 		}
