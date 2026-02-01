@@ -17,8 +17,9 @@ version has already been used, choose the next version and update those
 three files before building. Never move an existing public tag.
 
 Use `git status --short` to review the checkout and `git diff --check` to
-catch whitespace errors. Keep feature commits separate where possible;
-the outstanding reader work is larger than one normal commit.
+catch whitespace errors. Keep feature commits separate and verify each exact
+staged tree from an archive outside the repo, so it cannot rely on
+uncommitted build fixes.
 
 ## Build and package
 

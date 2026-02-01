@@ -1,10 +1,10 @@
 # Reader checks
 
-The current automated results, failures and limits are tracked in
-[TEST_PLAN.md](TEST_PLAN.md). The complete Debug/Release suites and 25 native
-modes pass, with one hard-link test skipped. Microsoft's PDF driver passes
-the explicit output check in both configurations. Physical input, Windows
-dialogs, real players and device changes still need the checks below.
+The automated results, historical passes and remaining limits are tracked in
+[TEST_PLAN.md](TEST_PLAN.md). The 26 October x64 Debug/Release suites each
+pass 556 tests; twelve current native reader workflows pass. Microsoft's PDF
+driver passes the explicit output check. Physical devices, Windows dialogs,
+real players and display changes still need the checks below.
 
 Start the normal Release build from the repository root:
 
@@ -44,6 +44,19 @@ Check Ctrl-minus while the page box has focus: the PDF should zoom out and
 the field should not gain a soft hyphen. Check keypad +/- and Ctrl+0 too.
 Use Ctrl+F, type Alpha, then Ctrl+G and Ctrl+Shift+G. Escape should close Find.
 A button keeps Enter and Space; sidebars and selectors keep their own keys.
+
+Select mixed-font text and use Select All. The line bands should stay even,
+and the action menu should open after selection finishes. Try all five
+highlight colors, underline and strikethrough. Click existing markup: its
+outline and menu should appear, and Delete should remove that selection.
+Delete in a text field must keep editing the text instead.
+
+In Comments, add a note and check that no icon covers the page. Right-click
+its row for Edit/Delete; clearing the editor should change Apply to Delete.
+For markup, Remove comment should keep the visible mark. Save a copy and
+reopen it to check notes, colors and markup, including pages not rendered
+before saving. The source PDF should remain unchanged. Older stored shapes
+stay as saved; recreate a malformed mark to use the corrected line bands.
 
 Enter presentation with Ctrl+Alt+P. Check click/Shift+click, wheel movement,
 Ctrl+Up/Down, Escape and F11. Try a touch swipe if a touch display is present.

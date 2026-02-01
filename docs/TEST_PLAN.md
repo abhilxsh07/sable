@@ -2,6 +2,20 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Annotation repair snapshot (26 October 2026)
+
+The runtime source at 1ad57c0 passes 556 tests in each x64 Debug/Release
+configuration. All four x64/ARM64 builds have zero warnings. Twelve native
+reader workflows pass; annotation actions and saving passed again after
+the deletion-cache change. Earlier sanitizer/stress results below retain
+their original scope and are not fresh passes for this snapshot.
+
+Windows mouse input checked selection menus, highlight creation/selection,
+popup Delete, sidebar-only notes, empty-note deletion and note placement.
+Saved appearances and hidden note icons passed raw PDFium reload checks.
+The 200-page deletion regression keeps repeated checks off the whole book.
+Other PDF viewers, physical input devices and ARM64 execution remain open.
+
 ## Reader repair regressions (25 October 2026)
 
 - Dirty Save a Copy: notes and all three markup types survive reopening.
@@ -47,7 +61,7 @@ bugs. Previous results are useful baselines, but are not fresh passes here.
 
 ## Status key
 
-Current result: 86 check groups, with 65 Pass, 9 Partial, 11 Manual and
+The earlier reader pass recorded 86 groups: 65 Pass, 9 Partial, 11 Manual and
 1 Blocked. There are no queued checks left in this local pass. Partial and
 Manual rows remain open for the specific input, device or duration named.
 
