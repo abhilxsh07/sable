@@ -1686,6 +1686,7 @@ void ViewerPage::showNotice(const hstring& text) {
 		return;
 	}
 	diagnostics::write(diagnostics::Level::Warning, to_string(text));
+	Message().Severity(InfoBarSeverity::Error);
 	Message().Message(text);
 	Message().IsClosable(true);
 	Message().IsOpen(true);

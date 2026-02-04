@@ -2292,6 +2292,7 @@ struct TabsTest {
 		case 8:
 			check(v.m_notesDirty && !v.m_noteSaving && attachmentPicks == 6 &&
 			          v.Message().IsOpen() &&
+			          v.Message().Severity() == InfoBarSeverity::Error &&
 			          bytes(attachmentTarget) == bytes(v.m_path),
 			      "dirty copy failure lost notes or changed prior output");
 			v.Message().IsOpen(false);
@@ -2300,8 +2301,13 @@ struct TabsTest {
 			break;
 		case 9:
 			check(!v.m_notesDirty && !v.m_noteSaving && attachmentPicks == 7 &&
-			          !owner.m_saveCopyCancel,
+			          !owner.m_saveCopyCancel && v.Message().IsOpen() &&
+			          v.Message().Severity() == InfoBarSeverity::Success,
 			      "dirty copy success kept the wrong save state");
+			v.showNotice(L"Couldn't save this test copy.");
+			check(v.Message().Severity() == InfoBarSeverity::Error,
+			      "an error kept the previous save success style");
+			v.Message().IsOpen(false);
 			check(engine
 			          .run([path = attachmentTarget] {
 				          const auto saved = pdf::openFile(path);

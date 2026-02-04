@@ -102,6 +102,7 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 			// edits are locked until this save's UI continuation completes.
 			viewer->m_notesDirty = false;
 			viewer->showNotice(L"Saved a copy with your notes.");
+			viewer->Message().Severity(InfoBarSeverity::Success);
 			co_return true;
 		}
 		viewer->showNotice(
