@@ -2,6 +2,29 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Windows preview follow-up (26 October 2026)
+
+Checked the extracted e01a5a2 x64 Release package, SHA-256
+`9f50839dd4167d0ffcaff5838515abf9c1dc5d3911eb521d5d6b80810981685a`.
+The runtime source and package contents were unchanged for this pass.
+
+- On print.pdf, Ctrl+P opened the real Windows preview with Microsoft Print
+  to PDF selected. Portrait and landscape both showed the original red
+  content and green printable annotation. The blue annotation has its Print
+  flag cleared and was correctly absent. The night filter stayed off output.
+- Cancel returned to the reader; Ctrl+P opened another preview. Selecting
+  Print reached the driver's Save Print Output As dialog. Its filename
+  field could not be kept focused by the desktop runner, so that output was
+  canceled. No output PDF was created and no physical printer was selected.
+- The output cancellation returned to the print preview, which was then
+  canceled. This checks the visible cancel paths, not a completed print job.
+- The installed Acrobat cross-viewer check stopped at a desktop-access
+  approval timeout. Firefox input is unsupported by the desktop runner's URL
+  policy. Neither attempt verifies another viewer's annotation rendering.
+
+Custom ranges and completed output through the modern dialog remain open.
+The earlier automated driver-output checks retain their original scope.
+
 ## Annotation repair snapshot (26 October 2026)
 
 The runtime source at 1ad57c0 passes 556 tests in each x64 Debug/Release

@@ -120,6 +120,15 @@ scratch text editor, using a short selection from text.pdf.
 
 ## Printing
 
+The 26 Oct desktop follow-up checked the extracted e01a5a2 package's real
+Windows preview on print.pdf. Portrait/landscape retained original colors,
+included the printable annotation and omitted the non-printing annotation.
+Cancel and reopening passed. Print reached the PDF driver's output picker;
+that picker was canceled after the desktop runner lost filename focus.
+Completed output and custom ranges through the modern dialog remain open.
+This later pass narrows the historical dialog limit below; it does not
+replace the earlier automated driver-output check.
+
 The 19 Oct reliability pass isolated two causes of the earlier crashes. A
 retained print renderer could release empty session state through a destroyed
 engine. That state now releases without touching the old engine. Separately,
