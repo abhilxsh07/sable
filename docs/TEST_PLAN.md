@@ -2,6 +2,30 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Saved markup in Acrobat (26 October 2026)
+
+I opened the disposable saved copy from the e01a5a2 package in the installed
+Acrobat desktop viewer. Its green highlight is one even band across the
+mixed-font line. Underline and strikethrough appear on their intended text.
+Comments lists all five entries, including both saved Text-note contents.
+The full page has no Text-note icons. The saved copy's SHA-256 is
+`7e5a5327d83f52492031434bf6ec6e6a1fb7201462e83e0b3051d5489bde797d`.
+
+A Font Capture application error, 0xc06d007e, initially covered part of
+Acrobat's page. It cleared during cleanup, and I rechecked the entire
+unobstructed page. Other colors, rotated pages,
+printing from Acrobat and other viewers still need separate checks.
+
+The package's Windows print dialog again showed the expected red content
+and green printable annotation, with the blue non-printing annotation absent.
+I reached Save Print Output As and set a disposable filename. Save could
+not be activated: the desktop runner reported unavailable geometry and a
+window-owner mismatch. A fresh pages.pdf attempt accepted the custom range
+2-3 and landscape, then reached the output picker. No output PDF was created
+in either attempt. I closed the disposable readers to clear the blocked
+jobs. Completed modern-dialog output, including range/orientation results,
+remains open; runtime code and packages are unchanged.
+
 ## Windows preview follow-up (26 October 2026)
 
 Checked the extracted e01a5a2 x64 Release package, SHA-256

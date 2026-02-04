@@ -58,6 +58,12 @@ reopen it to check notes, colors and markup, including pages not rendered
 before saving. The source PDF should remain unchanged. Older stored shapes
 stay as saved; recreate a malformed mark to use the corrected line bands.
 
+The 26 Oct Acrobat check displayed the saved green mixed-font highlight,
+underline and strikethrough, and listed all five comments including both
+Text notes. After a Font Capture error cleared, the full-page recheck
+confirmed both note icons stay hidden. Other colors, rotated pages and
+printing from Acrobat remain unchecked. TEST_PLAN.md keeps the pass scope.
+
 Enter presentation with Ctrl+Alt+P. Check click/Shift+click, wheel movement,
 Ctrl+Up/Down, Escape and F11. Try a touch swipe if a touch display is present.
 The normal layout and page reached should survive exit. Check mouse/pen
@@ -128,6 +134,11 @@ that picker was canceled after the desktop runner lost filename focus.
 Completed output and custom ranges through the modern dialog remain open.
 This later pass narrows the historical dialog limit below; it does not
 replace the earlier automated driver-output check.
+
+A later attempt set the output filename, but the desktop runner could not
+activate Save because of unavailable geometry and a window-owner mismatch.
+The pages.pdf dialog also accepted range 2-3 and landscape. No PDF was
+created; completed output and its range/orientation results remain open.
 
 The 19 Oct reliability pass isolated two causes of the earlier crashes. A
 retained print renderer could release empty session state through a destroyed
