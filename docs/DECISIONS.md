@@ -1814,3 +1814,19 @@ are capped at 64 KiB and their page total at 1 MiB; incomplete metadata is
 marked limited. Those caps bound returned data, not PDFium's internal form
 tree or appearance allocations. The page hooks and form environment close
 before the scratch document, with all handles staying on the engine thread.
+
+## Form metadata session requests (2026-10-26)
+
+Form reads use their own session generation. New reads and cancelForms
+supersede pending form reads without canceling rendering, Find or annotation
+reads. Accepted callbacks run once on the engine thread outside session
+locks, including failure and cancellation. Callers still guard completed
+replies against a later cancellation or a changed view/session.
+
+I retain one immutable page snapshot, keyed by page and annotation revision,
+within the existing Document metadata limits. Switching pages replaces it;
+failed reads do not displace it. Returned snapshots can outlive the cache.
+Every annotation edit path clears it before the attempted mutation, even
+when refused or unchanged, because revision alone does not cover all edits.
+Close discards the cache with the document on the engine thread. This step
+adds the request/cache path; form controls and field editing follow later.

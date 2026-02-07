@@ -69,7 +69,10 @@ struct Session::State {
 	std::uint64_t m_findGeneration = 0;
 	std::uint64_t m_outlineGeneration = 0;
 	std::uint64_t m_annotationGeneration = 0;
+	std::uint64_t m_formGeneration = 0;
 	std::uint64_t m_annotationRevision = 1;
+	// only the engine thread touches this bounded, single-page snapshot.
+	std::shared_ptr<const FormFields> m_forms;
 	struct FindJob;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
@@ -476,6 +479,60 @@ void Session::cancelAnnotations() {
 	++m_state->m_annotationGeneration;
 }
 
+bool Session::formFields(int page,
+                         std::function<void(FormFieldsResult)> callback) {
+	const auto state = m_state;
+	std::uint64_t generation = 0;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+		generation = ++state->m_formGeneration;
+	}
+	state->m_engine.post([state, page, generation,
+	                      callback = std::move(callback)] {
+		FormFieldsResult result;
+		result.page = page;
+		const auto canceled = [state, generation] {
+			std::lock_guard lock(state->m_mutex);
+			return state->m_closed || generation != state->m_formGeneration;
+		};
+		try {
+			if (!canceled()) {
+				const auto revision = state->m_document->annotationRevision();
+				if (state->m_forms && state->m_forms->revision != revision) {
+					state->m_forms.reset();
+				}
+				if (state->m_forms && state->m_forms->page == page) {
+					result.fields = state->m_forms;
+				} else if (auto fields =
+				               state->m_document->formFields(page, canceled)) {
+					result.fields =
+					    std::make_shared<const FormFields>(std::move(*fields));
+				}
+				if (result.fields && !canceled()) {
+					state->m_forms = result.fields;
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't read PDF form fields.");
+		}
+		result.canceled = canceled();
+		if (result.canceled) {
+			result.fields.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+void Session::cancelForms() {
+	std::lock_guard lock(m_state->m_mutex);
+	++m_state->m_formGeneration;
+}
+
 bool Session::addTextNote(int page, float x, float y, std::u16string contents,
                           std::u16string author,
                           std::function<void(NoteResult)> callback) {
@@ -521,6 +578,7 @@ bool Session::writeTextNote(int page,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
+				state->m_forms.reset();
 				if (!point) {
 					result.index = state->m_document->addCenteredTextNote(
 					    page, contents, author);
@@ -615,6 +673,7 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
+				state->m_forms.reset();
 				if (const auto added =
 				        state->m_document->markText(selection, markup, color)) {
 					result.count = *added;
@@ -695,6 +754,7 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 		    result.canceled = state->closed();
 		    try {
 			    if (!result.canceled) {
+				    state->m_forms.reset();
 				    if (const auto changed = state->m_document->updateTextNote(
 				            page, index, expected, contents, revision)) {
 					    result.index = index;
@@ -783,6 +843,7 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
+				state->m_forms.reset();
 				if (const auto changed = state->m_document->updateMarkupComment(
 				        page, index, markup, expected, contents, revision)) {
 					result.index = index;
@@ -832,6 +893,7 @@ bool Session::changeAnnotation(AnnotationTarget target,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
+				state->m_forms.reset();
 				const auto changed =
 				    expected ? state->m_document->clearMarkupComment(target,
 				                                                     *expected)
@@ -1137,7 +1199,11 @@ void Session::close() {
 		state->m_ready = false;
 		++state->m_generation;
 		++state->m_findGeneration;
+		++state->m_formGeneration;
 	}
-	state->m_engine.post([state] { state->m_document.reset(); });
+	state->m_engine.post([state] {
+		state->m_forms.reset();
+		state->m_document.reset();
+	});
 }
 } // namespace pdf

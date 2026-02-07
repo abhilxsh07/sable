@@ -72,6 +72,11 @@ struct AnnotationsResult {
 	std::optional<Annotations> annotations;
 	bool canceled = false;
 };
+struct FormFieldsResult {
+	int page = 0;
+	std::shared_ptr<const FormFields> fields;
+	bool canceled = false;
+};
 struct AnnotationHitResult {
 	std::optional<Annotation> annotation;
 	bool canceled = false;
@@ -139,6 +144,11 @@ class Session {
 	bool annotationAt(int page, double x, double y,
 	                  std::function<void(AnnotationHitResult)> callback);
 	void cancelAnnotations();
+	// One immutable page is cached; replies still run on the engine thread.
+	// New reads supersede older form reads independently of other requests.
+	// Completed replies may arrive after cancellation; keep caller guards.
+	bool formFields(int page, std::function<void(FormFieldsResult)> callback);
+	void cancelForms();
 	// Writes keep queue order, independently of annotation reads. Close only
 	// cancels jobs that have not started; started edits keep their outcome.
 	// An absent index means failure, possibly an incomplete edit if rollback

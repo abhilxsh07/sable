@@ -44,7 +44,7 @@ namespace fs = std::filesystem;
 
 // A4 pages labelled like pages.pdf (i, ii, then 1, 2, ...), written out by
 // hand the way make_fixtures.py does it, just with many more pages
-std::string manyPages(int count) {
+std::string manyPages(int count, bool form = false) {
 	std::string pdf = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	const auto add = [&](const std::string& body) {
@@ -52,8 +52,11 @@ std::string manyPages(int count) {
 		pdf +=
 		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
 	};
+	const auto field = std::to_string(count + 3) + " 0 R";
+	const auto note = std::to_string(count + 4) + " 0 R";
 	add("<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >> "
-	    "2 << /S /D >>] >> >>");
+	    "2 << /S /D >>] >> " +
+	    (form ? "/AcroForm << /Fields [" + field + "] >> " : "") + ">>");
 	std::string kids;
 	for (int i = 0; i < count; ++i) {
 		kids += std::to_string(3 + i) + " 0 R ";
@@ -61,7 +64,15 @@ std::string manyPages(int count) {
 	add("<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(count) +
 	    " >>");
 	for (int i = 0; i < count; ++i) {
-		add("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+		add("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] " +
+		    (form && i == 0 ? "/Annots [" + note + " " + field + "] " : "") +
+		    ">>");
+	}
+	if (form) {
+		add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (field) /V (value) "
+		    "/Rect [40 50 90 70] /P 3 0 R >>");
+		add("<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
+		    "/Contents (Original) /P 3 0 R >>");
 	}
 	const auto xref = pdf.size();
 	pdf += "xref\n0 " + std::to_string(offsets.size() + 1) +
@@ -185,6 +196,17 @@ class SessionTest : public ::testing::Test {
 			return {key, std::nullopt};
 		}
 		return reply.wait().value_or(pdf::RenderResult{key, std::nullopt});
+	}
+
+	std::shared_ptr<const pdf::FormFields> readForms(pdf::Session& session,
+	                                                 int page = 0) {
+		Reply<pdf::FormFieldsResult> reply;
+		if (!session.formFields(page, reply.callback())) {
+			ADD_FAILURE() << "form read wasn't accepted";
+			return {};
+		}
+		const auto result = reply.wait();
+		return result ? result->fields : nullptr;
 	}
 
 	pdf::Engine engine;
@@ -1127,6 +1149,213 @@ TEST_F(SessionTest, PlacedNotesOwnTheirTargetAndKeepTheCloseBoundary) {
 	ASSERT_TRUE(closed);
 	EXPECT_TRUE(closed->canceled);
 	EXPECT_FALSE(closed->changed);
+}
+
+TEST_F(SessionTest, FormReadsOwnTheirSnapshotsAndCacheOnePage) {
+	pdf::Session session(engine);
+	Reply<pdf::FormFieldsResult> unopened;
+	EXPECT_FALSE(session.formFields(0, unopened.callback()));
+	ASSERT_EQ(open(session, writeTemp("forms.pdf", manyPages(2, true))).error,
+	          pdf::Error::None);
+	EXPECT_FALSE(session.formFields(0, {}));
+	Reply<pdf::FormFieldsResult> first;
+	auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(
+	    session.formFields(0, [cb = first.callback(), onThread](auto r) {
+		    *onThread = pdf::Engine::onThread();
+		    cb(std::move(r));
+	    }));
+	const auto found = first.wait();
+	ASSERT_TRUE(found && found->fields);
+	EXPECT_TRUE(*onThread);
+	EXPECT_FALSE(found->canceled);
+	ASSERT_EQ(found->fields->entries.size(), 1u);
+	EXPECT_EQ(found->fields->entries[0].name, "field");
+	EXPECT_EQ(found->fields->entries[0].value, "value");
+	EXPECT_EQ(found->fields->entries[0].index, 1);
+	{
+		Gate gate(engine);
+		Reply<pdf::FormFieldsResult> cached;
+		auto called = std::make_shared<std::atomic<bool>>(false);
+		ASSERT_TRUE(
+		    session.formFields(0, [cb = cached.callback(), called](auto r) {
+			    *called = true;
+			    cb(std::move(r));
+		    }));
+		EXPECT_FALSE(*called);
+		gate.open();
+		const auto hit = cached.wait();
+		ASSERT_TRUE(hit);
+		EXPECT_EQ(hit->fields, found->fields);
+	}
+	EXPECT_FALSE(readForms(session, -1));
+	EXPECT_FALSE(readForms(session, 2));
+	EXPECT_EQ(readForms(session), found->fields);
+	auto empty = readForms(session, 1);
+	ASSERT_TRUE(empty);
+	EXPECT_TRUE(empty->entries.empty());
+	std::weak_ptr<const pdf::FormFields> evicted = empty;
+	empty.reset();
+	auto current = readForms(session);
+	ASSERT_TRUE(current);
+	EXPECT_NE(current, found->fields);
+	EXPECT_TRUE(evicted.expired());
+	std::weak_ptr<const pdf::FormFields> closed = current;
+	current.reset();
+	session.close();
+	engine.run([] {}).get();
+	EXPECT_TRUE(closed.expired());
+	EXPECT_EQ(found->fields->entries[0].value, "value");
+}
+
+TEST_F(SessionTest, FormCancellationIsIndependentOfOtherRequestsAndSessions) {
+	pdf::Session session(engine), other(engine);
+	const auto path = writeTemp("forms.pdf", manyPages(2, true));
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	ASSERT_EQ(open(other, path).error, pdf::Error::None);
+	{
+		Gate gate(engine);
+		Reply<pdf::FormFieldsResult> old, latest;
+		ASSERT_TRUE(session.formFields(0, old.callback()));
+		ASSERT_TRUE(session.formFields(1, latest.callback()));
+		session.cancelRender();
+		session.cancelSearch();
+		session.cancelAnnotations();
+		gate.open();
+		const auto stale = old.wait(), current = latest.wait();
+		ASSERT_TRUE(stale && current && current->fields);
+		EXPECT_TRUE(stale->canceled);
+		EXPECT_FALSE(stale->fields);
+		EXPECT_FALSE(current->canceled);
+		EXPECT_EQ(current->fields->page, 1);
+	}
+	{
+		Gate gate(engine);
+		Reply<pdf::FormFieldsResult> canceled, intact;
+		Reply<pdf::AnnotationsResult> annotations;
+		Reply<pdf::RenderResult> raster;
+		Reply<pdf::FindUpdate> find;
+		ASSERT_TRUE(session.formFields(0, canceled.callback()));
+		ASSERT_TRUE(other.formFields(0, intact.callback()));
+		ASSERT_TRUE(session.annotations(0, annotations.callback()));
+		ASSERT_TRUE(session.render({0, 60, 85}, raster.callback()));
+		ASSERT_TRUE(session.search(u"none", {}, find.callback()));
+		session.cancelForms();
+		gate.open();
+		const auto stopped = canceled.wait(), live = intact.wait();
+		const auto notes = annotations.wait();
+		const auto rendered = raster.wait();
+		const auto searched = find.wait();
+		ASSERT_TRUE(stopped && live && live->fields && notes && rendered &&
+		            searched);
+		EXPECT_TRUE(stopped->canceled);
+		EXPECT_FALSE(stopped->fields);
+		EXPECT_FALSE(live->canceled || notes->canceled || rendered->canceled ||
+		             searched->canceled);
+		EXPECT_TRUE(notes->annotations && rendered->bitmap && searched->done);
+	}
+}
+
+TEST_F(SessionTest, FormReadsCloseOnceAndCallbacksCanQueueWorkOrThrow) {
+	const auto path = writeTemp("forms.pdf", manyPages(2, true));
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, path).error, pdf::Error::None);
+		ASSERT_TRUE(readForms(*session));
+		Gate gate(engine);
+		Reply<pdf::FormFieldsResult> reply;
+		auto calls = std::make_shared<std::atomic<int>>(0);
+		ASSERT_TRUE(
+		    session->formFields(0, [cb = reply.callback(), calls](auto r) {
+			    ++*calls;
+			    cb(std::move(r));
+		    }));
+		if (destroy) {
+			session.reset();
+		} else {
+			session->close();
+			EXPECT_FALSE(session->formFields(0, reply.callback()));
+		}
+		gate.open();
+		const auto result = reply.wait();
+		ASSERT_TRUE(result);
+		EXPECT_TRUE(result->canceled);
+		EXPECT_FALSE(result->fields);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	Reply<pdf::FormFieldsResult> next;
+	ASSERT_TRUE(session.formFields(0, [&session, cb = next.callback()](auto r) {
+		if (r.fields) {
+			session.formFields(1, cb);
+		}
+	}));
+	const auto queued = next.wait();
+	ASSERT_TRUE(queued && queued->fields);
+	EXPECT_EQ(queued->page, 1);
+	ASSERT_TRUE(session.formFields(0, [](auto) { throw 1; }));
+	engine.run([] {}).get();
+	EXPECT_TRUE(readForms(session));
+}
+
+TEST_F(SessionTest, FormCacheClearsBeforeEditsIncludingRefusedAttempts) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("forms.pdf", manyPages(1, true))).error,
+	          pdf::Error::None);
+	auto previous = readForms(session);
+	ASSERT_TRUE(previous);
+	ASSERT_EQ(previous->entries.size(), 1u);
+	const auto revision = previous->revision;
+	const auto refreshed = [&] {
+		auto current = readForms(session);
+		EXPECT_NE(current, previous);
+		previous = current;
+	};
+	Reply<pdf::NoteResult> added, updated, markup, cleared, removed;
+	ASSERT_TRUE(session.addTextNote(0, 100, 100, u"new", {}, added.callback()));
+	const auto note = added.wait();
+	ASSERT_TRUE(note && note->index && note->changed);
+	refreshed();
+	ASSERT_TRUE(session.updateTextNote(0, *note->index, u"new", u"updated",
+	                                   updated.callback()));
+	const auto change = updated.wait();
+	ASSERT_TRUE(change && change->changed);
+	refreshed();
+	ASSERT_TRUE(session.updateMarkupComment(
+	    0, *note->index, pdf::TextMarkup::Highlight, {{}, false}, u"refused",
+	    markup.callback()));
+	const auto refused = markup.wait();
+	ASSERT_TRUE(refused);
+	EXPECT_FALSE(refused->changed);
+	refreshed();
+	Reply<pdf::MarkupResult> invalid;
+	ASSERT_TRUE(
+	    session.markText({}, pdf::TextMarkup::Highlight, invalid.callback()));
+	const auto unmarked = invalid.wait();
+	ASSERT_TRUE(unmarked);
+	EXPECT_FALSE(unmarked->changed);
+	refreshed();
+	ASSERT_TRUE(session.clearMarkupComment(
+	    {0, *note->index, "Highlight", revision}, {}, cleared.callback()));
+	const auto unchanged = cleared.wait();
+	ASSERT_TRUE(unchanged);
+	EXPECT_FALSE(unchanged->changed);
+	refreshed();
+	ASSERT_TRUE(previous);
+	ASSERT_EQ(previous->entries.size(), 1u);
+	EXPECT_EQ(previous->revision, revision);
+	EXPECT_EQ(previous->entries[0].index, 1);
+	ASSERT_TRUE(
+	    session.removeAnnotation({0, 0, "Text", revision}, removed.callback()));
+	const auto deletion = removed.wait();
+	ASSERT_TRUE(deletion && deletion->changed);
+	refreshed();
+	ASSERT_TRUE(previous);
+	ASSERT_EQ(previous->entries.size(), 1u);
+	EXPECT_NE(previous->revision, revision);
+	EXPECT_EQ(previous->entries[0].index, 0);
 }
 
 TEST_F(SessionTest, AnnotationsReturnPageSnapshotsOnTheEngineThread) {
