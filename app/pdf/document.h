@@ -109,6 +109,29 @@ struct Attachments {
 	bool limited = false;
 };
 
+enum class FormFieldType {
+	Unknown,
+	PushButton,
+	CheckBox,
+	RadioButton,
+	ComboBox,
+	ListBox,
+	Text,
+	Signature
+};
+struct FormField {
+	int index = 0, flags = 0;
+	FormFieldType type = FormFieldType::Unknown;
+	std::string name, value;
+	std::optional<AnnotationBounds> bounds;
+};
+struct FormFields {
+	int page = 0;
+	std::uint64_t revision = 0;
+	std::vector<FormField> entries;
+	bool limited = false;
+};
+
 class Document;
 
 struct OpenResult {
@@ -206,6 +229,10 @@ class Document {
 	// All subtypes, in page order. nullopt means failure or cancellation.
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;
+	// A scratch copy keeps form normalization away from the live document.
+	// nullopt includes copies that cannot reopen without a password.
+	std::optional<FormFields>
+	formFields(int page, const std::function<bool()>& canceled = {}) const;
 	std::optional<Attachments>
 	attachments(const std::function<bool()>& canceled = {}) const;
 	std::optional<std::vector<std::uint8_t>>
@@ -236,6 +263,7 @@ class Document {
 
   private:
 	friend struct DocumentEditTest;
+	friend struct DocumentFormTest;
 	std::optional<std::vector<std::uint8_t>>
 	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
 	                bool hideNotes) const;

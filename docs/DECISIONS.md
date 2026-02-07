@@ -1793,3 +1793,24 @@ an edited page. Safe removal shifts the cached indices and counts instead
 of discarding them. It cannot introduce sharing or references. Repeated
 removal revisits the edited page and existing relationship pages, keeping
 shared, protected and threaded targets refused.
+
+## Form widget metadata (2026-10-26)
+
+The first E01 step reads page widgets on the engine thread and returns plain
+name/value/type/flags snapshots, raw PDF bounds and annotation indices with
+the live document revision. It does not add editing controls or run actions.
+
+I inspect a scratch document because PDFium's form setup can normalize field
+dictionaries and regenerate appearances. The live document stays outside
+that environment. Current bytes come through the existing serialization
+guards, capped at 128 MiB. A copy that cannot serialize or reopen without a
+password returns failure; encrypted-form inspection needs a later step.
+Non-form pages return an empty list; XFA remains unsupported.
+Choice options and multi-select selections need a later step; multi-select
+fields mark the snapshot limited rather than claiming one complete value.
+
+The scan examines at most 4,096 page annotations. Individual UTF-16 buffers
+are capped at 64 KiB and their page total at 1 MiB; incomplete metadata is
+marked limited. Those caps bound returned data, not PDFium's internal form
+tree or appearance allocations. The page hooks and form environment close
+before the scratch document, with all handles staying on the engine thread.

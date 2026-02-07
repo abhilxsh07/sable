@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdexcept>
 
 #include <fpdf_doc.h>
+#include <fpdf_formfill.h>
 #include <fpdf_dataavail.h>
 #include <cstring>
 #include <limits>
@@ -67,6 +68,42 @@ struct AnnotationCloser {
 };
 using AnnotationPtr = std::unique_ptr<fpdf_annotation_t__, AnnotationCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
+
+// i only inspect this page; callbacks cannot run actions or start timers.
+struct FormContext : FPDF_FORMFILLINFO {
+	FormContext(FPDF_DOCUMENT initialOwner, int initialIndex)
+	    : FPDF_FORMFILLINFO{}, document(initialOwner), pageIndex(initialIndex) {
+		version = 1;
+		FFI_Invalidate = [](FPDF_FORMFILLINFO*, FPDF_PAGE, double, double,
+		                    double, double) {};
+		FFI_SetCursor = [](FPDF_FORMFILLINFO*, int) {};
+		FFI_SetTimer = [](FPDF_FORMFILLINFO*, int, TimerCallback) { return 0; };
+		FFI_KillTimer = [](FPDF_FORMFILLINFO*, int) {};
+		FFI_GetLocalTime = [](FPDF_FORMFILLINFO*) { return FPDF_SYSTEMTIME{}; };
+		FFI_GetPage = [](FPDF_FORMFILLINFO* base, FPDF_DOCUMENT owner,
+		                 int index) -> FPDF_PAGE {
+			const auto& self = *static_cast<FormContext*>(base);
+			return owner == self.document && index == self.pageIndex
+			           ? self.page.get()
+			           : nullptr;
+		};
+		FFI_GetRotation = [](FPDF_FORMFILLINFO*, FPDF_PAGE loadedPage) {
+			return FPDFPage_GetRotation(loadedPage);
+		};
+		FFI_ExecuteNamedAction = [](FPDF_FORMFILLINFO*, FPDF_BYTESTRING) {};
+	}
+	~FormContext() {
+		if (page && handle) {
+			FORM_OnBeforeClosePage(page.get(), handle);
+		}
+		page.reset();
+		FPDFDOC_ExitFormFillEnvironment(handle);
+	}
+	FPDF_DOCUMENT document;
+	int pageIndex;
+	PagePtr page;
+	FPDF_FORMHANDLE handle = nullptr;
+};
 struct TextCloser {
 	void operator()(fpdf_textpage_t__* text) const {
 		FPDFText_ClosePage(text);
@@ -1808,6 +1845,117 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 			}
 		}
 		result.entries.push_back(std::move(annotation));
+	}
+	return stopped() ? std::nullopt : std::optional{std::move(result)};
+}
+
+std::optional<FormFields>
+Document::formFields(int index, const std::function<bool()>& canceled) const {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || index < 0 || index >= pageCount() || stopped()) {
+		return {};
+	}
+	FormFields result;
+	result.page = index;
+	result.revision = m_annotationRevision;
+	const int formType = FPDF_GetFormType(m_handle);
+	if (formType == FORMTYPE_NONE) {
+		return stopped() ? std::nullopt : std::optional{std::move(result)};
+	}
+	if (formType != FORMTYPE_ACRO_FORM) {
+		return {};
+	}
+	// form setup can rewrite dictionaries and appearances, even without input.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/cpdfsdk_pageview.cpp
+	auto bytes = serialize(128 * 1024 * 1024, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	const auto scratch = openDocument(std::move(*bytes));
+	if (!scratch.document || stopped()) {
+		return {};
+	}
+	FormContext context(scratch.document->m_handle, index);
+	context.handle =
+	    FPDFDOC_InitFormFillEnvironment(context.document, &context);
+	if (!context.handle) {
+		return {};
+	}
+	context.page.reset(FPDF_LoadPage(context.document, index));
+	if (!context.page) {
+		return {};
+	}
+	FORM_OnAfterLoadPage(context.page.get(), context.handle);
+	const int count = FPDFPage_GetAnnotCount(context.page.get());
+	if (count < 0) {
+		return {};
+	}
+	result.limited = count > 4096;
+	std::size_t total = 0;
+	const auto text = [&](auto getter, FPDF_ANNOTATION annotation) {
+		std::string value;
+		const auto size = getter(context.handle, annotation, nullptr, 0);
+		if (size < 2 || size % 2 || size > 64 * 1024 ||
+		    total + size > 1024 * 1024) {
+			result.limited = true;
+			return value;
+		}
+		total += size;
+		std::vector<unsigned char> buffer(size);
+		if (getter(context.handle, annotation,
+		           reinterpret_cast<FPDF_WCHAR*>(buffer.data()),
+		           size) != size ||
+		    buffer[size - 1] || buffer[size - 2]) {
+			result.limited = true;
+			return value;
+		}
+		buffer.resize(size - 2);
+		return utf16ToUtf8(buffer);
+	};
+	static_assert(static_cast<int>(FormFieldType::Signature) ==
+	              FPDF_FORMFIELD_SIGNATURE);
+	for (int i = 0; i < (std::min)(count, 4096); ++i) {
+		if (stopped()) {
+			return {};
+		}
+		AnnotationPtr annotation(FPDFPage_GetAnnot(context.page.get(), i));
+		if (!annotation) {
+			result.limited = true;
+			continue;
+		}
+		if (FPDFAnnot_GetSubtype(annotation.get()) != FPDF_ANNOT_WIDGET) {
+			continue;
+		}
+		const int type =
+		    FPDFAnnot_GetFormFieldType(context.handle, annotation.get());
+		if (type < 0 || type > FPDF_FORMFIELD_SIGNATURE) {
+			result.limited = true;
+			continue;
+		}
+		FormField field;
+		field.index = i;
+		field.type = static_cast<FormFieldType>(type);
+		field.flags =
+		    FPDFAnnot_GetFormFieldFlags(context.handle, annotation.get());
+		if (field.flags & FPDF_FORMFLAG_CHOICE_MULTI_SELECT) {
+			result.limited = true;
+		}
+		field.name = text(FPDFAnnot_GetFormFieldName, annotation.get());
+		field.value = text(FPDFAnnot_GetFormFieldValue, annotation.get());
+		FS_RECTF rect{};
+		if (FPDFAnnot_GetValueType(annotation.get(), "Rect") ==
+		        FPDF_OBJECT_ARRAY &&
+		    FPDFAnnot_GetRect(annotation.get(), &rect) &&
+		    std::isfinite(rect.left) && std::isfinite(rect.right) &&
+		    std::isfinite(rect.bottom) && std::isfinite(rect.top) &&
+		    rect.left < rect.right && rect.bottom < rect.top) {
+			field.bounds =
+			    AnnotationBounds{rect.left, rect.bottom, rect.right, rect.top};
+		} else {
+			result.limited = true;
+		}
+		result.entries.push_back(std::move(field));
 	}
 	return stopped() ? std::nullopt : std::optional{std::move(result)};
 }
