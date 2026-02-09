@@ -1830,3 +1830,19 @@ Every annotation edit path clears it before the attempted mutation, even
 when refused or unchanged, because revision alone does not cover all edits.
 Close discards the cache with the document on the engine thread. This step
 adds the request/cache path; form controls and field editing follow later.
+
+## Form field display geometry (2026-10-26)
+
+Field snapshots now carry annotation flags separately from form-field flags
+and a clipped visible rectangle in displayed-page fractions. The conversion
+uses the scratch page's media/crop intersection and intrinsic rotation;
+viewer rotation, zoom and display scale remain outside the cached snapshot.
+Raw PDF bounds stay intact, including partial and fully off-page fields.
+
+I intersect rectangles before integer conversion so remote coordinates
+cannot overflow device points. Hidden, Invisible and NoView fields keep
+their metadata without exposing a visible footprint. Malformed rectangles,
+unusable page boxes and failed conversions mark the snapshot limited;
+ordinary off-page placement does not. Other annotation flags are retained
+for later native-control behavior. The clipped rectangle describes the
+visible footprint; an inline editor also needs the raw bounds for layout.

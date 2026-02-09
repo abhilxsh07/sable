@@ -121,9 +121,12 @@ enum class FormFieldType {
 };
 struct FormField {
 	int index = 0, flags = 0;
+	int annotationFlags = 0;
 	FormFieldType type = FormFieldType::Unknown;
 	std::string name, value;
 	std::optional<AnnotationBounds> bounds;
+	// Clipped page fractions; absent for hidden, off-page or unusable bounds.
+	std::optional<AnnotationRect> displayBounds;
 };
 struct FormFields {
 	int page = 0;

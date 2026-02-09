@@ -21,8 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fpdf_annot.h>
 #include <fpdfview.h>
 #include <cstdio>
+#include <algorithm>
+#include <array>
 #include "pdf/document.h"
 #include "pdf/engine.h"
+#include "rotation.h"
 #include "pdf_test_files.h"
 
 namespace pdf {
@@ -39,8 +42,14 @@ struct DocumentFormTest {
 } // namespace pdf
 
 namespace {
+struct FormPageOptions {
+	int rotation = 90;
+	bool appearances = true, reference = false;
+	std::string boxes = "/MediaBox [0 0 200 300] /CropBox [20 40 180 260]";
+};
 std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
-                                    std::string parent = {}, int repeat = 1) {
+                                    std::string parent = {}, int repeat = 1,
+                                    FormPageOptions view = {}) {
 	std::string refs;
 	for (std::size_t i = 0; i < fields.size(); ++i) {
 		for (int copy = 0; copy < repeat; ++copy) {
@@ -51,13 +60,16 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 	std::vector<std::string> objects{
 	    "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
 	    "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
-	    "<< /Fields [" + roots +
-	        "] /NeedAppearances true "
+	    "<< /Fields [" + roots + "] /NeedAppearances " +
+	        (view.appearances ? "true " : "false ") +
 	        "/DA (/Helv 10 Tf 0 g) /DR << /Font << /Helv "
 	        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
-	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
-	    "/CropBox [20 40 180 260] /Rotate 90 /Annots [" +
-	        refs + "] >>",
+	    "<< /Type /Page /Parent 2 0 R " + view.boxes + " /Rotate " +
+	        std::to_string(view.rotation) + " /Annots [" + refs + "] " +
+	        (view.reference
+	             ? "/Contents " + std::to_string(fields.size() + 9) + " 0 R "
+	             : "") +
+	        ">>",
 	    "<< " + parent + " /Kids [" + refs + "] >>",
 	    "<FEFF004E03A9D83DDE00>",
 	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length 0 >>\n"
@@ -67,6 +79,11 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 	for (const auto& field : fields) {
 		objects.push_back("<< /Type /Annot /P 4 0 R " + field +
 		                  (parent.empty() ? "" : " /Parent 5 0 R") + " >>");
+	}
+	if (view.reference) {
+		const std::string paint = "0 0 0 rg 40 50 50 20 re f";
+		objects.push_back("<< /Length " + std::to_string(paint.size()) +
+		                  " >>\nstream\n" + paint + "\nendstream");
 	}
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
@@ -236,6 +253,190 @@ TEST(FormFields, DoesNotRegenerateLiveAppearancesOrChangeCopies) {
 		        pdf::DocumentFormTest::hasAppearance(*opened.document));
 		    EXPECT_FALSE(opened.document->modified());
 		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, DisplayBoundsMatchCropRotationAndRenderedReference) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<pdf::AnnotationRect, 4> expected{
+		        {{1. / 8, 19. / 22, 7. / 16, 21. / 22},
+		         {1. / 22, 1. / 8, 3. / 22, 7. / 16},
+		         {9. / 16, 1. / 22, 7. / 8, 3. / 22},
+		         {19. / 22, 9. / 16, 21. / 22, 7. / 8}}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    SCOPED_TRACE(intrinsic);
+			    const auto opened = pdf::openDocument(
+			        formBytes({WIDGET + "/FT /Tx /T (field) /V (value)"}, {}, 1,
+			                  {.rotation = intrinsic * 90, .reference = true}));
+			    ASSERT_TRUE(opened.document);
+			    const auto fields = opened.document->formFields(0);
+			    ASSERT_TRUE(fields);
+			    EXPECT_FALSE(fields->limited);
+			    ASSERT_EQ(fields->entries.size(), 1u);
+			    ASSERT_TRUE(fields->entries[0].displayBounds);
+			    const auto rect = *fields->entries[0].displayBounds;
+			    const auto base = expected[intrinsic];
+			    EXPECT_NEAR(rect.left, base.left, 2e-6);
+			    EXPECT_NEAR(rect.top, base.top, 2e-6);
+			    EXPECT_NEAR(rect.right, base.right, 2e-6);
+			    EXPECT_NEAR(rect.bottom, base.bottom, 2e-6);
+			    const auto page = opened.document->pageSize(0);
+			    ASSERT_TRUE(page);
+			    for (int extra = 0; extra < 4; ++extra) {
+				    SCOPED_TRACE(extra);
+				    const auto shown = helpers::rotateRect(
+				        {rect.left, rect.top, rect.right - rect.left,
+				         rect.bottom - rect.top},
+				        extra);
+				    const auto size = helpers::rotatedSize(
+				        {page->width, page->height}, extra);
+				    for (const int scale : {1, 3}) {
+					    SCOPED_TRACE(scale);
+					    const int width = static_cast<int>(size.width) * scale;
+					    const int height =
+					        static_cast<int>(size.height) * scale;
+					    const auto bitmap =
+					        opened.document->render(0, width, height, extra);
+					    ASSERT_TRUE(bitmap);
+					    int left = width, top = height, right = 0, bottom = 0;
+					    for (int y = 0; y < height; ++y) {
+						    for (int x = 0; x < width; ++x) {
+							    const auto* p = bitmap->pixels.data() +
+							                    y * bitmap->stride + x * 4;
+							    if (p[0] < 32 && p[1] < 32 && p[2] < 32) {
+								    left = (std::min)(left, x);
+								    top = (std::min)(top, y);
+								    right = (std::max)(right, x + 1);
+								    bottom = (std::max)(bottom, y + 1);
+							    }
+						    }
+					    }
+					    ASSERT_LT(left, right);
+					    ASSERT_LT(top, bottom);
+					    EXPECT_NEAR(left, shown.x * width, 2);
+					    EXPECT_NEAR(top, shown.y * height, 2);
+					    EXPECT_NEAR(right, (shown.x + shown.width) * width, 2);
+					    EXPECT_NEAR(bottom, (shown.y + shown.height) * height,
+					                2);
+				    }
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, ClipsBeforeConvertingRemoteOrOffPageRectangles) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {"/Subtype /Widget /FT /Tx /T (partial) /Rect [-100 30 40 70]",
+		         "/Subtype /Widget /FT /Tx /T (outside) /Rect [180 50 190 70]",
+		         "/Subtype /Widget /FT /Tx /T (remote) /Rect ["
+		         "-300000000000000000000000000000000000000.0 "
+		         "-300000000000000000000000000000000000000.0 "
+		         "300000000000000000000000000000000000000.0 "
+		         "300000000000000000000000000000000000000.0]"},
+		        {}, 1, {.rotation = 0, .appearances = false}));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields);
+		    EXPECT_FALSE(fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 3u);
+		    const auto& partial = fields->entries[0];
+		    ASSERT_TRUE(partial.bounds && partial.displayBounds);
+		    EXPECT_FLOAT_EQ(partial.bounds->left, -100);
+		    EXPECT_NEAR(partial.displayBounds->left, 0, 2e-6);
+		    EXPECT_NEAR(partial.displayBounds->right, 1. / 8, 2e-6);
+		    EXPECT_NEAR(partial.displayBounds->top, 19. / 22, 2e-6);
+		    EXPECT_NEAR(partial.displayBounds->bottom, 1, 2e-6);
+		    EXPECT_TRUE(fields->entries[1].bounds);
+		    EXPECT_FALSE(fields->entries[1].displayBounds);
+		    const auto& remote = fields->entries[2];
+		    ASSERT_TRUE(remote.bounds && remote.displayBounds);
+		    EXPECT_LT(remote.bounds->left, -1e30f);
+		    EXPECT_GT(remote.bounds->right, 1e30f);
+		    EXPECT_NEAR(remote.displayBounds->left, 0, 2e-6);
+		    EXPECT_NEAR(remote.displayBounds->top, 0, 2e-6);
+		    EXPECT_NEAR(remote.displayBounds->right, 1, 2e-6);
+		    EXPECT_NEAR(remote.displayBounds->bottom, 1, 2e-6);
+	    })
+	    .get();
+}
+
+TEST(FormFields, VisibilityFlagsStaySeparateFromFieldFlags) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<std::pair<int, bool>, 11> flags{{{0, true},
+		                                                      {1, false},
+		                                                      {2, false},
+		                                                      {4, true},
+		                                                      {8, true},
+		                                                      {16, true},
+		                                                      {32, false},
+		                                                      {36, false},
+		                                                      {64, true},
+		                                                      {128, true},
+		                                                      {256, true}}};
+		    std::vector<std::string> entries;
+		    for (const auto& item : flags) {
+			    const int flag = item.first;
+			    entries.push_back(WIDGET + "/FT /Tx /Ff 3 /T (field" +
+			                      std::to_string(flag) + ") /F " +
+			                      std::to_string(flag));
+		    }
+		    const auto opened = pdf::openDocument(formBytes(entries));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields);
+		    EXPECT_FALSE(fields->limited);
+		    ASSERT_EQ(fields->entries.size(), flags.size());
+		    for (std::size_t i = 0; i < flags.size(); ++i) {
+			    const auto& field = fields->entries[i];
+			    EXPECT_EQ(field.flags, 3);
+			    EXPECT_EQ(field.annotationFlags, flags[i].first);
+			    EXPECT_TRUE(field.bounds);
+			    EXPECT_EQ(field.displayBounds.has_value(), flags[i].second);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, InvalidPageOrFieldBoundsHaveNoDisplayRectangle) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<std::pair<std::string, bool>, 3> pages{
+		        {{"/MediaBox [0 0 200 300] /CropBox [20 40 180 260]", true},
+		         {"/MediaBox [0 0 0 0] /CropBox [0 0 0 0]", true},
+		         {"/MediaBox [0 0 200 300] /CropBox [220 340 280 380]",
+		          false}}};
+		    // an empty media box falls back to Letter; a disjoint crop is
+		    // empty. see:
+		    // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/page/cpdf_page.cpp
+		    for (const auto& [boxes, usable] : pages) {
+			    SCOPED_TRACE(boxes);
+			    const auto opened = pdf::openDocument(formBytes(
+			        {"/Subtype /Widget /FT /Tx /T (string) /Rect (bad)",
+			         "/Subtype /Widget /FT /Tx /T (empty) /Rect [40 50 40 70]",
+			         WIDGET + "/FT /Tx /T (valid)"},
+			        {}, 1, {.appearances = false, .boxes = boxes}));
+			    ASSERT_TRUE(opened.document);
+			    const auto fields = opened.document->formFields(0);
+			    ASSERT_TRUE(fields);
+			    EXPECT_TRUE(fields->limited);
+			    ASSERT_EQ(fields->entries.size(), 3u);
+			    EXPECT_FALSE(fields->entries[0].bounds);
+			    EXPECT_FALSE(fields->entries[0].displayBounds);
+			    EXPECT_FALSE(fields->entries[1].bounds);
+			    EXPECT_FALSE(fields->entries[1].displayBounds);
+			    ASSERT_TRUE(fields->entries[2].bounds);
+			    EXPECT_EQ(fields->entries[2].displayBounds.has_value(), usable);
+		    }
 	    })
 	    .get();
 }

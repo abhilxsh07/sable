@@ -1893,6 +1893,52 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 	}
 	result.limited = count > 4096;
 	std::size_t total = 0;
+	FS_RECTF pageBox{};
+	const float width = FPDF_GetPageWidthF(context.page.get());
+	const float height = FPDF_GetPageHeightF(context.page.get());
+	const bool usablePage =
+	    std::isfinite(width) && width > 0 && std::isfinite(height) &&
+	    height > 0 && FPDF_GetPageBoundingBox(context.page.get(), &pageBox) &&
+	    std::isfinite(pageBox.left) && std::isfinite(pageBox.right) &&
+	    std::isfinite(pageBox.bottom) && std::isfinite(pageBox.top) &&
+	    pageBox.left < pageBox.right && pageBox.bottom < pageBox.top;
+	result.limited = result.limited || !usablePage;
+	const auto displayed =
+	    [&](const FS_RECTF& rect) -> std::optional<AnnotationRect> {
+		if (!usablePage) {
+			result.limited = true;
+			return {};
+		}
+		// i clip in PDF coordinates before asking for integer device points.
+		const double left = (std::max)(rect.left, pageBox.left);
+		const double right = (std::min)(rect.right, pageBox.right);
+		const double bottom = (std::max)(rect.bottom, pageBox.bottom);
+		const double top = (std::min)(rect.top, pageBox.top);
+		if (left >= right || bottom >= top) {
+			return {};
+		}
+		constexpr int grid = 1 << 20;
+		int ax = 0, ay = 0, bx = 0, by = 0;
+		if (!FPDF_PageToDevice(context.page.get(), 0, 0, grid, grid, 0, left,
+		                       bottom, &ax, &ay) ||
+		    !FPDF_PageToDevice(context.page.get(), 0, 0, grid, grid, 0, right,
+		                       top, &bx, &by) ||
+		    ax < -1 || ay < -1 || bx < -1 || by < -1 || ax > grid + 1 ||
+		    ay > grid + 1 || bx > grid + 1 || by > grid + 1) {
+			result.limited = true;
+			return {};
+		}
+		AnnotationRect shown{
+		    std::clamp((std::min)(ax, bx) / double(grid), 0., 1.),
+		    std::clamp((std::min)(ay, by) / double(grid), 0., 1.),
+		    std::clamp((std::max)(ax, bx) / double(grid), 0., 1.),
+		    std::clamp((std::max)(ay, by) / double(grid), 0., 1.)};
+		if (shown.left >= shown.right || shown.top >= shown.bottom) {
+			result.limited = true;
+			return {};
+		}
+		return shown;
+	};
 	const auto text = [&](auto getter, FPDF_ANNOTATION annotation) {
 		std::string value;
 		const auto size = getter(context.handle, annotation, nullptr, 0);
@@ -1938,6 +1984,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		field.type = static_cast<FormFieldType>(type);
 		field.flags =
 		    FPDFAnnot_GetFormFieldFlags(context.handle, annotation.get());
+		field.annotationFlags = FPDFAnnot_GetFlags(annotation.get());
 		if (field.flags & FPDF_FORMFLAG_CHOICE_MULTI_SELECT) {
 			result.limited = true;
 		}
@@ -1952,6 +1999,14 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		    rect.left < rect.right && rect.bottom < rect.top) {
 			field.bounds =
 			    AnnotationBounds{rect.left, rect.bottom, rect.right, rect.top};
+			// i follow the SDK's visibility rule before exposing control
+			// bounds. see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/cpdfsdk_baannot.cpp
+			if (!(field.annotationFlags &
+			      (FPDF_ANNOT_FLAG_INVISIBLE | FPDF_ANNOT_FLAG_HIDDEN |
+			       FPDF_ANNOT_FLAG_NOVIEW))) {
+				field.displayBounds = displayed(rect);
+			}
 		} else {
 			result.limited = true;
 		}
