@@ -168,6 +168,13 @@ class Document {
 	std::string pageLabel(int index) const;
 	bool canCopy() const;
 	bool canAnnotate() const;
+	bool canFillForms() const;
+	// Plain single-line text only. Refuses stale targets or incomplete writes.
+	// The exact nonzero revision and prior UTF-16 value come from a snapshot.
+	std::optional<bool>
+	updateTextField(int page, int index, std::u16string_view expected,
+	                std::u16string_view contents, std::uint64_t revision,
+	                const std::function<bool()>& canceled = {});
 	// Lower left of a 20-point icon, in unrotated PDF coordinates.
 	// In memory only. Returns its page annotation index, or nullopt on failure.
 	// A failed rollback throws; the incomplete note may still be present.

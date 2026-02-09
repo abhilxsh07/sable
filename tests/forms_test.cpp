@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 #include <fpdf_annot.h>
 #include <fpdfview.h>
+#include <fpdf_signature.h>
 #include <cstdio>
 #include <algorithm>
 #include <array>
@@ -30,6 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 struct DocumentFormTest {
+	static int signatures(const Document& document) {
+		return FPDF_GetSignatureCount(document.m_handle);
+	}
 	static bool hasAppearance(const Document& document) {
 		const auto page = FPDF_LoadPage(document.m_handle, 0);
 		const auto annotation = FPDFPage_GetAnnot(page, 0);
@@ -44,7 +48,8 @@ struct DocumentFormTest {
 namespace {
 struct FormPageOptions {
 	int rotation = 90;
-	bool appearances = true, reference = false;
+	bool appearances = true, reference = false, outline = false,
+	     nestedSignature = false;
 	std::string boxes = "/MediaBox [0 0 200 300] /CropBox [20 40 180 260]";
 };
 std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
@@ -56,9 +61,21 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 			refs += std::to_string(i + 9) + " 0 R ";
 		}
 	}
-	const auto roots = parent.empty() ? refs : "5 0 R";
+	auto roots = parent.empty() ? refs : "5 0 R";
+	if (view.nestedSignature) {
+		roots += " " +
+		         std::to_string(fields.size() + 9 + (view.reference ? 1 : 0) +
+		                        (view.outline ? 2 : 0)) +
+		         " 0 R";
+	}
 	std::vector<std::string> objects{
-	    "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
+	    "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R " +
+	        (view.outline ? "/Outlines " +
+	                            std::to_string(fields.size() + 9 +
+	                                           (view.reference ? 1 : 0)) +
+	                            " 0 R "
+	                      : "") +
+	        ">>",
 	    "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
 	    "<< /Fields [" + roots + "] /NeedAppearances " +
 	        (view.appearances ? "true " : "false ") +
@@ -84,6 +101,27 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 		const std::string paint = "0 0 0 rg 40 50 50 20 re f";
 		objects.push_back("<< /Length " + std::to_string(paint.size()) +
 		                  " >>\nstream\n" + paint + "\nendstream");
+	}
+	if (view.outline) {
+		const auto root = objects.size() + 1;
+		objects.push_back("<< /Type /Outlines /First " +
+		                  std::to_string(root + 1) + " 0 R /Last " +
+		                  std::to_string(root + 1) + " 0 R /Count 1 >>");
+		objects.push_back("<< /Title (Go) /Parent " + std::to_string(root) +
+		                  " 0 R /Dest [4 0 R /Fit] >>");
+	}
+	if (view.nestedSignature) {
+		const auto root = objects.size() + 1;
+		objects.push_back("<< /T (group) /Kids [" + std::to_string(root + 1) +
+		                  " 0 R] >>");
+		objects.push_back("<< /T (nested) /FT /S#69g /Parent " +
+		                  std::to_string(root) + " 0 R /Kids [" +
+		                  std::to_string(root + 2) + " 0 R] >>");
+		objects.push_back("<< /T (hidden) /Parent " + std::to_string(root + 1) +
+		                  " 0 R /V << /Type /S#69g /Contents <00> "
+		                  "/ByteRange [0 1 2 3] /Reference [<< "
+		                  "/TransformMethod /D#6fcMDP "
+		                  "/TransformParams << /P 1 >> >>] >> >>");
 	}
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
@@ -437,6 +475,220 @@ TEST(FormFields, InvalidPageOrFieldBoundsHaveNoDisplayRectangle) {
 			    ASSERT_TRUE(fields->entries[2].bounds);
 			    EXPECT_EQ(fields->entries[2].displayBounds.has_value(), usable);
 		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, PlainTextWritesRoundTripAndClearWithoutChangingOldSnapshots) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    EXPECT_TRUE(document.canFillForms());
+		    const auto before = document.formFields(0);
+		    ASSERT_TRUE(before);
+		    EXPECT_EQ(document.updateTextField(0, 0, u"old", u"old",
+		                                       before->revision),
+		              false);
+		    EXPECT_FALSE(document.modified());
+		    EXPECT_EQ(document.serialize(1024 * 1024), bytes);
+		    EXPECT_FALSE(pdf::DocumentFormTest::hasAppearance(document));
+		    ASSERT_EQ(document.updateTextField(0, 0, u"old", u"caf\u00e9",
+		                                       before->revision),
+		              true);
+		    EXPECT_TRUE(document.modified());
+		    EXPECT_GT(document.annotationRevision(), before->revision);
+		    EXPECT_EQ(before->entries[0].value, "old");
+		    EXPECT_TRUE(pdf::DocumentFormTest::hasAppearance(document));
+		    const auto saved = document.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(saved);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto fields = reopened.document->formFields(0);
+		    ASSERT_TRUE(fields);
+		    ASSERT_EQ(fields->entries.size(), 1u);
+		    EXPECT_EQ(fields->entries[0].value, "caf\u00e9");
+		    EXPECT_FALSE(document.updateTextField(0, 0, u"caf\u00e9", u"stale",
+		                                          before->revision));
+		    EXPECT_FALSE(document.updateTextField(
+		        0, 0, u"wrong", u"stale", document.annotationRevision()));
+		    EXPECT_EQ(document.updateTextField(0, 0, u"caf\u00e9", u"",
+		                                       document.annotationRevision()),
+		              true);
+		    const auto cleared = document.formFields(0);
+		    ASSERT_TRUE(cleared);
+		    EXPECT_EQ(cleared->entries[0].value, "");
+	    })
+	    .get();
+}
+
+TEST(FormFields, RefusedOrTruncatedTextWritesKeepOriginalBytesAndRevision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const std::string extra :
+		         {"/MaxLen 3", "/Ff 1", "/Ff 4096", "/Ff 8192", "/Ff 1048576",
+		          "/Ff 16777216", "/Ff 33554432", "/F 2", "/F 32", "/F 64",
+		          "/F 128", "/F 512", "/AA << /Fo << /S /ResetForm >> >>",
+		          "/A <<>>"}) {
+			    SCOPED_TRACE(extra);
+			    const auto bytes = formBytes(
+			        {WIDGET + "/FT /Tx /T (field) /V (old) " + extra});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(opened.document->updateTextField(
+			        0, 0, u"old", u"long value", 1));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    EXPECT_FALSE(
+			        pdf::DocumentFormTest::hasAppearance(*opened.document));
+		    }
+		    const auto bytes =
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    for (const auto& text : std::array<std::u16string, 5>{
+		             u"line\nbreak", u"line\rbreak", std::u16string(1, 0),
+		             std::u16string(1, 0xD800), std::u16string(32768, u'x')}) {
+			    EXPECT_FALSE(
+			        opened.document->updateTextField(0, 0, u"old", text, 1));
+		    }
+		    EXPECT_FALSE(
+		        opened.document->updateTextField(0, 0, u"old", u"new", 0));
+		    EXPECT_FALSE(
+		        opened.document->updateTextField(-1, 0, u"old", u"new", 1));
+		    EXPECT_FALSE(
+		        opened.document->updateTextField(0, 99, u"old", u"new", 1));
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, CancelingEveryTransactionCheckpointKeepsLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"});
+		    const auto completed = pdf::openDocument(bytes);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextField(0, 0, u"old", u"new",
+		                                                  1,
+		                                                  [&] {
+			                                                  ++checkpoints;
+			                                                  return false;
+		                                                  }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextField(
+			        0, 0, u"old", u"new", 1, [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    EXPECT_FALSE(
+			        pdf::DocumentFormTest::hasAppearance(*opened.document));
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, TextTransactionPreservesEarlierUnsavedNotes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"}, {}, 1,
+		                  {.outline = true}));
+		    ASSERT_TRUE(opened.document);
+		    const auto outline = opened.document->outline();
+		    ASSERT_TRUE(outline);
+		    ASSERT_EQ(outline->entries.size(), 1u);
+		    ASSERT_TRUE(opened.document->outlineLink(0));
+		    ASSERT_EQ(
+		        opened.document->addTextNote(0, 50, 60, u"Keep this note"), 1);
+		    ASSERT_EQ(opened.document->updateTextField(
+		                  0, 0, u"old", u"new",
+		                  opened.document->annotationRevision()),
+		              true);
+		    EXPECT_TRUE(opened.document->modified());
+		    const auto notes = opened.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 2u);
+		    EXPECT_EQ(notes->entries[1].contents, "Keep this note");
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields);
+		    EXPECT_EQ(fields->entries[0].value, "new");
+		    const auto link = opened.document->outlineLink(0);
+		    ASSERT_TRUE(link && link->destination);
+		    EXPECT_EQ(link->destination->page, 0);
+	    })
+	    .get();
+}
+
+TEST(FormFields, RefusesSignedFormsAndInheritedActions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto signedBytes = formBytes(
+		        {WIDGET + "/FT /Tx /T (field) /V (old)",
+		         WIDGET + "/FT /Sig /T (signature) /Lock << /Action /All >> /V "
+		                  "<< /Type /Sig /Contents <00> /ByteRange [0 1 2 3] "
+		                  "/Reference [<< /TransformMethod /DocMDP "
+		                  "/TransformParams << /P 1 >> >>] >>"});
+		    const auto signedDocument = pdf::openDocument(signedBytes);
+		    ASSERT_TRUE(signedDocument.document);
+		    ASSERT_EQ(
+		        pdf::DocumentFormTest::signatures(*signedDocument.document), 1);
+		    EXPECT_FALSE(signedDocument.document->updateTextField(0, 0, u"old",
+		                                                          u"new", 1));
+		    EXPECT_EQ(signedDocument.document->serialize(1024 * 1024),
+		              signedBytes);
+		    const auto actionBytes =
+		        formBytes({WIDGET}, "/FT /Tx /T (field) /V (old) "
+		                            "/AA << /Fo << /S /ResetForm >> >>");
+		    const auto action = pdf::openDocument(actionBytes);
+		    ASSERT_TRUE(action.document);
+		    EXPECT_FALSE(
+		        action.document->updateTextField(0, 0, u"old", u"new", 1));
+		    EXPECT_EQ(action.document->serialize(1024 * 1024), actionBytes);
+		    const auto sharedBytes =
+		        formBytes({WIDGET, WIDGET}, "/FT /Tx /T (shared) /V (old)");
+		    const auto shared = pdf::openDocument(sharedBytes);
+		    ASSERT_TRUE(shared.document);
+		    EXPECT_FALSE(
+		        shared.document->updateTextField(0, 0, u"old", u"new", 1));
+		    EXPECT_EQ(shared.document->serialize(1024 * 1024), sharedBytes);
+		    const auto nestedBytes =
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"}, {}, 1,
+		                  {.nestedSignature = true});
+		    const auto nested = pdf::openDocument(nestedBytes);
+		    ASSERT_TRUE(nested.document);
+		    ASSERT_EQ(pdf::DocumentFormTest::signatures(*nested.document), 0);
+		    EXPECT_FALSE(
+		        nested.document->updateTextField(0, 0, u"old", u"new", 1));
+		    EXPECT_EQ(nested.document->serialize(1024 * 1024), nestedBytes);
+		    for (const auto name :
+		         {"notes_allowed.pdf", "notes_denied.pdf", "restricted.pdf"}) {
+			    const auto opened = pdf::openFile(fixturePath(name));
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_EQ(opened.document->canFillForms(),
+			              std::string_view(name) == "notes_allowed.pdf");
+		    }
+		    const auto owner =
+		        pdf::openFile(fixturePath("restricted.pdf"), "nightpdf");
+		    ASSERT_TRUE(owner.document);
+		    EXPECT_TRUE(owner.document->canFillForms());
 	    })
 	    .get();
 }

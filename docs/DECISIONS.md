@@ -1846,3 +1846,26 @@ unusable page boxes and failed conversions mark the snapshot limited;
 ordinary off-page placement does not. Other annotation flags are retained
 for later native-control behavior. The clipped rectangle describes the
 visible footprint; an inline editor also needs the raw bounds for layout.
+
+## Plain text form transactions (2026-10-27)
+
+I edit plain single-line text fields on an isolated copy, commit through
+PDFium focus loss, and require the complete requested value before and
+after serialization/reopening. A truncated or refused edit leaves live
+bytes, dirty state and revision intact. Existing unsaved notes survive a
+successful replacement. I rebuild bookmark handles before replacing the
+document, clear identity proofs and advance the annotation revision.
+
+The pinned signature counter misses nested fields. I check a forced full
+rewrite for canonical /Sig or /DocMDP tokens before form setup, including
+names originally escaped or stored in object streams. Matching unrelated
+data can conservatively refuse a safe document.
+
+Filling requires annotation permission, or the separate fill permission
+for security revisions 3 and later. I require one control per field until
+appearance updates across unloaded pages are supported. Signed forms,
+protected widgets, inherited fields, specialized text flags, actions and
+invalid text are refused. Existing scratch-reopen and safe-serialization
+limits still apply;
+password-protected reopening remains unfinished. This is the engine write
+path; session requests, native controls and form drawing follow separately.

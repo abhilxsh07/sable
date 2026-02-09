@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
 #include <fpdf_save.h>
+#include <fpdf_signature.h>
 #include <fpdf_text.h>
 #include <fpdfview.h>
 
@@ -568,6 +569,180 @@ bool Document::canCopy() const {
 
 bool Document::canAnnotate() const {
 	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x20) != 0;
+}
+
+bool Document::canFillForms() const {
+	if (offThread()) {
+		return false;
+	}
+	const auto permissions = FPDF_GetDocPermissions(m_handle);
+	// table 22 reserves bit 9 before revision 3. see:
+	// https://opensource.adobe.com/dc-acrobat-sdk-docs/standards/pdfstandards/pdf/PDF32000_2008.pdf
+	return (permissions & 0x20) ||
+	       (FPDF_GetSecurityHandlerRevision(m_handle) >= 3 &&
+	        (permissions & 0x100));
+}
+
+std::optional<bool>
+Document::updateTextField(int pageIndex, int index,
+                          std::u16string_view expected,
+                          std::u16string_view contents, std::uint64_t revision,
+                          const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || !revision || !currentRevision(revision) ||
+	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
+	    !canFillForms() || !validNoteText(expected) ||
+	    !validNoteText(contents) ||
+	    contents.find_first_of(u"\r\n") != std::u16string_view::npos ||
+	    stopped() || FPDF_GetSignatureCount(m_handle) != 0 ||
+	    !canSerializeEdits(canceled)) {
+		return {};
+	}
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto scratch = openDocument(std::move(*bytes));
+	if (!scratch.document ||
+	    FPDF_GetFormType(scratch.document->m_handle) != FORMTYPE_ACRO_FORM) {
+		return {};
+	}
+	// the signature counter misses nested fields. a full rewrite expands
+	// object streams and writes decoded dictionary/name tokens. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/parser/cpdf_name.cpp
+	scratch.document->m_modified = true;
+	auto canonical = scratch.document->serialize(limit, canceled);
+	if (!canonical || stopped()) {
+		return {};
+	}
+	const std::string_view tokens(
+	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	if (tokens.find("/Sig") != std::string_view::npos ||
+	    tokens.find("/DocMDP") != std::string_view::npos) {
+		return {};
+	}
+	scratch = openDocument(std::move(*canonical));
+	if (!scratch.document || stopped()) {
+		return {};
+	}
+	{
+		FormContext context(scratch.document->m_handle, pageIndex);
+		context.handle =
+		    FPDFDOC_InitFormFillEnvironment(context.document, &context);
+		if (!context.handle) {
+			return {};
+		}
+		context.page.reset(FPDF_LoadPage(context.document, pageIndex));
+		if (!context.page ||
+		    index >= FPDFPage_GetAnnotCount(context.page.get())) {
+			return {};
+		}
+		FORM_OnAfterLoadPage(context.page.get(), context.handle);
+		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
+		// i start with plain text, leaving specialized field behavior alone.
+		// the pinned control-count implementation also handles text fields.
+		// see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
+		constexpr int plainFlags =
+		    FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
+		constexpr int protectedFlags =
+		    FPDF_ANNOT_FLAG_INVISIBLE | FPDF_ANNOT_FLAG_HIDDEN |
+		    FPDF_ANNOT_FLAG_NOVIEW | FPDF_ANNOT_FLAG_READONLY |
+		    FPDF_ANNOT_FLAG_LOCKED | 0x200;
+		if (!field || FPDFAnnot_GetSubtype(field.get()) != FPDF_ANNOT_WIDGET ||
+		    FPDFAnnot_GetFormFieldType(context.handle, field.get()) !=
+		        FPDF_FORMFIELD_TEXTFIELD ||
+		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) != 1 ||
+		    FPDFAnnot_HasKey(field.get(), "Parent") ||
+		    FPDFAnnot_HasKey(field.get(), "A") ||
+		    FPDFAnnot_HasKey(field.get(), "AA") ||
+		    (FPDFAnnot_GetFormFieldFlags(context.handle, field.get()) &
+		     ~plainFlags) ||
+		    (FPDFAnnot_GetFlags(field.get()) & protectedFlags)) {
+			return {};
+		}
+		const auto value = [&]() -> std::optional<std::u16string> {
+			const auto size = FPDFAnnot_GetFormFieldValue(
+			    context.handle, field.get(), nullptr, 0);
+			if (size < 2 || size > 65536 || size % 2) {
+				return {};
+			}
+			std::vector<FPDF_WCHAR> buffer(size / 2);
+			if (FPDFAnnot_GetFormFieldValue(context.handle, field.get(),
+			                                buffer.data(), size) != size ||
+			    buffer.back() != 0) {
+				return {};
+			}
+			return std::u16string(buffer.begin(), buffer.end() - 1);
+		};
+		const auto previous = value();
+		if (!previous || *previous != expected || stopped()) {
+			return {};
+		}
+		if (*previous == contents) {
+			return false;
+		}
+		const std::u16string replacement(contents);
+		// i commit through focus loss, then check the full value. see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp
+		if (!FORM_SetFocusedAnnot(context.handle, field.get()) ||
+		    (!previous->empty() &&
+		     !FORM_SelectAllText(context.handle, context.page.get()))) {
+			return {};
+		}
+		FORM_ReplaceSelection(
+		    context.handle, context.page.get(),
+		    reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()));
+		if (!FORM_ForceToKillFocus(context.handle) || value() != replacement ||
+		    stopped()) {
+			return {};
+		}
+	}
+	// i commit only saved, reopened bytes; failed edits never touch the live
+	// PDF.
+	scratch.document->m_modified = true;
+	auto saved = scratch.document->serialize(limit, canceled);
+	if (!saved || stopped()) {
+		return {};
+	}
+	auto next = openDocument(std::move(*saved));
+	if (!next.document || next.document->pageCount() != pageCount()) {
+		return {};
+	}
+	const auto check = next.document->formFields(pageIndex, canceled);
+	std::vector<unsigned char> encoded;
+	for (const auto unit : contents) {
+		encoded.push_back(static_cast<unsigned char>(unit & 0xFF));
+		encoded.push_back(static_cast<unsigned char>(unit >> 8));
+	}
+	if (!check || check->limited ||
+	    std::none_of(check->entries.begin(), check->entries.end(),
+	                 [&](const FormField& field) {
+		                 return field.index == index &&
+		                        field.type == FormFieldType::Text &&
+		                        field.value == utf16ToUtf8(encoded);
+	                 })) {
+		return {};
+	}
+	if (!m_outlineBookmarks.empty()) {
+		if (!next.document->outline(canceled) ||
+		    next.document->m_outlineBookmarks.size() !=
+		        m_outlineBookmarks.size()) {
+			return {};
+		}
+	}
+	if (stopped()) {
+		return {};
+	}
+	m_data.swap(next.document->m_data);
+	std::swap(m_handle, next.document->m_handle);
+	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return true;
 }
 
 std::optional<int> Document::addTextNote(int index, float x, float y,
