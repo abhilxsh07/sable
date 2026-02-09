@@ -38,6 +38,7 @@ struct SessionInfo {
 	bool canceled = false;
 	bool canCopy = false;
 	bool canAnnotate = false;
+	bool canFillForms = false;
 };
 
 struct RenderResult {
@@ -99,6 +100,11 @@ struct NoteResult {
 	bool canceled = false;
 	bool changed = false;
 };
+struct FormWriteResult {
+	int page = 0, index = 0;
+	std::uint64_t revision = 0;
+	bool accepted = false, changed = false, canceled = false;
+};
 struct PropertiesResult {
 	std::optional<Properties> properties;
 	bool canceled = false;
@@ -149,6 +155,11 @@ class Session {
 	// Completed replies may arrive after cancellation; keep caller guards.
 	bool formFields(int page, std::function<void(FormFieldsResult)> callback);
 	void cancelForms();
+	// Explicit snapshot revisions are required. Reads/cancelForms do not
+	// cancel writes; close can cancel only before the document is replaced.
+	bool updateTextField(int page, int index, std::u16string expected,
+	                     std::u16string contents, std::uint64_t revision,
+	                     std::function<void(FormWriteResult)> callback);
 	// Writes keep queue order, independently of annotation reads. Close only
 	// cancels jobs that have not started; started edits keep their outcome.
 	// An absent index means failure, possibly an incomplete edit if rollback

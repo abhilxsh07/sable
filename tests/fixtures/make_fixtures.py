@@ -596,6 +596,9 @@ def main() -> None:
         "notes_denied.pdf": build_pdf(
             "notes_denied.pdf", [PAGE_1], security=(b"", OWNER_PASSWORD, -3888)
         ),
+        "fill_allowed.pdf": build_pdf(
+            "fill_allowed.pdf", [PAGE_1], security=(b"", OWNER_PASSWORD, -3648)
+        ),
         "comments.pdf": comments_pdf(),
         "comment_locations.pdf": comment_locations_pdf(),
         "attachments.pdf": attachments_pdf(),

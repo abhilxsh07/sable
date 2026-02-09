@@ -1869,3 +1869,18 @@ invalid text are refused. Existing scratch-reopen and safe-serialization
 limits still apply;
 password-protected reopening remains unfinished. This is the engine write
 path; session requests, native controls and form drawing follow separately.
+
+## Queued form writes (2026-10-27)
+
+Session form writes own their strings and require an explicit nonzero
+snapshot revision. They retain queue order independently of form reads and
+cancelForms. Close can cancel while the isolated transaction is running;
+an accepted replacement keeps its outcome if close arrives afterward.
+Replies distinguish rejection, accepted unchanged text and changed text.
+
+Every attempted write clears the cached field snapshot. Accepted replies
+carry the document revision and synchronize the session's annotation
+revision so later note edits use current targets. Callbacks run once on the
+engine thread outside session locks and can queue more work. Open results
+now expose fill permission independently of annotation/copy permission;
+that permission alone does not promise a supported editable field.

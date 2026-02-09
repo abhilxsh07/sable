@@ -56,7 +56,13 @@ std::string manyPages(int count, bool form = false) {
 	const auto note = std::to_string(count + 4) + " 0 R";
 	add("<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >> "
 	    "2 << /S /D >>] >> " +
-	    (form ? "/AcroForm << /Fields [" + field + "] >> " : "") + ">>");
+	    (form ? "/AcroForm << /Fields [" + field +
+	                "] "
+	                "/DA (/Helv 10 Tf 0 g) /DR << /Font << /Helv "
+	                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> "
+	                ">> >> >> "
+	          : "") +
+	    ">>");
 	std::string kids;
 	for (int i = 0; i < count; ++i) {
 		kids += std::to_string(3 + i) + " 0 R ";
@@ -717,6 +723,7 @@ TEST_F(SessionTest, OpenReportsAnnotationPermissionIndependentlyOfCopying) {
 		EXPECT_EQ(info.canAnnotate,
 		          std::string_view(name) == "annotations.pdf" ||
 		              std::string_view(name) == "notes_allowed.pdf");
+		EXPECT_EQ(info.canFillForms, info.canAnnotate);
 	}
 	pdf::Session owner(engine), broken(engine), canceled(engine);
 	EXPECT_TRUE(
@@ -724,6 +731,7 @@ TEST_F(SessionTest, OpenReportsAnnotationPermissionIndependentlyOfCopying) {
 	const auto failed = open(broken, fixturePath("broken.pdf"));
 	EXPECT_EQ(failed.error, pdf::Error::Format);
 	EXPECT_FALSE(failed.canAnnotate);
+	EXPECT_FALSE(failed.canFillForms);
 	Gate gate(engine);
 	Reply<pdf::SessionInfo> reply;
 	ASSERT_TRUE(
@@ -734,6 +742,7 @@ TEST_F(SessionTest, OpenReportsAnnotationPermissionIndependentlyOfCopying) {
 	ASSERT_TRUE(stopped);
 	EXPECT_TRUE(stopped->canceled);
 	EXPECT_FALSE(stopped->canAnnotate);
+	EXPECT_FALSE(stopped->canFillForms);
 }
 
 TEST_F(SessionTest, NoteRequestsOwnTheirTextAndKeepQueueOrder) {
@@ -1298,6 +1307,146 @@ TEST_F(SessionTest, FormReadsCloseOnceAndCallbacksCanQueueWorkOrThrow) {
 	ASSERT_TRUE(session.formFields(0, [](auto) { throw 1; }));
 	engine.run([] {}).get();
 	EXPECT_TRUE(readForms(session));
+}
+
+TEST_F(SessionTest, FormWritesOwnQueueOrderRefreshSnapshotsAndSave) {
+	pdf::Session fillOnly(engine);
+	const auto permission = open(fillOnly, fixturePath("fill_allowed.pdf"));
+	ASSERT_EQ(permission.error, pdf::Error::None);
+	EXPECT_TRUE(permission.canFillForms);
+	EXPECT_FALSE(permission.canAnnotate || permission.canCopy);
+	pdf::Session session(engine);
+	const auto source = writeTemp("writable form.pdf", manyPages(1, true));
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before);
+	Reply<pdf::FormWriteResult> first, stale;
+	std::u16string draft = u"changed";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextField(
+		    0, 1, u"value", draft, before->revision, first.callback()));
+		ASSERT_TRUE(session.updateTextField(
+		    0, 1, u"changed", u"stale", before->revision, stale.callback()));
+		draft.assign(u"different");
+		session.cancelForms();
+		gate.open();
+	}
+	const auto written = first.wait();
+	const auto refused = stale.wait();
+	ASSERT_TRUE(written && refused);
+	EXPECT_TRUE(written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	EXPECT_EQ(written->index, 1);
+	EXPECT_GT(written->revision, before->revision);
+	EXPECT_FALSE(refused->accepted || refused->changed || refused->canceled);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after);
+	EXPECT_NE(after, before);
+	EXPECT_EQ(after->revision, written->revision);
+	EXPECT_EQ(after->entries[0].value, "changed");
+	EXPECT_EQ(before->entries[0].value, "value");
+	Reply<pdf::FormWriteResult> invalid;
+	ASSERT_TRUE(session.updateTextField(0, 1, u"wrong", u"ignored",
+	                                    after->revision, invalid.callback()));
+	const auto rejected = invalid.wait();
+	ASSERT_TRUE(rejected);
+	EXPECT_FALSE(rejected->accepted || rejected->changed || rejected->canceled);
+	EXPECT_NE(readForms(session), after);
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(session.updateTextNote(0, 0, u"Original", u"Preserved",
+	                                   note.callback()));
+	const auto updatedNote = note.wait();
+	ASSERT_TRUE(updatedNote);
+	EXPECT_TRUE(updatedNote->index.has_value() && updatedNote->changed);
+	const auto destination = source.parent_path() / "edited form.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto fields = readForms(reopened);
+	ASSERT_TRUE(fields);
+	EXPECT_EQ(fields->entries[0].value, "changed");
+}
+
+TEST_F(SessionTest, FormWriteRepliesAllowReentryAndThrowingCallbacks) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("reentrant form.pdf", manyPages(1, true)))
+	              .error,
+	          pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before);
+	Reply<pdf::FormWriteResult> written, unchanged;
+	Reply<pdf::FormFieldsResult> refreshed;
+	auto worker = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.updateTextField(
+	    0, 1, u"value", u"new", before->revision,
+	    [&session, worker, writtenCb = written.callback(),
+	     unchangedCb = unchanged.callback(),
+	     refreshedCb = refreshed.callback()](auto result) {
+		    *worker = pdf::Engine::onThread();
+		    session.formFields(0, refreshedCb);
+		    session.updateTextField(0, 1, u"new", u"new", result.revision,
+		                            unchangedCb);
+		    writtenCb(result);
+		    throw std::runtime_error("field callback");
+	    }));
+	const auto result = written.wait();
+	const auto fresh = refreshed.wait();
+	const auto same = unchanged.wait();
+	ASSERT_TRUE(result && fresh && fresh->fields && same);
+	EXPECT_TRUE(*worker);
+	EXPECT_TRUE(result->accepted && result->changed);
+	EXPECT_TRUE(same->accepted);
+	EXPECT_FALSE(same->changed || same->canceled);
+	EXPECT_EQ(same->revision, result->revision);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after);
+	EXPECT_NE(after, fresh->fields);
+	EXPECT_EQ(after->entries[0].value, "new");
+	engine.run([] {}).get();
+}
+
+TEST_F(SessionTest, FormWritesCloseOnceAndKeepCommittedOutcomes) {
+	const auto path = writeTemp("closing form.pdf", manyPages(1, true));
+	Reply<pdf::FormWriteResult> canceled;
+	{
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, path).error, pdf::Error::None);
+		Gate gate(engine);
+		ASSERT_TRUE(session->updateTextField(0, 1, u"value", u"new", 1,
+		                                     canceled.callback()));
+		session.reset();
+		gate.open();
+	}
+	const auto stopped = canceled.wait();
+	ASSERT_TRUE(stopped);
+	EXPECT_TRUE(stopped->canceled);
+	EXPECT_FALSE(stopped->accepted || stopped->changed);
+	pdf::Session session(engine);
+	EXPECT_FALSE(session.updateTextField(0, 1, u"value", u"new", 1,
+	                                     canceled.callback()));
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	EXPECT_FALSE(session.updateTextField(0, 1, u"value", u"new", 0,
+	                                     canceled.callback()));
+	EXPECT_FALSE(session.updateTextField(0, 1, u"value", u"new", 1, {}));
+	EXPECT_FALSE(session.updateTextField(
+	    0, 1, u"value", std::u16string(32768, u'x'), 1, canceled.callback()));
+	Reply<pdf::FormWriteResult> committed;
+	ASSERT_TRUE(session.updateTextField(
+	    0, 1, u"value", u"new", 1,
+	    [&session, cb = committed.callback()](auto result) {
+		    session.close();
+		    cb(result);
+	    }));
+	const auto done = committed.wait();
+	ASSERT_TRUE(done);
+	EXPECT_TRUE(done->accepted && done->changed);
+	EXPECT_FALSE(done->canceled);
+	EXPECT_FALSE(session.updateTextField(0, 1, u"new", u"later", done->revision,
+	                                     canceled.callback()));
 }
 
 TEST_F(SessionTest, FormCacheClearsBeforeEditsIncludingRefusedAttempts) {
