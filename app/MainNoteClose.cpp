@@ -43,11 +43,15 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	}
 	ContentDialog dialog;
 	dialog.XamlRoot(RootGrid().XamlRoot());
-	dialog.Title(box_value(L"Save your notes?"));
+	dialog.Title(box_value(viewer->m_formsDirty ? L"Save your changes?"
+	                                            : L"Save your notes?"));
 	dialog.Content(box_value(
-	    L"Your notes in " + hstring(viewer->m_path.filename().wstring()) +
+	    hstring(viewer->m_formsDirty ? L"Your changes in "
+	                                 : L"Your notes in ") +
+	    hstring(viewer->m_path.filename().wstring()) +
 	    L" haven't been saved. Save them to a separate PDF before closing."));
-	dialog.PrimaryButtonText(L"Save notes");
+	dialog.PrimaryButtonText(viewer->m_formsDirty ? L"Save changes"
+	                                              : L"Save notes");
 	dialog.SecondaryButtonText(L"Discard");
 	dialog.CloseButtonText(L"Cancel");
 	dialog.DefaultButton(ContentDialogButton::Close);

@@ -620,6 +620,7 @@ void MainWindow::selectTab() {
 	for (auto& entry : m_tabs) {
 		const bool selected = entry.viewer == viewer;
 		if (!selected) {
+			get_self<ViewerPage>(entry.viewer)->cancelFormRequest();
 			get_self<ViewerPage>(entry.viewer)->stopPan(true);
 			get_self<ViewerPage>(entry.viewer)->dismissProperties();
 		}

@@ -32,6 +32,11 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	    (viewer && (viewer->m_propertiesDialog || viewer->m_passwordDialog))) {
 		return false;
 	}
+	if (viewer && viewer->m_noteDialog) {
+		// i swallow tab navigation rather than inserting a tab into the draft.
+		return key == VK_TAB && (modifiers & helpers::SHORTCUT_CTRL) &&
+		       !(modifiers & (helpers::SHORTCUT_ALT | helpers::SHORTCUT_WIN));
+	}
 	if (presentationKey(key, modifiers, repeated)) {
 		return true;
 	}

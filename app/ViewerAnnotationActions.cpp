@@ -48,6 +48,7 @@ bool ViewerPage::canDeleteAnnotation() {
 	        target->subtype == "Underline" || target->subtype == "StrikeOut");
 }
 void ViewerPage::clearAnnotationSelection() {
+	cancelFormRequest();
 	++m_annotationVersion;
 	m_annotationPending = false;
 	m_selectedAnnotation.reset();

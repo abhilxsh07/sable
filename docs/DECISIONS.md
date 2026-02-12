@@ -1904,3 +1904,20 @@ other PDFs keep the vector path. Widget scans are capped at 4096 annotations
 per page. Copies that cannot serialize/reopen, including password-protected
 forms, retain the previous base-page output without a widget overlay.
 That fallback keeps the existing renderer and its appearance side effects.
+
+## Native text-field editor (2026-10-27)
+
+A page tap checks field snapshots before the existing comment/link path.
+I reverse the viewer rotation and discard replies after session, tab,
+layout, zoom, scroll or edit changes. Plain single-line fields use a native
+dialog; password, readonly and specialized flags are excluded. NoZoom,
+NoRotate and ToggleNoView widgets wait for matching hit geometry.
+
+The editor shares the existing edit/dialog/dirty guards. Rejected or
+unqueued writes retain the draft; only accepted replies close it. Changed
+values refresh page/thumbnail caches and join Save a Copy and unsaved-close
+handling. Form changes use generic save wording without renaming the
+existing note APIs. The transaction still validates structural support;
+signed, inherited or otherwise unsupported fields can refuse an edit.
+Viewer shortcuts wait while an edit dialog is open; native text keys keep
+their normal behavior.

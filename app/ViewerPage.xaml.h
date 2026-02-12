@@ -61,6 +61,7 @@ struct FindUpdate;
 struct Link;
 struct LinkDestination;
 struct PrintDialogResult;
+struct FormField;
 } // namespace pdf
 
 namespace printing {
@@ -250,6 +251,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void clearAnnotationSelection();
 	void requestAnnotationAt(winrt::Windows::Foundation::Point point,
 	                         bool context = false);
+	void requestFormAt(winrt::Windows::Foundation::Point point);
+	void cancelFormRequest();
+	winrt::fire_and_forget editTextField(int page, std::uint64_t revision,
+	                                     pdf::FormField field);
+	std::uint64_t m_formVersion = 0;
 	void showAnnotationMenu(winrt::Windows::Foundation::Point point);
 	void editAnnotation(pdf::AnnotationTarget target);
 	void drawSelectedAnnotation(ID2D1DeviceContext& context,
@@ -267,8 +273,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                 bool contentsPresent = true,
 	                 std::optional<pdf::AnnotationTarget> target = {});
 	void refreshNotes();
-	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
-	     m_noteSaving = false;
+	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
+	     m_notesDirty = false, m_formsDirty = false, m_noteSaving = false;
 	std::uint64_t m_renderVersion = 0;
 	winrt::hstring m_noteDraft, m_noteAuthor;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_noteDialog{nullptr};

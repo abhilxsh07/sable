@@ -56,7 +56,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		const auto source = viewer->m_path;
 		const auto session = viewer->m_session.get();
 		const auto name = to_hstring(helpers::attachmentFilename(
-		    to_string(source.stem().wstring()) + " notes.pdf"));
+		    to_string(source.stem().wstring()) +
+		    (viewer->m_formsDirty ? " edited.pdf" : " notes.pdf")));
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
 		if (m_notesPicker) {
@@ -100,22 +101,31 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		}
 		if (job->result == pdf::SaveResult::Saved) {
 			// edits are locked until this save's UI continuation completes.
+			const bool forms = viewer->m_formsDirty;
+			viewer->m_formsDirty = false;
 			viewer->m_notesDirty = false;
-			viewer->showNotice(L"Saved a copy with your notes.");
+			viewer->showNotice(forms ? L"Saved a copy with your changes."
+			                         : L"Saved a copy with your notes.");
 			viewer->Message().Severity(InfoBarSeverity::Success);
 			co_return true;
 		}
 		viewer->showNotice(
 		    job->result == pdf::SaveResult::Source
 		        ? L"Choose a different name or folder to keep the original PDF."
+		    : viewer->m_formsDirty
+		        ? L"Couldn't save your changes. Choose a writable folder "
+		          L"and try again. Your changes are still open."
 		        : L"Couldn't save your notes. Choose a writable folder and try "
 		          L"again. Your notes are still open.");
 	} catch (...) {
 		diagnostics::write(diagnostics::Level::Error,
 		                   "Couldn't save the PDF notes.");
 		if (!m_closing && !viewer->m_closed) {
-			viewer->showNotice(L"Couldn't save your notes. Your notes are "
-			                   L"still open; try another folder.");
+			viewer->showNotice(viewer->m_formsDirty
+			                       ? L"Couldn't save your changes. They are "
+			                         L"still open; try another folder."
+			                       : L"Couldn't save your notes. Your notes "
+			                         L"are still open; try another folder.");
 		}
 	}
 	co_return false;
