@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fpdfview.h>
 #include <fpdf_signature.h>
 #include <cstdio>
+#include <climits>
 #include <algorithm>
 #include <array>
 #include "pdf/document.h"
@@ -49,7 +50,7 @@ namespace {
 struct FormPageOptions {
 	int rotation = 90;
 	bool appearances = true, reference = false, outline = false,
-	     nestedSignature = false;
+	     nestedSignature = false, painted = false, text = false;
 	std::string boxes = "/MediaBox [0 0 200 300] /CropBox [20 40 180 260]";
 };
 std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
@@ -83,6 +84,9 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 	        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
 	    "<< /Type /Page /Parent 2 0 R " + view.boxes + " /Rotate " +
 	        std::to_string(view.rotation) + " /Annots [" + refs + "] " +
+	        (view.text ? "/Resources << /Font << /Helv << /Type /Font "
+	                     "/Subtype /Type1 /BaseFont /Helvetica >> >> >> "
+	                   : "") +
 	        (view.reference
 	             ? "/Contents " + std::to_string(fields.size() + 9) + " 0 R "
 	             : "") +
@@ -97,8 +101,17 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 		objects.push_back("<< /Type /Annot /P 4 0 R " + field +
 		                  (parent.empty() ? "" : " /Parent 5 0 R") + " >>");
 	}
+	if (view.painted) {
+		const std::string paint = "1 0 0 rg 0 0 50 20 re f";
+		objects[7] = "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+		             "/Length " +
+		             std::to_string(paint.size()) + " >>\nstream\n" + paint +
+		             "\nendstream";
+	}
 	if (view.reference) {
-		const std::string paint = "0 0 0 rg 40 50 50 20 re f";
+		const std::string paint =
+		    view.text ? "BT /Helv 10 Tf 30 100 Td (Static text) Tj ET"
+		              : "0 0 0 rg 40 50 50 20 re f";
 		objects.push_back("<< /Length " + std::to_string(paint.size()) +
 		                  " >>\nstream\n" + paint + "\nendstream");
 	}
@@ -143,6 +156,43 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 	return {data.begin(), data.end()};
 }
 const std::string WIDGET = "/Subtype /Widget /Rect [40 50 90 70] ";
+const std::array<std::uint8_t, 4> RED{0, 0, 255, 255},
+    WHITE{255, 255, 255, 255};
+std::array<std::uint8_t, 4> pixel(const pdf::Bitmap& image, int x, int y) {
+	const auto p = image.pixels.data() + y * image.stride + x * 4;
+	return {p[0], p[1], p[2], p[3]};
+}
+struct FormCanvas {
+	HDC dc = CreateCompatibleDC(nullptr);
+	HBITMAP bitmap = nullptr;
+	HGDIOBJ previous = nullptr;
+	FormCanvas(int width, int height) {
+		BITMAPINFO info{};
+		info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		info.bmiHeader.biWidth = width;
+		info.bmiHeader.biHeight = -height;
+		info.bmiHeader.biPlanes = 1;
+		info.bmiHeader.biBitCount = 32;
+		void* pixels{};
+		bitmap =
+		    CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+		if (bitmap) {
+			previous = SelectObject(dc, bitmap);
+			PatBlt(dc, 0, 0, width, height, WHITENESS);
+		}
+	}
+	~FormCanvas() {
+		if (previous) {
+			SelectObject(dc, previous);
+		}
+		if (bitmap) {
+			DeleteObject(bitmap);
+		}
+		if (dc) {
+			DeleteDC(dc);
+		}
+	}
+};
 } // namespace
 
 TEST(FormFields, InheritedSnapshotsOutliveTheDocumentAndEngine) {
@@ -689,6 +739,211 @@ TEST(FormFields, RefusesSignedFormsAndInheritedActions) {
 		        pdf::openFile(fixturePath("restricted.pdf"), "nightpdf");
 		    ASSERT_TRUE(owner.document);
 		    EXPECT_TRUE(owner.document->canFillForms());
+	    })
+	    .get();
+}
+
+TEST(FormFields, WidgetRasterTracksIntrinsicAndViewRotationAtTwoScales) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<helpers::PagePoint, 4> centers{
+		        {{45, 200}, {20, 45}, {115, 20}, {200, 115}}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto bytes = formBytes(
+			        {WIDGET + "/FT /Tx /T (field) /AP << /N 8 0 R >>"}, {}, 1,
+			        {.rotation = intrinsic * 90,
+			         .appearances = false,
+			         .painted = true});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto size = opened.document->pageSize(0);
+			    ASSERT_TRUE(size);
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    const auto center = helpers::rotatePoint(
+				        {centers[intrinsic].x / size->width,
+				         centers[intrinsic].y / size->height},
+				        rotation);
+				    const auto rotated = helpers::rotatedSize(
+				        {size->width, size->height}, rotation);
+				    for (const int scale : {1, 3}) {
+					    const auto image = opened.document->render(
+					        0, static_cast<int>(rotated.width) * scale,
+					        static_cast<int>(rotated.height) * scale, rotation);
+					    ASSERT_TRUE(image);
+					    EXPECT_EQ(
+					        pixel(*image,
+					              static_cast<int>(center.x * image->width),
+					              static_cast<int>(center.y * image->height)),
+					        RED);
+					    EXPECT_EQ(pixel(*image, 0, 0), WHITE);
+				    }
+			    }
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, OptionalContentWidgetPrintWaitsForLayerSupport) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET +
+		         "/FT /Tx /T (layered) /F 4 "
+		         "/OC << /Type /OCG /Name (layer) >> /AP << /N 8 0 R >>"},
+		        {}, 1, {.appearances = false, .painted = true});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    const auto print =
+		        opened.document->printRaster(0, 220, 160, 0, 0, 220, 160);
+		    ASSERT_TRUE(print);
+		    EXPECT_EQ(pixel(*print, 20, 45), WHITE);
+		    EXPECT_FALSE(opened.document->modified());
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, WidgetVisibilityMatchesScreenAndPrintWithoutLeakingMasks) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    struct Case {
+			    int flags;
+			    bool screen, print;
+		    };
+		    const std::array<Case, 8> cases{{{0, true, false},
+		                                     {4, true, true},
+		                                     {32, false, false},
+		                                     {36, false, true},
+		                                     {2, false, false},
+		                                     {6, false, false},
+		                                     {1, false, false},
+		                                     {5, false, false}}};
+		    for (const std::string type : {"Tx", "Sig"}) {
+			    for (const auto item : cases) {
+				    SCOPED_TRACE(type + std::to_string(item.flags));
+				    const auto bytes = formBytes(
+				        {WIDGET + "/FT /" + type + " /T (field) /F " +
+				         std::to_string(item.flags) + " /AP << /N 8 0 R >>"},
+				        {}, 1, {.appearances = false, .painted = true});
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    for (int repeat = 0; repeat < 2; ++repeat) {
+					    const auto screen =
+					        opened.document->render(0, 220, 160);
+					    const auto print = opened.document->printRaster(
+					        0, 220, 160, 0, 0, 220, 160);
+					    ASSERT_TRUE(screen && print);
+					    EXPECT_EQ(pixel(*screen, 20, 45),
+					              item.screen ? RED : WHITE);
+					    EXPECT_EQ(pixel(*print, 20, 45),
+					              item.print ? RED : WHITE);
+				    }
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, WidgetPrintTilesAndLegacyHdcKeepFullPageCoordinates) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {WIDGET + "/FT /Tx /T (field) /F 4 /AP << /N 8 0 R >>"}, {}, 1,
+		        {.appearances = false, .painted = true}));
+		    ASSERT_TRUE(opened.document);
+		    const auto full =
+		        opened.document->printRaster(0, 220, 160, 0, 0, 220, 160);
+		    const auto tile =
+		        opened.document->printRaster(0, 220, 160, 10, 30, 35, 50);
+		    ASSERT_TRUE(full && tile);
+		    for (int y = 0; y < tile->height; ++y) {
+			    for (int x = 0; x < tile->width; ++x) {
+				    ASSERT_EQ(pixel(*tile, x, y), pixel(*full, x + 10, y + 30));
+			    }
+		    }
+		    const auto wide = pdf::openDocument(formBytes(
+		        {"/Subtype /Widget /Rect [150 50 180 70] /FT /Tx /T (wide) "
+		         "/F 4 /AP << /N 8 0 R >>"},
+		        {}, 1, {.rotation = 0, .appearances = false, .painted = true}));
+		    ASSERT_TRUE(wide.document);
+		    FormCanvas canvas(4506, 110);
+		    ASSERT_TRUE(canvas.dc && canvas.bitmap);
+		    ASSERT_TRUE(
+		        wide.document->printPage(0, canvas.dc, 3, 5, 4500, 100));
+		    EXPECT_EQ(GetPixel(canvas.dc, 4003, 95), RGB(255, 0, 0));
+		    EXPECT_EQ(GetPixel(canvas.dc, 4203, 95), RGB(255, 0, 0));
+		    EXPECT_EQ(GetPixel(canvas.dc, 1, 1), RGB(255, 255, 255));
+		    EXPECT_FALSE(
+		        wide.document->printPage(0, canvas.dc, INT_MAX, 0, 100, 100));
+	    })
+	    .get();
+}
+
+TEST(FormFields, WidgetDrawingKeepsLiveAppearancesAndRefreshesAfterEdits) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto widget = [](const pdf::Bitmap& image) {
+			    std::vector<std::array<std::uint8_t, 4>> pixels;
+			    for (int y = 20; y < 70; ++y) {
+				    for (int x = 10; x < 30; ++x) {
+					    pixels.push_back(pixel(image, x, y));
+				    }
+			    }
+			    return pixels;
+		    };
+		    const auto bytes =
+		        formBytes({WIDGET + "/FT /Tx /T (field) /V (value) /F 4"}, {},
+		                  1, {.reference = true, .text = true});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_FALSE(
+		        pdf::DocumentFormTest::hasAppearance(*opened.document));
+		    const auto first = opened.document->render(0, 220, 160);
+		    const auto printed =
+		        opened.document->printRaster(0, 220, 160, 0, 0, 220, 160);
+		    ASSERT_TRUE(first && printed);
+		    const auto before = widget(*first), beforePrint = widget(*printed);
+		    EXPECT_TRUE(std::any_of(before.begin(), before.end(),
+		                            [](const auto& p) { return p != WHITE; }));
+		    EXPECT_FALSE(
+		        pdf::DocumentFormTest::hasAppearance(*opened.document));
+		    EXPECT_FALSE(opened.document->modified());
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    for (int phase = 0; phase < 2; ++phase) {
+			    if (phase == 0) {
+				    ASSERT_EQ(
+				        opened.document->addTextNote(0, 100, 100, u"note"), 1);
+			    } else {
+				    ASSERT_EQ(opened.document->highlightText({{0, 0}, {0, 5}}),
+				              1);
+			    }
+			    const auto screen = opened.document->render(0, 220, 160);
+			    const auto print =
+			        opened.document->printRaster(0, 220, 160, 0, 0, 220, 160);
+			    ASSERT_TRUE(screen && print);
+			    EXPECT_EQ(widget(*screen), before);
+			    EXPECT_EQ(widget(*print), beforePrint);
+		    }
+		    ASSERT_EQ(opened.document->updateTextField(0, 0, u"value",
+		                                               u"new text", 1),
+		              true);
+		    const auto changed = opened.document->render(0, 220, 160);
+		    ASSERT_TRUE(changed);
+		    EXPECT_NE(widget(*changed), before);
+		    const auto nextPrint =
+		        opened.document->printRaster(0, 220, 160, 0, 0, 220, 160);
+		    ASSERT_TRUE(nextPrint);
+		    EXPECT_NE(widget(*nextPrint), beforePrint);
+		    EXPECT_TRUE(opened.document->modified());
 	    })
 	    .get();
 }

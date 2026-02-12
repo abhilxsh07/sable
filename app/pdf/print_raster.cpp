@@ -35,8 +35,10 @@ std::optional<Bitmap> Document::printRaster(int index, int pageWidth,
 		return {};
 	}
 	const auto closePage = [](FPDF_PAGE page) { FPDF_ClosePage(page); };
+	const auto drawing = formDrawingDocument();
 	std::unique_ptr<fpdf_page_t__, decltype(closePage)> page(
-	    FPDF_LoadPage(m_handle, index), closePage);
+	    FPDF_LoadPage(drawing ? drawing->m_handle : m_handle, index),
+	    closePage);
 	if (!page) {
 		return {};
 	}
@@ -60,6 +62,7 @@ std::optional<Bitmap> Document::printRaster(int index, int pageWidth,
 	    })) {
 		return {};
 	}
+	drawFormFields(index, bitmap.get(), -x, -y, pageWidth, pageHeight, 0, true);
 	return result;
 }
 } // namespace pdf

@@ -1884,3 +1884,23 @@ revision so later note edits use current targets. Callbacks run once on the
 engine thread outside session locks and can queue more work. Open results
 now expose fill permission independently of annotation/copy permission;
 that permission alone does not promise a supported editable field.
+
+## Widget raster output (2026-10-27)
+
+Screen/thumbnail and print rasters draw widgets after the base page using
+the same geometry. I retain one isolated form document, bounded by the
+existing 128 MiB copy limit, and refresh it after annotation edits,
+widget/index revisions or edit-safety invalidation. AcroForm base rendering
+also uses the copy because even the page renderer generates appearances.
+
+The pinned form renderer ignores print mode and signature widgets bypass
+part of its visibility check. I reapply live widget flags to the copy for
+every draw, mapping excluded widgets to Hidden and allowing NoView|Print
+only on print. Optional-content widgets stay out of print until layer print
+usage is supported. No-view/hidden text-note behavior stays unchanged.
+
+Legacy form printing transfers bounded 4096-pixel raster tiles to its HDC;
+other PDFs keep the vector path. Widget scans are capped at 4096 annotations
+per page. Copies that cannot serialize/reopen, including password-protected
+forms, retain the previous base-page output without a widget overlay.
+That fallback keeps the existing renderer and its appearance side effects.

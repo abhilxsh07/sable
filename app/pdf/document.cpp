@@ -93,8 +93,12 @@ struct FormContext : FPDF_FORMFILLINFO {
 		};
 		FFI_ExecuteNamedAction = [](FPDF_FORMFILLINFO*, FPDF_BYTESTRING) {};
 	}
+	void afterLoad() {
+		FORM_OnAfterLoadPage(page.get(), handle);
+		notified = true;
+	}
 	~FormContext() {
-		if (page && handle) {
+		if (page && handle && notified) {
 			FORM_OnBeforeClosePage(page.get(), handle);
 		}
 		page.reset();
@@ -104,6 +108,7 @@ struct FormContext : FPDF_FORMFILLINFO {
 	int pageIndex;
 	PagePtr page;
 	FPDF_FORMHANDLE handle = nullptr;
+	bool notified = false;
 };
 struct TextCloser {
 	void operator()(fpdf_textpage_t__* text) const {
@@ -531,7 +536,10 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	if (rotation < 0 || rotation > 3) {
 		return std::nullopt;
 	}
-	PagePtr page(FPDF_LoadPage(m_handle, index));
+	const auto drawing = formDrawingDocument();
+	// the base renderer also generates widget appearances. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_annotlist.cpp
+	PagePtr page(FPDF_LoadPage(drawing ? drawing->m_handle : m_handle, index));
 	if (!page) {
 		return std::nullopt;
 	}
@@ -560,7 +568,81 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	    })) {
 		return {};
 	}
+	drawFormFields(index, bitmap.get(), 0, 0, width, height, rotation, false);
 	return out;
+}
+
+Document* Document::formDrawingDocument() const {
+	if (offThread() || FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) {
+		return nullptr;
+	}
+	if (m_formDrawingRevision != m_annotationRevision) {
+		m_formDrawing.reset();
+		m_formDrawingRevision = m_annotationRevision;
+		try {
+			if (auto bytes = serialize(128 * 1024 * 1024)) {
+				m_formDrawing = openDocument(std::move(*bytes)).document;
+			}
+		} catch (...) {
+			// i keep the base page when an isolated copy cannot be made.
+		}
+	}
+	return m_formDrawing.get();
+}
+
+void Document::drawFormFields(int index, void* bitmap, int x, int y, int width,
+                              int height, int rotation, bool printing) const {
+	const auto scratch = formDrawingDocument();
+	if (!scratch) {
+		return;
+	}
+	FormContext context(scratch->m_handle, index);
+	context.handle =
+	    FPDFDOC_InitFormFillEnvironment(context.document, &context);
+	if (!context.handle) {
+		return;
+	}
+	context.page.reset(FPDF_LoadPage(context.document, index));
+	if (!context.page) {
+		return;
+	}
+	PagePtr source(FPDF_LoadPage(m_handle, index));
+	const int count = FPDFPage_GetAnnotCount(context.page.get());
+	if (!source || count < 0 || count > 4096 ||
+	    count != FPDFPage_GetAnnotCount(source.get())) {
+		return;
+	}
+	for (int i = 0; i < count; ++i) {
+		AnnotationPtr original(FPDFPage_GetAnnot(source.get(), i));
+		AnnotationPtr copy(FPDFPage_GetAnnot(context.page.get(), i));
+		if (!original || !copy) {
+			return;
+		}
+		if (FPDFAnnot_GetSubtype(original.get()) != FPDF_ANNOT_WIDGET) {
+			continue;
+		}
+		const int flags = FPDFAnnot_GetFlags(original.get());
+		const bool visible =
+		    !(flags & (FPDF_ANNOT_FLAG_INVISIBLE | FPDF_ANNOT_FLAG_HIDDEN)) &&
+		    (!printing || !FPDFAnnot_HasKey(original.get(), "OC")) &&
+		    (printing ? (flags & FPDF_ANNOT_FLAG_PRINT) != 0
+		              : (flags & FPDF_ANNOT_FLAG_NOVIEW) == 0);
+		// i reapply live flags each draw; a print mask cannot leak onscreen.
+		// the pinned form renderer ignores FPDF_PRINTING. see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_formfill.cpp
+		if (!FPDFAnnot_SetFlags(copy.get(),
+		                        visible ? flags & ~FPDF_ANNOT_FLAG_NOVIEW
+		                                : flags | FPDF_ANNOT_FLAG_HIDDEN)) {
+			return;
+		}
+	}
+	context.afterLoad();
+	// i draw widgets after page content with the same transform and flags.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_formfill.h
+	FPDF_FFLDraw(context.handle, static_cast<FPDF_BITMAP>(bitmap),
+	             context.page.get(), x, y, width, height, rotation,
+	             FPDF_ANNOT | (printing ? FPDF_PRINTING : 0));
 }
 
 bool Document::canCopy() const {
@@ -639,7 +721,7 @@ Document::updateTextField(int pageIndex, int index,
 		    index >= FPDFPage_GetAnnotCount(context.page.get())) {
 			return {};
 		}
-		FORM_OnAfterLoadPage(context.page.get(), context.handle);
+		context.afterLoad();
 		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
 		// i start with plain text, leaving specialized field behavior alone.
 		// the pinned control-count implementation also handles text fields.
@@ -805,6 +887,8 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 		return {};
 	}
 	m_uniqueMarkup.insert({index, count});
+	m_formDrawing.reset();
+	m_formDrawingRevision = 0;
 	return count;
 }
 
@@ -894,6 +978,8 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 		m_modified = wasModified;
 		return {};
 	}
+	m_formDrawing.reset();
+	m_formDrawingRevision = 0;
 	return true;
 }
 
@@ -997,6 +1083,8 @@ std::optional<bool> Document::setMarkupComment(int page, int index,
 		m_modified = wasModified;
 		return {};
 	}
+	m_formDrawing.reset();
+	m_formDrawingRevision = 0;
 	return true;
 }
 
@@ -1232,6 +1320,8 @@ std::optional<int> Document::markText(TextSelection selection,
 	// i use PDFium's default markup appearances.
 	// see:
 	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
+	m_formDrawing.reset();
+	m_formDrawingRevision = 0;
 	return static_cast<int>(added);
 }
 
@@ -1473,6 +1563,8 @@ bool Document::checkEditCounts(const std::vector<int>& expected,
 }
 
 void Document::invalidateEdits() {
+	m_formDrawing.reset();
+	m_formDrawingRevision = 0;
 	m_serializable.reset();
 	m_editCounts.reset();
 	m_independentPages.clear();
@@ -1721,6 +1813,42 @@ bool Document::printPage(int index, void* device, int x, int y, int width,
 	if (offThread() || !device || index < 0 ||
 	    index >= FPDF_GetPageCount(m_handle) || width <= 0 || height <= 0) {
 		return false;
+	}
+	if (formDrawingDocument()) {
+		if (width > 100'000 || height > 100'000 ||
+		    static_cast<long long>(x) + width >
+		        (std::numeric_limits<int>::max)() ||
+		    static_cast<long long>(y) + height >
+		        (std::numeric_limits<int>::max)()) {
+			return false;
+		}
+		for (int top = 0; top < height; top += 4096) {
+			for (int left = 0; left < width; left += 4096) {
+				const auto tile = printRaster(index, width, height, left, top,
+				                              (std::min)(4096, width - left),
+				                              (std::min)(4096, height - top));
+				if (!tile) {
+					return false;
+				}
+				BITMAPINFO info{};
+				info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+				info.bmiHeader.biWidth = tile->width;
+				info.bmiHeader.biHeight = -tile->height;
+				info.bmiHeader.biPlanes = 1;
+				info.bmiHeader.biBitCount = 32;
+				// i transfer top-down opaque tiles, without a page-sized
+				// bitmap. see:
+				// https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-stretchdibits
+				const int lines = StretchDIBits(
+				    static_cast<HDC>(device), x + left, y + top, tile->width,
+				    tile->height, 0, 0, tile->width, tile->height,
+				    tile->pixels.data(), &info, DIB_RGB_COLORS, SRCCOPY);
+				if (!lines || lines == static_cast<int>(GDI_ERROR)) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, index));
 	if (!page) {
@@ -2061,7 +2189,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 	if (!context.page) {
 		return {};
 	}
-	FORM_OnAfterLoadPage(context.page.get(), context.handle);
+	context.afterLoad();
 	const int count = FPDFPage_GetAnnotCount(context.page.get());
 	if (count < 0) {
 		return {};

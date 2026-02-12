@@ -282,6 +282,9 @@ class Document {
 	                     const std::vector<int>& pages) const;
 	void invalidateEdits();
 	bool canSerializeEdits(const std::function<bool()>& canceled) const;
+	Document* formDrawingDocument() const;
+	void drawFormFields(int page, void* bitmap, int x, int y, int width,
+	                    int height, int rotation, bool printing) const;
 	friend OpenResult openDocument(std::vector<std::uint8_t> data,
 	                               const std::string& password);
 	Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle);
@@ -310,5 +313,8 @@ class Document {
 	mutable std::size_t m_editPageLoads = 0;
 	// Nonowning handles stay on the engine thread for lazy target resolution.
 	mutable std::vector<void*> m_outlineBookmarks;
+	// i keep form rendering and appearance generation off the live document.
+	mutable std::unique_ptr<Document> m_formDrawing;
+	mutable std::uint64_t m_formDrawingRevision = 0;
 };
 } // namespace pdf
