@@ -1921,3 +1921,22 @@ existing note APIs. The transaction still validates structural support;
 signed, inherited or otherwise unsupported fields can refuse an edit.
 Viewer shortcuts wait while an edit dialog is open; native text keys keep
 their normal behavior.
+
+## Checkbox form transactions (2026-10-27)
+
+I reuse the isolated text transaction for single terminal checkboxes and
+keep their checked state separate from the field value in snapshots.
+PDFium's export value supplies the on name, including custom names; I
+require matching name-valued V/AS entries and verify the value and checked
+state after saving and reopening before replacing the live document.
+
+Checkboxes keep the text transaction's permission, signature, action,
+shared-control and cancellation guards. Inherited fields, Opt arrays and
+inconsistent states stay refused. I require nonempty printable ASCII checked
+appearance content, allowing PDF whitespace, before leaving or accepting
+the on state. The pinned API can return compressed bytes for an empty
+stream. I conservatively refuse binary appearance content, including
+unescaped non-ASCII glyph strings and inline image data, and use the
+existing 64 KiB string limit. This does not validate drawing operators
+inside a text stream. Session requests and native checkbox controls follow
+separately.

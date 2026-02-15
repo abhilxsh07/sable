@@ -743,6 +743,245 @@ TEST(FormFields, RefusesSignedFormsAndInheritedActions) {
 	    .get();
 }
 
+TEST(FormFields, CheckBoxWritesKeepCustomValuesAndSavedAppearances) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto& [name, value] :
+		         std::array<std::pair<std::string, std::u16string>, 2>{
+		             {{"Yes", u"Yes"}, {"Approved#20now", u"Approved now"}}}) {
+			    for (int rotation : {0, 90, 180, 270}) {
+				    SCOPED_TRACE(name + std::to_string(rotation));
+				    const auto bytes = formBytes(
+				        {WIDGET +
+				         "/FT /Btn /T (box) /F 4 /Ff 6 /V /Off /AS /Off "
+				         "/AP << /N << /" +
+				         name + " 8 0 R /Off 7 0 R >> >>"},
+				        {}, 1,
+				        {.rotation = rotation,
+				         .appearances = false,
+				         .painted = true});
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    const auto old = doc.formFields(0);
+				    ASSERT_TRUE(old && old->entries.size() == 1);
+				    EXPECT_EQ(old->entries[0].checked, false);
+				    EXPECT_EQ(
+				        doc.updateCheckBox(0, 0, u"Off", false, old->revision),
+				        false);
+				    EXPECT_FALSE(doc.modified());
+				    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+				    const auto off = doc.render(0, 240, 320);
+				    ASSERT_TRUE(off);
+				    ASSERT_EQ(
+				        doc.updateCheckBox(0, 0, u"Off", true, old->revision),
+				        true);
+				    EXPECT_TRUE(doc.modified());
+				    EXPECT_GT(doc.annotationRevision(), old->revision);
+				    EXPECT_EQ(old->entries[0].checked, false);
+				    const auto on = doc.render(0, 240, 320);
+				    ASSERT_TRUE(on);
+				    EXPECT_NE(on->pixels, off->pixels);
+				    const auto saved = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(saved);
+				    const auto reopened = pdf::openDocument(*saved);
+				    ASSERT_TRUE(reopened.document);
+				    const auto fields = reopened.document->formFields(0);
+				    ASSERT_TRUE(fields && fields->entries.size() == 1);
+				    EXPECT_EQ(fields->entries[0].checked, true);
+				    EXPECT_EQ(fields->entries[0].value,
+				              name == "Yes" ? "Yes" : "Approved now");
+				    EXPECT_FALSE(
+				        doc.updateCheckBox(0, 0, value, false, old->revision));
+				    EXPECT_FALSE(doc.updateCheckBox(0, 0, u"wrong", false,
+				                                    doc.annotationRevision()));
+				    const auto revision = doc.annotationRevision();
+				    EXPECT_EQ(doc.updateCheckBox(0, 0, value, true, revision),
+				              false);
+				    EXPECT_EQ(doc.annotationRevision(), revision);
+				    ASSERT_EQ(doc.updateCheckBox(0, 0, value, false, revision),
+				              true);
+				    const auto cleared = doc.formFields(0);
+				    ASSERT_TRUE(cleared);
+				    EXPECT_EQ(cleared->entries[0].checked, false);
+				    EXPECT_EQ(cleared->entries[0].value, "Off");
+				    const auto again = doc.render(0, 240, 320);
+				    ASSERT_TRUE(again);
+				    EXPECT_EQ(again->pixels, off->pixels);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, RefusedCheckBoxesLeaveBytesAndRevisionIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const std::string extra :
+		         {"/Ff 1", "/Ff 32768", "/Ff 65536", "/Ff 33554432", "/F 1",
+		          "/F 2", "/F 32", "/F 64", "/F 128", "/F 512", "/A <<>>",
+		          "/AA << /U << /S /ResetForm >> >>", "/Opt [(other)]",
+		          "/V /Yes", "/AS /Yes", "/V (Off)", "/AS (Off)", "/AP <<>>",
+		          "/AP << /N << /Off 7 0 R >> >>"}) {
+			    SCOPED_TRACE(extra);
+			    const auto bytes =
+			        formBytes({WIDGET +
+			                   "/FT /Btn /T (box) /V /Off /AS /Off "
+			                   "/AP << /N << /Yes 8 0 R /Off 7 0 R >> >> " +
+			                   extra},
+			                  {}, 1, {.appearances = false, .painted = true});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(
+			        opened.document->updateCheckBox(0, 0, u"Off", true, 1));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+		    const auto bytes = formBytes(
+		        {WIDGET + "/FT /Btn /T (box) /V /Off /AS /Off "
+		                  "/AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_FALSE(
+		        opened.document->updateCheckBox(-1, 0, u"Off", true, 1));
+		    EXPECT_FALSE(
+		        opened.document->updateCheckBox(0, 99, u"Off", true, 1));
+		    EXPECT_FALSE(
+		        opened.document->updateCheckBox(0, 0, u"Off", true, 0));
+		    EXPECT_FALSE(opened.document->updateCheckBox(
+		        0, 0, std::u16string(1, 0xD800), true, 1));
+		    EXPECT_FALSE(
+		        opened.document->updateTextField(0, 0, u"Off", u"Yes", 1));
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, CheckBoxesRefuseMissingAndEmptyCheckedAppearances) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const std::string appearance :
+		         {"123", "<<>>", "null", "7 0 R"}) {
+			    for (bool checked : {false, true}) {
+				    SCOPED_TRACE(appearance + (checked ? " on" : " off"));
+				    const std::string state = checked ? "Yes" : "Off";
+				    const auto bytes = formBytes(
+				        {WIDGET + "/FT /Btn /T (box) /V /" + state + " /AS /" +
+				         state + " /AP << /N << /Off 7 0 R /Yes " + appearance +
+				         " >> >>"},
+				        {}, 1, {.appearances = false});
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    EXPECT_FALSE(opened.document->updateCheckBox(
+				        0, 0, checked ? u"Yes" : u"Off", !checked, 1));
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, CancelingCheckBoxTransactionKeepsLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET + "/FT /Btn /T (box) /V /Off /AS /Off "
+		                  "/AP << /N << /Custom 8 0 R /Off 7 0 R >> >>"},
+		        {}, 1, {.appearances = false, .painted = true});
+		    const auto completed = pdf::openDocument(bytes);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateCheckBox(0, 0, u"Off", true, 1,
+		                                                 [&] {
+			                                                 ++checkpoints;
+			                                                 return false;
+		                                                 }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateCheckBox(
+			        0, 0, u"Off", true, 1, [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, CheckBoxTransactionPreservesOtherFieldsNotesAndBookmarks) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(
+		        formBytes({WIDGET + "/FT /Btn /T (box) /V /Yes /AS /Yes "
+		                            "/AP << /N << /Yes 8 0 R /Off 7 0 R >> >>",
+		                   WIDGET + "/FT /Tx /T (text) /V (keep)"},
+		                  {}, 1, {.outline = true, .painted = true}));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_TRUE(doc.outlineLink(0));
+		    ASSERT_EQ(doc.addTextNote(0, 50, 60, u"Keep this note"), 2);
+		    const auto revision = doc.annotationRevision();
+		    ASSERT_EQ(doc.updateCheckBox(0, 0, u"Yes", false, revision), true);
+		    const auto fields = doc.formFields(0);
+		    ASSERT_TRUE(fields && fields->entries.size() == 2);
+		    EXPECT_EQ(fields->entries[0].checked, false);
+		    EXPECT_FALSE(fields->entries[1].checked.has_value());
+		    EXPECT_EQ(fields->entries[1].value, "keep");
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[2].contents, "Keep this note");
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link && link->destination);
+		    EXPECT_EQ(link->destination->page, 0);
+	    })
+	    .get();
+}
+
+TEST(FormFields, CheckBoxesRefuseInheritedSharedAndSignedDocuments) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::string control =
+		        WIDGET + "/V /Off /AS /Off "
+		                 "/AP << /N << /Yes 8 0 R /Off 7 0 R >> >>";
+		    for (const auto& bytes :
+		         {formBytes({control}, "/FT /Btn /T (inherited)", 1,
+		                    {.painted = true}),
+		          formBytes({control, control}, "/FT /Btn /T (shared)", 1,
+		                    {.painted = true}),
+		          formBytes({control + " /FT /Btn /T (box)"}, {}, 1,
+		                    {.nestedSignature = true, .painted = true}),
+		          formBytes({control + " /FT /Btn /T (box)",
+		                     WIDGET +
+		                         "/FT /Sig /T (signature) /V << /Type /Sig "
+		                         "/Contents <00> /ByteRange [0 1 2 3] >>"},
+		                    {}, 1, {.painted = true})}) {
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(
+			        opened.document->updateCheckBox(0, 0, u"Off", true, 1));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
 TEST(FormFields, WidgetRasterTracksIntrinsicAndViewRotationAtTwoScales) {
 	pdf::Engine engine;
 	engine

@@ -124,6 +124,7 @@ struct FormField {
 	int annotationFlags = 0;
 	FormFieldType type = FormFieldType::Unknown;
 	std::string name, value;
+	std::optional<bool> checked;
 	std::optional<AnnotationBounds> bounds;
 	// Clipped page fractions; absent for hidden, off-page or unusable bounds.
 	std::optional<AnnotationRect> displayBounds;
@@ -175,6 +176,11 @@ class Document {
 	updateTextField(int page, int index, std::u16string_view expected,
 	                std::u16string_view contents, std::uint64_t revision,
 	                const std::function<bool()>& canceled = {});
+	// Single terminal checkboxes only; expected is the snapshot's exact value.
+	std::optional<bool>
+	updateCheckBox(int page, int index, std::u16string_view expected,
+	               bool checked, std::uint64_t revision,
+	               const std::function<bool()>& canceled = {});
 	// Lower left of a 20-point icon, in unrotated PDF coordinates.
 	// In memory only. Returns its page annotation index, or nullopt on failure.
 	// A failed rollback throws; the incomplete note may still be present.
@@ -282,6 +288,12 @@ class Document {
 	                     const std::vector<int>& pages) const;
 	void invalidateEdits();
 	bool canSerializeEdits(const std::function<bool()>& canceled) const;
+	std::optional<bool> updateFormField(int page, int index,
+	                                    std::u16string_view expected,
+	                                    std::u16string_view contents,
+	                                    std::uint64_t revision,
+	                                    const std::function<bool()>& canceled,
+	                                    std::optional<bool> checked);
 	Document* formDrawingDocument() const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,
 	                    int height, int rotation, bool printing) const;

@@ -670,7 +670,24 @@ Document::updateTextField(int pageIndex, int index,
                           std::u16string_view expected,
                           std::u16string_view contents, std::uint64_t revision,
                           const std::function<bool()>& canceled) {
+	return updateFormField(pageIndex, index, expected, contents, revision,
+	                       canceled, {});
+}
+
+std::optional<bool>
+Document::updateCheckBox(int pageIndex, int index, std::u16string_view expected,
+                         bool checked, std::uint64_t revision,
+                         const std::function<bool()>& canceled) {
+	return updateFormField(pageIndex, index, expected, {}, revision, canceled,
+	                       checked);
+}
+
+std::optional<bool> Document::updateFormField(
+    int pageIndex, int index, std::u16string_view expected,
+    std::u16string_view contents, std::uint64_t revision,
+    const std::function<bool()>& canceled, std::optional<bool> checked) {
 	const auto stopped = [&] { return canceled && canceled(); };
+	const auto type = checked ? FormFieldType::CheckBox : FormFieldType::Text;
 	if (offThread() || !revision || !currentRevision(revision) ||
 	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
 	    !canFillForms() || !validNoteText(expected) ||
@@ -709,6 +726,7 @@ Document::updateTextField(int pageIndex, int index,
 	if (!scratch.document || stopped()) {
 		return {};
 	}
+	std::u16string replacement(contents);
 	{
 		FormContext context(scratch.document->m_handle, pageIndex);
 		context.handle =
@@ -723,7 +741,7 @@ Document::updateTextField(int pageIndex, int index,
 		}
 		context.afterLoad();
 		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
-		// i start with plain text, leaving specialized field behavior alone.
+		// i leave inherited and specialized field behavior alone.
 		// the pinned control-count implementation also handles text fields.
 		// see:
 		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
@@ -735,7 +753,7 @@ Document::updateTextField(int pageIndex, int index,
 		    FPDF_ANNOT_FLAG_LOCKED | 0x200;
 		if (!field || FPDFAnnot_GetSubtype(field.get()) != FPDF_ANNOT_WIDGET ||
 		    FPDFAnnot_GetFormFieldType(context.handle, field.get()) !=
-		        FPDF_FORMFIELD_TEXTFIELD ||
+		        static_cast<int>(type) ||
 		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) != 1 ||
 		    FPDFAnnot_HasKey(field.get(), "Parent") ||
 		    FPDFAnnot_HasKey(field.get(), "A") ||
@@ -745,40 +763,97 @@ Document::updateTextField(int pageIndex, int index,
 		    (FPDFAnnot_GetFlags(field.get()) & protectedFlags)) {
 			return {};
 		}
-		const auto value = [&]() -> std::optional<std::u16string> {
-			const auto size = FPDFAnnot_GetFormFieldValue(
-			    context.handle, field.get(), nullptr, 0);
+		const auto value = [&](auto getter) -> std::optional<std::u16string> {
+			const auto size = getter(context.handle, field.get(), nullptr, 0);
 			if (size < 2 || size > 65536 || size % 2) {
 				return {};
 			}
 			std::vector<FPDF_WCHAR> buffer(size / 2);
-			if (FPDFAnnot_GetFormFieldValue(context.handle, field.get(),
-			                                buffer.data(), size) != size ||
+			if (getter(context.handle, field.get(), buffer.data(), size) !=
+			        size ||
 			    buffer.back() != 0) {
 				return {};
 			}
 			return std::u16string(buffer.begin(), buffer.end() - 1);
 		};
-		const auto previous = value();
+		const auto previous = value(FPDFAnnot_GetFormFieldValue);
+		const auto named = [&](const char* key) {
+			return value([key](FPDF_FORMHANDLE, FPDF_ANNOTATION annotation,
+			                   FPDF_WCHAR* buffer, unsigned long size) {
+				return FPDFAnnot_GetStringValue(annotation, key, buffer, size);
+			});
+		};
+		const auto hasCheckedAppearance = [&] {
+			// i keep checked appearances to text; this SDK can return
+			// compressed bytes for empty streams. see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/parser/cpdf_stream_acc.cpp
+			const auto appearance =
+			    value([](FPDF_FORMHANDLE, FPDF_ANNOTATION annotation,
+			             FPDF_WCHAR* buffer, unsigned long size) {
+				    return FPDFAnnot_GetAP(annotation,
+				                           FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+				                           buffer, size);
+			    });
+			const std::u16string_view whitespace(u"\0\t\n\f\r ", 6);
+			return appearance &&
+			       appearance->find_first_not_of(whitespace) !=
+			           std::u16string::npos &&
+			       std::all_of(appearance->begin(), appearance->end(),
+			                   [&](char16_t unit) {
+				                   return (unit >= 32 && unit <= 126) ||
+				                          whitespace.find(unit) !=
+				                              std::u16string_view::npos;
+			                   });
+		};
 		if (!previous || *previous != expected || stopped()) {
 			return {};
 		}
-		if (*previous == contents) {
+		if (checked) {
+			const auto on = value(FPDFAnnot_GetFormFieldExportValue);
+			const bool current =
+			    FPDFAnnot_IsChecked(context.handle, field.get());
+			// i keep the value and appearance state on the same export name.
+			if (!on || on->empty() || *on == u"Off" || !validNoteText(*on) ||
+			    named("AS") != previous || named("V") != previous ||
+			    *previous != (current ? *on : u"Off") ||
+			    FPDFAnnot_GetValueType(field.get(), "V") != FPDF_OBJECT_NAME ||
+			    FPDFAnnot_GetValueType(field.get(), "AS") != FPDF_OBJECT_NAME ||
+			    FPDFAnnot_HasKey(field.get(), "Opt") ||
+			    (current && !hasCheckedAppearance())) {
+				return {};
+			}
+			replacement = *checked ? *on : u"Off";
+		}
+		if (*previous == replacement) {
 			return false;
 		}
-		const std::u16string replacement(contents);
 		// i commit through focus loss, then check the full value. see:
 		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp
-		if (!FORM_SetFocusedAnnot(context.handle, field.get()) ||
-		    (!previous->empty() &&
-		     !FORM_SelectAllText(context.handle, context.page.get()))) {
+		if (!FORM_SetFocusedAnnot(context.handle, field.get())) {
 			return {};
 		}
-		FORM_ReplaceSelection(
-		    context.handle, context.page.get(),
-		    reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()));
-		if (!FORM_ForceToKillFocus(context.handle) || value() != replacement ||
-		    stopped()) {
+		if (checked) {
+			// space commits the focused checkbox. see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_checkbox.cpp
+			if (!FORM_OnChar(context.handle, context.page.get(), ' ', 0)) {
+				return {};
+			}
+		} else {
+			if (!previous->empty() &&
+			    !FORM_SelectAllText(context.handle, context.page.get())) {
+				return {};
+			}
+			FORM_ReplaceSelection(
+			    context.handle, context.page.get(),
+			    reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()));
+		}
+		if (!FORM_ForceToKillFocus(context.handle) ||
+		    value(FPDFAnnot_GetFormFieldValue) != replacement ||
+		    (checked &&
+		     (named("V") != replacement || named("AS") != replacement)) ||
+		    (checked && (FPDFAnnot_IsChecked(context.handle, field.get()) !=
+		                 0) != *checked) ||
+		    (checked && *checked && !hasCheckedAppearance()) || stopped()) {
 			return {};
 		}
 	}
@@ -795,15 +870,15 @@ Document::updateTextField(int pageIndex, int index,
 	}
 	const auto check = next.document->formFields(pageIndex, canceled);
 	std::vector<unsigned char> encoded;
-	for (const auto unit : contents) {
+	for (const auto unit : replacement) {
 		encoded.push_back(static_cast<unsigned char>(unit & 0xFF));
 		encoded.push_back(static_cast<unsigned char>(unit >> 8));
 	}
 	if (!check || check->limited ||
 	    std::none_of(check->entries.begin(), check->entries.end(),
 	                 [&](const FormField& field) {
-		                 return field.index == index &&
-		                        field.type == FormFieldType::Text &&
+		                 return field.index == index && field.type == type &&
+		                        (!checked || field.checked == checked) &&
 		                        field.value == utf16ToUtf8(encoded);
 	                 })) {
 		return {};
@@ -2293,6 +2368,11 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		}
 		field.name = text(FPDFAnnot_GetFormFieldName, annotation.get());
 		field.value = text(FPDFAnnot_GetFormFieldValue, annotation.get());
+		if (field.type == FormFieldType::CheckBox ||
+		    field.type == FormFieldType::RadioButton) {
+			field.checked =
+			    FPDFAnnot_IsChecked(context.handle, annotation.get()) != 0;
+		}
 		FS_RECTF rect{};
 		if (FPDFAnnot_GetValueType(annotation.get(), "Rect") ==
 		        FPDF_OBJECT_ARRAY &&
