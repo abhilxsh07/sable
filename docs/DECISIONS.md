@@ -1940,3 +1940,16 @@ unescaped non-ASCII glyph strings and inline image data, and use the
 existing 64 KiB string limit. This does not validate drawing operators
 inside a text stream. Session requests and native checkbox controls follow
 separately.
+
+## Queued checkbox writes (2026-10-28)
+
+Checkbox requests share the text-write queue and result handling. I own the
+expected field value and requested checked state, require a nonzero snapshot
+revision, and clear the cached form snapshot before each attempt. A false
+checked state still takes the checkbox path; it is not a text request.
+
+Accepted writes synchronize the session revision for later note edits.
+Unchanged writes keep the revision, refused writes keep the document, and
+form-read cancellation does not cancel queued writes. Close retains an
+already accepted outcome and cancels requests that have not started.
+The engine's structural and appearance restrictions remain unchanged.

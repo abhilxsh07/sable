@@ -736,6 +736,21 @@ bool Session::textNote(int page, int index,
 bool Session::updateTextField(int page, int index, std::u16string expected,
                               std::u16string contents, std::uint64_t revision,
                               std::function<void(FormWriteResult)> callback) {
+	return writeFormField(page, index, std::move(expected), std::move(contents),
+	                      revision, {}, std::move(callback));
+}
+
+bool Session::updateCheckBox(int page, int index, std::u16string expected,
+                             bool checked, std::uint64_t revision,
+                             std::function<void(FormWriteResult)> callback) {
+	return writeFormField(page, index, std::move(expected), {}, revision,
+	                      checked, std::move(callback));
+}
+
+bool Session::writeFormField(int page, int index, std::u16string expected,
+                             std::u16string contents, std::uint64_t revision,
+                             std::optional<bool> checked,
+                             std::function<void(FormWriteResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -744,37 +759,42 @@ bool Session::updateTextField(int page, int index, std::u16string expected,
 			return false;
 		}
 	}
-	state->m_engine.post(
-	    [state, page, index, revision, expected = std::move(expected),
-	     contents = std::move(contents), callback = std::move(callback)] {
-		    FormWriteResult result;
-		    result.page = page;
-		    result.index = index;
-		    result.canceled = state->closed();
-		    try {
-			    if (!result.canceled) {
-				    state->m_forms.reset();
-				    const auto changed = state->m_document->updateTextField(
-				        page, index, expected, contents, revision,
-				        [state] { return state->closed(); });
-				    if (changed) {
-					    result.accepted = true;
-					    result.changed = *changed;
-					    result.revision =
-					        state->m_document->annotationRevision();
-					    std::lock_guard lock(state->m_mutex);
-					    state->m_annotationRevision = result.revision;
-				    } else {
-					    result.canceled = state->closed();
-				    }
-			    }
-		    } catch (...) {
-			    result.canceled = state->closed();
-			    diagnostics::write(diagnostics::Level::Error,
-			                       "Couldn't update a PDF form field.");
-		    }
-		    callback(std::move(result));
-	    });
+	state->m_engine.post([state, page, index, revision, checked,
+	                      expected = std::move(expected),
+	                      contents = std::move(contents),
+	                      callback = std::move(callback)] {
+		FormWriteResult result;
+		result.page = page;
+		result.index = index;
+		result.canceled = state->closed();
+		try {
+			if (!result.canceled) {
+				state->m_forms.reset();
+				const auto canceled = [state] { return state->closed(); };
+				const auto changed = checked
+				                         ? state->m_document->updateCheckBox(
+				                               page, index, expected, *checked,
+				                               revision, canceled)
+				                         : state->m_document->updateTextField(
+				                               page, index, expected, contents,
+				                               revision, canceled);
+				if (changed) {
+					result.accepted = true;
+					result.changed = *changed;
+					result.revision = state->m_document->annotationRevision();
+					std::lock_guard lock(state->m_mutex);
+					state->m_annotationRevision = result.revision;
+				} else {
+					result.canceled = state->closed();
+				}
+			}
+		} catch (...) {
+			result.canceled = state->closed();
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't update a PDF form field.");
+		}
+		callback(std::move(result));
+	});
 	return true;
 }
 

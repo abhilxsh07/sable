@@ -44,7 +44,7 @@ namespace fs = std::filesystem;
 
 // A4 pages labelled like pages.pdf (i, ii, then 1, 2, ...), written out by
 // hand the way make_fixtures.py does it, just with many more pages
-std::string manyPages(int count, bool form = false) {
+std::string manyPages(int count, bool form = false, bool checkbox = false) {
 	std::string pdf = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	const auto add = [&](const std::string& body) {
@@ -56,8 +56,8 @@ std::string manyPages(int count, bool form = false) {
 	const auto note = std::to_string(count + 4) + " 0 R";
 	add("<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >> "
 	    "2 << /S /D >>] >> " +
-	    (form ? "/AcroForm << /Fields [" + field +
-	                "] "
+	    (form ? "/AcroForm << /Fields [" + field + "] " +
+	                (checkbox ? "/NeedAppearances false " : "") +
 	                "/DA (/Helv 10 Tf 0 g) /DR << /Font << /Helv "
 	                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> "
 	                ">> >> >> "
@@ -75,10 +75,23 @@ std::string manyPages(int count, bool form = false) {
 		    ">>");
 	}
 	if (form) {
-		add("<< /Type /Annot /Subtype /Widget /FT /Tx /T (field) /V (value) "
+		add("<< /Type /Annot /Subtype /Widget " +
+		    (checkbox ? "/FT /Btn /T (field) /V /Off /AS /Off /F 4 "
+		                "/AP << /N << /Approved#20now " +
+		                    std::to_string(count + 5) + " 0 R /Off " +
+		                    std::to_string(count + 6) + " 0 R >> >> "
+		              : "/FT /Tx /T (field) /V (value) ") +
 		    "/Rect [40 50 90 70] /P 3 0 R >>");
 		add("<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
 		    "/Contents (Original) /P 3 0 R >>");
+		if (checkbox) {
+			const std::string paint = "0 0 0 rg 0 0 50 20 re f";
+			add("<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length " +
+			    std::to_string(paint.size()) + " >>\nstream\n" + paint +
+			    "\nendstream");
+			add("<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+			    "/Length 0 >>\nstream\nendstream");
+		}
 	}
 	const auto xref = pdf.size();
 	pdf += "xref\n0 " + std::to_string(offsets.size() + 1) +
@@ -1447,6 +1460,147 @@ TEST_F(SessionTest, FormWritesCloseOnceAndKeepCommittedOutcomes) {
 	EXPECT_FALSE(done->canceled);
 	EXPECT_FALSE(session.updateTextField(0, 1, u"new", u"later", done->revision,
 	                                     canceled.callback()));
+}
+
+TEST_F(SessionTest, CheckBoxWritesOwnTargetsRefreshSnapshotsAndSave) {
+	pdf::Session session(engine);
+	const auto bytes = manyPages(1, true, true);
+	const auto source = writeTemp("checkbox form.pdf", bytes);
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 1);
+	EXPECT_EQ(before->entries[0].checked, false);
+	Reply<pdf::FormWriteResult> first, stale;
+	std::u16string expected = u"Off";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateCheckBox(0, 1, expected, true,
+		                                   before->revision, first.callback()));
+		ASSERT_TRUE(session.updateCheckBox(0, 1, u"Approved now", false,
+		                                   before->revision, stale.callback()));
+		expected.assign(u"wrong");
+		session.cancelForms();
+	}
+	const auto written = first.wait(), refused = stale.wait();
+	ASSERT_TRUE(written && refused);
+	EXPECT_TRUE(written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	EXPECT_EQ(written->page, 0);
+	EXPECT_EQ(written->index, 1);
+	EXPECT_GT(written->revision, before->revision);
+	EXPECT_FALSE(refused->accepted || refused->changed || refused->canceled);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 1);
+	EXPECT_NE(after, before);
+	EXPECT_EQ(after->revision, written->revision);
+	EXPECT_EQ(after->entries[0].checked, true);
+	EXPECT_EQ(after->entries[0].value, "Approved now");
+	EXPECT_EQ(before->entries[0].checked, false);
+	Reply<pdf::FormWriteResult> unchanged, invalid;
+	ASSERT_TRUE(session.updateCheckBox(0, 1, u"Approved now", true,
+	                                   after->revision, unchanged.callback()));
+	const auto same = unchanged.wait();
+	ASSERT_TRUE(same);
+	EXPECT_TRUE(same->accepted);
+	EXPECT_FALSE(same->changed || same->canceled);
+	EXPECT_EQ(same->revision, after->revision);
+	const auto refreshed = readForms(session);
+	ASSERT_TRUE(refreshed);
+	EXPECT_NE(refreshed, after);
+	ASSERT_TRUE(session.updateCheckBox(0, 1, u"wrong", false, after->revision,
+	                                   invalid.callback()));
+	const auto rejected = invalid.wait();
+	ASSERT_TRUE(rejected);
+	EXPECT_FALSE(rejected->accepted || rejected->changed || rejected->canceled);
+	EXPECT_NE(readForms(session), refreshed);
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(session.updateTextNote(0, 0, u"Original", u"Preserved",
+	                                   note.callback()));
+	const auto edited = note.wait();
+	ASSERT_TRUE(edited && edited->changed && edited->index);
+	const auto destination = source.parent_path() / "checked copy.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto fields = readForms(reopened);
+	ASSERT_TRUE(fields && fields->entries.size() == 1);
+	EXPECT_EQ(fields->entries[0].checked, true);
+	EXPECT_EQ(fields->entries[0].value, "Approved now");
+	EXPECT_EQ(readFile(source),
+	          (std::vector<std::uint8_t>(bytes.begin(), bytes.end())));
+}
+
+TEST_F(SessionTest, CheckBoxRepliesCanQueueUncheckingAndThrow) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("reentrant checkbox.pdf",
+	                                  manyPages(1, true, true)))
+	              .error,
+	          pdf::Error::None);
+	Reply<pdf::FormWriteResult> written, cleared;
+	auto worker = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.updateCheckBox(
+	    0, 1, u"Off", true, 1,
+	    [&session, worker, writtenCb = written.callback(),
+	     clearedCb = cleared.callback()](auto result) {
+		    *worker = pdf::Engine::onThread();
+		    session.updateCheckBox(0, 1, u"Approved now", false,
+		                           result.revision, clearedCb);
+		    writtenCb(result);
+		    throw std::runtime_error("checkbox callback");
+	    }));
+	const auto on = written.wait(), off = cleared.wait();
+	ASSERT_TRUE(on && off);
+	EXPECT_TRUE(*worker);
+	EXPECT_TRUE(on->accepted && on->changed && off->accepted && off->changed);
+	EXPECT_FALSE(on->canceled || off->canceled);
+	EXPECT_GT(off->revision, on->revision);
+	const auto fields = readForms(session);
+	ASSERT_TRUE(fields && fields->entries.size() == 1);
+	EXPECT_EQ(fields->entries[0].checked, false);
+	EXPECT_EQ(fields->entries[0].value, "Off");
+}
+
+TEST_F(SessionTest, CheckBoxWritesRespectCloseAndQueueBoundaries) {
+	const auto path =
+	    writeTemp("closing checkbox.pdf", manyPages(1, true, true));
+	Reply<pdf::FormWriteResult> canceled;
+	{
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, path).error, pdf::Error::None);
+		Gate gate(engine);
+		ASSERT_TRUE(session->updateCheckBox(0, 1, u"Off", true, 1,
+		                                    canceled.callback()));
+		session.reset();
+	}
+	const auto stopped = canceled.wait();
+	ASSERT_TRUE(stopped);
+	EXPECT_TRUE(stopped->canceled);
+	EXPECT_FALSE(stopped->accepted || stopped->changed);
+	pdf::Session session(engine);
+	EXPECT_FALSE(
+	    session.updateCheckBox(0, 1, u"Off", true, 1, canceled.callback()));
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	EXPECT_FALSE(
+	    session.updateCheckBox(0, 1, u"Off", true, 0, canceled.callback()));
+	EXPECT_FALSE(session.updateCheckBox(0, 1, u"Off", true, 1, {}));
+	EXPECT_FALSE(session.updateCheckBox(0, 1, std::u16string(32768, u'x'), true,
+	                                    1, canceled.callback()));
+	Reply<pdf::FormWriteResult> committed;
+	ASSERT_TRUE(session.updateCheckBox(
+	    0, 1, u"Off", true, 1,
+	    [&session, cb = committed.callback()](auto result) {
+		    session.close();
+		    cb(result);
+	    }));
+	const auto done = committed.wait();
+	ASSERT_TRUE(done);
+	EXPECT_TRUE(done->accepted && done->changed);
+	EXPECT_FALSE(done->canceled);
+	EXPECT_FALSE(session.updateCheckBox(0, 1, u"Approved now", false,
+	                                    done->revision, canceled.callback()));
 }
 
 TEST_F(SessionTest, FormCacheClearsBeforeEditsIncludingRefusedAttempts) {
