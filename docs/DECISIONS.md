@@ -1953,3 +1953,16 @@ Unchanged writes keep the revision, refused writes keep the document, and
 form-read cancellation does not cancel queued writes. Close retains an
 already accepted outcome and cancels requests that have not started.
 The engine's structural and appearance restrictions remain unchanged.
+
+## Native checkbox editor (2026-10-28)
+
+Page taps offer a two-state checkbox through the existing field dialog.
+I carry the raw snapshot value and revision into Apply, while the native
+control holds only the checked state. Refused or unqueued writes retain
+the choice and restore the control; accepted no-ops close without marking
+the document dirty. Changed values use the existing page/thumbnail refresh,
+save-copy and unsaved-close handling.
+
+Checkboxes retain the text editor's visibility, flag, geometry, modal and
+stale-request guards. Structural and checked-appearance support is still
+validated by the engine, so a field offered by the dialog can be refused.

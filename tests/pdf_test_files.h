@@ -30,9 +30,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // The folder the test exe is in, or empty when Windows can't say. I work
 // files out from here and not from the working folder, so it doesn't matter
@@ -100,4 +102,38 @@ inline std::filesystem::path makeTempDir(std::string_view tag) {
 	                  std::to_string(stamp) + "_" + std::to_string(counter++));
 	std::filesystem::create_directories(dir);
 	return dir;
+}
+
+inline std::string checkBoxPdf() {
+	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
+	const std::vector<std::string> objects{
+	    "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
+	    "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+	    "<< /Fields [5 0 R] /NeedAppearances false >>",
+	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
+	    "/Annots [5 0 R] >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Btn /T (box) /F 4 "
+	    "/V /Off /AS /Off /Rect [40 50 90 70] /P 4 0 R "
+	    "/AP << /N << /Approved#20now 6 0 R /Off 7 0 R >> >> >>",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length " +
+	        std::to_string(paint.size()) + " >>\nstream\n" + paint +
+	        "\nendstream",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length 0 >>\n"
+	    "stream\nendstream"};
+	std::string bytes = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& object : objects) {
+		offsets.push_back(bytes.size());
+		bytes +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
+	}
+	const auto xref = bytes.size();
+	bytes += "xref\n0 8\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		bytes += line;
+	}
+	return bytes + "trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n" +
+	       std::to_string(xref) + "\n%%EOF\n";
 }

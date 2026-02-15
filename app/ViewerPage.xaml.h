@@ -253,7 +253,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                         bool context = false);
 	void requestFormAt(winrt::Windows::Foundation::Point point);
 	void cancelFormRequest();
-	winrt::fire_and_forget editTextField(int page, std::uint64_t revision,
+	winrt::fire_and_forget editFormField(int page, std::uint64_t revision,
 	                                     pdf::FormField field);
 	std::uint64_t m_formVersion = 0;
 	void showAnnotationMenu(winrt::Windows::Foundation::Point point);

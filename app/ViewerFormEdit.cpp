@@ -113,10 +113,12 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					            FPDF_ANNOT_FLAG_NOROTATE |
 					            FPDF_ANNOT_FLAG_TOGGLENOVIEW | 0x200;
 					        if (found != fields.rend() &&
-					            found->type == pdf::FormFieldType::Text &&
+					            (found->type == pdf::FormFieldType::Text ||
+					             (found->type == pdf::FormFieldType::CheckBox &&
+					              found->checked.has_value())) &&
 					            !(found->flags & ~plain) &&
 					            !(found->annotationFlags & locked)) {
-						        self->editTextField(static_cast<int>(page),
+						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,
 						                            *found);
 						        return;
@@ -132,10 +134,15 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 	requestAnnotationAt(point);
 }
 
-fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
+fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
                                           pdf::FormField field) {
 	const auto lifetime = get_strong();
 	try {
+		const bool checkbox = field.type == pdf::FormFieldType::CheckBox;
+		if ((checkbox && !field.checked.has_value()) ||
+		    (!checkbox && field.type != pdf::FormFieldType::Text)) {
+			co_return;
+		}
 		if (m_closed || !m_session || !m_fillAllowed || m_presentation ||
 		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
 		    m_passwordDialog || !XamlRoot() ||
@@ -151,7 +158,8 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 		const auto session = m_session.get();
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Edit text field"));
+		dialog.Title(
+		    box_value(checkbox ? L"Edit checkbox" : L"Edit text field"));
 		dialog.PrimaryButtonText(L"Apply");
 		dialog.CloseButtonText(L"Cancel");
 		dialog.DefaultButton(ContentDialogButton::None);
@@ -181,15 +189,26 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 		const auto raw = to_hstring(field.value);
 		contents.Text(raw);
 		Automation::AutomationProperties::SetName(contents, L"Field value");
-		fields.Children().Append(contents);
+		CheckBox choice;
+		choice.Content(box_value(L"Checked"));
+		choice.IsChecked(field.checked.value_or(false));
+		Automation::AutomationProperties::SetName(choice, L"Field checked");
+		fields.MinWidth(320);
+		fields.Children().Append(checkbox ? choice.as<UIElement>()
+		                                  : contents.as<UIElement>());
 		TextBlock error;
 		error.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(error);
 		dialog.Content(fields);
 		const std::u16string expected(raw.begin(), raw.end());
 		const auto initial = std::make_shared<hstring>(contents.Text());
-		dialog.Opened([initial, text = make_weak(contents)](auto&&, auto&&) {
-			if (const auto field = text.get()) {
+		dialog.Opened([initial, text = make_weak(contents),
+		               check = make_weak(choice), checkbox](auto&&, auto&&) {
+			if (checkbox) {
+				if (const auto field = check.get()) {
+					field.Focus(FocusState::Programmatic);
+				}
+			} else if (const auto field = text.get()) {
 				*initial = field.Text();
 				field.Focus(FocusState::Programmatic);
 				field.SelectAll();
@@ -206,6 +225,7 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 		dialog.PrimaryButtonClick([weak = get_weak(),
 		                           prompt = make_weak(dialog),
 		                           text = make_weak(contents),
+		                           check = make_weak(choice), checkbox,
 		                           failure = make_weak(error), initial,
 		                           expected, session, page, index = field.index,
 		                           revision](
@@ -216,11 +236,12 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 			const auto self = weak.get();
 			const auto view = prompt.get();
 			const auto field = text.get();
+			const auto choice = check.get();
 			const auto message = failure.get();
 			if (!self || self->m_closed || self->m_noteBusy ||
 			    self->m_noteSaving || self->m_session.get() != session ||
 			    !self->m_fillAllowed || !view || self->m_noteDialog != view ||
-			    !field || !message ||
+			    !field || !choice || !message ||
 			    self->Visibility() != XVisibility::Visible ||
 			    (self->m_notesAvailable && !self->m_notesAvailable())) {
 				return;
@@ -232,55 +253,71 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 			self->m_noteBusy = true;
 			view.IsPrimaryButtonEnabled(false);
 			field.IsReadOnly(true);
+			choice.IsEnabled(false);
 			message.Text(L"Applying changes\u2026");
 			try {
-				if (self->m_session->updateTextField(
-				        page, index, expected, replacement, revision,
-				        [weak, prompt, text, failure, session,
-				         queue = self->DispatcherQueue()](
-				            pdf::FormWriteResult result) {
-					        queue.TryEnqueue([weak, prompt, text, failure,
-					                          session, result] {
-						        const auto owner = weak.get();
-						        if (!owner || owner->m_closed ||
-						            owner->m_session.get() != session) {
-							        return;
-						        }
-						        owner->m_noteBusy = false;
-						        owner->m_notesDirty =
-						            owner->m_notesDirty || result.changed;
-						        owner->m_formsDirty =
-						            owner->m_formsDirty || result.changed;
-						        if (const auto dialog = prompt.get()) {
-							        if (result.accepted) {
-								        dialog.Hide();
-							        } else {
-								        if (const auto field = text.get()) {
-									        field.IsReadOnly(false);
-								        }
-								        dialog.IsPrimaryButtonEnabled(true);
-								        if (const auto message =
-								                failure.get()) {
-									        message.Text(
-									            L"Couldn't apply this value. "
-									            L"The field may be protected, "
-									            L"have a length limit, or use "
-									            L"an unsupported form feature. "
-									            L"Your text is still here.");
-								        }
-							        }
-						        }
-						        if (result.changed) {
-							        owner->refreshNotes();
-							        owner->showNotice(
-							            L"Field updated. Save a copy to keep "
-							            L"your changes.");
-							        owner->Message().Severity(
-							            InfoBarSeverity::Success);
-						        }
-						        owner->showComments();
-					        });
-				        })) {
+				auto reply = [weak, prompt, text, check, checkbox, failure,
+				              session, queue = self->DispatcherQueue()](
+				                 pdf::FormWriteResult result) {
+					queue.TryEnqueue([weak, prompt, text, check, checkbox,
+					                  failure, session, result] {
+						const auto owner = weak.get();
+						if (!owner || owner->m_closed ||
+						    owner->m_session.get() != session) {
+							return;
+						}
+						owner->m_noteBusy = false;
+						owner->m_notesDirty =
+						    owner->m_notesDirty || result.changed;
+						owner->m_formsDirty =
+						    owner->m_formsDirty || result.changed;
+						if (const auto dialog = prompt.get()) {
+							if (result.accepted) {
+								dialog.Hide();
+							} else {
+								if (const auto field = text.get()) {
+									field.IsReadOnly(false);
+								}
+								if (const auto field = check.get()) {
+									field.IsEnabled(true);
+								}
+								dialog.IsPrimaryButtonEnabled(true);
+								if (const auto message = failure.get()) {
+									message.Text(
+									    checkbox
+									        ? L"Couldn't apply this choice. "
+									          L"The field may be protected or "
+									          L"use "
+									          L"an unsupported form feature. "
+									          L"Your choice is still here."
+									        : L"Couldn't apply this value. "
+									          L"The field may be protected, "
+									          L"have a length limit, or use "
+									          L"an unsupported form feature. "
+									          L"Your text is still here.");
+								}
+							}
+						}
+						if (result.changed) {
+							owner->refreshNotes();
+							owner->showNotice(
+							    L"Field updated. Save a copy to keep "
+							    L"your changes.");
+							owner->Message().Severity(InfoBarSeverity::Success);
+						}
+						owner->showComments();
+					});
+				};
+				const bool queued =
+				    checkbox
+				        ? self->m_session->updateCheckBox(
+				              page, index, expected,
+				              unbox_value_or<bool>(choice.IsChecked(), false),
+				              revision, std::move(reply))
+				        : self->m_session->updateTextField(
+				              page, index, expected, replacement, revision,
+				              std::move(reply));
+				if (queued) {
 					self->showComments();
 					return;
 				}
@@ -288,8 +325,12 @@ fire_and_forget ViewerPage::editTextField(int page, std::uint64_t revision,
 			}
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
+			choice.IsEnabled(true);
 			view.IsPrimaryButtonEnabled(true);
-			message.Text(L"Couldn't queue this edit. Your text is still here.");
+			message.Text(
+			    checkbox
+			        ? L"Couldn't queue this edit. Your choice is still here."
+			        : L"Couldn't queue this edit. Your text is still here.");
 			self->showComments();
 		});
 		m_noteDialog = dialog;

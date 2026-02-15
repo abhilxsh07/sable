@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/printing/controller.h"
 #include "surface_test.h"
 #include "music_capture.h"
+#include "pdf_test_files.h"
 
 #include <chrono>
 #include <fstream>
@@ -107,6 +108,8 @@ struct TabsTest {
 	pdf::TextMarkup selectionMarkup = pdf::TextMarkup::Highlight;
 	std::string markupSubtype = "Highlight";
 	bool noteEditOnly = false;
+	bool checkBoxOnly = false;
+	std::filesystem::path checkBoxPath;
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
@@ -3080,6 +3083,183 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void checkBoxTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_noteSaving ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		using namespace Microsoft::UI::Xaml::Automation;
+		const auto peer = [](const FrameworkElement& element) {
+			return Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			    element);
+		};
+		const auto button = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& node) -> Button {
+				if (const auto item = node.try_as<Button>();
+				    item && item.Name() == name) {
+					return item;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(node); ++i) {
+					if (const auto item =
+					        find(Media::VisualTreeHelper::GetChild(node, i))) {
+						return item;
+					}
+				}
+				return nullptr;
+			};
+			const auto item = find(v.m_noteDialog);
+			check(item && item.IsEnabled(),
+			      "checkbox dialog button unavailable");
+			peer(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto read = [&] {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::FormFieldsResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->formFields(0,
+			                              [reply](auto value) {
+				                              reply->set_value(
+				                                  std::move(value));
+			                              }),
+			      "checkbox snapshot not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "checkbox snapshot timed out");
+			const auto result = future.get();
+			check(result.fields && !result.fields->limited &&
+			          result.fields->entries.size() == 1,
+			      "checkbox snapshot failed");
+			return result.fields;
+		};
+		const auto open = [&] {
+			const auto snapshot = read();
+			const auto& b = snapshot->entries[0].displayBounds;
+			check(b.has_value(), "checkbox has no visible bounds");
+			const auto& p = v.m_layout->pages()[0];
+			v.requestFormAt(
+			    {static_cast<float>(p.x + p.width * (b->left + b->right) / 2),
+			     static_cast<float>(p.y +
+			                        p.height * (b->top + b->bottom) / 2)});
+		};
+		const auto choice = [&] {
+			check(v.m_noteDialog != nullptr, "checkbox dialog missing");
+			return v.m_noteDialog.Content()
+			    .as<StackPanel>()
+			    .Children()
+			    .GetAt(1)
+			    .as<CheckBox>();
+		};
+		switch (step) {
+		case 0:
+			open();
+			break;
+		case 1:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(!unbox_value_or<bool>(choice().IsChecked(), true),
+			      "unchecked snapshot opened checked");
+			button(L"PrimaryButton");
+			break;
+		case 2:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty,
+			      "checkbox no-op dirtied PDF");
+			open();
+			break;
+		case 3:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			peer(choice())
+			    .GetPattern(Peers::PatternInterface::Toggle)
+			    .as<Provider::IToggleProvider>()
+			    .Toggle();
+			check(unbox_value_or<bool>(choice().IsChecked(), false),
+			      "native checkbox did not toggle");
+			button(L"PrimaryButton");
+			break;
+		case 4:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(v.m_notesDirty && v.m_formsDirty &&
+			          read()->entries[0].checked == true,
+			      "checkbox Apply failed");
+			notesPath = checkBoxPath.parent_path() / "checked copy.pdf";
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 5:
+			check(notesSave.GetResults() && !v.m_notesDirty && !v.m_formsDirty,
+			      "checkbox save did not clear dirty state");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          const auto fields =
+				              saved.document ? saved.document->formFields(0)
+				                             : std::nullopt;
+				          return fields && fields->entries.size() == 1 &&
+				                 fields->entries[0].checked == true &&
+				                 fields->entries[0].value == "Approved now";
+			          })
+			          .get(),
+			      "saved checkbox export/state missing");
+			open();
+			break;
+		case 6:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(unbox_value_or<bool>(choice().IsChecked(), false),
+			      "checked snapshot opened unchecked");
+			peer(choice())
+			    .GetPattern(Peers::PatternInterface::Toggle)
+			    .as<Provider::IToggleProvider>()
+			    .Toggle();
+			check(!unbox_value_or<bool>(choice().IsChecked(), true),
+			      "Cancel draft did not become unchecked");
+			button(L"CloseButton");
+			break;
+		case 7: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty &&
+			          read()->entries[0].checked == true,
+			      "Cancel changed checkbox");
+			std::ifstream original(checkBoxPath, std::ios::binary);
+			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
+			          checkBoxPdf(),
+			      "checkbox source changed");
+			std::fwprintf(stderr,
+			              L"PASS: checkbox no-op, native toggle, Apply, "
+			              L"saved export/state and Cancel; %ls\n",
+			              notesPath.c_str());
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
 	void noteEditTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -5687,6 +5867,10 @@ struct TabsTest {
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
+			if (checkBoxOnly) {
+				checkBoxTick(*self);
+				return;
+			}
 			if (editOnly) {
 				editTick(*self);
 				return;
@@ -6343,6 +6527,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->checkBoxOnly =
+	    GetEnvironmentVariableW(L"SableCheckBoxTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->settingsOnly =
 	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -6451,16 +6638,16 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->settingsOnly || state->windowsOnly || state->filtersOnly ||
-	    state->linksOnly || state->printOnly || state->finishOnly ||
-	    state->editOnly || state->musicOnly || state->selectionOnly ||
-	    state->findOnly || state->outlineOnly || state->attachmentsOnly ||
-	    state->commentsOnly || state->attachmentSaveOnly ||
-	    state->annotationActionsOnly || state->rotationOnly ||
-	    state->propertiesOnly || state->panOnly || state->layoutOnly ||
-	    state->presentationOnly || state->saveCopyOnly || state->keyboardOnly ||
-	    state->keyboardInputOnly || state->gesturesOnly ||
-	    state->longGesturesOnly) {
+	if (state->checkBoxOnly || state->settingsOnly || state->windowsOnly ||
+	    state->filtersOnly || state->linksOnly || state->printOnly ||
+	    state->finishOnly || state->editOnly || state->musicOnly ||
+	    state->selectionOnly || state->findOnly || state->outlineOnly ||
+	    state->attachmentsOnly || state->commentsOnly ||
+	    state->attachmentSaveOnly || state->annotationActionsOnly ||
+	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
+	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
+	    state->keyboardOnly || state->keyboardInputOnly ||
+	    state->gesturesOnly || state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -6514,7 +6701,14 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->propertiesOnly) {
+	if (state->checkBoxOnly) {
+		state->checkBoxPath = makeTempDir("checkbox_ui") / "checkbox.pdf";
+		{
+			std::ofstream source(state->checkBoxPath, std::ios::binary);
+			source << checkBoxPdf();
+		}
+		window->openDocument(engine, state->checkBoxPath, 1);
+	} else if (state->propertiesOnly) {
 		window->openDocument(engine, L"tests/fixtures/properties.pdf", 1);
 	} else if (state->attachmentsOnly || state->attachmentSaveOnly) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);

@@ -109,6 +109,17 @@ theme should not change PDF colors or the selected night-filter values.
 
 ## Saving and dialogs
 
+Open a plain checkbox field and confirm that its saved checked state appears
+in the editor. Space should toggle the focused box; Apply should update the
+page, while Cancel leaves it alone. Apply without changing it should leave
+the savepoint clean. Save a copy, reopen it and check the original too.
+For a refused field, the choice should remain in the dialog with an error.
+
+Build the opt-in native check with SableSurfaceTest=true, then run with
+SableTabsTest=true and SableCheckBoxTest=true. It exercises native controls
+through their automation peers and supplies its own save destination. Physical
+keyboard/pointer delivery and the real save picker still need a desktop pass.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:
