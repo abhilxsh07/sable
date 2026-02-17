@@ -254,6 +254,13 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 			    EXPECT_EQ(result->entries[i].index, i + 1);
 			    EXPECT_EQ(static_cast<int>(result->entries[i].type), i + 1);
 			    EXPECT_EQ(result->entries[i].value, values[i]);
+			    if (i == 1 || i == 2) {
+				    ASSERT_TRUE(result->entries[i].control);
+				    EXPECT_EQ(result->entries[i].control->index, 0);
+				    EXPECT_EQ(result->entries[i].control->count, 1);
+			    } else {
+				    EXPECT_FALSE(result->entries[i].control);
+			    }
 		    }
 		    const auto annotations = opened.document->annotations(0);
 		    ASSERT_TRUE(annotations);
@@ -264,6 +271,194 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 		    ASSERT_FALSE(shifted->entries.empty());
 		    EXPECT_EQ(shifted->entries.front().index, 0);
 		    EXPECT_NE(shifted->revision, result->revision);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ButtonSnapshotsOwnGroupPositionsAndExports) {
+	std::array<std::optional<pdf::FormFields>, 2> snapshots;
+	{
+		pdf::Engine engine;
+		for (int radio = 0; radio < 2; ++radio) {
+			snapshots[radio] =
+			    engine
+			        .run([radio] {
+				        const auto bytes = formBytes(
+				            {WIDGET +
+				                 "/AS /Off /AP << /N << /Chosen#20one 8 0 R "
+				                 "/Off 7 0 R >> >>",
+				             WIDGET + "/AS /Caf#E9 /AP << /N << /Caf#E9 8 0 R "
+				                      "/Off 7 0 R >> >>"},
+				            "/FT /Btn /Ff " +
+				                std::to_string(radio ? 32768 : 0) +
+				                " /T (group) /V /Caf#E9",
+				            1, {.appearances = false});
+				        const auto opened = pdf::openDocument(bytes);
+				        if (!opened.document) {
+					        ADD_FAILURE() << "button group did not open";
+					        return std::optional<pdf::FormFields>{};
+				        }
+				        const auto revision =
+				            opened.document->annotationRevision();
+				        const auto fields = opened.document->formFields(0);
+				        EXPECT_FALSE(opened.document->modified());
+				        EXPECT_EQ(opened.document->annotationRevision(),
+				                  revision);
+				        EXPECT_EQ(opened.document->serialize(1024 * 1024),
+				                  bytes);
+				        return fields;
+			        })
+			        .get();
+		}
+	}
+	for (int radio = 0; radio < 2; ++radio) {
+		ASSERT_TRUE(snapshots[radio] && !snapshots[radio]->limited);
+		ASSERT_EQ(snapshots[radio]->entries.size(), 2u);
+		for (int i = 0; i < 2; ++i) {
+			const auto& field = snapshots[radio]->entries[i];
+			EXPECT_EQ(field.type, radio ? pdf::FormFieldType::RadioButton
+			                            : pdf::FormFieldType::CheckBox);
+			EXPECT_EQ(field.name, "group");
+			EXPECT_EQ(field.value, "Caf\u00e9");
+			EXPECT_EQ(field.checked, i == 1);
+			ASSERT_TRUE(field.control);
+			EXPECT_EQ(field.control->index, i);
+			EXPECT_EQ(field.control->count, 2);
+			EXPECT_EQ(field.control->exportValue,
+			          i ? "Caf\u00e9" : "Chosen one");
+		}
+	}
+}
+
+TEST(FormFields, RadioOptionLabelsStaySeparateFromStoredIndices) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {WIDGET + "/AS /Off /AP << /N << /A 8 0 R /Off 7 0 R >> >>",
+		         WIDGET + "/AS /B /AP << /N << /B 8 0 R /Off 7 0 R >> >>"},
+		        "/FT /Btn /Ff 32768 /T (choice) /V /1 "
+		        "/Opt [(First label) <FEFF005300650063006F006E0064002003A9>]",
+		        1, {.appearances = false}));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && !fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 2u);
+		    for (int i = 0; i < 2; ++i) {
+			    ASSERT_TRUE(fields->entries[i].control);
+			    EXPECT_EQ(fields->entries[i].value, "Second \u03a9");
+			    EXPECT_EQ(fields->entries[i].checked, i == 1);
+			    EXPECT_EQ(fields->entries[i].control->exportValue,
+			              i ? "Second \u03a9" : "First label");
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, UnisonRadiosKeepDuplicateExportsAndIndividualPositions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {WIDGET + "/AS /Same /AP << /N << /Same 8 0 R /Off 7 0 R >> >>",
+		         WIDGET +
+		             "/AS /Same /AP << /N << /Same 8 0 R /Off 7 0 R >> >>"},
+		        "/FT /Btn /Ff 33587200 /T (unison) /V /Same", 1,
+		        {.appearances = false}));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && !fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 2u);
+		    for (int i = 0; i < 2; ++i) {
+			    ASSERT_TRUE(fields->entries[i].control);
+			    EXPECT_EQ(fields->entries[i].control->index, i);
+			    EXPECT_EQ(fields->entries[i].control->count, 2);
+			    EXPECT_EQ(fields->entries[i].control->exportValue, "Same");
+			    EXPECT_EQ(fields->entries[i].checked, true);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, CheckboxExportsUseSdkFallbackAndCancelWithoutChanges) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET + "/FT /Btn /T (box) /AS /Off /V /Off /Opt [()] "
+		                  "/AP << /N << /Custom 8 0 R /Off 7 0 R >> >>"},
+		        {}, 1, {.appearances = false});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    int checkpoints = 0;
+		    const auto fields = opened.document->formFields(0, [&] {
+			    ++checkpoints;
+			    return false;
+		    });
+		    ASSERT_TRUE(fields && !fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 1u);
+		    ASSERT_TRUE(fields->entries[0].control);
+		    EXPECT_EQ(fields->entries[0].control->exportValue, "Yes");
+		    EXPECT_EQ(fields->entries[0].value, "Off");
+		    EXPECT_EQ(fields->entries[0].checked, false);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->formFields(
+			        0, [&] { return ++calls >= stop; }));
+		    }
+		    EXPECT_FALSE(opened.document->modified());
+		    EXPECT_EQ(opened.document->annotationRevision(), fields->revision);
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ButtonExportsShareStringLimitsAndOmitIncompleteControls) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET + "/FT /Btn /T (long) /AS /Off /V /Off /Opt [(" +
+		         std::string(33000, 'a') +
+		         ")] /AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"},
+		        {}, 1, {.appearances = false});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 1u);
+		    EXPECT_FALSE(fields->entries[0].control);
+		    EXPECT_EQ(fields->entries[0].checked, false);
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    std::vector<std::string> large;
+		    for (int i = 0; i < 18; ++i) {
+			    large.push_back(WIDGET + "/FT /Btn /T (box" +
+			                    std::to_string(i) +
+			                    ") /AS /Off /V /Off /Opt [(" +
+			                    std::string(31000, char('a' + i)) +
+			                    ")] /AP << /N << /Yes 8 0 R /Off 7 0 R >> >>");
+		    }
+		    const auto aggregate = pdf::openDocument(
+		        formBytes(large, {}, 1, {.appearances = false}));
+		    ASSERT_TRUE(aggregate.document);
+		    const auto limited = aggregate.document->formFields(0);
+		    ASSERT_TRUE(limited && limited->limited);
+		    ASSERT_EQ(limited->entries.size(), 18u);
+		    ASSERT_TRUE(limited->entries.front().control);
+		    EXPECT_EQ(limited->entries.front().control->exportValue.size(),
+		              31000u);
+		    EXPECT_FALSE(limited->entries.back().control);
+		    const auto crowded = pdf::openDocument(
+		        formBytes(std::vector<std::string>(
+		                      4097, WIDGET + "/AS /Off /AP << /N << "
+		                                     "/Yes 8 0 R /Off 7 0 R >> >>"),
+		                  "/FT /Btn /Ff 32768 /T (crowded) /V /Off", 1,
+		                  {.appearances = false}));
+		    ASSERT_TRUE(crowded.document);
+		    const auto group = crowded.document->formFields(0);
+		    ASSERT_TRUE(group && group->limited);
+		    ASSERT_EQ(group->entries.size(), 4096u);
+		    EXPECT_FALSE(group->entries.front().control);
 	    })
 	    .get();
 }

@@ -2317,13 +2317,14 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		}
 		return shown;
 	};
-	const auto text = [&](auto getter, FPDF_ANNOTATION annotation) {
-		std::string value;
+	const auto text =
+	    [&](auto getter,
+	        FPDF_ANNOTATION annotation) -> std::optional<std::string> {
 		const auto size = getter(context.handle, annotation, nullptr, 0);
 		if (size < 2 || size % 2 || size > 64 * 1024 ||
 		    total + size > 1024 * 1024) {
 			result.limited = true;
-			return value;
+			return {};
 		}
 		total += size;
 		std::vector<unsigned char> buffer(size);
@@ -2332,7 +2333,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		           size) != size ||
 		    buffer[size - 1] || buffer[size - 2]) {
 			result.limited = true;
-			return value;
+			return {};
 		}
 		buffer.resize(size - 2);
 		return utf16ToUtf8(buffer);
@@ -2366,12 +2367,33 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 		if (field.flags & FPDF_FORMFLAG_CHOICE_MULTI_SELECT) {
 			result.limited = true;
 		}
-		field.name = text(FPDFAnnot_GetFormFieldName, annotation.get());
-		field.value = text(FPDFAnnot_GetFormFieldValue, annotation.get());
+		field.name =
+		    text(FPDFAnnot_GetFormFieldName, annotation.get()).value_or("");
+		field.value =
+		    text(FPDFAnnot_GetFormFieldValue, annotation.get()).value_or("");
 		if (field.type == FormFieldType::CheckBox ||
 		    field.type == FormFieldType::RadioButton) {
 			field.checked =
 			    FPDFAnnot_IsChecked(context.handle, annotation.get()) != 0;
+			// i keep exports separate from the shared value, especially for
+			// radio groups with Opt arrays. see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
+			const int controls =
+			    FPDFAnnot_GetFormControlCount(context.handle, annotation.get());
+			if (controls <= 0 || controls > 4096) {
+				result.limited = true;
+			} else {
+				const int position = FPDFAnnot_GetFormControlIndex(
+				    context.handle, annotation.get());
+				if (position < 0 || position >= controls) {
+					result.limited = true;
+				} else if (auto exported =
+				               text(FPDFAnnot_GetFormFieldExportValue,
+				                    annotation.get())) {
+					field.control =
+					    FormControl{position, controls, std::move(*exported)};
+				}
+			}
 		}
 		FS_RECTF rect{};
 		if (FPDFAnnot_GetValueType(annotation.get(), "Rect") ==

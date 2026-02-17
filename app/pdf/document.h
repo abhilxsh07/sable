@@ -119,12 +119,18 @@ enum class FormFieldType {
 	Text,
 	Signature
 };
+struct FormControl {
+	// i keep the SDK group position separate from the annotation index.
+	int index = 0, count = 0;
+	std::string exportValue;
+};
 struct FormField {
 	int index = 0, flags = 0;
 	int annotationFlags = 0;
 	FormFieldType type = FormFieldType::Unknown;
 	std::string name, value;
 	std::optional<bool> checked;
+	std::optional<FormControl> control;
 	std::optional<AnnotationBounds> bounds;
 	// Clipped page fractions; absent for hidden, off-page or unusable bounds.
 	std::optional<AnnotationRect> displayBounds;

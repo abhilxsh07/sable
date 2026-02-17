@@ -1966,3 +1966,22 @@ save-copy and unsaved-close handling.
 Checkboxes retain the text editor's visibility, flag, geometry, modal and
 stale-request guards. Structural and checked-appearance support is still
 validated by the engine, so a field offered by the dialog can be refused.
+
+## Button control metadata (2026-10-28)
+
+Checkbox and radio snapshots carry PDFium's group count, group index and
+export value separately from the checked state and shared field value.
+These are owned values for the snapshot revision, not a persistent group
+identity or proof that every member has been read. Other field types have
+no control metadata. Invalid group coordinates or failed export reads mark
+the page limited and omit the control metadata; valid exports share the
+existing 64 KiB string and 1 MiB aggregate UTF-16 budgets. Groups above
+4096 controls are marked limited before index lookup or export reads.
+
+PDFium reports radio values from checked controls. With Opt arrays, the
+stored V may be an index while the reported field value and control export
+are labels. Matching exports alone cannot identify the selected control.
+The public linked-annotation API cannot inspect an ordinary parent field
+dictionary without Type Annot, so these reads do not establish parent
+action safety. Radio writes still need a separate membership and safety
+proof; this step does not change the writer or add radio controls.
