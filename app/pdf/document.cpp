@@ -401,6 +401,15 @@ std::string utf16ToUtf8(const std::vector<unsigned char>& bytes) {
 	}
 	return out;
 }
+
+std::string utf16ToUtf8(std::u16string_view text) {
+	std::vector<unsigned char> encoded;
+	for (const auto unit : text) {
+		encoded.push_back(static_cast<unsigned char>(unit & 0xFF));
+		encoded.push_back(static_cast<unsigned char>(unit >> 8));
+	}
+	return utf16ToUtf8(encoded);
+}
 } // namespace
 
 std::string_view errorMessage(Error error) {
@@ -682,13 +691,28 @@ Document::updateCheckBox(int pageIndex, int index, std::u16string_view expected,
 	                       checked);
 }
 
+std::optional<bool>
+Document::updateRadioButton(int pageIndex, int index,
+                            std::u16string_view expected,
+                            const FormControl& control, std::uint64_t revision,
+                            const std::function<bool()>& canceled) {
+	return updateFormField(pageIndex, index, expected, {}, revision, canceled,
+	                       true, &control);
+}
+
 std::optional<bool> Document::updateFormField(
     int pageIndex, int index, std::u16string_view expected,
     std::u16string_view contents, std::uint64_t revision,
-    const std::function<bool()>& canceled, std::optional<bool> checked) {
+    const std::function<bool()>& canceled, std::optional<bool> checked,
+    const FormControl* control) {
 	const auto stopped = [&] { return canceled && canceled(); };
-	const auto type = checked ? FormFieldType::CheckBox : FormFieldType::Text;
+	const auto type = control   ? FormFieldType::RadioButton
+	                  : checked ? FormFieldType::CheckBox
+	                            : FormFieldType::Text;
 	if (offThread() || !revision || !currentRevision(revision) ||
+	    (control &&
+	     (control->count < 1 || control->count > 256 || control->index < 0 ||
+	      control->index >= control->count || !checked || !*checked)) ||
 	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
 	    !canFillForms() || !validNoteText(expected) ||
 	    !validNoteText(contents) ||
@@ -718,14 +742,21 @@ std::optional<bool> Document::updateFormField(
 	}
 	const std::string_view tokens(
 	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	// a second parent with the same name merges into the first field, so
+	// its scripts never reach the form API. radio writes refuse any script.
 	if (tokens.find("/Sig") != std::string_view::npos ||
-	    tokens.find("/DocMDP") != std::string_view::npos) {
+	    tokens.find("/DocMDP") != std::string_view::npos ||
+	    (control && (tokens.find("/JS") != std::string_view::npos ||
+	                 tokens.find("/JavaScript") != std::string_view::npos))) {
 		return {};
 	}
 	scratch = openDocument(std::move(*canonical));
 	if (!scratch.document || stopped()) {
 		return {};
 	}
+	// group members by position, kept for the reopened check.
+	std::vector<int> members(control ? control->count : 0, -1);
+	std::vector<std::u16string> exports(members.size());
 	std::u16string replacement(contents);
 	{
 		FormContext context(scratch.document->m_handle, pageIndex);
@@ -751,45 +782,60 @@ std::optional<bool> Document::updateFormField(
 		    FPDF_ANNOT_FLAG_INVISIBLE | FPDF_ANNOT_FLAG_HIDDEN |
 		    FPDF_ANNOT_FLAG_NOVIEW | FPDF_ANNOT_FLAG_READONLY |
 		    FPDF_ANNOT_FLAG_LOCKED | 0x200;
-		if (!field || FPDFAnnot_GetSubtype(field.get()) != FPDF_ANNOT_WIDGET ||
+		// radio flags have no SDK names: NoToggleToOff and Radio. unison
+		// groups and the other button flags stay refused.
+		constexpr int radioFlags = (1 << 14) | (1 << 15);
+		const auto plainWidget = [&](FPDF_ANNOTATION annotation) {
+			return FPDFAnnot_GetSubtype(annotation) == FPDF_ANNOT_WIDGET &&
+			       !FPDFAnnot_HasKey(annotation, "A") &&
+			       !FPDFAnnot_HasKey(annotation, "AA") &&
+			       !(FPDFAnnot_GetFlags(annotation) & protectedFlags);
+		};
+		if (!field || !plainWidget(field.get()) ||
 		    FPDFAnnot_GetFormFieldType(context.handle, field.get()) !=
 		        static_cast<int>(type) ||
-		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) != 1 ||
-		    FPDFAnnot_HasKey(field.get(), "Parent") ||
-		    FPDFAnnot_HasKey(field.get(), "A") ||
-		    FPDFAnnot_HasKey(field.get(), "AA") ||
+		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) !=
+		        (control ? control->count : 1) ||
+		    (!control && FPDFAnnot_HasKey(field.get(), "Parent")) ||
 		    (FPDFAnnot_GetFormFieldFlags(context.handle, field.get()) &
-		     ~plainFlags) ||
-		    (FPDFAnnot_GetFlags(field.get()) & protectedFlags)) {
+		     ~(control ? plainFlags | radioFlags : plainFlags))) {
 			return {};
 		}
-		const auto value = [&](auto getter) -> std::optional<std::u16string> {
-			const auto size = getter(context.handle, field.get(), nullptr, 0);
+		const auto read = [&](FPDF_ANNOTATION annotation,
+		                      auto getter) -> std::optional<std::u16string> {
+			const auto size = getter(context.handle, annotation, nullptr, 0);
 			if (size < 2 || size > 65536 || size % 2) {
 				return {};
 			}
 			std::vector<FPDF_WCHAR> buffer(size / 2);
-			if (getter(context.handle, field.get(), buffer.data(), size) !=
+			if (getter(context.handle, annotation, buffer.data(), size) !=
 			        size ||
 			    buffer.back() != 0) {
 				return {};
 			}
 			return std::u16string(buffer.begin(), buffer.end() - 1);
 		};
+		const auto value = [&](auto getter) {
+			return read(field.get(), getter);
+		};
 		const auto previous = value(FPDFAnnot_GetFormFieldValue);
-		const auto named = [&](const char* key) {
-			return value([key](FPDF_FORMHANDLE, FPDF_ANNOTATION annotation,
-			                   FPDF_WCHAR* buffer, unsigned long size) {
+		const auto namedOf = [&](FPDF_ANNOTATION target, const char* key) {
+			return read(target, [key](FPDF_FORMHANDLE,
+			                          FPDF_ANNOTATION annotation,
+			                          FPDF_WCHAR* buffer, unsigned long size) {
 				return FPDFAnnot_GetStringValue(annotation, key, buffer, size);
 			});
 		};
-		const auto hasCheckedAppearance = [&] {
+		const auto named = [&](const char* key) {
+			return namedOf(field.get(), key);
+		};
+		const auto checkedAppearance = [&](FPDF_ANNOTATION target) {
 			// i keep checked appearances to text; this SDK can return
 			// compressed bytes for empty streams. see:
 			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/parser/cpdf_stream_acc.cpp
 			const auto appearance =
-			    value([](FPDF_FORMHANDLE, FPDF_ANNOTATION annotation,
-			             FPDF_WCHAR* buffer, unsigned long size) {
+			    read(target, [](FPDF_FORMHANDLE, FPDF_ANNOTATION annotation,
+			                    FPDF_WCHAR* buffer, unsigned long size) {
 				    return FPDFAnnot_GetAP(annotation,
 				                           FPDF_ANNOT_APPEARANCEMODE_NORMAL,
 				                           buffer, size);
@@ -805,10 +851,15 @@ std::optional<bool> Document::updateFormField(
 				                              std::u16string_view::npos;
 			                   });
 		};
+		const auto hasCheckedAppearance = [&] {
+			return checkedAppearance(field.get());
+		};
+		const bool terminal =
+		    !control || !FPDFAnnot_HasKey(field.get(), "Parent");
 		if (!previous || *previous != expected || stopped()) {
 			return {};
 		}
-		if (checked) {
+		if (checked && !control) {
 			const auto on = value(FPDFAnnot_GetFormFieldExportValue);
 			const bool current =
 			    FPDFAnnot_IsChecked(context.handle, field.get());
@@ -823,6 +874,90 @@ std::optional<bool> Document::updateFormField(
 				return {};
 			}
 			replacement = *checked ? *on : u"Off";
+		}
+		if (control) {
+			// i only write a group whose members are all on this page once;
+			// otherwise clearing the old choice could reach a widget i never
+			// checked.
+			const auto name = value(FPDFAnnot_GetFormFieldName);
+			const int count = FPDFPage_GetAnnotCount(context.page.get());
+			if (!name || count < 0 || count > 4096 ||
+			    (!FPDFAnnot_HasKey(field.get(), "Parent") &&
+			     (control->count != 1 || FPDFAnnot_HasKey(field.get(), "Opt") ||
+			      FPDFAnnot_GetValueType(field.get(), "V") !=
+			          FPDF_OBJECT_NAME ||
+			      named("V") != previous))) {
+				return {};
+			}
+			// a parent field can hold scripts the linked-annotation API
+			// can't open, but the form API reports them through inheritance.
+			for (int event = FPDF_ANNOT_AACTION_KEY_STROKE;
+			     event <= FPDF_ANNOT_AACTION_CALCULATE; ++event) {
+				if (FPDFAnnot_GetFormAdditionalActionJavaScript(
+				        context.handle, field.get(), event, nullptr, 0) != 2) {
+					return {};
+				}
+			}
+			std::optional<int> selected;
+			for (int i = 0; i < count; ++i) {
+				AnnotationPtr member(FPDFPage_GetAnnot(context.page.get(), i));
+				if (!member || stopped()) {
+					return {};
+				}
+				if (FPDFAnnot_GetSubtype(member.get()) != FPDF_ANNOT_WIDGET ||
+				    FPDFAnnot_GetFormFieldType(context.handle, member.get()) !=
+				        static_cast<int>(type) ||
+				    read(member.get(), FPDFAnnot_GetFormFieldName) != name) {
+					continue;
+				}
+				const int position =
+				    FPDFAnnot_GetFormControlIndex(context.handle, member.get());
+				const auto exported =
+				    read(member.get(), FPDFAnnot_GetFormFieldExportValue);
+				const auto state = namedOf(member.get(), "AS");
+				const bool on =
+				    FPDFAnnot_IsChecked(context.handle, member.get()) != 0;
+				// duplicate exports can't say which control V selects.
+				if (!plainWidget(member.get()) ||
+				    FPDFAnnot_GetFormControlCount(
+				        context.handle, member.get()) != control->count ||
+				    position < 0 || position >= control->count ||
+				    members[position] != -1 || !exported || exported->empty() ||
+				    *exported == u"Off" || !validNoteText(*exported) ||
+				    std::find(exports.begin(), exports.end(), *exported) !=
+				        exports.end() ||
+				    FPDFAnnot_GetValueType(member.get(), "AS") !=
+				        FPDF_OBJECT_NAME ||
+				    !state || (*state == u"Off") == on ||
+				    (on && (selected || !checkedAppearance(member.get())))) {
+					return {};
+				}
+				if (FPDFAnnot_HasKey(member.get(), "Parent")) {
+					// kids stay plain widgets, not fields of their own.
+					for (const char* key :
+					     {"T", "FT", "Ff", "V", "DV", "Opt", "Kids"}) {
+						if (FPDFAnnot_HasKey(member.get(), key)) {
+							return {};
+						}
+					}
+				} else if (control->count != 1) {
+					return {};
+				}
+				members[position] = i;
+				exports[position] = *exported;
+				if (on) {
+					selected = position;
+				}
+			}
+			if (std::find(members.begin(), members.end(), -1) !=
+			        members.end() ||
+			    members[control->index] != index ||
+			    utf16ToUtf8(exports[control->index]) != control->exportValue ||
+			    *previous !=
+			        (selected ? exports[*selected] : std::u16string(u"Off"))) {
+				return {};
+			}
+			replacement = exports[control->index];
 		}
 		if (*previous == replacement) {
 			return false;
@@ -849,12 +984,27 @@ std::optional<bool> Document::updateFormField(
 		}
 		if (!FORM_ForceToKillFocus(context.handle) ||
 		    value(FPDFAnnot_GetFormFieldValue) != replacement ||
-		    (checked &&
+		    (checked && terminal &&
 		     (named("V") != replacement || named("AS") != replacement)) ||
 		    (checked && (FPDFAnnot_IsChecked(context.handle, field.get()) !=
 		                 0) != *checked) ||
 		    (checked && *checked && !hasCheckedAppearance()) || stopped()) {
 			return {};
+		}
+		if (control) {
+			for (int position = 0; position < control->count; ++position) {
+				AnnotationPtr member(
+				    FPDFPage_GetAnnot(context.page.get(), members[position]));
+				const bool on = position == control->index;
+				const auto state =
+				    member ? namedOf(member.get(), "AS") : std::nullopt;
+				if (!state || (*state == u"Off") == on ||
+				    (FPDFAnnot_IsChecked(context.handle, member.get()) != 0) !=
+				        on ||
+				    stopped()) {
+					return {};
+				}
+			}
 		}
 	}
 	// i commit only saved, reopened bytes; failed edits never touch the live
@@ -869,19 +1019,36 @@ std::optional<bool> Document::updateFormField(
 		return {};
 	}
 	const auto check = next.document->formFields(pageIndex, canceled);
-	std::vector<unsigned char> encoded;
-	for (const auto unit : replacement) {
-		encoded.push_back(static_cast<unsigned char>(unit & 0xFF));
-		encoded.push_back(static_cast<unsigned char>(unit >> 8));
-	}
 	if (!check || check->limited ||
 	    std::none_of(check->entries.begin(), check->entries.end(),
 	                 [&](const FormField& field) {
 		                 return field.index == index && field.type == type &&
 		                        (!checked || field.checked == checked) &&
-		                        field.value == utf16ToUtf8(encoded);
+		                        field.value == utf16ToUtf8(replacement);
 	                 })) {
 		return {};
+	}
+	if (control) {
+		const auto shared = utf16ToUtf8(replacement);
+		for (int position = 0; position < control->count; ++position) {
+			if (stopped()) {
+				return {};
+			}
+			const auto exported = utf16ToUtf8(exports[position]);
+			if (std::none_of(
+			        check->entries.begin(), check->entries.end(),
+			        [&](const FormField& field) {
+				        return field.index == members[position] &&
+				               field.type == type &&
+				               field.checked == (position == control->index) &&
+				               field.value == shared && field.control &&
+				               field.control->index == position &&
+				               field.control->count == control->count &&
+				               field.control->exportValue == exported;
+			        })) {
+				return {};
+			}
+		}
 	}
 	if (!m_outlineBookmarks.empty()) {
 		if (!next.document->outline(canceled) ||

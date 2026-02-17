@@ -187,6 +187,12 @@ class Document {
 	updateCheckBox(int page, int index, std::u16string_view expected,
 	               bool checked, std::uint64_t revision,
 	               const std::function<bool()>& canceled = {});
+	// Selects one radio control. Every group member must be on this page,
+	// and expected/control come from the same snapshot entry.
+	std::optional<bool>
+	updateRadioButton(int page, int index, std::u16string_view expected,
+	                  const FormControl& control, std::uint64_t revision,
+	                  const std::function<bool()>& canceled = {});
 	// Lower left of a 20-point icon, in unrotated PDF coordinates.
 	// In memory only. Returns its page annotation index, or nullopt on failure.
 	// A failed rollback throws; the incomplete note may still be present.
@@ -299,7 +305,8 @@ class Document {
 	                                    std::u16string_view contents,
 	                                    std::uint64_t revision,
 	                                    const std::function<bool()>& canceled,
-	                                    std::optional<bool> checked);
+	                                    std::optional<bool> checked,
+	                                    const FormControl* control = nullptr);
 	Document* formDrawingDocument() const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,
 	                    int height, int rotation, bool printing) const;

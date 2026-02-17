@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <climits>
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <string_view>
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "rotation.h"
@@ -1173,6 +1175,458 @@ TEST(FormFields, CheckBoxesRefuseInheritedSharedAndSignedDocuments) {
 			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
 			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
 		    }
+	    })
+	    .get();
+}
+
+namespace {
+// three plain kids under one radio parent; their on names are the exports
+std::vector<std::string> radioKids(const std::array<std::string, 3>& names,
+                                   int on) {
+	std::vector<std::string> kids;
+	for (int i = 0; i < 3; ++i) {
+		kids.push_back(WIDGET + "/AS /" + (i == on ? names[i] : "Off") +
+		               " /AP << /N << /" + names[i] +
+		               " 8 0 R /Off 7 0 R >> >>");
+	}
+	return kids;
+}
+// BMP-only, enough for the snapshot values in these fixtures
+std::u16string utf16(const std::string& text) {
+	std::u16string out;
+	for (std::size_t i = 0; i < text.size();) {
+		const auto lead = static_cast<unsigned char>(text[i]);
+		const std::size_t length = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : 3;
+		auto unit = static_cast<char16_t>(
+		    length == 1 ? lead : lead & (length == 2 ? 0x1F : 0x0F));
+		for (std::size_t k = 1; k < length && i + k < text.size(); ++k) {
+			unit = static_cast<char16_t>(
+			    (unit << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F));
+		}
+		out.push_back(unit);
+		i += length;
+	}
+	return out;
+}
+bool storesName(const std::vector<std::uint8_t>& bytes, const std::string& key,
+                const std::string& name) {
+	const std::string text(bytes.begin(), bytes.end());
+	for (auto at = text.find(key); at != std::string::npos;
+	     at = text.find(key, at + 1)) {
+		auto next = at + key.size();
+		while (next < text.size() &&
+		       std::isspace(static_cast<unsigned char>(text[next]))) {
+			++next;
+		}
+		const auto end = next + name.size();
+		if (text.compare(next, name.size(), name) == 0 &&
+		    (end == text.size() ||
+		     std::string_view("/ \r\n\t>]").find(text[end]) !=
+		         std::string_view::npos)) {
+			return true;
+		}
+	}
+	return false;
+}
+std::vector<std::uint8_t> rawPdf(const std::vector<std::string>& objects) {
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& object : objects) {
+		offsets.push_back(data.size());
+		data +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data += "xref\n0 " + std::to_string(objects.size() + 1) +
+	        "\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		data += line;
+	}
+	data += "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
+	        " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+	return {data.begin(), data.end()};
+}
+struct RadioTarget {
+	std::u16string value;
+	pdf::FormControl control;
+};
+std::optional<RadioTarget> radioTarget(const pdf::Document& document,
+                                       int index) {
+	const auto fields = document.formFields(0);
+	if (!fields || fields->limited) {
+		return {};
+	}
+	for (const auto& field : fields->entries) {
+		if (field.index == index && field.control) {
+			return RadioTarget{utf16(field.value), *field.control};
+		}
+	}
+	return {};
+}
+void expectChoice(const std::optional<pdf::FormFields>& fields, int chosen,
+                  const std::string& value, std::size_t count = 3) {
+	ASSERT_TRUE(fields && !fields->limited);
+	ASSERT_EQ(fields->entries.size(), count);
+	for (std::size_t i = 0; i < count; ++i) {
+		SCOPED_TRACE(i);
+		const auto& field = fields->entries[i];
+		EXPECT_EQ(field.type, pdf::FormFieldType::RadioButton);
+		EXPECT_EQ(field.checked, static_cast<int>(i) == chosen);
+		EXPECT_EQ(field.value, value);
+		ASSERT_TRUE(field.control);
+		EXPECT_EQ(field.control->index, static_cast<int>(i));
+		EXPECT_EQ(field.control->count, static_cast<int>(count));
+	}
+}
+} // namespace
+
+TEST(FormFields, RadioWritesSelectOneMemberAndSaveIt) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<std::string, 3> names{"First", "Caf#E9", "Third"};
+		    for (int on : {-1, 1}) {
+			    SCOPED_TRACE(on);
+			    const auto bytes =
+			        formBytes(radioKids(names, on),
+			                  "/FT /Btn /Ff 49152 /T (radio) /V /" +
+			                      (on < 0 ? std::string("Off") : names[on]),
+			                  1, {.appearances = false, .painted = true});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    const auto old = doc.formFields(0);
+			    ASSERT_TRUE(old);
+			    expectChoice(old, on, on < 0 ? "Off" : "Café");
+			    const auto third = radioTarget(doc, 2);
+			    ASSERT_TRUE(third);
+			    EXPECT_EQ(third->control.exportValue, "Third");
+			    ASSERT_EQ(doc.updateRadioButton(0, 2, third->value,
+			                                    third->control, old->revision),
+			              true);
+			    EXPECT_TRUE(doc.modified());
+			    EXPECT_GT(doc.annotationRevision(), old->revision);
+			    EXPECT_EQ(old->entries[2].checked, false);
+			    expectChoice(doc.formFields(0), 2, "Third");
+			    const auto saved = doc.serializeForCopy(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    expectChoice(reopened.document->formFields(0), 2, "Third");
+			    // the shared value follows the choice, not just the states
+			    EXPECT_TRUE(storesName(*saved, "/V", "/Third"));
+
+			    EXPECT_FALSE(doc.updateRadioButton(
+			        0, 2, third->value, third->control, old->revision));
+			    const auto revision = doc.annotationRevision();
+			    const auto chosen = radioTarget(doc, 2);
+			    ASSERT_TRUE(chosen);
+			    EXPECT_EQ(doc.updateRadioButton(0, 2, chosen->value,
+			                                    chosen->control, revision),
+			              false);
+			    EXPECT_EQ(doc.annotationRevision(), revision);
+			    const auto first = radioTarget(doc, 0);
+			    ASSERT_TRUE(first);
+			    for (const auto& wrong : {pdf::FormControl{0, 3, "Third"},
+			                              pdf::FormControl{1, 3, "First"},
+			                              pdf::FormControl{0, 2, "First"},
+			                              pdf::FormControl{0, 4, "First"}}) {
+				    EXPECT_FALSE(doc.updateRadioButton(0, 0, first->value,
+				                                       wrong, revision));
+			    }
+			    EXPECT_FALSE(doc.updateRadioButton(0, 0, u"First",
+			                                       first->control, revision));
+			    EXPECT_FALSE(doc.updateRadioButton(0, 1, first->value,
+			                                       first->control, revision));
+			    EXPECT_FALSE(
+			        doc.updateCheckBox(0, 0, first->value, true, revision));
+			    EXPECT_FALSE(doc.updateRadioButton(1, 0, first->value,
+			                                       first->control, revision));
+			    EXPECT_EQ(doc.annotationRevision(), revision);
+			    ASSERT_EQ(doc.updateRadioButton(0, 0, first->value,
+			                                    first->control, revision),
+			              true);
+			    expectChoice(doc.formFields(0), 0, "First");
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, RadioOptionLabelsWriteTheirOwnControl) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {WIDGET + "/AS /0 /AP << /N << /0 8 0 R /Off 7 0 R >> >>",
+		         WIDGET + "/AS /Off /AP << /N << /1 8 0 R /Off 7 0 R >> >>"},
+		        "/FT /Btn /Ff 49152 /T (choice) /V /0 "
+		        "/Opt [(First label) (Second label)]",
+		        1, {.appearances = false, .painted = true}));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    expectChoice(doc.formFields(0), 0, "First label", 2);
+		    const auto second = radioTarget(doc, 1);
+		    ASSERT_TRUE(second);
+		    EXPECT_EQ(second->control.exportValue, "Second label");
+		    ASSERT_EQ(doc.updateRadioButton(0, 1, second->value,
+		                                    second->control,
+		                                    doc.annotationRevision()),
+		              true);
+		    expectChoice(doc.formFields(0), 1, "Second label", 2);
+		    const auto saved = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(saved);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    expectChoice(reopened.document->formFields(0), 1, "Second label",
+		                 2);
+	    })
+	    .get();
+}
+
+TEST(FormFields, SingleRadioFieldsSelectWithoutAParent) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::string solo =
+		        WIDGET + "/FT /Btn /Ff 32768 /T (solo) /V /Off /AS /Off "
+		                 "/AP << /N << /Only 8 0 R /Off 7 0 R >> >>";
+		    const auto opened = pdf::openDocument(formBytes(
+		        {solo}, {}, 1, {.appearances = false, .painted = true}));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto target = radioTarget(doc, 0);
+		    ASSERT_TRUE(target);
+		    EXPECT_EQ(target->control.count, 1);
+		    ASSERT_EQ(doc.updateRadioButton(0, 0, target->value,
+		                                    target->control,
+		                                    doc.annotationRevision()),
+		              true);
+		    expectChoice(doc.formFields(0), 0, "Only", 1);
+		    const auto bytes =
+		        formBytes({solo + " /Opt [(Only)]"}, {}, 1,
+		                  {.appearances = false, .painted = true});
+		    const auto refused = pdf::openDocument(bytes);
+		    ASSERT_TRUE(refused.document);
+		    EXPECT_FALSE(refused.document->updateRadioButton(
+		        0, 0, u"Off", pdf::FormControl{0, 1, "Only"}, 1));
+		    EXPECT_EQ(refused.document->serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, RefusedRadioGroupsLeaveBytesAndRevisionIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::array<std::string, 3> names{"First", "Second", "Third"};
+		    const std::string parent = "/FT /Btn /T (radio) /V /Off ";
+		    const FormPageOptions view{.appearances = false, .painted = true};
+		    const auto base = radioKids(names, -1);
+		    {
+			    // the same group without the defects below accepts the write
+			    const auto opened = pdf::openDocument(
+			        formBytes(base, parent + "/Ff 49154", 1, view));
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_EQ(opened.document->updateRadioButton(
+			                  0, 0, u"Off", pdf::FormControl{0, 3, "First"}, 1),
+			              true);
+		    }
+		    std::vector<std::vector<std::uint8_t>> cases;
+		    for (const std::string extra :
+		         {"/Ff 33603584", "/Ff 49153", "/Ff 16384",
+		          "/Ff 49152 /AA << /K << /S /JavaScript /JS (1) >> >>",
+		          "/Ff 49152 /AA << /F << /S /JavaScript /JS (1) >> >>",
+		          "/Ff 49152 /AA << /V << /S /JavaScript /JS (1) >> >>",
+		          "/Ff 49152 /AA << /C << /S /JavaScript /JS (1) >> >>"}) {
+			    cases.push_back(formBytes(base, parent + extra, 1, view));
+		    }
+		    for (const std::string extra :
+		         {"/A <<>>", "/AA << /U << /S /ResetForm >> >>", "/F 1", "/F 2",
+		          "/F 32", "/F 64", "/F 128", "/F 512", "/V /Off", "/DV /Off",
+		          "/Opt [(x)]", "/FT /Btn", "/Ff 49152"}) {
+			    for (int kid : {0, 1}) {
+				    auto kids = base;
+				    kids[kid] += " " + extra;
+				    cases.push_back(
+				        formBytes(kids, parent + "/Ff 49152", 1, view));
+			    }
+		    }
+		    for (const auto& kid :
+		         {WIDGET +
+		              "/AS (Off) /AP << /N << /Second 8 0 R /Off 7 0 R >> >>",
+		          WIDGET +
+		              "/AS /Other /AP << /N << /Second 8 0 R /Off 7 0 R >> >>",
+		          WIDGET +
+		              "/AS /Off /AP << /N << /First 8 0 R /Off 7 0 R >> >>"}) {
+			    auto kids = base;
+			    kids[1] = kid;
+			    cases.push_back(formBytes(kids, parent + "/Ff 49152", 1, view));
+		    }
+		    // two members checked at once, and a checked member without
+		    // printable checked content
+		    auto both = radioKids(names, 0);
+		    both[1] = radioKids(names, 1)[1];
+		    cases.push_back(formBytes(
+		        both, "/FT /Btn /T (radio) /V /First /Ff 49152", 1, view));
+		    cases.push_back(formBytes(
+		        radioKids(names, 1), "/FT /Btn /T (radio) /V /Second /Ff 49152",
+		        1, {.appearances = false}));
+		    // a member missing from the page, and members listed twice
+		    {
+			    auto bytes = formBytes(base, parent + "/Ff 49152", 1, view);
+			    std::string text(bytes.begin(), bytes.end());
+			    const std::string annots = "/Annots [9 0 R 10 0 R 11 0 R ";
+			    const auto at = text.find(annots);
+			    ASSERT_NE(at, std::string::npos);
+			    text.replace(at + annots.size() - 7, 6, "      ");
+			    cases.emplace_back(text.begin(), text.end());
+		    }
+		    cases.push_back(formBytes(base, parent + "/Ff 49152", 2, view));
+		    cases.push_back(formBytes(base, parent + "/Ff 49152", 1,
+		                              {.appearances = false,
+		                               .nestedSignature = true,
+		                               .painted = true}));
+		    for (std::size_t i = 0; i < cases.size(); ++i) {
+			    SCOPED_TRACE(i);
+			    const auto& bytes = cases[i];
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    // the document's own snapshot, so only the defect stands
+			    // between the request and the write
+			    const auto target = radioTarget(doc, 0);
+			    ASSERT_TRUE(target);
+			    EXPECT_FALSE(doc.updateRadioButton(0, 0, target->value,
+			                                       target->control, 1));
+			    EXPECT_FALSE(doc.modified());
+			    EXPECT_EQ(doc.annotationRevision(), 1u);
+			    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+		    }
+		    const auto box =
+		        formBytes({WIDGET + "/FT /Btn /T (box) /V /Off /AS /Off "
+		                            "/AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"},
+		                  {}, 1, view);
+		    const auto opened = pdf::openDocument(box);
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_FALSE(opened.document->updateRadioButton(
+		        0, 0, u"Off", pdf::FormControl{0, 1, "Yes"}, 1));
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), box);
+		    // pushbuttons have no group snapshot, so this request is explicit
+		    const auto push = formBytes(base, parent + "/Ff 65536", 1, view);
+		    const auto button = pdf::openDocument(push);
+		    ASSERT_TRUE(button.document);
+		    EXPECT_FALSE(button.document->updateRadioButton(
+		        0, 0, u"Off", pdf::FormControl{0, 3, "First"}, 1));
+		    EXPECT_EQ(button.document->serialize(1024 * 1024), push);
+	    })
+	    .get();
+}
+
+TEST(FormFields, RadioWritesRefuseScriptsOnSameNamedParents) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto kid = [](int parent, const std::string& on) {
+			    return WIDGET + "/P 4 0 R /Parent " + std::to_string(parent) +
+			           " 0 R /AS /Off /AP << /N << /" + on +
+			           " 10 0 R /Off 11 0 R >> >>";
+		    };
+		    const std::string parent =
+		        "/FT /Btn /Ff 49152 /T (radio) /V /Off /Kids ";
+		    const auto bytes = rawPdf(
+		        {"<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
+		         "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+		         "<< /Fields [5 0 R 6 0 R] >>",
+		         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
+		         "/Annots [7 0 R 8 0 R 9 0 R] >>",
+		         "<< " + parent + "[7 0 R 8 0 R] >>",
+		         "<< " + parent +
+		             "[9 0 R] /AA << /K << /S /JavaScript /JS (1) >> >> >>",
+		         "<< /Type /Annot " + kid(5, "First") + " >>",
+		         "<< /Type /Annot " + kid(5, "Second") + " >>",
+		         "<< /Type /Annot " + kid(6, "Third") + " >>",
+		         "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+		         "/Length 23 >>\nstream\n1 0 0 rg 0 0 50 20 re f\nendstream",
+		         "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+		         "/Length 0 >>\nstream\nendstream"});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto target = radioTarget(doc, 0);
+		    ASSERT_TRUE(target);
+		    EXPECT_FALSE(
+		        doc.updateRadioButton(0, 0, target->value, target->control, 1));
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(FormFields, CancelingRadioTransactionKeepsLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes(radioKids({"First", "Second", "Third"}, 0),
+		                  "/FT /Btn /Ff 49152 /T (radio) /V /First", 1,
+		                  {.appearances = false, .painted = true});
+		    const pdf::FormControl second{1, 3, "Second"};
+		    const auto completed = pdf::openDocument(bytes);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateRadioButton(0, 1, u"First",
+		                                                    second, 1,
+		                                                    [&] {
+			                                                    ++checkpoints;
+			                                                    return false;
+		                                                    }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateRadioButton(
+			        0, 1, u"First", second, 1,
+			        [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, RadioTransactionPreservesNotesAndBookmarks) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        radioKids({"First", "Second", "Third"}, 2),
+		        "/FT /Btn /Ff 49152 /T (radio) /V /Third", 1,
+		        {.appearances = false, .outline = true, .painted = true}));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_TRUE(doc.outlineLink(0));
+		    ASSERT_EQ(doc.addTextNote(0, 50, 60, u"Keep this note"), 3);
+		    const auto target = radioTarget(doc, 0);
+		    ASSERT_TRUE(target);
+		    ASSERT_EQ(doc.updateRadioButton(0, 0, target->value,
+		                                    target->control,
+		                                    doc.annotationRevision()),
+		              true);
+		    expectChoice(doc.formFields(0), 0, "First");
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 4);
+		    EXPECT_EQ(notes->entries[3].contents, "Keep this note");
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link && link->destination);
+		    EXPECT_EQ(link->destination->page, 0);
 	    })
 	    .get();
 }

@@ -1985,3 +1985,43 @@ The public linked-annotation API cannot inspect an ordinary parent field
 dictionary without Type Annot, so these reads do not establish parent
 action safety. Radio writes still need a separate membership and safety
 proof; this step does not change the writer or add radio controls.
+
+## Radio group transactions (2026-10-28)
+
+Radio selections use the same isolated transaction as text fields and
+checkboxes. A request names one control by its annotation index and carries
+the snapshot's shared value, group position, group size and export. Older
+revisions, a different size or position, or a changed export are refused.
+Only selecting is supported; the usual radio UI can't clear a group either.
+
+I write a group only when every control PDFium counts for the field is a
+widget on that page, listed once, with a unique nonempty export. Groups
+spanning pages, or with a member missing from the page's annotations, are
+refused rather than proven. Duplicate exports are refused because the
+shared value can't say which control it selects, and only the Radio,
+NoToggleToOff, Required and NoExport flags are accepted, so unison and
+read-only groups stay refused.
+
+Members must be plain widgets without their own actions or hidden, no-view,
+read-only or locked flags. Each AS is a name that agrees with its checked
+state, at most one member is checked, and a checked member passes the
+checkbox appearance check. Kids under a parent can't carry field keys (T,
+FT, Ff, V, DV, Opt, Kids). A radio without a parent follows the checkbox
+rules and refuses Opt.
+
+The linked-annotation API can't open an ordinary parent field, but the form
+API reports inherited field scripts, so any keystroke, format, validate or
+calculate JavaScript refuses the write. PDFium also merges a second parent
+with the same name into the first field, and that parent's scripts never
+reach the form API, so radio writes refuse documents whose canonical copy
+contains any script. Such a merged group can still be written without
+scripts; the second parent's own V, Opt and flags aren't examined, which
+stays a limit of the public API. The parent's V isn't readable
+directly; the current choice comes from member AS states, and the write
+replaces V. With Opt arrays the stored V can be an option index while
+snapshots show labels, so I compare labels together with positions. After
+the write, and again after saving and
+reopening, every member's checked state, position, export and the shared
+value must match the request before the live document is replaced. The
+tests also find the new name in the saved parent V.
+Session requests and native radio controls follow separately.
