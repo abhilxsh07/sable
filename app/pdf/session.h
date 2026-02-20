@@ -163,6 +163,10 @@ class Session {
 	bool updateCheckBox(int page, int index, std::u16string expected,
 	                    bool checked, std::uint64_t revision,
 	                    std::function<void(FormWriteResult)> callback);
+	// i own the control metadata from the same snapshot as expected.
+	bool updateRadioButton(int page, int index, std::u16string expected,
+	                       FormControl control, std::uint64_t revision,
+	                       std::function<void(FormWriteResult)> callback);
 	// Writes keep queue order, independently of annotation reads. Close only
 	// cancels jobs that have not started; started edits keep their outcome.
 	// An absent index means failure, possibly an incomplete edit if rollback
@@ -239,6 +243,7 @@ class Session {
 	bool writeFormField(int page, int index, std::u16string expected,
 	                    std::u16string contents, std::uint64_t revision,
 	                    std::optional<bool> checked,
+	                    std::optional<FormControl> control,
 	                    std::function<void(FormWriteResult)> callback);
 	bool changeAnnotation(AnnotationTarget target,
 	                      std::optional<CommentContents> expected,

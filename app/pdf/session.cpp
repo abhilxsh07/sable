@@ -737,19 +737,27 @@ bool Session::updateTextField(int page, int index, std::u16string expected,
                               std::u16string contents, std::uint64_t revision,
                               std::function<void(FormWriteResult)> callback) {
 	return writeFormField(page, index, std::move(expected), std::move(contents),
-	                      revision, {}, std::move(callback));
+	                      revision, {}, {}, std::move(callback));
 }
 
 bool Session::updateCheckBox(int page, int index, std::u16string expected,
                              bool checked, std::uint64_t revision,
                              std::function<void(FormWriteResult)> callback) {
 	return writeFormField(page, index, std::move(expected), {}, revision,
-	                      checked, std::move(callback));
+	                      checked, {}, std::move(callback));
+}
+
+bool Session::updateRadioButton(int page, int index, std::u16string expected,
+                                FormControl control, std::uint64_t revision,
+                                std::function<void(FormWriteResult)> callback) {
+	return writeFormField(page, index, std::move(expected), {}, revision, {},
+	                      std::move(control), std::move(callback));
 }
 
 bool Session::writeFormField(int page, int index, std::u16string expected,
                              std::u16string contents, std::uint64_t revision,
                              std::optional<bool> checked,
+                             std::optional<FormControl> control,
                              std::function<void(FormWriteResult)> callback) {
 	const auto state = m_state;
 	{
@@ -760,6 +768,7 @@ bool Session::writeFormField(int page, int index, std::u16string expected,
 		}
 	}
 	state->m_engine.post([state, page, index, revision, checked,
+	                      control = std::move(control),
 	                      expected = std::move(expected),
 	                      contents = std::move(contents),
 	                      callback = std::move(callback)] {
@@ -771,13 +780,17 @@ bool Session::writeFormField(int page, int index, std::u16string expected,
 			if (!result.canceled) {
 				state->m_forms.reset();
 				const auto canceled = [state] { return state->closed(); };
-				const auto changed = checked
-				                         ? state->m_document->updateCheckBox(
-				                               page, index, expected, *checked,
-				                               revision, canceled)
-				                         : state->m_document->updateTextField(
-				                               page, index, expected, contents,
-				                               revision, canceled);
+				std::optional<bool> changed;
+				if (control) {
+					changed = state->m_document->updateRadioButton(
+					    page, index, expected, *control, revision, canceled);
+				} else if (checked) {
+					changed = state->m_document->updateCheckBox(
+					    page, index, expected, *checked, revision, canceled);
+				} else {
+					changed = state->m_document->updateTextField(
+					    page, index, expected, contents, revision, canceled);
+				}
 				if (changed) {
 					result.accepted = true;
 					result.changed = *changed;

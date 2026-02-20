@@ -106,6 +106,49 @@ std::string manyPages(int count, bool form = false, bool checkbox = false) {
 	return pdf;
 }
 
+// i keep both controls on one page and give the second a custom export.
+std::string radioPdf() {
+	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
+	const std::vector<std::string> objects{
+	    "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] "
+	    "/NeedAppearances false >> >>",
+	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+	    "/Annots [5 0 R 6 0 R 7 0 R] >>",
+	    "<< /FT /Btn /Ff 49152 /T (radio) /V /First "
+	    "/Kids [6 0 R 7 0 R] >>",
+	    "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
+	    "/Contents (Original) /P 3 0 R >>",
+	    "<< /Type /Annot /Subtype /Widget /Parent 4 0 R /P 3 0 R "
+	    "/Rect [40 50 90 70] /F 4 /AS /First "
+	    "/AP << /N << /First 8 0 R /Off 9 0 R >> >> >>",
+	    "<< /Type /Annot /Subtype /Widget /Parent 4 0 R /P 3 0 R "
+	    "/Rect [40 80 90 100] /F 4 /AS /Off "
+	    "/AP << /N << /Next#20choice 8 0 R /Off 9 0 R >> >> >>",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length " +
+	        std::to_string(paint.size()) + " >>\nstream\n" + paint +
+	        "\nendstream",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+	    "/Length 0 >>\nstream\nendstream"};
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& object : objects) {
+		offsets.push_back(data.size());
+		data +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data += "xref\n0 " + std::to_string(objects.size() + 1) +
+	        "\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		data += line;
+	}
+	return data + "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
+	       " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+}
+
 // Keeps the PDFium thread busy until it's opened, so whatever is posted
 // after it waits in the queue. Opens itself when it goes away.
 class Gate {
@@ -1601,6 +1644,202 @@ TEST_F(SessionTest, CheckBoxWritesRespectCloseAndQueueBoundaries) {
 	EXPECT_FALSE(done->canceled);
 	EXPECT_FALSE(session.updateCheckBox(0, 1, u"Approved now", false,
 	                                    done->revision, canceled.callback()));
+}
+
+TEST_F(SessionTest, RadioWritesOwnTargetsRefreshSnapshotsAndSave) {
+	pdf::Session session(engine);
+	const auto bytes = radioPdf();
+	const auto source = writeTemp("radio form.pdf", bytes);
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 2);
+	ASSERT_TRUE(before->entries[0].control && before->entries[1].control);
+	const auto& target = before->entries[1];
+	EXPECT_EQ(target.index, 2);
+	EXPECT_EQ(target.control->index, 1);
+	EXPECT_EQ(target.control->count, 2);
+	EXPECT_EQ(target.control->exportValue, "Next choice");
+	Reply<pdf::FormWriteResult> first, stale;
+	std::u16string expected = u"First";
+	auto control = *target.control;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateRadioButton(0, target.index, expected,
+		                                      control, before->revision,
+		                                      first.callback()));
+		ASSERT_TRUE(session.updateRadioButton(
+		    0, 1, u"Next choice", *before->entries[0].control, before->revision,
+		    stale.callback()));
+		expected.assign(u"wrong");
+		control = {-1, 0, "wrong"};
+		session.cancelForms();
+	}
+	const auto written = first.wait(), refused = stale.wait();
+	ASSERT_TRUE(written && refused);
+	EXPECT_TRUE(written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	EXPECT_EQ(written->page, 0);
+	EXPECT_EQ(written->index, target.index);
+	EXPECT_GT(written->revision, before->revision);
+	EXPECT_FALSE(refused->accepted || refused->changed || refused->canceled);
+	auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 2);
+	EXPECT_NE(after, before);
+	EXPECT_EQ(after->revision, written->revision);
+	EXPECT_EQ(after->entries[0].checked, false);
+	EXPECT_EQ(after->entries[1].checked, true);
+	EXPECT_EQ(after->entries[1].value, "Next choice");
+	EXPECT_EQ(before->entries[0].checked, true);
+	EXPECT_EQ(target.value, "First");
+	Reply<pdf::FormWriteResult> unchanged;
+	ASSERT_TRUE(session.updateRadioButton(0, 2, u"Next choice", *target.control,
+	                                      after->revision,
+	                                      unchanged.callback()));
+	const auto same = unchanged.wait();
+	ASSERT_TRUE(same);
+	EXPECT_TRUE(same->accepted);
+	EXPECT_FALSE(same->changed || same->canceled);
+	EXPECT_EQ(same->revision, after->revision);
+	const auto refreshed = readForms(session);
+	ASSERT_TRUE(refreshed);
+	EXPECT_NE(refreshed, after);
+	after = refreshed;
+	for (int mismatch = 0; mismatch < 4; ++mismatch) {
+		auto changed = *target.control;
+		if (mismatch == 0) {
+			changed.index = 0;
+		} else if (mismatch == 1) {
+			changed.count = 3;
+		} else if (mismatch == 2) {
+			changed.exportValue = "wrong";
+		}
+		Reply<pdf::FormWriteResult> invalid;
+		ASSERT_TRUE(session.updateRadioButton(
+		    0, 2, mismatch == 3 ? u"wrong" : u"Next choice", changed,
+		    after->revision, invalid.callback()));
+		const auto rejected = invalid.wait();
+		ASSERT_TRUE(rejected);
+		EXPECT_FALSE(rejected->accepted || rejected->changed ||
+		             rejected->canceled);
+		const auto fresh = readForms(session);
+		ASSERT_TRUE(fresh);
+		EXPECT_NE(fresh, after);
+		EXPECT_EQ(fresh->revision, written->revision);
+		EXPECT_EQ(fresh->entries[1].checked, true);
+		after = fresh;
+	}
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(session.updateTextNote(0, 0, u"Original", u"Preserved",
+	                                   note.callback()));
+	const auto edited = note.wait();
+	ASSERT_TRUE(edited && edited->changed && edited->index);
+	const auto destination = source.parent_path() / "selected copy.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto fields = readForms(reopened);
+	ASSERT_TRUE(fields && fields->entries.size() == 2);
+	EXPECT_EQ(fields->entries[0].checked, false);
+	EXPECT_EQ(fields->entries[1].checked, true);
+	EXPECT_EQ(fields->entries[1].value, "Next choice");
+	EXPECT_EQ(readFile(source),
+	          (std::vector<std::uint8_t>(bytes.begin(), bytes.end())));
+}
+
+TEST_F(SessionTest, RadioRepliesCanQueueAnotherSelectionAndThrow) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("reentrant radio.pdf", radioPdf())).error,
+	          pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 2);
+	ASSERT_TRUE(before->entries[0].control && before->entries[1].control);
+	Reply<pdf::FormWriteResult> written, selected;
+	Reply<pdf::FormFieldsResult> refreshed;
+	auto worker = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.updateRadioButton(
+	    0, 2, u"First", *before->entries[1].control, before->revision,
+	    [&session, worker, control = *before->entries[0].control,
+	     writtenCb = written.callback(), selectedCb = selected.callback(),
+	     refreshedCb = refreshed.callback()](auto result) {
+		    *worker = pdf::Engine::onThread();
+		    session.formFields(0, refreshedCb);
+		    session.updateRadioButton(0, 1, u"Next choice", control,
+		                              result.revision, selectedCb);
+		    writtenCb(result);
+		    throw std::runtime_error("radio callback");
+	    }));
+	const auto on = written.wait(), back = selected.wait();
+	const auto fresh = refreshed.wait();
+	ASSERT_TRUE(on && back && fresh && fresh->fields);
+	EXPECT_TRUE(*worker);
+	EXPECT_TRUE(on->accepted && on->changed && back->accepted && back->changed);
+	EXPECT_FALSE(on->canceled || back->canceled || fresh->canceled);
+	EXPECT_GT(back->revision, on->revision);
+	ASSERT_EQ(fresh->fields->entries.size(), 2u);
+	EXPECT_EQ(fresh->fields->entries[1].checked, true);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 2);
+	EXPECT_NE(after, fresh->fields);
+	EXPECT_EQ(after->entries[0].checked, true);
+	EXPECT_EQ(after->entries[1].checked, false);
+	EXPECT_EQ(after->entries[0].value, "First");
+}
+
+TEST_F(SessionTest, RadioWritesRespectCloseAndQueueBoundaries) {
+	const auto path = writeTemp("closing radio.pdf", radioPdf());
+	const pdf::FormControl control{1, 2, "Next choice"};
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, path).error, pdf::Error::None);
+		Reply<pdf::FormWriteResult> canceled;
+		auto calls = std::make_shared<std::atomic<int>>(0);
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session->updateRadioButton(
+			    0, 2, u"First", control, 1,
+			    [calls, cb = canceled.callback()](auto r) {
+				    ++*calls;
+				    cb(r);
+			    }));
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+		}
+		const auto stopped = canceled.wait();
+		ASSERT_TRUE(stopped);
+		EXPECT_TRUE(stopped->canceled);
+		EXPECT_FALSE(stopped->accepted || stopped->changed);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+	pdf::Session session(engine);
+	Reply<pdf::FormWriteResult> unused;
+	EXPECT_FALSE(session.updateRadioButton(0, 2, u"First", control, 1,
+	                                       unused.callback()));
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	EXPECT_FALSE(session.updateRadioButton(0, 2, u"First", control, 0,
+	                                       unused.callback()));
+	EXPECT_FALSE(session.updateRadioButton(0, 2, u"First", control, 1, {}));
+	EXPECT_FALSE(session.updateRadioButton(0, 2, std::u16string(32768, u'x'),
+	                                       control, 1, unused.callback()));
+	Reply<pdf::FormWriteResult> committed;
+	ASSERT_TRUE(session.updateRadioButton(
+	    0, 2, u"First", control, 1,
+	    [&session, cb = committed.callback()](auto result) {
+		    session.close();
+		    cb(result);
+	    }));
+	const auto done = committed.wait();
+	ASSERT_TRUE(done);
+	EXPECT_TRUE(done->accepted && done->changed);
+	EXPECT_FALSE(done->canceled);
+	EXPECT_FALSE(session.updateRadioButton(0, 2, u"Next choice", control,
+	                                       done->revision, unused.callback()));
 }
 
 TEST_F(SessionTest, FormCacheClearsBeforeEditsIncludingRefusedAttempts) {

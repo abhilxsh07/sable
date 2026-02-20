@@ -2025,3 +2025,17 @@ reopening, every member's checked state, position, export and the shared
 value must match the request before the live document is replaced. The
 tests also find the new name in the saved parent V.
 Session requests and native radio controls follow separately.
+
+## Queued radio selections (2026-10-28)
+
+I queue radio selections with owned copies of the snapshot's shared value,
+group position, group size and export. The document writer still proves
+membership and safety; accepting a request into the queue doesn't promise
+an editable group. Radio requests select one control and cannot clear it.
+
+Selections share the existing form-write queue, cache invalidation and
+revision handling. Refused requests keep the document, accepted no-ops
+keep the revision, and form-read cancellation doesn't cancel writes.
+Callbacks run once on the engine thread outside session locks and may
+queue another selection. Close cancels pending work but retains an already
+accepted outcome. Native radio controls follow separately.
