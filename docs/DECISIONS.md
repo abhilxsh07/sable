@@ -2039,3 +2039,16 @@ keep the revision, and form-read cancellation doesn't cancel writes.
 Callbacks run once on the engine thread outside session locks and may
 queue another selection. Close cancels pending work but retains an already
 accepted outcome. Native radio controls follow separately.
+
+## Native radio option editor (2026-10-28)
+
+A page tap opens the shared field dialog for that radio option. I use a
+native radio button with the saved checked state; an unselected option
+enables Apply only after selection. The dialog selects the tapped control,
+and cannot clear a group. Applying an already selected option is a no-op.
+
+The request keeps the snapshot value, revision and control metadata. The
+engine still proves complete membership and safe appearances, so an offered
+option can be refused. Refused or unqueued writes retain the selection;
+accepted changes share page/thumbnail refresh, save-copy and unsaved-close
+handling. Text/checkbox visibility, geometry and modal guards still apply.

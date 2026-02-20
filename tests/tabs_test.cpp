@@ -109,7 +109,8 @@ struct TabsTest {
 	std::string markupSubtype = "Highlight";
 	bool noteEditOnly = false;
 	bool checkBoxOnly = false;
-	std::filesystem::path checkBoxPath;
+	bool radioOnly = false;
+	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
@@ -3083,7 +3084,7 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-	void checkBoxTick(MainWindow& owner) {
+	void buttonFieldTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
 			return;
@@ -3117,7 +3118,7 @@ struct TabsTest {
 			};
 			const auto item = find(v.m_noteDialog);
 			check(item && item.IsEnabled(),
-			      "checkbox dialog button unavailable");
+			      "button field dialog button unavailable");
 			peer(item)
 			    .GetPattern(Peers::PatternInterface::Invoke)
 			    .as<Provider::IInvokeProvider>()
@@ -3132,20 +3133,20 @@ struct TabsTest {
 				                              reply->set_value(
 				                                  std::move(value));
 			                              }),
-			      "checkbox snapshot not queued");
+			      "button field snapshot not queued");
 			check(future.wait_for(std::chrono::seconds(10)) ==
 			          std::future_status::ready,
-			      "checkbox snapshot timed out");
+			      "button field snapshot timed out");
 			const auto result = future.get();
 			check(result.fields && !result.fields->limited &&
-			          result.fields->entries.size() == 1,
-			      "checkbox snapshot failed");
+			          result.fields->entries.size() == (radioOnly ? 2u : 1u),
+			      "button field snapshot failed");
 			return result.fields;
 		};
-		const auto open = [&] {
+		const auto open = [&](int index = 0) {
 			const auto snapshot = read();
-			const auto& b = snapshot->entries[0].displayBounds;
-			check(b.has_value(), "checkbox has no visible bounds");
+			const auto& b = snapshot->entries[index].displayBounds;
+			check(b.has_value(), "button field has no visible bounds");
 			const auto& p = v.m_layout->pages()[0];
 			v.requestFormAt(
 			    {static_cast<float>(p.x + p.width * (b->left + b->right) / 2),
@@ -3153,12 +3154,29 @@ struct TabsTest {
 			                        p.height * (b->top + b->bottom) / 2)});
 		};
 		const auto choice = [&] {
-			check(v.m_noteDialog != nullptr, "checkbox dialog missing");
-			return v.m_noteDialog.Content()
-			    .as<StackPanel>()
-			    .Children()
-			    .GetAt(1)
-			    .as<CheckBox>();
+			check(v.m_noteDialog != nullptr, "button field dialog missing");
+			const auto control = v.m_noteDialog.Content()
+			                         .as<StackPanel>()
+			                         .Children()
+			                         .GetAt(1)
+			                         .as<Primitives::ToggleButton>();
+			check(radioOnly ? control.try_as<RadioButton>() != nullptr
+			                : control.try_as<CheckBox>() != nullptr,
+			      "wrong native button field control");
+			return control;
+		};
+		const auto select = [&] {
+			if (radioOnly) {
+				peer(choice())
+				    .GetPattern(Peers::PatternInterface::SelectionItem)
+				    .as<Provider::ISelectionItemProvider>()
+				    .Select();
+			} else {
+				peer(choice())
+				    .GetPattern(Peers::PatternInterface::Toggle)
+				    .as<Provider::IToggleProvider>()
+				    .Toggle();
+			}
 		};
 		switch (step) {
 		case 0:
@@ -3168,8 +3186,9 @@ struct TabsTest {
 			if (!v.m_noteDialog) {
 				return;
 			}
-			check(!unbox_value_or<bool>(choice().IsChecked(), true),
-			      "unchecked snapshot opened checked");
+			check(unbox_value_or<bool>(choice().IsChecked(), !radioOnly) ==
+			          radioOnly,
+			      "button field snapshot state changed");
 			button(L"PrimaryButton");
 			break;
 		case 2:
@@ -3177,29 +3196,35 @@ struct TabsTest {
 				return;
 			}
 			check(!v.m_notesDirty && !v.m_formsDirty,
-			      "checkbox no-op dirtied PDF");
-			open();
+			      "button field no-op dirtied PDF");
+			open(radioOnly ? 1 : 0);
 			break;
 		case 3:
 			if (!v.m_noteDialog) {
 				return;
 			}
-			peer(choice())
-			    .GetPattern(Peers::PatternInterface::Toggle)
-			    .as<Provider::IToggleProvider>()
-			    .Toggle();
+			if (radioOnly) {
+				check(!v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          !unbox_value_or<bool>(choice().IsChecked(), true),
+				      "unselected radio option allowed Apply");
+			}
+			select();
 			check(unbox_value_or<bool>(choice().IsChecked(), false),
-			      "native checkbox did not toggle");
+			      "native button field did not select");
 			button(L"PrimaryButton");
+			check(v.m_noteBusy && !choice().IsEnabled() &&
+			          !v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "queued button field stayed enabled");
 			break;
 		case 4:
 			if (v.m_noteDialog) {
 				return;
 			}
 			check(v.m_notesDirty && v.m_formsDirty &&
-			          read()->entries[0].checked == true,
-			      "checkbox Apply failed");
-			notesPath = checkBoxPath.parent_path() / "checked copy.pdf";
+			          read()->entries[radioOnly ? 1 : 0].checked == true &&
+			          (!radioOnly || read()->entries[0].checked == false),
+			      "button field Apply failed");
+			notesPath = buttonFieldPath.parent_path() / "selected copy.pdf";
 			owner.m_notesPicker = [path =
 			                           hstring(notesPath.wstring())](hstring) {
 				return attachmentChoice(path, {});
@@ -3208,33 +3233,37 @@ struct TabsTest {
 			break;
 		case 5:
 			check(notesSave.GetResults() && !v.m_notesDirty && !v.m_formsDirty,
-			      "checkbox save did not clear dirty state");
+			      "button field save did not clear dirty state");
 			check(engine
-			          .run([path = notesPath] {
+			          .run([path = notesPath, radio = radioOnly] {
 				          const auto saved = pdf::openFile(path);
 				          const auto fields =
 				              saved.document ? saved.document->formFields(0)
 				                             : std::nullopt;
-				          return fields && fields->entries.size() == 1 &&
-				                 fields->entries[0].checked == true &&
-				                 fields->entries[0].value == "Approved now";
+				          return fields &&
+				                 fields->entries.size() == (radio ? 2u : 1u) &&
+				                 fields->entries[radio ? 1 : 0].checked ==
+				                     true &&
+				                 (!radio ||
+				                  fields->entries[0].checked == false) &&
+				                 fields->entries[0].value ==
+				                     (radio ? "Next choice" : "Approved now");
 			          })
 			          .get(),
-			      "saved checkbox export/state missing");
+			      "saved button field export/state missing");
 			open();
 			break;
 		case 6:
 			if (!v.m_noteDialog) {
 				return;
 			}
-			check(unbox_value_or<bool>(choice().IsChecked(), false),
-			      "checked snapshot opened unchecked");
-			peer(choice())
-			    .GetPattern(Peers::PatternInterface::Toggle)
-			    .as<Provider::IToggleProvider>()
-			    .Toggle();
-			check(!unbox_value_or<bool>(choice().IsChecked(), true),
-			      "Cancel draft did not become unchecked");
+			check(unbox_value_or<bool>(choice().IsChecked(), radioOnly) !=
+			          radioOnly,
+			      "saved button field opened with wrong state");
+			select();
+			check(unbox_value_or<bool>(choice().IsChecked(), !radioOnly) ==
+			          radioOnly,
+			      "Cancel draft did not change state");
 			button(L"CloseButton");
 			break;
 		case 7: {
@@ -3242,20 +3271,59 @@ struct TabsTest {
 				return;
 			}
 			check(!v.m_notesDirty && !v.m_formsDirty &&
-			          read()->entries[0].checked == true,
-			      "Cancel changed checkbox");
-			std::ifstream original(checkBoxPath, std::ios::binary);
+			          read()->entries[radioOnly ? 1 : 0].checked == true &&
+			          (!radioOnly || read()->entries[0].checked == false),
+			      "Cancel changed button field");
+			if (radioOnly) {
+				const auto snapshot = read();
+				auto field = snapshot->entries[1];
+				check(field.control.has_value(),
+				      "radio control metadata missing");
+				++field.control->count;
+				v.editFormField(0, snapshot->revision, std::move(field));
+				break;
+			}
+			[[fallthrough]];
+		}
+		case 10: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty,
+			      "refused button field dirtied PDF");
+			std::ifstream original(buttonFieldPath, std::ios::binary);
 			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
-			          checkBoxPdf(),
-			      "checkbox source changed");
+			          (radioOnly ? radioPdf() : checkBoxPdf()),
+			      "button field source changed");
 			std::fwprintf(stderr,
-			              L"PASS: checkbox no-op, native toggle, Apply, "
+			              L"PASS: %ls no-op, native selection, Apply, "
 			              L"saved export/state and Cancel; %ls\n",
+			              radioOnly ? L"radio/refusal" : L"checkbox",
 			              notesPath.c_str());
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
 		}
+		case 8:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			button(L"PrimaryButton");
+			break;
+		case 9:
+			check(v.m_noteDialog && choice().IsEnabled() &&
+			          unbox_value_or<bool>(choice().IsChecked(), false) &&
+			          v.m_noteDialog.IsPrimaryButtonEnabled() &&
+			          !v.m_noteDialog.Content()
+			               .as<StackPanel>()
+			               .Children()
+			               .GetAt(2)
+			               .as<TextBlock>()
+			               .Text()
+			               .empty(),
+			      "refused radio choice was lost or disabled");
+			button(L"CloseButton");
+			break;
 		}
 		++step;
 		ticks = 0;
@@ -5867,8 +5935,8 @@ struct TabsTest {
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
-			if (checkBoxOnly) {
-				checkBoxTick(*self);
+			if (checkBoxOnly || radioOnly) {
+				buttonFieldTick(*self);
 				return;
 			}
 			if (editOnly) {
@@ -6530,6 +6598,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->checkBoxOnly =
 	    GetEnvironmentVariableW(L"SableCheckBoxTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->radioOnly = GetEnvironmentVariableW(L"SableRadioTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->settingsOnly =
 	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -6638,11 +6708,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->checkBoxOnly || state->settingsOnly || state->windowsOnly ||
-	    state->filtersOnly || state->linksOnly || state->printOnly ||
-	    state->finishOnly || state->editOnly || state->musicOnly ||
-	    state->selectionOnly || state->findOnly || state->outlineOnly ||
-	    state->attachmentsOnly || state->commentsOnly ||
+	if (state->checkBoxOnly || state->radioOnly || state->settingsOnly ||
+	    state->windowsOnly || state->filtersOnly || state->linksOnly ||
+	    state->printOnly || state->finishOnly || state->editOnly ||
+	    state->musicOnly || state->selectionOnly || state->findOnly ||
+	    state->outlineOnly || state->attachmentsOnly || state->commentsOnly ||
 	    state->attachmentSaveOnly || state->annotationActionsOnly ||
 	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
 	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
@@ -6701,13 +6771,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->checkBoxOnly) {
-		state->checkBoxPath = makeTempDir("checkbox_ui") / "checkbox.pdf";
+	if (state->checkBoxOnly || state->radioOnly) {
+		state->buttonFieldPath = makeTempDir("button_ui") / "button.pdf";
 		{
-			std::ofstream source(state->checkBoxPath, std::ios::binary);
-			source << checkBoxPdf();
+			std::ofstream source(state->buttonFieldPath, std::ios::binary);
+			source << (state->radioOnly ? radioPdf() : checkBoxPdf());
 		}
-		window->openDocument(engine, state->checkBoxPath, 1);
+		window->openDocument(engine, state->buttonFieldPath, 1);
 	} else if (state->propertiesOnly) {
 		window->openDocument(engine, L"tests/fixtures/properties.pdf", 1);
 	} else if (state->attachmentsOnly || state->attachmentSaveOnly) {

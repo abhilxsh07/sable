@@ -106,49 +106,6 @@ std::string manyPages(int count, bool form = false, bool checkbox = false) {
 	return pdf;
 }
 
-// i keep both controls on one page and give the second a custom export.
-std::string radioPdf() {
-	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
-	const std::vector<std::string> objects{
-	    "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] "
-	    "/NeedAppearances false >> >>",
-	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-	    "/Annots [5 0 R 6 0 R 7 0 R] >>",
-	    "<< /FT /Btn /Ff 49152 /T (radio) /V /First "
-	    "/Kids [6 0 R 7 0 R] >>",
-	    "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
-	    "/Contents (Original) /P 3 0 R >>",
-	    "<< /Type /Annot /Subtype /Widget /Parent 4 0 R /P 3 0 R "
-	    "/Rect [40 50 90 70] /F 4 /AS /First "
-	    "/AP << /N << /First 8 0 R /Off 9 0 R >> >> >>",
-	    "<< /Type /Annot /Subtype /Widget /Parent 4 0 R /P 3 0 R "
-	    "/Rect [40 80 90 100] /F 4 /AS /Off "
-	    "/AP << /N << /Next#20choice 8 0 R /Off 9 0 R >> >> >>",
-	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length " +
-	        std::to_string(paint.size()) + " >>\nstream\n" + paint +
-	        "\nendstream",
-	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
-	    "/Length 0 >>\nstream\nendstream"};
-	std::string data = "%PDF-1.7\n";
-	std::vector<std::size_t> offsets;
-	for (const auto& object : objects) {
-		offsets.push_back(data.size());
-		data +=
-		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
-	}
-	const auto xref = data.size();
-	data += "xref\n0 " + std::to_string(objects.size() + 1) +
-	        "\n0000000000 65535 f \n";
-	for (const auto offset : offsets) {
-		char line[21];
-		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
-		data += line;
-	}
-	return data + "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
-	       " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
-}
-
 // Keeps the PDFium thread busy until it's opened, so whatever is posted
 // after it waits in the queue. Opens itself when it goes away.
 class Gate {

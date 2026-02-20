@@ -120,6 +120,16 @@ SableTabsTest=true and SableCheckBoxTest=true. It exercises native controls
 through their automation peers and supplies its own save destination. Physical
 keyboard/pointer delivery and the real save picker still need a desktop pass.
 
+Tap a radio option and check that its saved selection appears in the dialog.
+An unselected option should enable Apply only after selecting it. Apply
+should clear the previous option in that group; applying the selected option
+again should leave the savepoint clean. Cancel and refused writes should
+retain the saved group state. Save a copy and check both options on reopen.
+SableRadioTest=true with SableTabsTest=true runs the native radio check,
+including a refused target that keeps the selected draft available.
+The 28 Oct desktop pass opened a selected option by pointer and kept it
+selected after another click and Space. Apply closed without a save prompt.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:
