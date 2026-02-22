@@ -2072,3 +2072,30 @@ exports. An incomplete choice scan omits its whole option vector and marks
 the page limited; a successful empty list stays distinct from an omitted
 list. Cancellation discards the snapshot, and all reads use the isolated
 document on the engine thread. Choice writes and native controls follow.
+
+## Single-choice transactions (2026-10-28)
+
+I select one option in a plain terminal combo/list through the isolated
+form transaction. The snapshot's name, value, flags, option positions,
+labels and selection states must still match. I allow at most 256 options
+with nonempty labels, Required/NoExport and the combo flag. Editable,
+multi-select, sorted, inherited/shared, protected and action-bearing fields
+stay refused, along with signatures and documents containing any script.
+Choice writes also refuse canonical A/AA name tokens anywhere in the PDF:
+a same-named non-widget field can hide a ResetForm action from the widget
+while reporting one control. The conservative token scan can also refuse
+matching content in streams/strings, and ordinary link actions are excluded.
+
+The field needs its own Opt array and Ch type. An existing V must be a
+string matching the reported value, with one unambiguous selection; an
+empty value may have no selection. The public SDK still cannot prove every
+unused option structurally valid. Blank labels are conservatively refused
+because malformed entries can produce the same report.
+
+I select by position and commit through focus loss. The resulting export
+must be nonempty valid text in V, with only the requested position selected.
+Saved/reopened values, labels and all selection states must match before
+replacing the live document. Duplicate exports can work with valid indices;
+moving between them is a change even when V stays the same. An already
+selected option is a no-op. Clearing stays unsupported; session requests
+and native controls follow separately.

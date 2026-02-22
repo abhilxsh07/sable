@@ -158,6 +158,8 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 	return {data.begin(), data.end()};
 }
 const std::string WIDGET = "/Subtype /Widget /Rect [40 50 90 70] ";
+const std::string CHOICE = WIDGET + "/FT /Ch /T (choice) /V (old) /I [0] "
+                                    "/Opt [[(old) (First)] [(new) (Second)]] ";
 const std::array<std::uint8_t, 4> RED{0, 0, 255, 255},
     WHITE{255, 255, 255, 255};
 std::array<std::uint8_t, 4> pixel(const pdf::Bitmap& image, int x, int y) {
@@ -928,6 +930,222 @@ TEST(FormFields, InvalidPageOrFieldBoundsHaveNoDisplayRectangle) {
 			    EXPECT_FALSE(fields->entries[1].displayBounds);
 			    ASSERT_TRUE(fields->entries[2].bounds);
 			    EXPECT_EQ(fields->entries[2].displayBounds.has_value(), usable);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, SingleChoicesRoundTripValuesPositionsNotesAndBookmarks) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const int flags : {6, 131078}) {
+			    const auto bytes = formBytes(
+			        {CHOICE + "/Ff " + std::to_string(flags) +
+			             " /DV (old) /Opt [[(old) (Same)] "
+			             "[<FEFF00630061006600E9> (Same)] "
+			             "[<FEFF00630061006600E9> (Third)]]",
+			         "/Subtype /Text /Rect [1 2 3 4] /Contents (keep)"},
+			        {}, 1, {.outline = true});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    ASSERT_TRUE(doc.outline());
+			    const auto old = doc.formFields(0);
+			    ASSERT_TRUE(old && old->entries.size() == 1);
+			    EXPECT_EQ(
+			        doc.updateChoiceField(0, old->entries[0], 0, old->revision),
+			        false);
+			    EXPECT_FALSE(doc.modified());
+			    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+			    for (const int option : {1, 2, 0}) {
+				    const auto before = doc.formFields(0);
+				    ASSERT_TRUE(before && before->entries.size() == 1);
+				    ASSERT_EQ(doc.updateChoiceField(0, before->entries[0],
+				                                    option, before->revision),
+				              true);
+				    EXPECT_GT(doc.annotationRevision(), before->revision);
+				    EXPECT_TRUE(pdf::DocumentFormTest::hasAppearance(doc));
+				    EXPECT_FALSE(doc.updateChoiceField(0, old->entries[0], 1,
+				                                       old->revision));
+				    const auto saved = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(saved);
+				    const auto reopened = pdf::openDocument(*saved);
+				    ASSERT_TRUE(reopened.document);
+				    const auto fields = reopened.document->formFields(0);
+				    ASSERT_TRUE(fields && fields->entries.size() == 1);
+				    const auto& field = fields->entries[0];
+				    EXPECT_EQ(field.value, option == 0 ? "old" : "caf\u00e9");
+				    ASSERT_TRUE(field.options && field.options->size() == 3);
+				    for (int i = 0; i < 3; ++i) {
+					    EXPECT_EQ((*field.options)[i].selected, i == option);
+				    }
+				    EXPECT_EQ(reopened.document->textNote(0, 1), u"keep");
+				    EXPECT_TRUE(doc.outlineLink(0));
+			    }
+			    EXPECT_EQ(old->entries[0].value, "old");
+			    ASSERT_TRUE(old->entries[0].options);
+			    EXPECT_TRUE(old->entries[0].options->front().selected);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoicesCanSelectFromAnUnsetValueAndRejectStaleMetadata) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes({CHOICE + "/V () /I []"});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && fields->entries.size() == 1);
+		    const auto& target = fields->entries[0];
+		    ASSERT_TRUE(target.options && target.options->size() == 2);
+		    for (int mismatch = 0; mismatch < 6; ++mismatch) {
+			    auto changed = target;
+			    if (mismatch == 0) {
+				    changed.options->back().label = "wrong";
+			    } else if (mismatch == 1) {
+				    changed.options->back().selected = true;
+			    } else if (mismatch == 2) {
+				    changed.options->back().index = 0;
+			    } else if (mismatch == 3) {
+				    changed.value = "wrong";
+			    } else if (mismatch == 4) {
+				    changed.name = "wrong";
+			    } else {
+				    changed.options->push_back({2, "extra", false});
+			    }
+			    EXPECT_FALSE(
+			        opened.document->updateChoiceField(0, changed, 1, 1));
+		    }
+		    EXPECT_FALSE(opened.document->updateChoiceField(0, target, -1, 1));
+		    EXPECT_FALSE(opened.document->updateChoiceField(0, target, 2, 1));
+		    EXPECT_FALSE(opened.document->updateChoiceField(0, target, 1, 0));
+		    EXPECT_FALSE(opened.document->updateChoiceField(-1, target, 1, 1));
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+		    ASSERT_EQ(opened.document->updateChoiceField(0, target, 1, 1),
+		              true);
+		    const auto after = opened.document->formFields(0);
+		    ASSERT_TRUE(after && after->entries.size() == 1);
+		    EXPECT_EQ(after->entries[0].value, "new");
+		    EXPECT_EQ(opened.document->updateChoiceField(0, after->entries[0],
+		                                                 1, after->revision),
+		              false);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceRefusalsKeepLiveBytesAndRevision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto baseline = pdf::openDocument(formBytes({CHOICE}));
+		    ASSERT_TRUE(baseline.document);
+		    const auto original = baseline.document->formFields(0);
+		    ASSERT_TRUE(original && original->entries.size() == 1);
+		    for (const std::string extra :
+		         {"/Ff 1",
+		          "/Ff 393216",
+		          "/Ff 2097152",
+		          "/Ff 524288",
+		          "/Ff 67108864",
+		          "/F 2",
+		          "/F 32",
+		          "/F 64",
+		          "/F 128",
+		          "/F 512",
+		          "/A <<>>",
+		          "/AA << /Fo << /S /ResetForm >> >>",
+		          "/AA << /V << /S /JavaScript /JS (event) >> >>",
+		          "/Kids []",
+		          "/V /old",
+		          "/V [(old)]",
+		          "/Opt []",
+		          "/Opt [[(old) (First)] [() (Second)]]",
+		          "/Opt [[(old) (First)] [null (Second)]]",
+		          "/Opt [[(old) (First)] [(new) ()]]",
+		          "/Opt [[(old) (First)] [(old) (Second)]] /I []"}) {
+			    SCOPED_TRACE(extra);
+			    const auto bytes = formBytes({CHOICE + extra});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto fields = opened.document->formFields(0);
+			    ASSERT_TRUE(fields);
+			    const auto& target = fields->entries.empty()
+			                             ? original->entries[0]
+			                             : fields->entries[0];
+			    EXPECT_FALSE(opened.document->updateChoiceField(
+			        0, target, 1, fields->revision));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(),
+			              fields->revision);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+		    const auto parent = CHOICE.substr(WIDGET.size());
+		    for (const auto& bytes :
+		         {formBytes({WIDGET}, parent),
+		          formBytes({WIDGET, WIDGET}, parent),
+		          formBytes({CHOICE, CHOICE}),
+		          formBytes(
+		              {CHOICE.substr(WIDGET.size()) +
+		                   "/Opt [[(old) (First)] [(old) (Second)]] "
+		                   "/AA << /V << /S /ResetForm /Fields [(other)] >> >>",
+		               CHOICE + "/Opt [[(old) (First)] [(old) (Second)]]",
+		               WIDGET + "/FT /Tx /T (other) /V (keep) /DV (reset)"}),
+		          formBytes({CHOICE, WIDGET + "/FT /Tx /T (other) "
+		                                      "/AA << /V << /S /JavaScript "
+		                                      "/JS (elsewhere) >> >>"}),
+		          formBytes({CHOICE}, {}, 1, {.nestedSignature = true})}) {
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto fields = opened.document->formFields(0);
+			    ASSERT_TRUE(fields && !fields->entries.empty());
+			    EXPECT_FALSE(opened.document->updateChoiceField(
+			        0, fields->entries[0], 1, fields->revision));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(),
+			              fields->revision);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceCancellationNeverReplacesTheLiveDocument) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const int flags : {0, 131072}) {
+			    const auto bytes =
+			        formBytes({CHOICE + "/Ff " + std::to_string(flags)});
+			    const auto completed = pdf::openDocument(bytes);
+			    ASSERT_TRUE(completed.document);
+			    const auto fields = completed.document->formFields(0);
+			    ASSERT_TRUE(fields && fields->entries.size() == 1);
+			    int checkpoints = 0;
+			    ASSERT_EQ(completed.document->updateChoiceField(
+			                  0, fields->entries[0], 1, fields->revision,
+			                  [&] {
+				                  ++checkpoints;
+				                  return false;
+			                  }),
+			              true);
+			    ASSERT_GT(checkpoints, 10);
+			    for (int stop = 1; stop <= checkpoints; ++stop) {
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    int calls = 0;
+				    EXPECT_FALSE(opened.document->updateChoiceField(
+				        0, fields->entries[0], 1, fields->revision,
+				        [&] { return ++calls >= stop; }));
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->annotationRevision(),
+				              fields->revision);
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    }
 		    }
 	    })
 	    .get();

@@ -700,13 +700,32 @@ Document::updateRadioButton(int pageIndex, int index,
 	                       true, &control);
 }
 
+std::optional<bool>
+Document::updateChoiceField(int page, const FormField& field, int option,
+                            std::uint64_t revision,
+                            const std::function<bool()>& canceled) {
+	if ((field.type != FormFieldType::ComboBox &&
+	     field.type != FormFieldType::ListBox) ||
+	    !field.options || field.options->empty() ||
+	    field.options->size() > 256 || option < 0 ||
+	    static_cast<std::size_t>(option) >= field.options->size() ||
+	    std::any_of(
+	        field.options->begin(), field.options->end(),
+	        [](const auto& item) { return item.label.empty(); })) {
+		return {};
+	}
+	return updateFormField(page, field.index, {}, {}, revision, canceled, {},
+	                       nullptr, &field, option);
+}
+
 std::optional<bool> Document::updateFormField(
     int pageIndex, int index, std::u16string_view expected,
     std::u16string_view contents, std::uint64_t revision,
     const std::function<bool()>& canceled, std::optional<bool> checked,
-    const FormControl* control) {
+    const FormControl* control, const FormField* choice, int choiceIndex) {
 	const auto stopped = [&] { return canceled && canceled(); };
-	const auto type = control   ? FormFieldType::RadioButton
+	const auto type = choice    ? choice->type
+	                  : control ? FormFieldType::RadioButton
 	                  : checked ? FormFieldType::CheckBox
 	                            : FormFieldType::Text;
 	if (offThread() || !revision || !currentRevision(revision) ||
@@ -742,17 +761,57 @@ std::optional<bool> Document::updateFormField(
 	}
 	const std::string_view tokens(
 	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	const auto actionKey = [&](std::string_view key) {
+		for (auto at = tokens.find(key); at != std::string_view::npos;
+		     at = tokens.find(key, at + key.size())) {
+			const auto end = at + key.size();
+			if (end == tokens.size() ||
+			    static_cast<unsigned char>(tokens[end]) <= 32 ||
+			    std::string_view("()<>[]{}/%").find(tokens[end]) !=
+			        std::string_view::npos) {
+				return true;
+			}
+		}
+		return false;
+	};
 	// a second parent with the same name merges into the first field, so
-	// its scripts never reach the form API. radio writes refuse any script.
+	// its scripts never reach the form API. radio/choice writes refuse scripts.
 	if (tokens.find("/Sig") != std::string_view::npos ||
 	    tokens.find("/DocMDP") != std::string_view::npos ||
-	    (control && (tokens.find("/JS") != std::string_view::npos ||
-	                 tokens.find("/JavaScript") != std::string_view::npos))) {
+	    (choice && (actionKey("/A") || actionKey("/AA"))) ||
+	    ((control || choice) &&
+	     (tokens.find("/JS") != std::string_view::npos ||
+	      tokens.find("/JavaScript") != std::string_view::npos))) {
 		return {};
 	}
 	scratch = openDocument(std::move(*canonical));
 	if (!scratch.document || stopped()) {
 		return {};
+	}
+	const auto matchesChoice = [&](const FormField& field, bool after) {
+		return field.index == index && field.type == type &&
+		       field.name == choice->name && field.flags == choice->flags &&
+		       field.annotationFlags == choice->annotationFlags &&
+		       field.options &&
+		       field.options->size() == choice->options->size() &&
+		       std::equal(
+		           field.options->begin(), field.options->end(),
+		           choice->options->begin(), [&](const auto& a, const auto& b) {
+			           return a.index == b.index && a.label == b.label &&
+			                  a.selected ==
+			                      (after ? a.index == choiceIndex : b.selected);
+		           });
+	};
+	if (choice) {
+		const auto before = scratch.document->formFields(pageIndex, canceled);
+		if (!before || before->limited ||
+		    std::none_of(before->entries.begin(), before->entries.end(),
+		                 [&](const auto& field) {
+			                 return matchesChoice(field, false) &&
+			                        field.value == choice->value;
+		                 })) {
+			return {};
+		}
 	}
 	// group members by position, kept for the reopened check.
 	std::vector<int> members(control ? control->count : 0, -1);
@@ -798,7 +857,10 @@ std::optional<bool> Document::updateFormField(
 		        (control ? control->count : 1) ||
 		    (!control && FPDFAnnot_HasKey(field.get(), "Parent")) ||
 		    (FPDFAnnot_GetFormFieldFlags(context.handle, field.get()) &
-		     ~(control ? plainFlags | radioFlags : plainFlags))) {
+		     ~(plainFlags | (control ? radioFlags
+		                     : choice && type == FormFieldType::ComboBox
+		                         ? FPDF_FORMFLAG_CHOICE_COMBO
+		                         : 0)))) {
 			return {};
 		}
 		const auto read = [&](FPDF_ANNOTATION annotation,
@@ -856,8 +918,27 @@ std::optional<bool> Document::updateFormField(
 		};
 		const bool terminal =
 		    !control || !FPDFAnnot_HasKey(field.get(), "Parent");
-		if (!previous || *previous != expected || stopped()) {
+		if (!previous ||
+		    (choice ? utf16ToUtf8(*previous) != choice->value
+		            : *previous != expected) ||
+		    stopped()) {
 			return {};
+		}
+		if (choice) {
+			const auto selectedCount =
+			    std::count_if(choice->options->begin(), choice->options->end(),
+			                  [](const auto& item) { return item.selected; });
+			if (!validNoteText(*previous) || selectedCount > 1 ||
+			    (previous->empty() ? selectedCount != 0 : selectedCount != 1) ||
+			    FPDFAnnot_HasKey(field.get(), "Kids") || named("FT") != u"Ch" ||
+			    FPDFAnnot_GetValueType(field.get(), "Opt") !=
+			        FPDF_OBJECT_ARRAY ||
+			    (FPDFAnnot_HasKey(field.get(), "V") &&
+			     (FPDFAnnot_GetValueType(field.get(), "V") !=
+			          FPDF_OBJECT_STRING ||
+			      named("V") != previous))) {
+				return {};
+			}
 		}
 		if (checked && !control) {
 			const auto on = value(FPDFAnnot_GetFormFieldExportValue);
@@ -959,7 +1040,8 @@ std::optional<bool> Document::updateFormField(
 			}
 			replacement = exports[control->index];
 		}
-		if (*previous == replacement) {
+		if (choice ? (*choice->options)[choiceIndex].selected
+		           : *previous == replacement) {
 			return false;
 		}
 		// i commit through focus loss, then check the full value. see:
@@ -967,7 +1049,15 @@ std::optional<bool> Document::updateFormField(
 		if (!FORM_SetFocusedAnnot(context.handle, field.get())) {
 			return {};
 		}
-		if (checked) {
+		if (choice) {
+			// i save the focused choice through focus loss too. see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_combobox.cpp
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
+			if (!FORM_SetIndexSelected(context.handle, context.page.get(),
+			                           choiceIndex, true)) {
+				return {};
+			}
+		} else if (checked) {
 			// space commits the focused checkbox. see:
 			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_checkbox.cpp
 			if (!FORM_OnChar(context.handle, context.page.get(), ' ', 0)) {
@@ -982,8 +1072,30 @@ std::optional<bool> Document::updateFormField(
 			    context.handle, context.page.get(),
 			    reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()));
 		}
-		if (!FORM_ForceToKillFocus(context.handle) ||
-		    value(FPDFAnnot_GetFormFieldValue) != replacement ||
+		if (!FORM_ForceToKillFocus(context.handle)) {
+			return {};
+		}
+		if (choice) {
+			const auto written = value(FPDFAnnot_GetFormFieldValue);
+			if (!written || written->empty() || !validNoteText(*written) ||
+			    named("V") != written ||
+			    FPDFAnnot_GetValueType(field.get(), "V") !=
+			        FPDF_OBJECT_STRING ||
+			    FPDFAnnot_GetOptionCount(context.handle, field.get()) !=
+			        static_cast<int>(choice->options->size())) {
+				return {};
+			}
+			replacement = *written;
+			for (const auto& item : *choice->options) {
+				if ((FPDFAnnot_IsOptionSelected(context.handle, field.get(),
+				                                item.index) != 0) !=
+				        (item.index == choiceIndex) ||
+				    stopped()) {
+					return {};
+				}
+			}
+		}
+		if (value(FPDFAnnot_GetFormFieldValue) != replacement ||
 		    (checked && terminal &&
 		     (named("V") != replacement || named("AS") != replacement)) ||
 		    (checked && (FPDFAnnot_IsChecked(context.handle, field.get()) !=
@@ -1024,6 +1136,7 @@ std::optional<bool> Document::updateFormField(
 	                 [&](const FormField& field) {
 		                 return field.index == index && field.type == type &&
 		                        (!checked || field.checked == checked) &&
+		                        (!choice || matchesChoice(field, true)) &&
 		                        field.value == utf16ToUtf8(replacement);
 	                 })) {
 		return {};

@@ -200,6 +200,11 @@ class Document {
 	updateRadioButton(int page, int index, std::u16string_view expected,
 	                  const FormControl& control, std::uint64_t revision,
 	                  const std::function<bool()>& canceled = {});
+	// i select one option in a plain terminal combo/list from its snapshot.
+	std::optional<bool>
+	updateChoiceField(int page, const FormField& field, int option,
+	                  std::uint64_t revision,
+	                  const std::function<bool()>& canceled = {});
 	// Lower left of a 20-point icon, in unrotated PDF coordinates.
 	// In memory only. Returns its page annotation index, or nullopt on failure.
 	// A failed rollback throws; the incomplete note may still be present.
@@ -307,13 +312,13 @@ class Document {
 	                     const std::vector<int>& pages) const;
 	void invalidateEdits();
 	bool canSerializeEdits(const std::function<bool()>& canceled) const;
-	std::optional<bool> updateFormField(int page, int index,
-	                                    std::u16string_view expected,
-	                                    std::u16string_view contents,
-	                                    std::uint64_t revision,
-	                                    const std::function<bool()>& canceled,
-	                                    std::optional<bool> checked,
-	                                    const FormControl* control = nullptr);
+	std::optional<bool>
+	updateFormField(int page, int index, std::u16string_view expected,
+	                std::u16string_view contents, std::uint64_t revision,
+	                const std::function<bool()>& canceled,
+	                std::optional<bool> checked,
+	                const FormControl* control = nullptr,
+	                const FormField* choice = nullptr, int choiceIndex = -1);
 	Document* formDrawingDocument() const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,
 	                    int height, int rotation, bool printing) const;
