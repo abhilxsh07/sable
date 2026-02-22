@@ -115,6 +115,10 @@ page, while Cancel leaves it alone. Apply without changing it should leave
 the savepoint clean. Save a copy, reopen it and check the original too.
 For a refused field, the choice should remain in the dialog with an error.
 
+Form edits currently refuse PDFs containing actions or scripts, including
+ordinary link actions. Refusal should keep the text or choice available
+in the field dialog and leave the document unchanged.
+
 Build the opt-in native check with SableSurfaceTest=true, then run with
 SableTabsTest=true and SableCheckBoxTest=true. It exercises native controls
 through their automation peers and supplies its own save destination. Physical

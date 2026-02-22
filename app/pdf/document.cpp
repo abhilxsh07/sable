@@ -774,14 +774,11 @@ std::optional<bool> Document::updateFormField(
 		}
 		return false;
 	};
-	// a second parent with the same name merges into the first field, so
-	// its scripts never reach the form API. radio/choice writes refuse scripts.
+	// i can't see every merged field's actions through its widget.
 	if (tokens.find("/Sig") != std::string_view::npos ||
-	    tokens.find("/DocMDP") != std::string_view::npos ||
-	    (choice && (actionKey("/A") || actionKey("/AA"))) ||
-	    ((control || choice) &&
-	     (tokens.find("/JS") != std::string_view::npos ||
-	      tokens.find("/JavaScript") != std::string_view::npos))) {
+	    tokens.find("/DocMDP") != std::string_view::npos || actionKey("/A") ||
+	    actionKey("/AA") || tokens.find("/JS") != std::string_view::npos ||
+	    tokens.find("/JavaScript") != std::string_view::npos) {
 		return {};
 	}
 	scratch = openDocument(std::move(*canonical));

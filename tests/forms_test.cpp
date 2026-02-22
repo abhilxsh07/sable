@@ -1949,6 +1949,115 @@ TEST(FormFields, RefusedRadioGroupsLeaveBytesAndRevisionIntact) {
 	    .get();
 }
 
+TEST(FormFields, MergedActionsAreRefusedWithoutBlockingSupportedWrites) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto fixture = [](int kind, const std::string& action) {
+			    const bool script = action == "script";
+			    const std::string field =
+			        kind == 0   ? "/FT /Tx /T (field) /V (old)"
+			        : kind == 1 ? "/FT /Btn /T (field) /V /Off"
+			                    : "/FT /Btn /Ff 49152 /T (field) /V /First";
+			    const auto button = [](const std::string& on, bool checked) {
+				    return WIDGET + "/AS /" + (checked ? on : "Off") +
+				           " /AP << /N << /" + on + " 10 0 R /Off 11 0 R >> >>";
+			    };
+			    std::vector<std::string> objects{
+			        "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R " +
+			            std::string(script ? "/Names << /JavaScript << /Names "
+			                                 "[(stored) 15 0 R] >> >> "
+			                               : "") +
+			            ">>",
+			        "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+			        "<< /Fields [5 0 R 6 0 R 12 0 R] >>",
+			        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
+			        "/Annots [" +
+			            std::string(kind == 2 ? "7 0 R 8 0 R 9 0 R" : "6 0 R") +
+			            " 12 0 R] >>",
+			        "<< " + field + " " + (script ? "" : action) + " >>",
+			        kind == 2
+			            ? "<< " + field + " /Kids [7 0 R 8 0 R 9 0 R] >>"
+			            : "<< /Type /Annot /P 4 0 R " + field + " " +
+			                  (kind == 0 ? WIDGET : button("Yes", false)) +
+			                  " >>",
+			        "<< /Type /Annot /Parent 6 0 R /P 4 0 R " +
+			            button("First", true) + " >>",
+			        "<< /Type /Annot /Parent 6 0 R /P 4 0 R " +
+			            button("Second", false) + " >>",
+			        "<< /Type /Annot /Parent 6 0 R /P 4 0 R " +
+			            button("Third", false) + " >>",
+			        "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+			        "/Length 23 >>\nstream\n1 0 0 rg 0 0 50 20 re "
+			        "f\nendstream",
+			        "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+			        "/Length 0 >>\nstream\nendstream",
+			        "<< /Type /Annot /P 4 0 R " + WIDGET +
+			            "/FT /Tx /T (other) /V (keep) /DV (reset) >>",
+			        "<< /V << /S /ResetForm /Fields [(other)] >> >>",
+			        "<< /S /ResetForm /Fields [(other)] >>"};
+			    if (script) {
+				    objects.push_back("<< /S /JavaScript /JS (stored) >>");
+			    }
+			    return rawPdf(objects);
+		    };
+		    for (int kind = 0; kind < 3; ++kind) {
+			    for (const auto& action :
+			         {"", "/AA << /V << /S /ResetForm /Fields [(other)] >> >>",
+			          "/#41#41 13 0 R", "/A 14 0 R", "script"}) {
+				    for (const bool change : {true, false}) {
+					    SCOPED_TRACE(kind);
+					    SCOPED_TRACE(action);
+					    SCOPED_TRACE(change);
+					    const auto bytes = fixture(kind, action);
+					    const auto opened = pdf::openDocument(bytes);
+					    ASSERT_TRUE(opened.document);
+					    auto& doc = *opened.document;
+					    const auto before = doc.formFields(0);
+					    ASSERT_TRUE(before && !before->limited);
+					    ASSERT_EQ(before->entries.size(), kind == 2 ? 4u : 2u);
+					    EXPECT_EQ(before->entries.back().value, "keep");
+					    if (kind != 0) {
+						    ASSERT_TRUE(before->entries[0].control);
+						    EXPECT_EQ(before->entries[0].control->count,
+						              kind == 2 ? 3 : 1);
+					    }
+					    const auto result =
+					        kind == 0
+					            ? doc.updateTextField(
+					                  0, 0, u"old", change ? u"new" : u"old", 1)
+					        : kind == 1
+					            ? doc.updateCheckBox(0, 0, u"Off", change, 1)
+					            : doc.updateRadioButton(
+					                  0, change ? 1 : 0, u"First",
+					                  {change ? 1 : 0, 3,
+					                   change ? "Second" : "First"},
+					                  1);
+					    const bool plain = std::string_view(action).empty();
+					    if (plain && (kind != 1 || !change)) {
+						    ASSERT_TRUE(result);
+						    EXPECT_EQ(*result, change);
+					    } else {
+						    ASSERT_FALSE(result);
+					    }
+					    const bool changed = plain && change && kind != 1;
+					    EXPECT_EQ(doc.modified(), changed);
+					    EXPECT_EQ(doc.annotationRevision(),
+					              before->revision + (changed ? 1 : 0));
+					    if (!changed) {
+						    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+					    }
+					    const auto after = doc.formFields(0);
+					    ASSERT_TRUE(after && after->entries.size() ==
+					                             before->entries.size());
+					    EXPECT_EQ(after->entries.back().value, "keep");
+				    }
+			    }
+		    }
+	    })
+	    .get();
+}
+
 TEST(FormFields, RadioWritesRefuseScriptsOnSameNamedParents) {
 	pdf::Engine engine;
 	engine

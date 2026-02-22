@@ -2099,3 +2099,19 @@ replacing the live document. Duplicate exports can work with valid indices;
 moving between them is a change even when V stays the same. An already
 selected option is a no-op. Clearing stays unsupported; session requests
 and native controls follow separately.
+
+## Action guards for all form writes (2026-10-28)
+
+I apply the choice transaction's canonical action/script guard to text,
+checkbox and radio writes too. A terminal field without a widget can
+register first; a same-named widget then reports one control but inherits
+the earlier field's actions. ResetForm can run during focus commit without
+JavaScript or an action key on the target widget.
+
+All form writes now refuse A/AA tokens and script material before starting
+form interaction, including no-op requests. The scan recognizes name
+endings, so AcroForm, AP and AS remain usable. Ordinary link actions and
+matching content in strings/streams can also cause a conservative refusal.
+The existing dialog keeps a refused field draft available. Action-free
+merged fields still follow the earlier writer restrictions; the stricter
+checkbox value check can refuse an edit while accepting its no-op.
