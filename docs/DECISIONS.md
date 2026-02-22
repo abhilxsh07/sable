@@ -2052,3 +2052,23 @@ engine still proves complete membership and safe appearances, so an offered
 option can be refused. Refused or unqueued writes retain the selection;
 accepted changes share page/thumbnail refresh, save-copy and unsaved-close
 handling. Text/checkbox visibility, geometry and modal guards still apply.
+
+## Choice option snapshots (2026-10-28)
+
+I keep each combo/list option's position, display label and SDK-reported
+selection in an owned snapshot. The field value stays separate; the pinned
+option API has no choice-export getter. Duplicate exports can report more
+than one selected position without valid I indices, and editable combos can
+hold text outside the option list. I don't infer a unique choice from either.
+
+Missing or non-array Opt entries report zero options, while malformed option
+labels can look like valid empty strings. A complete SDK scan doesn't prove
+the raw options or parent field are safe to edit. Multi-select fields still
+mark the page limited even though their reported selections are retained.
+
+I read at most 4096 options across a page. Labels share the existing 64 KiB
+per-string and 1 MiB aggregate UTF-16 budgets with names, values and button
+exports. An incomplete choice scan omits its whole option vector and marks
+the page limited; a successful empty list stays distinct from an omitted
+list. Cancellation discards the snapshot, and all reads use the isolated
+document on the engine thread. Choice writes and native controls follow.

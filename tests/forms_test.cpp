@@ -263,6 +263,12 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 			    } else {
 				    EXPECT_FALSE(result->entries[i].control);
 			    }
+			    if (i == 3 || i == 4) {
+				    ASSERT_TRUE(result->entries[i].options);
+				    ASSERT_EQ(result->entries[i].options->size(), 1u);
+			    } else {
+				    EXPECT_FALSE(result->entries[i].options);
+			    }
 		    }
 		    const auto annotations = opened.document->annotations(0);
 		    ASSERT_TRUE(annotations);
@@ -273,6 +279,207 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 		    ASSERT_FALSE(shifted->entries.empty());
 		    EXPECT_EQ(shifted->entries.front().index, 0);
 		    EXPECT_NE(shifted->revision, result->revision);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceSnapshotsOwnLabelsPositionsAndSelection) {
+	std::array<std::optional<pdf::FormFields>, 2> snapshots;
+	{
+		pdf::Engine engine;
+		for (int combo = 0; combo < 2; ++combo) {
+			engine
+			    .run([&, combo] {
+				    const auto bytes = formBytes(
+				        {WIDGET, WIDGET},
+				        "/FT /Ch /T (choice) /Ff " +
+				            std::to_string(combo ? 131072 : 0) +
+				            " /V (export-b) /I [1] /Opt [(plain) "
+				            "[(export-b) <FEFF004E03A9D83DDE00>] "
+				            "[(export-c) (same)] [(export-d) (same)] ()]",
+				        1, {.appearances = false});
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    snapshots[combo] = opened.document->formFields(0);
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+			    })
+			    .get();
+		}
+	}
+	for (int combo = 0; combo < 2; ++combo) {
+		ASSERT_TRUE(snapshots[combo] && !snapshots[combo]->limited);
+		ASSERT_EQ(snapshots[combo]->entries.size(), 2u);
+		for (const auto& field : snapshots[combo]->entries) {
+			EXPECT_EQ(field.type, combo ? pdf::FormFieldType::ComboBox
+			                            : pdf::FormFieldType::ListBox);
+			EXPECT_FALSE(field.checked || field.control);
+			EXPECT_EQ(field.value, "export-b");
+			ASSERT_TRUE(field.options);
+			ASSERT_EQ(field.options->size(), 5u);
+			const char* labels[] = {"plain", "N\u03a9\U0001f600", "same",
+			                        "same", ""};
+			for (int i = 0; i < 5; ++i) {
+				EXPECT_EQ((*field.options)[i].index, i);
+				EXPECT_EQ((*field.options)[i].label, labels[i]);
+				EXPECT_EQ((*field.options)[i].selected, i == 1);
+			}
+		}
+	}
+}
+
+TEST(FormFields, ChoiceSelectionsKeepDuplicatesIndicesAndEditableValues) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::string duplicate =
+		        "/V (dup) /Opt [[(dup) (First)] [(dup) (Second)]]";
+		    const auto opened = pdf::openDocument(
+		        formBytes({WIDGET + "/FT /Ch /T (duplicates) " + duplicate,
+		                   WIDGET + "/FT /Ch /T (indexed) /I [1] " + duplicate,
+		                   WIDGET + "/FT /Ch /T (editable) /Ff 393216 "
+		                            "/V (typed) /Opt [(preset)]",
+		                   WIDGET + "/FT /Ch /T (multiple) /Ff 2097152 "
+		                            "/V [(a) (c)] /I [0 2] /Opt [(a) (b) (c)]"},
+		                  {}, 1, {.appearances = false}));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 4u);
+		    for (const auto& field : fields->entries) {
+			    ASSERT_TRUE(field.options);
+		    }
+		    const auto& duplicateOptions = *fields->entries[0].options;
+		    ASSERT_EQ(duplicateOptions.size(), 2u);
+		    EXPECT_TRUE(duplicateOptions[0].selected);
+		    EXPECT_TRUE(duplicateOptions[1].selected);
+		    const auto& indexed = *fields->entries[1].options;
+		    ASSERT_EQ(indexed.size(), 2u);
+		    EXPECT_FALSE(indexed[0].selected);
+		    EXPECT_TRUE(indexed[1].selected);
+		    const auto& editable = fields->entries[2];
+		    ASSERT_EQ(editable.options->size(), 1u);
+		    EXPECT_EQ(editable.value, "typed");
+		    EXPECT_EQ(editable.options->front().label, "preset");
+		    EXPECT_FALSE(editable.options->front().selected);
+		    const auto& multiple = *fields->entries[3].options;
+		    ASSERT_EQ(multiple.size(), 3u);
+		    EXPECT_TRUE(multiple[0].selected && multiple[2].selected);
+		    EXPECT_FALSE(multiple[1].selected);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceEmptyResultsDoNotProveRawOptionValidity) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(formBytes(
+		        {WIDGET + "/FT /Ch /T (missing)",
+		         WIDGET + "/FT /Ch /T (empty) /Opt []",
+		         WIDGET + "/FT /Ch /T (wrong) /Opt 42",
+		         WIDGET + "/FT /Ch /T (malformed) "
+		                  "/Opt [() [] [(export)] [(export) 42] null 42]",
+		         WIDGET + "/FT /Tx /T (text) /Opt [(ignored)]"},
+		        {}, 1, {.appearances = false}));
+		    ASSERT_TRUE(opened.document);
+		    const auto fields = opened.document->formFields(0);
+		    ASSERT_TRUE(fields && !fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 5u);
+		    for (int i = 0; i < 3; ++i) {
+			    ASSERT_TRUE(fields->entries[i].options);
+			    EXPECT_TRUE(fields->entries[i].options->empty());
+		    }
+		    ASSERT_TRUE(fields->entries[3].options);
+		    ASSERT_EQ(fields->entries[3].options->size(), 6u);
+		    for (const auto& option : *fields->entries[3].options) {
+			    EXPECT_TRUE(option.label.empty());
+		    }
+		    EXPECT_FALSE(fields->entries[4].options);
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceListsShareBudgetsAndOmitIncompleteOptions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto inspect = [](const std::vector<std::string>& fields) {
+			    const auto opened = pdf::openDocument(
+			        formBytes(fields, {}, 1, {.appearances = false}));
+			    return opened.document ? opened.document->formFields(0)
+			                           : std::nullopt;
+		    };
+		    std::string crowded;
+		    for (int i = 0; i < 4096; ++i) {
+			    crowded += "() ";
+		    }
+		    const auto full =
+		        inspect({WIDGET + "/FT /Ch /T (full) /Opt [" + crowded + "]",
+		                 WIDGET + "/FT /Ch /T (overflow) /Opt [(extra)]"});
+		    ASSERT_TRUE(full && full->limited);
+		    ASSERT_EQ(full->entries.size(), 2u);
+		    ASSERT_TRUE(full->entries[0].options);
+		    EXPECT_EQ(full->entries[0].options->size(), 4096u);
+		    EXPECT_FALSE(full->entries[1].options);
+		    const auto excessive = inspect(
+		        {WIDGET + "/FT /Ch /T (too many) /Opt [" + crowded + "()]"});
+		    ASSERT_TRUE(excessive && excessive->limited);
+		    ASSERT_EQ(excessive->entries.size(), 1u);
+		    EXPECT_FALSE(excessive->entries[0].options);
+		    std::string aggregate;
+		    for (int i = 0; i < 17; ++i) {
+			    aggregate += "(" + std::string(31000, 'a') + ") ";
+		    }
+		    for (const auto& options :
+		         {"(first) (" + std::string(33000, 'a') + ")", aggregate}) {
+			    const auto limited = inspect(
+			        {WIDGET + "/FT /Ch /T (partial) /Opt [" + options + "]",
+			         WIDGET + "/FT /Ch /T (later) /Opt [(last)]"});
+			    ASSERT_TRUE(limited && limited->limited);
+			    ASSERT_EQ(limited->entries.size(), 2u);
+			    EXPECT_FALSE(limited->entries[0].options);
+			    ASSERT_TRUE(limited->entries[1].options);
+			    ASSERT_EQ(limited->entries[1].options->size(), 1u);
+			    EXPECT_EQ(limited->entries[1].options->front().label, "last");
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, ChoiceCancellationKeepsLiveBytesAndSnapshotRevision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET + "/FT /Ch /T (choice) /V (b) /Opt [(a) (b) (c)]"}, {},
+		        1, {.appearances = false});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    int checkpoints = 0;
+		    const auto fields = opened.document->formFields(0, [&] {
+			    ++checkpoints;
+			    return false;
+		    });
+		    ASSERT_TRUE(fields && !fields->limited);
+		    ASSERT_EQ(fields->entries.size(), 1u);
+		    ASSERT_TRUE(fields->entries[0].options);
+		    ASSERT_EQ(fields->entries[0].options->size(), 3u);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->formFields(
+			        0, [&] { return ++calls >= stop; }));
+		    }
+		    const auto again = opened.document->formFields(0);
+		    ASSERT_TRUE(again && !again->limited);
+		    ASSERT_EQ(again->entries.size(), 1u);
+		    ASSERT_TRUE(again->entries[0].options);
+		    ASSERT_EQ(again->entries[0].options->size(), 3u);
+		    EXPECT_TRUE((*again->entries[0].options)[1].selected);
+		    EXPECT_EQ(again->revision, fields->revision);
+		    EXPECT_FALSE(opened.document->modified());
+		    EXPECT_EQ(opened.document->annotationRevision(), fields->revision);
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
 	    })
 	    .get();
 }

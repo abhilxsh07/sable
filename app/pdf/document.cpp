@@ -2438,6 +2438,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 	}
 	result.limited = count > 4096;
 	std::size_t total = 0;
+	int optionTotal = 0;
 	FS_RECTF pageBox{};
 	const float width = FPDF_GetPageWidthF(context.page.get());
 	const float height = FPDF_GetPageHeightF(context.page.get());
@@ -2559,6 +2560,40 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 				                    annotation.get())) {
 					field.control =
 					    FormControl{position, controls, std::move(*exported)};
+				}
+			}
+		}
+		if (field.type == FormFieldType::ComboBox ||
+		    field.type == FormFieldType::ListBox) {
+			const int options =
+			    FPDFAnnot_GetOptionCount(context.handle, annotation.get());
+			if (options < 0 || options > 4096 - optionTotal) {
+				result.limited = true;
+			} else {
+				optionTotal += options;
+				std::vector<FormOption> choices;
+				choices.reserve(options);
+				for (int option = 0; option < options; ++option) {
+					if (stopped()) {
+						return {};
+					}
+					auto label = text(
+					    [option](auto handle, auto field, auto buffer,
+					             auto size) {
+						    return FPDFAnnot_GetOptionLabel(
+						        handle, field, option, buffer, size);
+					    },
+					    annotation.get());
+					if (!label) {
+						break;
+					}
+					choices.push_back(
+					    {option, std::move(*label),
+					     FPDFAnnot_IsOptionSelected(
+					         context.handle, annotation.get(), option) != 0});
+				}
+				if (choices.size() == static_cast<std::size_t>(options)) {
+					field.options = std::move(choices);
 				}
 			}
 		}

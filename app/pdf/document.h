@@ -124,6 +124,11 @@ struct FormControl {
 	int index = 0, count = 0;
 	std::string exportValue;
 };
+struct FormOption {
+	int index = 0;
+	std::string label;
+	bool selected = false;
+};
 struct FormField {
 	int index = 0, flags = 0;
 	int annotationFlags = 0;
@@ -131,6 +136,8 @@ struct FormField {
 	std::string name, value;
 	std::optional<bool> checked;
 	std::optional<FormControl> control;
+	// i omit incomplete choice lists; labels aren't export values.
+	std::optional<std::vector<FormOption>> options;
 	std::optional<AnnotationBounds> bounds;
 	// Clipped page fractions; absent for hidden, off-page or unusable bounds.
 	std::optional<AnnotationRect> displayBounds;
