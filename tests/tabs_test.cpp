@@ -110,6 +110,7 @@ struct TabsTest {
 	bool noteEditOnly = false;
 	bool checkBoxOnly = false;
 	bool radioOnly = false;
+	bool choiceOnly = false, choiceList = false;
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
@@ -3084,6 +3085,290 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void choiceFieldTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_noteSaving ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		using namespace Microsoft::UI::Xaml::Automation;
+		const auto button = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& node) -> Button {
+				if (const auto item = node.try_as<Button>();
+				    item && item.Name() == name) {
+					return item;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(node); ++i) {
+					if (const auto item =
+					        find(Media::VisualTreeHelper::GetChild(node, i))) {
+						return item;
+					}
+				}
+				return nullptr;
+			};
+			const auto item = find(v.m_noteDialog);
+			check(item != nullptr, "choice dialog button missing");
+			check(item.IsEnabled(), "choice dialog button disabled");
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto read = [&] {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::FormFieldsResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->formFields(0,
+			                              [reply](auto result) {
+				                              reply->set_value(
+				                                  std::move(result));
+			                              }),
+			      "choice snapshot not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "choice snapshot timed out");
+			const auto result = future.get();
+			check(result.fields && !result.fields->limited &&
+			          result.fields->entries.size() == 1,
+			      "choice snapshot failed");
+			return result.fields;
+		};
+		const auto open = [&] {
+			const auto field = read()->entries[0];
+			check(field.displayBounds.has_value(), "choice bounds missing");
+			const auto& b = *field.displayBounds;
+			const auto& p = v.m_layout->pages()[0];
+			v.requestFormAt(
+			    {static_cast<float>(p.x + p.width * (b.left + b.right) / 2),
+			     static_cast<float>(p.y + p.height * (b.top + b.bottom) / 2)});
+		};
+		const auto options = [&] {
+			check(v.m_noteDialog != nullptr, "choice dialog missing");
+			const auto control = v.m_noteDialog.Content()
+			                         .as<StackPanel>()
+			                         .Children()
+			                         .GetAt(1)
+			                         .as<Primitives::Selector>();
+			check(choiceList ? control.try_as<ListBox>() != nullptr
+			                 : control.try_as<ComboBox>() != nullptr,
+			      "wrong native choice control");
+			check(AutomationProperties::GetName(control) == L"Field option",
+			      "choice automation name missing");
+			return control;
+		};
+		const auto selected = [list =
+		                           choiceList](const pdf::FormFields& fields) {
+			if (fields.entries.size() != 1) {
+				return false;
+			}
+			const auto& field = fields.entries[0];
+			return field.value == "caf\u00e9" && field.name == "choice" &&
+			       field.type == (list ? pdf::FormFieldType::ListBox
+			                           : pdf::FormFieldType::ComboBox) &&
+			       field.options && field.options->size() == 3 &&
+			       (*field.options)[0].index == 0 &&
+			       (*field.options)[0].label == "First" &&
+			       !(*field.options)[0].selected &&
+			       (*field.options)[1].index == 1 &&
+			       (*field.options)[1].label == "Same" &&
+			       !(*field.options)[1].selected &&
+			       (*field.options)[2].index == 2 &&
+			       (*field.options)[2].label == "Same" &&
+			       (*field.options)[2].selected;
+		};
+		switch (step) {
+		case 0:
+			open();
+			break;
+		case 1:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(options().SelectedIndex() == 0 &&
+			          options().Items().Size() == 3,
+			      "choice initial state changed");
+			for (uint32_t i = 0; i < 3; ++i) {
+				const auto item =
+				    options().Items().GetAt(i).as<ContentControl>();
+				check(choiceList ? item.try_as<ListBoxItem>() != nullptr
+				                 : item.try_as<ComboBoxItem>() != nullptr,
+				      "choice container type changed");
+				check(unbox_value<hstring>(item.Content()) ==
+				          (i == 0 ? L"First" : L"Same"),
+				      "choice labels changed");
+			}
+			check(options().Items().GetAt(1) != options().Items().GetAt(2),
+			      "duplicate labels share an automation item");
+			options().SelectedIndex(-1);
+			check(!v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "empty selection allowed Apply");
+			options().SelectedIndex(0);
+			if (!choiceList) {
+				options().as<ComboBox>().IsDropDownOpen(true);
+			}
+			break;
+		case 2:
+			if (!choiceList) {
+				const auto combo = options().as<ComboBox>();
+				check(combo.IsDropDownOpen(), "choice popup did not open");
+				combo.IsDropDownOpen(false);
+			}
+			break;
+		case 3:
+			check(v.m_noteDialog && options().SelectedIndex() == 0 &&
+			          v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "restored choice did not enable Apply");
+			check(choiceList || !options().as<ComboBox>().IsDropDownOpen(),
+			      "choice popup did not close");
+			button(L"PrimaryButton");
+			break;
+		case 4:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty,
+			      "choice no-op dirtied PDF");
+			open();
+			break;
+		case 5:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			options().SelectedIndex(2);
+			button(L"PrimaryButton");
+			check(v.m_noteBusy && !options().IsEnabled() &&
+			          !v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "queued choice stayed enabled");
+			break;
+		case 6:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(v.m_notesDirty && v.m_formsDirty && selected(*read()),
+			      "choice Apply failed");
+			notesPath = buttonFieldPath.parent_path() / "selected copy.pdf";
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 7:
+			check(notesSave.GetResults() && !v.m_notesDirty && !v.m_formsDirty,
+			      "choice save did not clear dirty state");
+			check(engine
+			          .run([path = notesPath, selected] {
+				          const auto saved = pdf::openFile(path);
+				          const auto fields =
+				              saved.document ? saved.document->formFields(0)
+				                             : std::nullopt;
+				          return fields && selected(*fields);
+			          })
+			          .get(),
+			      "saved choice value/position changed");
+			open();
+			break;
+		case 8:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(options().SelectedIndex() == 2,
+			      "saved choice opened incorrectly");
+			options().SelectedIndex(0);
+			button(L"CloseButton");
+			break;
+		case 9: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty && selected(*read()),
+			      "Cancel changed choice field");
+			const auto snapshot = read();
+			auto field = snapshot->entries[0];
+			field.name = "wrong";
+			v.editFormField(0, snapshot->revision, std::move(field));
+			break;
+		}
+		case 10:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			options().SelectedIndex(1);
+			button(L"PrimaryButton");
+			break;
+		case 11:
+			check(v.m_noteDialog && options().IsEnabled() &&
+			          options().SelectedIndex() == 1 &&
+			          v.m_noteDialog.IsPrimaryButtonEnabled() &&
+			          !v.m_noteDialog.Content()
+			               .as<StackPanel>()
+			               .Children()
+			               .GetAt(2)
+			               .as<TextBlock>()
+			               .Text()
+			               .empty(),
+			      "refused choice draft lost or disabled");
+			button(L"CloseButton");
+			break;
+		case 12: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty && selected(*read()),
+			      "refused choice changed PDF");
+			const auto snapshot = read();
+			auto field = snapshot->entries[0];
+			check(field.options.has_value(), "unset choice options missing");
+			field.value.clear();
+			for (auto& option : *field.options) {
+				option.selected = false;
+			}
+			v.editFormField(0, snapshot->revision, std::move(field));
+			break;
+		}
+		case 13:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(options().SelectedIndex() == -1 &&
+			          !v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "unset choice opened with Apply enabled");
+			options().SelectedIndex(2);
+			check(v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "unset choice did not enable Apply after selection");
+			button(L"CloseButton");
+			break;
+		case 14: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty && selected(*read()),
+			      "unset choice Cancel changed PDF");
+			std::ifstream original(buttonFieldPath, std::ios::binary);
+			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
+			          choicePdf(!choiceList),
+			      "choice source changed");
+			std::fwprintf(
+			    stderr,
+			    L"PASS: %ls choice %lsno-op, selection, Apply, "
+			    L"save/reopen, Cancel, refusal and unset draft; %ls\n",
+			    choiceList ? L"list" : L"combo",
+			    choiceList ? L"" : L"popup cycle, ", notesPath.c_str());
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		}
+		++step;
+		ticks = 0;
+	}
 	void buttonFieldTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -5935,6 +6220,10 @@ struct TabsTest {
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
+			if (choiceOnly) {
+				choiceFieldTick(*self);
+				return;
+			}
 			if (checkBoxOnly || radioOnly) {
 				buttonFieldTick(*self);
 				return;
@@ -6600,6 +6889,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->radioOnly = GetEnvironmentVariableW(L"SableRadioTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->choiceOnly = GetEnvironmentVariableW(L"SableChoiceTest", mode, 8) &&
+	                    std::wstring_view(mode) == L"true";
+	state->choiceList =
+	    GetEnvironmentVariableW(L"SableChoiceListTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->settingsOnly =
 	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -6708,16 +7002,17 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->checkBoxOnly || state->radioOnly || state->settingsOnly ||
-	    state->windowsOnly || state->filtersOnly || state->linksOnly ||
-	    state->printOnly || state->finishOnly || state->editOnly ||
-	    state->musicOnly || state->selectionOnly || state->findOnly ||
-	    state->outlineOnly || state->attachmentsOnly || state->commentsOnly ||
-	    state->attachmentSaveOnly || state->annotationActionsOnly ||
-	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
-	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
-	    state->keyboardOnly || state->keyboardInputOnly ||
-	    state->gesturesOnly || state->longGesturesOnly) {
+	if (state->choiceOnly || state->checkBoxOnly || state->radioOnly ||
+	    state->settingsOnly || state->windowsOnly || state->filtersOnly ||
+	    state->linksOnly || state->printOnly || state->finishOnly ||
+	    state->editOnly || state->musicOnly || state->selectionOnly ||
+	    state->findOnly || state->outlineOnly || state->attachmentsOnly ||
+	    state->commentsOnly || state->attachmentSaveOnly ||
+	    state->annotationActionsOnly || state->rotationOnly ||
+	    state->propertiesOnly || state->panOnly || state->layoutOnly ||
+	    state->presentationOnly || state->saveCopyOnly || state->keyboardOnly ||
+	    state->keyboardInputOnly || state->gesturesOnly ||
+	    state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -6771,11 +7066,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->checkBoxOnly || state->radioOnly) {
+	if (state->choiceOnly || state->checkBoxOnly || state->radioOnly) {
 		state->buttonFieldPath = makeTempDir("button_ui") / "button.pdf";
 		{
 			std::ofstream source(state->buttonFieldPath, std::ios::binary);
-			source << (state->radioOnly ? radioPdf() : checkBoxPdf());
+			source << (state->choiceOnly  ? choicePdf(!state->choiceList)
+			           : state->radioOnly ? radioPdf()
+			                              : checkBoxPdf());
 		}
 		window->openDocument(engine, state->buttonFieldPath, 1);
 	} else if (state->propertiesOnly) {

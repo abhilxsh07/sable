@@ -180,3 +180,36 @@ inline std::string radioPdf() {
 	return data + "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
 	       " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
 }
+
+inline std::string choicePdf(bool combo) {
+	const std::vector<std::string> objects{
+	    "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] "
+	    "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
+	    "/DR << /Font << /Helv << /Type /Font /Subtype /Type1 "
+	    "/BaseFont /Helvetica >> >> >> >> >>",
+	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+	    "/Annots [4 0 R] >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (choice) /F 4 /Ff " +
+	        std::string(combo ? "131072" : "0") +
+	        " /V (old) /I [0] /Opt [[(old) (First)] "
+	        "[<FEFF00630061006600E9> (Same)] "
+	        "[<FEFF00630061006600E9> (Same)]] "
+	        "/Rect [40 50 190 130] /P 3 0 R >>"};
+	std::string bytes = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& object : objects) {
+		offsets.push_back(bytes.size());
+		bytes +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
+	}
+	const auto xref = bytes.size();
+	bytes += "xref\n0 5\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		bytes += line;
+	}
+	return bytes + "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" +
+	       std::to_string(xref) + "\n%%EOF\n";
+}
