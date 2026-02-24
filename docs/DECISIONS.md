@@ -2115,3 +2115,19 @@ matching content in strings/streams can also cause a conservative refusal.
 The existing dialog keeps a refused field draft available. Action-free
 merged fields still follow the earlier writer restrictions; the stricter
 checkbox value check can refuse an edit while accepting its no-op.
+
+## Queued single-choice writes (2026-10-28)
+
+I keep the whole choice-field snapshot in the queued request, including its
+value, option labels, positions and selection states. The chosen position
+and explicit revision travel with it. The engine checks that snapshot again
+before selecting through the existing isolated transaction.
+
+Choice requests share form-write ordering, cache invalidation, annotation
+revision updates and close handling. Form reads can be canceled without
+canceling the write. Refused requests and no-ops use the same result as the
+earlier field writers; native combo/list controls follow separately.
+
+The session tests hit MSVC's object section limit with the extra callback
+cases. I enable /bigobj for session_test.cpp alone so the rest of the build
+keeps its existing compiler options.

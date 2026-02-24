@@ -121,7 +121,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="filter_test.cpp" />
 		<ClCompile Include="page_filter_test.cpp" />
 		<ClCompile Include="page_cache_test.cpp" />
-		<ClCompile Include="session_test.cpp" />
+		<ClCompile Include="session_test.cpp">
+			<!-- the queued callback tests exceed the normal object section limit -->
+			<AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+		</ClCompile>
 		<ClCompile Include="surface_util_test.cpp" />
 		<ClCompile Include="sliders_test.cpp" />
 		<ClCompile Include="settings_test.cpp" />

@@ -167,6 +167,10 @@ class Session {
 	bool updateRadioButton(int page, int index, std::u16string expected,
 	                       FormControl control, std::uint64_t revision,
 	                       std::function<void(FormWriteResult)> callback);
+	// i keep the value and every option from the same immutable snapshot.
+	bool updateChoiceField(int page, FormField field, int option,
+	                       std::uint64_t revision,
+	                       std::function<void(FormWriteResult)> callback);
 	// Writes keep queue order, independently of annotation reads. Close only
 	// cancels jobs that have not started; started edits keep their outcome.
 	// An absent index means failure, possibly an incomplete edit if rollback
@@ -244,6 +248,7 @@ class Session {
 	                    std::u16string contents, std::uint64_t revision,
 	                    std::optional<bool> checked,
 	                    std::optional<FormControl> control,
+	                    std::optional<FormField> choice, int option,
 	                    std::function<void(FormWriteResult)> callback);
 	bool changeAnnotation(AnnotationTarget target,
 	                      std::optional<CommentContents> expected,

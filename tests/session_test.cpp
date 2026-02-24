@@ -44,7 +44,8 @@ namespace fs = std::filesystem;
 
 // A4 pages labelled like pages.pdf (i, ii, then 1, 2, ...), written out by
 // hand the way make_fixtures.py does it, just with many more pages
-std::string manyPages(int count, bool form = false, bool checkbox = false) {
+std::string manyPages(int count, bool form = false, bool checkbox = false,
+                      int choiceFlags = -1) {
 	std::string pdf = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	const auto add = [&](const std::string& body) {
@@ -76,11 +77,16 @@ std::string manyPages(int count, bool form = false, bool checkbox = false) {
 	}
 	if (form) {
 		add("<< /Type /Annot /Subtype /Widget " +
-		    (checkbox ? "/FT /Btn /T (field) /V /Off /AS /Off /F 4 "
-		                "/AP << /N << /Approved#20now " +
-		                    std::to_string(count + 5) + " 0 R /Off " +
-		                    std::to_string(count + 6) + " 0 R >> >> "
-		              : "/FT /Tx /T (field) /V (value) ") +
+		    (choiceFlags >= 0
+		         ? "/FT /Ch /T (field) /Ff " + std::to_string(choiceFlags) +
+		               " /V (old) /I [0] /Opt [[(old) (First)] "
+		               "[<FEFF00630061006600E9> (Second)] "
+		               "[<FEFF00630061006600E9> (Third)]] "
+		     : checkbox ? "/FT /Btn /T (field) /V /Off /AS /Off /F 4 "
+		                  "/AP << /N << /Approved#20now " +
+		                      std::to_string(count + 5) + " 0 R /Off " +
+		                      std::to_string(count + 6) + " 0 R >> >> "
+		                : "/FT /Tx /T (field) /V (value) ") +
 		    "/Rect [40 50 90 70] /P 3 0 R >>");
 		add("<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
 		    "/Contents (Original) /P 3 0 R >>");
@@ -1797,6 +1803,226 @@ TEST_F(SessionTest, RadioWritesRespectCloseAndQueueBoundaries) {
 	EXPECT_FALSE(done->canceled);
 	EXPECT_FALSE(session.updateRadioButton(0, 2, u"Next choice", control,
 	                                       done->revision, unused.callback()));
+}
+
+TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
+	for (const int flags : {0, 131072}) {
+		SCOPED_TRACE(flags);
+		pdf::Session session(engine);
+		const auto bytes = manyPages(1, true, false, flags);
+		const auto source = writeTemp("choice form.pdf", bytes);
+		ASSERT_TRUE(open(session, source).canFillForms);
+		const auto before = readForms(session);
+		ASSERT_TRUE(before && before->entries.size() == 1);
+		ASSERT_TRUE(before->entries[0].options);
+		ASSERT_EQ(before->entries[0].options->size(), 3u);
+		auto target = before->entries[0];
+		Reply<pdf::FormWriteResult> first, stale;
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session.updateChoiceField(
+			    0, target, 1, before->revision, first.callback()));
+			ASSERT_TRUE(session.updateChoiceField(
+			    0, target, 2, before->revision, stale.callback()));
+			target.name = "wrong";
+			target.value = "wrong";
+			target.options->front().selected = false;
+			target.options->back().label = "wrong";
+			target.options.reset();
+			session.cancelForms();
+		}
+		const auto written = first.wait(), refused = stale.wait();
+		ASSERT_TRUE(written && refused);
+		EXPECT_TRUE(written->accepted && written->changed);
+		EXPECT_FALSE(written->canceled);
+		EXPECT_EQ(written->page, 0);
+		EXPECT_EQ(written->index, 1);
+		EXPECT_GT(written->revision, before->revision);
+		EXPECT_FALSE(refused->accepted || refused->changed ||
+		             refused->canceled);
+		auto after = readForms(session);
+		ASSERT_TRUE(after && after->entries.size() == 1);
+		ASSERT_TRUE(after->entries[0].options);
+		ASSERT_EQ(after->entries[0].options->size(), 3u);
+		EXPECT_NE(after, before);
+		EXPECT_EQ(after->revision, written->revision);
+		EXPECT_EQ(after->entries[0].value, "caf\u00e9");
+		EXPECT_TRUE((*after->entries[0].options)[1].selected);
+		EXPECT_FALSE((*after->entries[0].options)[2].selected);
+		EXPECT_EQ(before->entries[0].value, "old");
+		EXPECT_TRUE(before->entries[0].options->front().selected);
+		Reply<pdf::FormWriteResult> unchanged;
+		ASSERT_TRUE(session.updateChoiceField(
+		    0, after->entries[0], 1, after->revision, unchanged.callback()));
+		const auto same = unchanged.wait();
+		ASSERT_TRUE(same);
+		EXPECT_TRUE(same->accepted);
+		EXPECT_FALSE(same->changed || same->canceled);
+		EXPECT_EQ(same->revision, after->revision);
+		const auto refreshed = readForms(session);
+		ASSERT_TRUE(refreshed);
+		EXPECT_NE(refreshed, after);
+		after = refreshed;
+		for (int mismatch = 0; mismatch < 5; ++mismatch) {
+			SCOPED_TRACE(mismatch);
+			auto bad = after->entries[0];
+			if (mismatch == 0) {
+				bad.options->back().label = "wrong";
+			} else if (mismatch == 1) {
+				bad.value = "wrong";
+			} else if (mismatch == 2) {
+				bad.options.reset();
+			} else if (mismatch == 3) {
+				bad.type = pdf::FormFieldType::Text;
+			}
+			Reply<pdf::FormWriteResult> invalid;
+			ASSERT_TRUE(session.updateChoiceField(0, bad, mismatch == 4 ? 3 : 2,
+			                                      after->revision,
+			                                      invalid.callback()));
+			const auto rejected = invalid.wait();
+			ASSERT_TRUE(rejected);
+			EXPECT_FALSE(rejected->accepted || rejected->changed ||
+			             rejected->canceled);
+			const auto fresh = readForms(session);
+			ASSERT_TRUE(fresh);
+			EXPECT_NE(fresh, after);
+			EXPECT_EQ(fresh->revision, written->revision);
+			EXPECT_EQ(fresh->entries[0].value, "caf\u00e9");
+			after = fresh;
+		}
+		Reply<pdf::NoteResult> note;
+		ASSERT_TRUE(session.updateTextNote(0, 0, u"Original", u"Preserved",
+		                                   note.callback()));
+		const auto edited = note.wait();
+		ASSERT_TRUE(edited && edited->changed && edited->index);
+		const auto withNote = readForms(session);
+		ASSERT_TRUE(withNote && withNote->entries.size() == 1);
+		EXPECT_NE(withNote, after);
+		EXPECT_EQ(withNote->revision, written->revision);
+		Reply<pdf::FormWriteResult> duplicate;
+		ASSERT_TRUE(session.updateChoiceField(0, withNote->entries[0], 2,
+		                                      withNote->revision,
+		                                      duplicate.callback()));
+		const auto moved = duplicate.wait();
+		ASSERT_TRUE(moved);
+		EXPECT_TRUE(moved->accepted && moved->changed);
+		EXPECT_FALSE(moved->canceled);
+		EXPECT_GT(moved->revision, withNote->revision);
+		const auto destination = source.parent_path() / "selected copy.pdf";
+		Reply<pdf::SaveResult> saved;
+		ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+		                              saved.callback()));
+		EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+		pdf::Session reopened(engine);
+		ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+		const auto fields = readForms(reopened);
+		ASSERT_TRUE(fields && fields->entries.size() == 1);
+		ASSERT_TRUE(fields->entries[0].options);
+		ASSERT_EQ(fields->entries[0].options->size(), 3u);
+		EXPECT_EQ(fields->entries[0].value, "caf\u00e9");
+		EXPECT_FALSE((*fields->entries[0].options)[1].selected);
+		EXPECT_TRUE((*fields->entries[0].options)[2].selected);
+		Reply<pdf::TextNoteResult> preserved;
+		ASSERT_TRUE(reopened.textNote(0, 0, preserved.callback()));
+		const auto contents = preserved.wait();
+		ASSERT_TRUE(contents);
+		EXPECT_EQ(contents->contents, u"Preserved");
+		EXPECT_EQ(readFile(source),
+		          (std::vector<std::uint8_t>(bytes.begin(), bytes.end())));
+	}
+}
+
+TEST_F(SessionTest, ChoiceRepliesCanReadThenQueueAnotherSelectionAndThrow) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("reentrant choice.pdf",
+	                                  manyPages(1, true, false, 0)))
+	              .error,
+	          pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 1);
+	Reply<pdf::FormWriteResult> written, selected;
+	auto worker = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.updateChoiceField(
+	    0, before->entries[0], 1, before->revision,
+	    [&session, worker, writtenCb = written.callback(),
+	     selectedCb = selected.callback()](auto result) {
+		    *worker = pdf::Engine::onThread();
+		    session.formFields(0, [&session, selectedCb](auto fresh) {
+			    if (fresh.fields && fresh.fields->entries.size() == 1) {
+				    session.updateChoiceField(0, fresh.fields->entries[0], 0,
+				                              fresh.fields->revision,
+				                              selectedCb);
+			    }
+		    });
+		    writtenCb(result);
+		    throw std::runtime_error("choice callback");
+	    }));
+	const auto on = written.wait(), back = selected.wait();
+	ASSERT_TRUE(on && back);
+	EXPECT_TRUE(*worker);
+	EXPECT_TRUE(on->accepted && on->changed && back->accepted && back->changed);
+	EXPECT_FALSE(on->canceled || back->canceled);
+	EXPECT_GT(back->revision, on->revision);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 1);
+	EXPECT_EQ(after->entries[0].value, "old");
+	ASSERT_TRUE(after->entries[0].options);
+	EXPECT_TRUE(after->entries[0].options->front().selected);
+}
+
+TEST_F(SessionTest, ChoiceWritesRespectCloseAndQueueBoundaries) {
+	const auto path =
+	    writeTemp("closing choice.pdf", manyPages(1, true, false, 131072));
+	for (const bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, path).error, pdf::Error::None);
+		const auto before = readForms(*session);
+		ASSERT_TRUE(before && before->entries.size() == 1);
+		Reply<pdf::FormWriteResult> canceled;
+		auto calls = std::make_shared<std::atomic<int>>(0);
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session->updateChoiceField(
+			    0, before->entries[0], 1, before->revision,
+			    [calls, cb = canceled.callback()](auto r) {
+				    ++*calls;
+				    cb(r);
+			    }));
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+		}
+		const auto stopped = canceled.wait();
+		ASSERT_TRUE(stopped);
+		EXPECT_TRUE(stopped->canceled);
+		EXPECT_FALSE(stopped->accepted || stopped->changed);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+	pdf::Session session(engine);
+	Reply<pdf::FormWriteResult> unused;
+	EXPECT_FALSE(session.updateChoiceField(0, {}, 1, 1, unused.callback()));
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 1);
+	const auto& field = before->entries[0];
+	EXPECT_FALSE(session.updateChoiceField(0, field, 1, 0, unused.callback()));
+	EXPECT_FALSE(session.updateChoiceField(0, field, 1, before->revision, {}));
+	Reply<pdf::FormWriteResult> committed;
+	ASSERT_TRUE(session.updateChoiceField(
+	    0, field, 1, before->revision,
+	    [&session, cb = committed.callback()](auto result) {
+		    session.close();
+		    cb(result);
+	    }));
+	const auto done = committed.wait();
+	ASSERT_TRUE(done);
+	EXPECT_TRUE(done->accepted && done->changed);
+	EXPECT_FALSE(done->canceled);
+	EXPECT_FALSE(session.updateChoiceField(0, field, 1, done->revision,
+	                                       unused.callback()));
 }
 
 TEST_F(SessionTest, FormCacheClearsBeforeEditsIncludingRefusedAttempts) {
