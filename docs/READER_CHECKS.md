@@ -134,6 +134,21 @@ including a refused target that keeps the selected draft available.
 The 28 Oct desktop pass opened a selected option by pointer and kept it
 selected after another click and Space. Apply closed without a save prompt.
 
+Open a plain combo or single-choice list field. Check the saved selection,
+option order, duplicate labels, arrow keys and pointer selection. Apply
+without a change should leave the savepoint clean; changing it should update
+the page. Save a copy and reopen it, then check Cancel and a refused draft.
+An unset selection should keep Apply disabled until an option is chosen.
+SableChoiceTest=true with SableTabsTest=true runs the native combo check;
+add SableChoiceListTest=true for the list check. Buttons use automation peers,
+while option changes use SelectedIndex; use a desktop pass for real input.
+
+The 28 Oct desktop pass read the open combo popup and list through UI
+Automation with repeated labels. Combo Down/Enter, list keyboard/pointer
+selection and Cancel passed. A text-field no-op and clean app close passed;
+all three source hashes stayed unchanged. The real save picker and
+mixed-field interoperability still need a pass.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:

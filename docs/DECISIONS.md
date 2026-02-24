@@ -2131,3 +2131,23 @@ earlier field writers; native combo/list controls follow separately.
 The session tests hit MSVC's object section limit with the extra callback
 cases. I enable /bigobj for session_test.cpp alone so the rest of the build
 keeps its existing compiler options.
+
+## Native single-choice field controls (2026-10-28)
+
+I use a ComboBox for plain combo fields and a ListBox for single-choice
+lists in the shared field dialog. Labels stay in PDF option order; the
+selected position travels with the original snapshot because labels and
+exports can repeat. Apply stays disabled until an option is selected.
+
+The selector stays disabled while its request is queued. Refused writes
+keep the chosen position and restore the controls; accepted no-ops leave
+the savepoint alone. Apply, Cancel and Save a Copy use the existing field
+flow. Editable/multi-select fields and the earlier writer restrictions
+remain outside this step.
+
+Equal boxed labels hung the UI thread during a desktop automation walk of
+the open combo popup. The hot stack stayed in WinUI/UI Automation. I give
+each option its own ComboBoxItem or ListBoxItem, keeping duplicate labels
+unchanged while separating their native identities. The native checks also
+open and close the real combo popup across dispatcher turns.
+// see: https://github.com/microsoft/microsoft-ui-xaml/issues/11226

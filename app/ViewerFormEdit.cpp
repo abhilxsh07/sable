@@ -29,6 +29,25 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
+namespace {
+bool singleChoice(const pdf::FormField& field) {
+	if ((field.type != pdf::FormFieldType::ComboBox &&
+	     field.type != pdf::FormFieldType::ListBox) ||
+	    !field.options || field.options->empty() ||
+	    field.options->size() > 256) {
+		return false;
+	}
+	int selected = 0;
+	for (std::size_t i = 0; i < field.options->size(); ++i) {
+		const auto& option = (*field.options)[i];
+		if (option.index != static_cast<int>(i) || option.label.empty()) {
+			return false;
+		}
+		selected += option.selected ? 1 : 0;
+	}
+	return selected <= 1;
+}
+} // namespace
 namespace winrt::Sable::implementation {
 void ViewerPage::cancelFormRequest() {
 	++m_formVersion;
@@ -112,6 +131,8 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					            found->type ==
 					                pdf::FormFieldType::RadioButton &&
 					            found->control.has_value();
+					        const bool selection =
+					            found != fields.rend() && singleChoice(*found);
 					        constexpr int locked =
 					            FPDF_ANNOT_FLAG_READONLY |
 					            FPDF_ANNOT_FLAG_LOCKED |
@@ -120,13 +141,19 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					            FPDF_ANNOT_FLAG_TOGGLENOVIEW | 0x200;
 					        if (found != fields.rend() &&
 					            (found->type == pdf::FormFieldType::Text ||
+					             selection ||
 					             ((found->type ==
 					                   pdf::FormFieldType::CheckBox ||
 					               radio) &&
 					              found->checked.has_value())) &&
 					            !(found->flags &
 					              ~(plain |
-					                (radio ? (1 << 14) | (1 << 15) : 0))) &&
+					                (radio ? (1 << 14) | (1 << 15)
+					                 : selection &&
+					                         found->type ==
+					                             pdf::FormFieldType::ComboBox
+					                     ? FPDF_FORMFLAG_CHOICE_COMBO
+					                     : 0))) &&
 					            !(found->annotationFlags & locked)) {
 						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,
@@ -151,9 +178,10 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		const bool checkbox = field.type == pdf::FormFieldType::CheckBox;
 		const bool radio = field.type == pdf::FormFieldType::RadioButton;
 		const bool button = checkbox || radio;
+		const bool selection = singleChoice(field);
 		if ((button && !field.checked.has_value()) ||
 		    (radio && !field.control) ||
-		    (!button && field.type != pdf::FormFieldType::Text)) {
+		    (!button && !selection && field.type != pdf::FormFieldType::Text)) {
 			co_return;
 		}
 		if (m_closed || !m_session || !m_fillAllowed || m_presentation ||
@@ -171,7 +199,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		const auto session = m_session.get();
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(radio      ? L"Select radio option"
+		dialog.Title(box_value(selection  ? L"Select field option"
+		                       : radio    ? L"Select radio option"
 		                       : checkbox ? L"Edit checkbox"
 		                                  : L"Edit text field"));
 		dialog.PrimaryButtonText(L"Apply");
@@ -211,6 +240,41 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		choice.IsChecked(field.checked.value_or(false));
 		Automation::AutomationProperties::SetName(
 		    choice, radio ? L"Field selected" : L"Field checked");
+		Primitives::Selector options = ComboBox();
+		if (field.type == pdf::FormFieldType::ListBox) {
+			options = ListBox();
+			options.MaxHeight(240);
+		}
+		options.MinWidth(320);
+		Automation::AutomationProperties::SetName(options, L"Field option");
+		if (selection) {
+			int selected = -1;
+			for (const auto& option : *field.options) {
+				// i give repeated labels separate identities for automation.
+				// see:
+				// https://github.com/microsoft/microsoft-ui-xaml/issues/11226
+				ContentControl item = ComboBoxItem();
+				if (field.type == pdf::FormFieldType::ListBox) {
+					item = ListBoxItem();
+				}
+				item.Content(box_value(to_hstring(option.label)));
+				options.Items().Append(item);
+				if (option.selected) {
+					selected = option.index;
+				}
+			}
+			options.SelectedIndex(selected);
+			dialog.IsPrimaryButtonEnabled(selected >= 0);
+			options.SelectionChanged([prompt = make_weak(dialog),
+			                          list = make_weak(options)](auto&&,
+			                                                     auto&&) {
+				const auto view = prompt.get();
+				const auto control = list.get();
+				if (view && control) {
+					view.IsPrimaryButtonEnabled(control.SelectedIndex() >= 0);
+				}
+			});
+		}
 		if (radio) {
 			dialog.IsPrimaryButtonEnabled(field.checked.value_or(false));
 			choice.Checked([prompt = make_weak(dialog)](auto&&, auto&&) {
@@ -220,8 +284,9 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			});
 		}
 		fields.MinWidth(320);
-		fields.Children().Append(button ? choice.as<UIElement>()
-		                                : contents.as<UIElement>());
+		fields.Children().Append(selection ? options.as<UIElement>()
+		                         : button  ? choice.as<UIElement>()
+		                                   : contents.as<UIElement>());
 		TextBlock error;
 		error.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(error);
@@ -229,8 +294,13 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		const std::u16string expected(raw.begin(), raw.end());
 		const auto initial = std::make_shared<hstring>(contents.Text());
 		dialog.Opened([initial, text = make_weak(contents),
-		               check = make_weak(choice), button](auto&&, auto&&) {
-			if (button) {
+		               check = make_weak(choice), list = make_weak(options),
+		               button, selection](auto&&, auto&&) {
+			if (selection) {
+				if (const auto field = list.get()) {
+					field.Focus(FocusState::Programmatic);
+				}
+			} else if (button) {
 				if (const auto field = check.get()) {
 					field.Focus(FocusState::Programmatic);
 				}
@@ -252,7 +322,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		                           prompt = make_weak(dialog),
 		                           text = make_weak(contents),
 		                           check = make_weak(choice), checkbox, radio,
-		                           control = field.control,
+		                           list = make_weak(options), selection,
+		                           target = field, control = field.control,
 		                           failure = make_weak(error), initial,
 		                           expected, session, page, index = field.index,
 		                           revision](
@@ -264,16 +335,20 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			const auto view = prompt.get();
 			const auto field = text.get();
 			const auto choice = check.get();
+			const auto options = list.get();
 			const auto message = failure.get();
 			if (!self || self->m_closed || self->m_noteBusy ||
 			    self->m_noteSaving || self->m_session.get() != session ||
 			    !self->m_fillAllowed || !view || self->m_noteDialog != view ||
-			    !field || !choice || !message ||
+			    !field || !choice || !options || !message ||
 			    self->Visibility() != XVisibility::Visible ||
 			    (self->m_notesAvailable && !self->m_notesAvailable())) {
 				return;
 			}
 			if (radio && !unbox_value_or<bool>(choice.IsChecked(), false)) {
+				return;
+			}
+			if (selection && options.SelectedIndex() < 0) {
 				return;
 			}
 			const auto value = field.Text();
@@ -284,13 +359,14 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			view.IsPrimaryButtonEnabled(false);
 			field.IsReadOnly(true);
 			choice.IsEnabled(false);
+			options.IsEnabled(false);
 			message.Text(L"Applying changes\u2026");
 			try {
-				auto reply = [weak, prompt, text, check,
-				              button = checkbox || radio, failure, session,
-				              queue = self->DispatcherQueue()](
+				auto reply = [weak, prompt, text, check, list,
+				              button = checkbox || radio || selection, failure,
+				              session, queue = self->DispatcherQueue()](
 				                 pdf::FormWriteResult result) {
-					queue.TryEnqueue([weak, prompt, text, check, button,
+					queue.TryEnqueue([weak, prompt, text, check, list, button,
 					                  failure, session, result] {
 						const auto owner = weak.get();
 						if (!owner || owner->m_closed ||
@@ -310,6 +386,9 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 									field.IsReadOnly(false);
 								}
 								if (const auto field = check.get()) {
+									field.IsEnabled(true);
+								}
+								if (const auto field = list.get()) {
 									field.IsEnabled(true);
 								}
 								dialog.IsPrimaryButtonEnabled(true);
@@ -340,9 +419,12 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 					});
 				};
 				const bool queued =
-				    radio ? self->m_session->updateRadioButton(
-				                page, index, expected, *control, revision,
-				                std::move(reply))
+				    selection ? self->m_session->updateChoiceField(
+				                    page, target, options.SelectedIndex(),
+				                    revision, std::move(reply))
+				    : radio ? self->m_session->updateRadioButton(
+				                  page, index, expected, *control, revision,
+				                  std::move(reply))
 				    : checkbox
 				        ? self->m_session->updateCheckBox(
 				              page, index, expected,
@@ -360,9 +442,10 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
 			choice.IsEnabled(true);
+			options.IsEnabled(true);
 			view.IsPrimaryButtonEnabled(true);
 			message.Text(
-			    checkbox || radio
+			    checkbox || radio || selection
 			        ? L"Couldn't queue this edit. Your choice is still here."
 			        : L"Couldn't queue this edit. Your text is still here.");
 			self->showComments();
