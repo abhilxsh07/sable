@@ -160,6 +160,19 @@ The check supplies its save destination. Actual keyboard/pointer delivery,
 the Windows picker and Acrobat appearances/interoperability need a desktop
 pass separately.
 
+The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
+checkbox and an unselected radio option, Down on the combo, and a pointer
+selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.
+The Windows Save As dialog canceled once, then saved to a path with spaces.
+The copy reopened in Sable with the edits; the source hash stayed unchanged.
+
+Acrobat read the saved values and original note, but text and list contents
+appeared only while focused. Their unfocused appearances remain unverified.
+Its Font Capture process reported an application error on both the saved
+copy and the unedited fixture. I haven't established whether the fixture's
+font resources or this machine account for that behavior. Check persisted
+appearances with explicit font resources before calling interoperability done.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:
