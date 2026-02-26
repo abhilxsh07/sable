@@ -111,6 +111,8 @@ struct TabsTest {
 	bool checkBoxOnly = false;
 	bool radioOnly = false;
 	bool choiceOnly = false, choiceList = false;
+	bool mixedFormOnly = false;
+	std::uint64_t mixedRevision = 0;
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
@@ -3085,6 +3087,322 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void mixedFormTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_noteSaving ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		using namespace Microsoft::UI::Xaml::Automation;
+		const int kind = step < 45 ? step / 9 : (step - 47) / 2;
+		const int positions[] = {0, 1, 3, 4, 5};
+		const auto read = [&] {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::FormFieldsResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->formFields(0,
+			                              [reply](auto result) {
+				                              reply->set_value(
+				                                  std::move(result));
+			                              }),
+			      "mixed snapshot not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "mixed snapshot timed out");
+			const auto result = future.get();
+			check(result.fields && !result.fields->limited &&
+			          result.fields->entries.size() == 6,
+			      "mixed snapshot failed");
+			return result.fields;
+		};
+		const auto verify = [&](int completed) {
+			const auto fields = read();
+			const auto& e = fields->entries;
+			check(e[0].name == "text" &&
+			          e[0].value ==
+			              (completed > 0 ? "Edited caf\u00e9" : "initial") &&
+			          e[1].name == "box" &&
+			          e[1].value == (completed > 1 ? "Approved now" : "Off") &&
+			          e[1].checked == (completed > 1),
+			      "mixed text or checkbox value changed");
+			for (int i = 0; i < 2; ++i) {
+				const auto& member = e[i + 2];
+				check(member.name == "radio" &&
+				          member.value ==
+				              (completed > 2 ? "Next choice" : "First") &&
+				          member.checked == ((completed > 2) == (i == 1)) &&
+				          member.control && member.control->index == i &&
+				          member.control->count == 2,
+				      "mixed radio state changed");
+			}
+			for (int i = 3; i < 5; ++i) {
+				const auto& field = e[i + 1];
+				check(field.name == (i == 3 ? "combo" : "list") &&
+				          field.value ==
+				              (completed > i ? "caf\u00e9" : "old") &&
+				          field.options && field.options->size() == 3,
+				      "mixed choice value changed");
+				for (int j = 0; j < 3; ++j) {
+					const auto& option = (*field.options)[j];
+					check(option.index == j &&
+					          option.label == (j == 0 ? "First" : "Same") &&
+					          option.selected ==
+					              (j == (completed > i ? (i == 3 ? 2 : 1) : 0)),
+					      "mixed choice position changed");
+				}
+			}
+			return fields->revision;
+		};
+		const auto open = [&](int position) {
+			const auto fields = read();
+			const auto& b = fields->entries[position].displayBounds;
+			check(b.has_value(), "mixed field bounds missing");
+			const auto& p = v.m_layout->pages()[0];
+			v.requestFormAt(
+			    {static_cast<float>(p.x + p.width * (b->left + b->right) / 2),
+			     static_cast<float>(p.y +
+			                        p.height * (b->top + b->bottom) / 2)});
+		};
+		const auto input = [&] {
+			check(v.m_noteDialog != nullptr, "mixed field dialog missing");
+			const auto control =
+			    v.m_noteDialog.Content().as<StackPanel>().Children().GetAt(1);
+			check(kind == 0   ? control.try_as<TextBox>() != nullptr
+			      : kind == 1 ? control.try_as<CheckBox>() != nullptr
+			      : kind == 2 ? control.try_as<RadioButton>() != nullptr
+			      : kind == 3 ? control.try_as<ComboBox>() != nullptr
+			                  : control.try_as<ListBox>() != nullptr,
+			      "mixed field has wrong native control");
+			return control;
+		};
+		const auto value = [&]() -> hstring {
+			const auto control = input();
+			if (kind == 0) {
+				return control.as<TextBox>().Text();
+			}
+			if (kind < 3) {
+				return unbox_value_or<bool>(
+				           control.as<Primitives::ToggleButton>().IsChecked(),
+				           false)
+				           ? L"on"
+				           : L"off";
+			}
+			return to_hstring(
+			    control.as<Primitives::Selector>().SelectedIndex());
+		};
+		const auto draft = [&] {
+			const auto control = input();
+			if (kind == 0) {
+				control.as<TextBox>().Text(L"Edited caf\u00e9");
+			} else if (kind < 3) {
+				const auto peer =
+				    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+				        control.as<FrameworkElement>());
+				if (kind == 1) {
+					peer.GetPattern(Peers::PatternInterface::Toggle)
+					    .as<Provider::IToggleProvider>()
+					    .Toggle();
+				} else {
+					peer.GetPattern(Peers::PatternInterface::SelectionItem)
+					    .as<Provider::ISelectionItemProvider>()
+					    .Select();
+				}
+			} else {
+				control.as<Primitives::Selector>().SelectedIndex(kind == 3 ? 2
+				                                                           : 1);
+			}
+		};
+		const auto button = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& node) -> Button {
+				if (const auto item = node.try_as<Button>();
+				    item && item.Name() == name) {
+					return item;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(node); ++i) {
+					if (const auto item =
+					        find(Media::VisualTreeHelper::GetChild(node, i))) {
+						return item;
+					}
+				}
+				return nullptr;
+			};
+			const auto item = find(v.m_noteDialog);
+			check(item && item.IsEnabled(), "mixed dialog button unavailable");
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto modal = [&] {
+			const auto before = value();
+			const auto tab = owner.Tabs().SelectedIndex();
+			const auto count = owner.Tabs().TabItems().Size();
+			const auto zoom = v.m_zoom;
+			const auto rotation = v.m_rotation;
+			const auto page = v.m_current;
+			constexpr auto ctrl = helpers::SHORTCUT_CTRL;
+			check(owner.routeKey(VK_TAB, ctrl, false) &&
+			          owner.routeKey(VK_TAB, ctrl | helpers::SHORTCUT_SHIFT,
+			                         false) &&
+			          !owner.routeKey('W', ctrl, false) &&
+			          !owner.routeKey('F', ctrl, false) &&
+			          !owner.routeKey(VK_ADD, ctrl, false) &&
+			          !owner.routeKey('R', 0, false) &&
+			          !owner.routeKey('S', ctrl, false) &&
+			          !owner.routeKey(VK_F11, 0, false),
+			      "mixed modal reader key escaped");
+			check(owner.Viewer() == current &&
+			          owner.Tabs().SelectedIndex() == tab &&
+			          owner.Tabs().TabItems().Size() == count && count >= 2 &&
+			          value() == before && v.m_zoom == zoom &&
+			          v.m_rotation == rotation && v.m_current == page &&
+			          !v.findOpen() && !owner.m_saveCopyCancel &&
+			          !owner.m_notesSaving,
+			      "mixed modal keys changed the draft or reader");
+		};
+		if (step < 45) {
+			switch (step % 9) {
+			case 0:
+				mixedRevision = verify(kind);
+				open(kind == 2 ? 2 : positions[kind]);
+				break;
+			case 1:
+				if (!v.m_noteDialog) {
+					return;
+				}
+				modal();
+				button(L"PrimaryButton");
+				break;
+			case 2:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(kind) == mixedRevision &&
+				          v.m_formsDirty == (kind > 0),
+				      "mixed no-op changed the revision or savepoint");
+				open(positions[kind]);
+				break;
+			case 3:
+			case 6:
+				if (!v.m_noteDialog) {
+					return;
+				}
+				draft();
+				modal();
+				break;
+			case 4:
+				button(L"CloseButton");
+				break;
+			case 5:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(kind) == mixedRevision &&
+				          v.m_formsDirty == (kind > 0),
+				      "mixed Cancel changed the document");
+				open(positions[kind]);
+				break;
+			case 7:
+				button(L"PrimaryButton");
+				check(v.m_noteBusy &&
+				          !v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          (kind == 0 ? input().as<TextBox>().IsReadOnly()
+				                     : !input().as<Control>().IsEnabled()),
+				      "mixed queued input stayed editable");
+				break;
+			case 8:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(kind + 1) > mixedRevision && v.m_formsDirty &&
+				          v.m_notesDirty,
+				      "mixed Apply lost an edit or dirty state");
+				break;
+			}
+		} else if (step == 45) {
+			notesPath = buttonFieldPath.parent_path() / "mixed copy.pdf";
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+		} else if (step == 46) {
+			check(notesSave.GetResults() && !v.m_formsDirty && !v.m_notesDirty,
+			      "mixed save did not clear the savepoint");
+			owner.openDocument(engine, notesPath, 1);
+		} else if (step < 57) {
+			check(v.m_path == notesPath, "mixed saved copy did not reopen");
+			if ((step - 47) % 2 == 0) {
+				if (v.m_noteDialog) {
+					return;
+				}
+				const auto revision = verify(5);
+				if (step == 47) {
+					mixedRevision = revision;
+				}
+				check(revision == mixedRevision && !v.m_formsDirty &&
+				          !v.m_notesDirty,
+				      "mixed reopened no-op dirtied the copy");
+				open(positions[kind]);
+			} else {
+				if (!v.m_noteDialog) {
+					return;
+				}
+				check(value() == (kind == 0  ? hstring(L"Edited caf\u00e9")
+				                  : kind < 3 ? hstring(L"on")
+				                             : to_hstring(kind == 3 ? 2 : 1)),
+				      "mixed reopened editor lost its saved value");
+				modal();
+				button(L"PrimaryButton");
+			}
+		} else {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(verify(5) == mixedRevision && !v.m_formsDirty &&
+			          !v.m_notesDirty,
+			      "mixed final no-op changed the saved copy");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto note = saved.document->textNote(0, 0);
+				          const auto outline = saved.document->outline();
+				          const auto link = saved.document->outlineLink(0);
+				          return note == u"Original" && outline &&
+				                 outline->entries.size() == 1 &&
+				                 outline->entries[0].title == "Fields" &&
+				                 link && link->destination &&
+				                 link->destination->page == 0;
+			          })
+			          .get(),
+			      "mixed saved note or bookmark changed");
+			std::ifstream original(buttonFieldPath, std::ios::binary);
+			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
+			          mixedFormPdf(),
+			      "mixed source changed");
+			std::fwprintf(
+			    stderr,
+			    L"PASS: mixed native fields, modal keys, no-op, "
+			    L"Cancel, Apply, save/reopen and source preservation; %ls\n",
+			    notesPath.c_str());
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void choiceFieldTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -6220,6 +6538,10 @@ struct TabsTest {
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
+			if (mixedFormOnly) {
+				mixedFormTick(*self);
+				return;
+			}
 			if (choiceOnly) {
 				choiceFieldTick(*self);
 				return;
@@ -6884,6 +7206,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->mixedFormOnly =
+	    GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->checkBoxOnly =
 	    GetEnvironmentVariableW(L"SableCheckBoxTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -7002,17 +7327,17 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->choiceOnly || state->checkBoxOnly || state->radioOnly ||
-	    state->settingsOnly || state->windowsOnly || state->filtersOnly ||
-	    state->linksOnly || state->printOnly || state->finishOnly ||
-	    state->editOnly || state->musicOnly || state->selectionOnly ||
-	    state->findOnly || state->outlineOnly || state->attachmentsOnly ||
-	    state->commentsOnly || state->attachmentSaveOnly ||
-	    state->annotationActionsOnly || state->rotationOnly ||
-	    state->propertiesOnly || state->panOnly || state->layoutOnly ||
-	    state->presentationOnly || state->saveCopyOnly || state->keyboardOnly ||
-	    state->keyboardInputOnly || state->gesturesOnly ||
-	    state->longGesturesOnly) {
+	if (state->mixedFormOnly || state->choiceOnly || state->checkBoxOnly ||
+	    state->radioOnly || state->settingsOnly || state->windowsOnly ||
+	    state->filtersOnly || state->linksOnly || state->printOnly ||
+	    state->finishOnly || state->editOnly || state->musicOnly ||
+	    state->selectionOnly || state->findOnly || state->outlineOnly ||
+	    state->attachmentsOnly || state->commentsOnly ||
+	    state->attachmentSaveOnly || state->annotationActionsOnly ||
+	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
+	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
+	    state->keyboardOnly || state->keyboardInputOnly ||
+	    state->gesturesOnly || state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -7066,13 +7391,18 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->choiceOnly || state->checkBoxOnly || state->radioOnly) {
+	if (state->mixedFormOnly || state->choiceOnly || state->checkBoxOnly ||
+	    state->radioOnly) {
 		state->buttonFieldPath = makeTempDir("button_ui") / "button.pdf";
 		{
 			std::ofstream source(state->buttonFieldPath, std::ios::binary);
-			source << (state->choiceOnly  ? choicePdf(!state->choiceList)
-			           : state->radioOnly ? radioPdf()
-			                              : checkBoxPdf());
+			source << (state->mixedFormOnly ? mixedFormPdf()
+			           : state->choiceOnly  ? choicePdf(!state->choiceList)
+			           : state->radioOnly   ? radioPdf()
+			                                : checkBoxPdf());
+		}
+		if (state->mixedFormOnly) {
+			window->openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 		}
 		window->openDocument(engine, state->buttonFieldPath, 1);
 	} else if (state->propertiesOnly) {

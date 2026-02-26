@@ -149,6 +149,17 @@ selection and Cancel passed. A text-field no-op and clean app close passed;
 all three source hashes stayed unchanged. The real save picker and
 mixed-field interoperability still need a pass.
 
+SableMixedFormTest=true with SableTabsTest=true runs all five supported
+field types in one document. It checks page hit testing, Apply, Cancel,
+no-op revisions and dirty state, then reopens the saved copy in a new tab
+and checks each native editor again. A second tab makes modal tab shortcuts
+observable; close, Find, zoom, rotate, Save and full-screen commands must
+leave the draft and reader alone. Buttons and checkbox/radio changes use
+automation peers; text and option drafts are set on the native controls.
+The check supplies its save destination. Actual keyboard/pointer delivery,
+the Windows picker and Acrobat appearances/interoperability need a desktop
+pass separately.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:
