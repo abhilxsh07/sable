@@ -213,3 +213,64 @@ inline std::string choicePdf(bool combo) {
 	return bytes + "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" +
 	       std::to_string(xref) + "\n%%EOF\n";
 }
+
+// i keep every supported field beside a note and a direct bookmark.
+inline std::string mixedFormPdf() {
+	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
+	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
+	                            "[<FEFF00630061006600E9> (Same)] "
+	                            "[<FEFF00630061006600E9> (Same)]] ";
+	const std::vector<std::string> objects{
+	    "<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R "
+	    "/AcroForm << /Fields [4 0 R 5 0 R 6 0 R 9 0 R 10 0 R] "
+	    "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
+	    "/DR << /Font << /Helv << /Type /Font /Subtype /Type1 "
+	    "/BaseFont /Helvetica >> >> >> >> >>",
+	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) /V (initial) "
+	    "/F 4 /Rect [40 700 190 720] /P 3 0 R >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Btn /T (box) /F 4 "
+	    "/V /Off /AS /Off /Rect [40 650 90 670] /P 3 0 R "
+	    "/AP << /N << /Approved#20now 12 0 R /Off 13 0 R >> >> >>",
+	    "<< /FT /Btn /Ff 49152 /T (radio) /V /First "
+	    "/Kids [7 0 R 8 0 R] >>",
+	    "<< /Type /Annot /Subtype /Widget /Parent 6 0 R /P 3 0 R "
+	    "/Rect [40 600 90 620] /F 4 /AS /First "
+	    "/AP << /N << /First 12 0 R /Off 13 0 R >> >> >>",
+	    "<< /Type /Annot /Subtype /Widget /Parent 6 0 R /P 3 0 R "
+	    "/Rect [40 550 90 570] /F 4 /AS /Off "
+	    "/AP << /N << /Next#20choice 12 0 R /Off 13 0 R >> >> >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (combo) /F 4 "
+	    "/Ff 131072 " +
+	        options + "/Rect [40 480 190 510] /P 3 0 R >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (list) /F 4 " + options +
+	        "/Rect [40 350 190 450] /P 3 0 R >>",
+	    "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
+	    "/Contents (Original) /P 3 0 R >>",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] /Length " +
+	        std::to_string(paint.size()) + " >>\nstream\n" + paint +
+	        "\nendstream",
+	    "<< /Type /XObject /Subtype /Form /BBox [0 0 50 20] "
+	    "/Length 0 >>\nstream\nendstream",
+	    "<< /Type /Outlines /First 15 0 R /Last 15 0 R /Count 1 >>",
+	    "<< /Title (Fields) /Parent 14 0 R /Dest [3 0 R /Fit] >>"};
+	std::string bytes = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& object : objects) {
+		offsets.push_back(bytes.size());
+		bytes +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + object + "\nendobj\n";
+	}
+	const auto xref = bytes.size();
+	bytes += "xref\n0 " + std::to_string(objects.size() + 1) +
+	         "\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		bytes += line;
+	}
+	return bytes + "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
+	       " /Root 1 0 R >>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+}

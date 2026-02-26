@@ -1932,6 +1932,203 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 	}
 }
 
+TEST_F(SessionTest, MixedFormWritesPreserveEachOtherThroughSaveAndReopen) {
+	for (const bool reverse : {false, true}) {
+		SCOPED_TRACE(reverse);
+		pdf::Session session(engine);
+		const auto bytes = mixedFormPdf();
+		const auto original =
+		    std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+		const auto source = writeTemp("mixed fields.pdf", bytes);
+		ASSERT_TRUE(open(session, source).canFillForms);
+		bool changed[5] = {};
+		const auto checkFields = [&](const pdf::FormFields& fields) {
+			EXPECT_FALSE(fields.limited);
+			EXPECT_EQ(fields.page, 0);
+			ASSERT_EQ(fields.entries.size(), 6u);
+			const auto& entries = fields.entries;
+			for (int i = 0; i < 6; ++i) {
+				EXPECT_EQ(entries[i].index, i + 1);
+			}
+			EXPECT_EQ(entries[0].type, pdf::FormFieldType::Text);
+			EXPECT_EQ(entries[0].name, "text");
+			EXPECT_EQ(entries[0].value,
+			          changed[0] ? "Edited caf\u00e9" : "initial");
+			EXPECT_EQ(entries[1].type, pdf::FormFieldType::CheckBox);
+			EXPECT_EQ(entries[1].name, "box");
+			EXPECT_EQ(entries[1].value, changed[1] ? "Approved now" : "Off");
+			EXPECT_EQ(entries[1].checked, changed[1]);
+			for (int i = 0; i < 2; ++i) {
+				const auto& member = entries[i + 2];
+				EXPECT_EQ(member.type, pdf::FormFieldType::RadioButton);
+				EXPECT_EQ(member.name, "radio");
+				EXPECT_EQ(member.value, changed[2] ? "Next choice" : "First");
+				EXPECT_EQ(member.checked, changed[2] == (i == 1));
+				ASSERT_TRUE(member.control);
+				EXPECT_EQ(member.control->index, i);
+				EXPECT_EQ(member.control->count, 2);
+				EXPECT_EQ(member.control->exportValue,
+				          i == 0 ? "First" : "Next choice");
+			}
+			for (int i = 3; i < 5; ++i) {
+				const auto& field = entries[i + 1];
+				EXPECT_EQ(field.type, i == 3 ? pdf::FormFieldType::ComboBox
+				                             : pdf::FormFieldType::ListBox);
+				EXPECT_EQ(field.name, i == 3 ? "combo" : "list");
+				EXPECT_EQ(field.value, changed[i] ? "caf\u00e9" : "old");
+				ASSERT_TRUE(field.options);
+				ASSERT_EQ(field.options->size(), 3u);
+				for (int option = 0; option < 3; ++option) {
+					const auto& item = (*field.options)[option];
+					EXPECT_EQ(item.index, option);
+					EXPECT_EQ(item.label, option == 0 ? "First" : "Same");
+					EXPECT_EQ(item.selected,
+					          option == (changed[i] ? (i == 3 ? 2 : 1) : 0));
+				}
+			}
+		};
+		const auto checkExtras = [&](pdf::Session& current,
+		                             const std::u16string& expected) {
+			Reply<pdf::TextNoteResult> note;
+			ASSERT_TRUE(current.textNote(0, 0, note.callback()));
+			const auto contents = note.wait();
+			ASSERT_TRUE(contents);
+			EXPECT_FALSE(contents->canceled);
+			EXPECT_EQ(contents->contents, expected);
+			Reply<pdf::OutlineResult> outline;
+			ASSERT_TRUE(current.outline(outline.callback()));
+			const auto found = outline.wait();
+			ASSERT_TRUE(found && found->outline);
+			EXPECT_FALSE(found->canceled || found->outline->limited);
+			ASSERT_EQ(found->outline->entries.size(), 1u);
+			EXPECT_EQ(found->outline->entries[0].title, "Fields");
+			EXPECT_TRUE(found->outline->entries[0].canFollow);
+			Reply<pdf::LinkResult> link;
+			ASSERT_TRUE(current.outlineLink(0, link.callback()));
+			const auto target = link.wait();
+			ASSERT_TRUE(target && target->link && target->link->destination);
+			EXPECT_FALSE(target->canceled);
+			EXPECT_EQ(target->link->destination->page, 0);
+			EXPECT_EQ(target->link->destination->fit, pdf::LinkFit::Page);
+		};
+		const auto write =
+		    [&](int kind, const pdf::FormFields& snapshot, bool initial,
+		        std::function<void(pdf::FormWriteResult)> callback) {
+			    if (snapshot.entries.size() != 6 ||
+			        !snapshot.entries[3].control) {
+				    return false;
+			    }
+			    const int position = kind < 2 ? kind : kind + 1;
+			    const auto& field = snapshot.entries[position];
+			    switch (kind) {
+			    case 0:
+				    return session.updateTextField(
+				        0, field.index,
+				        initial ? u"initial" : u"Edited caf\u00e9",
+				        u"Edited caf\u00e9", snapshot.revision,
+				        std::move(callback));
+			    case 1:
+				    return session.updateCheckBox(
+				        0, field.index, initial ? u"Off" : u"Approved now",
+				        true, snapshot.revision, std::move(callback));
+			    case 2:
+				    return session.updateRadioButton(
+				        0, field.index, initial ? u"First" : u"Next choice",
+				        *field.control, snapshot.revision, std::move(callback));
+			    default:
+				    return session.updateChoiceField(
+				        0, field, kind == 3 ? 2 : 1, snapshot.revision,
+				        std::move(callback));
+			    }
+		    };
+		auto snapshot = readForms(session);
+		ASSERT_TRUE(snapshot);
+		checkFields(*snapshot);
+		checkExtras(session, u"Original");
+		Reply<pdf::NoteResult> note;
+		ASSERT_TRUE(session.updateTextNote(0, 0, u"Original", u"Before fields",
+		                                   note.callback()));
+		const auto noted = note.wait();
+		ASSERT_TRUE(noted && noted->changed && noted->index == 0);
+		EXPECT_FALSE(noted->canceled);
+		snapshot = readForms(session);
+		ASSERT_TRUE(snapshot);
+		for (int step = 0; step < 5; ++step) {
+			const int kind = reverse ? 4 - step : step;
+			SCOPED_TRACE(kind);
+			ASSERT_EQ(snapshot->entries.size(), 6u);
+			ASSERT_TRUE(snapshot->entries[3].control);
+			Reply<pdf::FormWriteResult> edit, stale;
+			{
+				Gate gate(engine);
+				ASSERT_TRUE(write(kind, *snapshot, true, edit.callback()));
+				if (step == 0) {
+					ASSERT_TRUE(write(reverse ? 0 : 4, *snapshot, true,
+					                  stale.callback()));
+				}
+			}
+			const auto done = edit.wait();
+			ASSERT_TRUE(done && done->accepted && done->changed);
+			EXPECT_FALSE(done->canceled);
+			EXPECT_GT(done->revision, snapshot->revision);
+			if (step == 0) {
+				const auto refused = stale.wait();
+				ASSERT_TRUE(refused);
+				EXPECT_FALSE(refused->accepted || refused->changed ||
+				             refused->canceled);
+			}
+			changed[kind] = true;
+			const auto fresh = readForms(session);
+			ASSERT_TRUE(fresh);
+			EXPECT_NE(fresh, snapshot);
+			EXPECT_EQ(fresh->revision, done->revision);
+			checkFields(*fresh);
+			snapshot = fresh;
+			if (step == 1) {
+				Reply<pdf::NoteResult> interleaved;
+				ASSERT_TRUE(session.updateTextNote(0, 0, u"Before fields",
+				                                   u"Between fields",
+				                                   interleaved.callback()));
+				const auto updated = interleaved.wait();
+				ASSERT_TRUE(updated && updated->changed && updated->index == 0);
+				EXPECT_FALSE(updated->canceled);
+				snapshot = readForms(session);
+				ASSERT_TRUE(snapshot);
+				checkFields(*snapshot);
+			}
+			checkExtras(session,
+			            step == 0 ? u"Before fields" : u"Between fields");
+			EXPECT_EQ(readFile(source), original);
+		}
+		for (int kind = 0; kind < 5; ++kind) {
+			SCOPED_TRACE(kind);
+			Reply<pdf::FormWriteResult> noOp;
+			ASSERT_TRUE(write(kind, *snapshot, false, noOp.callback()));
+			const auto same = noOp.wait();
+			ASSERT_TRUE(same && same->accepted);
+			EXPECT_FALSE(same->changed || same->canceled);
+			EXPECT_EQ(same->revision, snapshot->revision);
+			snapshot = readForms(session);
+			ASSERT_TRUE(snapshot);
+			checkFields(*snapshot);
+		}
+		const auto destination = source.parent_path() / "mixed copy.pdf";
+		Reply<pdf::SaveResult> saved;
+		ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+		                              saved.callback()));
+		ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+		session.close();
+		pdf::Session reopened(engine);
+		ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+		const auto fields = readForms(reopened);
+		ASSERT_TRUE(fields);
+		checkFields(*fields);
+		checkExtras(reopened, u"Between fields");
+		EXPECT_EQ(readFile(source), original);
+		EXPECT_NE(readFile(destination), original);
+	}
+}
+
 TEST_F(SessionTest, ChoiceRepliesCanReadThenQueueAnotherSelectionAndThrow) {
 	pdf::Session session(engine);
 	ASSERT_EQ(open(session, writeTemp("reentrant choice.pdf",
