@@ -2151,3 +2151,17 @@ each option its own ComboBoxItem or ListBoxItem, keeping duplicate labels
 unchanged while separating their native identities. The native checks also
 open and close the real combo popup across dispatcher turns.
 // see: https://github.com/microsoft/microsoft-ui-xaml/issues/11226
+
+## Plain multiline form transactions (2026-10-29)
+
+I allow the Multiline flag on plain terminal text fields through the same
+isolated transaction. Permissions, signatures, actions, inherited/shared
+fields, protected widgets and other specialized text flags keep their
+earlier restrictions. The page editor follows as a separate step.
+
+Expected values stay exact snapshots. An unchanged raw value keeps its
+original line endings; changed replacements use the pinned editor's CRLF
+paragraphs. CR, LF and CRLF inputs each describe one break. The normalized
+value still has to fit the snapshot limit and survive focus commit and
+save/reopen unchanged. MaxLen truncation refuses the isolated copy rather
+than accepting partial text. Tabs keep the earlier full-value check too.

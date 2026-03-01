@@ -734,10 +734,8 @@ std::optional<bool> Document::updateFormField(
 	      control->index >= control->count || !checked || !*checked)) ||
 	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
 	    !canFillForms() || !validNoteText(expected) ||
-	    !validNoteText(contents) ||
-	    contents.find_first_of(u"\r\n") != std::u16string_view::npos ||
-	    stopped() || FPDF_GetSignatureCount(m_handle) != 0 ||
-	    !canSerializeEdits(canceled)) {
+	    !validNoteText(contents) || stopped() ||
+	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
 		return {};
 	}
 	constexpr std::size_t limit = 128 * 1024 * 1024;
@@ -852,12 +850,20 @@ std::optional<bool> Document::updateFormField(
 		        static_cast<int>(type) ||
 		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) !=
 		        (control ? control->count : 1) ||
-		    (!control && FPDFAnnot_HasKey(field.get(), "Parent")) ||
-		    (FPDFAnnot_GetFormFieldFlags(context.handle, field.get()) &
-		     ~(plainFlags | (control ? radioFlags
-		                     : choice && type == FormFieldType::ComboBox
-		                         ? FPDF_FORMFLAG_CHOICE_COMBO
-		                         : 0)))) {
+		    (!control && FPDFAnnot_HasKey(field.get(), "Parent"))) {
+			return {};
+		}
+		const int flags =
+		    FPDFAnnot_GetFormFieldFlags(context.handle, field.get());
+		const bool multiline = type == FormFieldType::Text &&
+		                       (flags & FPDF_FORMFLAG_TEXT_MULTILINE);
+		if ((flags & ~(plainFlags | (control ? radioFlags
+		                             : choice && type == FormFieldType::ComboBox
+		                                 ? FPDF_FORMFLAG_CHOICE_COMBO
+		                             : multiline ? FPDF_FORMFLAG_TEXT_MULTILINE
+		                                         : 0))) ||
+		    (!multiline &&
+		     contents.find_first_of(u"\r\n") != std::u16string_view::npos)) {
 			return {};
 		}
 		const auto read = [&](FPDF_ANNOTATION annotation,
@@ -1036,6 +1042,29 @@ std::optional<bool> Document::updateFormField(
 				return {};
 			}
 			replacement = exports[control->index];
+		}
+		if (multiline && *previous != replacement) {
+			// i keep raw no-ops, but match the editor's CRLF paragraphs.
+			// see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/pwl/cpwl_edit_impl.cpp
+			std::u16string normalized;
+			normalized.reserve(replacement.size());
+			for (std::size_t i = 0; i < replacement.size(); ++i) {
+				const auto unit = replacement[i];
+				if (unit == u'\r' || unit == u'\n') {
+					normalized += u"\r\n";
+					if (unit == u'\r' && i + 1 < replacement.size() &&
+					    replacement[i + 1] == u'\n') {
+						++i;
+					}
+				} else {
+					normalized += unit;
+				}
+			}
+			if (!validNoteText(normalized)) {
+				return {};
+			}
+			replacement = std::move(normalized);
 		}
 		if (choice ? (*choice->options)[choiceIndex].selected
 		           : *previous == replacement) {
