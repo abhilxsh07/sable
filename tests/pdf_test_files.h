@@ -215,17 +215,20 @@ inline std::string choicePdf(bool combo) {
 }
 
 // i keep every supported field beside a note and a direct bookmark.
-inline std::string mixedFormPdf() {
+inline std::string mixedFormPdf(bool explicitFont = true) {
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
 	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
 	                            "[<FEFF00630061006600E9> (Same)] "
 	                            "[<FEFF00630061006600E9> (Same)]] ";
-	const std::vector<std::string> objects{
+	std::vector<std::string> objects{
 	    "<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R "
 	    "/AcroForm << /Fields [4 0 R 5 0 R 6 0 R 9 0 R 10 0 R] "
 	    "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
-	    "/DR << /Font << /Helv << /Type /Font /Subtype /Type1 "
-	    "/BaseFont /Helvetica >> >> >> >> >>",
+	    "/DR << /Font << /Helv " +
+	        std::string(explicitFont ? "16 0 R"
+	                                 : "<< /Type /Font /Subtype /Type1 "
+	                                   "/BaseFont /Helvetica >>") +
+	        " >> >> >> >>",
 	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
 	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
@@ -256,6 +259,11 @@ inline std::string mixedFormPdf() {
 	    "/Length 0 >>\nstream\nendstream",
 	    "<< /Type /Outlines /First 15 0 R /Last 15 0 R /Count 1 >>",
 	    "<< /Title (Fields) /Parent 14 0 R /Dest [3 0 R /Fit] >>"};
+	if (explicitFont) {
+		// i make the Latin encoding explicit for the saved appearances.
+		objects.push_back("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+		                  "/Encoding /WinAnsiEncoding >>");
+	}
 	std::string bytes = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	for (const auto& object : objects) {

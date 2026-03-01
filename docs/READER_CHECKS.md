@@ -173,6 +173,15 @@ copy and the unedited fixture. I haven't established whether the fixture's
 font resources or this machine account for that behavior. Check persisted
 appearances with explicit font resources before calling interoperability done.
 
+The same-day follow-up uses an indirect Helvetica font with explicit
+WinAnsiEncoding in the mixed fixture. Its saved accented text and list
+selection stay visible in Acrobat without field focus. The old direct-font
+fixture remains a comparison case. A regression reads saved AP font objects
+before form setup/rendering and checks later choice edits keep them intact.
+This corrects the synthetic fixture; the writer guards are unchanged.
+Font Capture still reports an application error with the corrected file,
+so that machine/application issue remains separate from the visible fields.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:

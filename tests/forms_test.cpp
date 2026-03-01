@@ -21,7 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fpdf_annot.h>
 #include <fpdfview.h>
 #include <fpdf_signature.h>
+#include <fpdf_edit.h>
 #include <cstdio>
+#include <fstream>
 #include <climits>
 #include <algorithm>
 #include <array>
@@ -44,6 +46,28 @@ struct DocumentFormTest {
 		FPDFPage_CloseAnnot(annotation);
 		FPDF_ClosePage(page);
 		return result;
+	}
+	static std::vector<std::string> appearanceFonts(const Document& document,
+	                                                int index) {
+		std::vector<std::string> fonts;
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto annotation = FPDFPage_GetAnnot(page, index);
+		for (int i = 0; i < FPDFAnnot_GetObjectCount(annotation); ++i) {
+			const auto object = FPDFAnnot_GetObject(annotation, i);
+			if (FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_TEXT) {
+				continue;
+			}
+			const auto font = FPDFTextObj_GetFont(object);
+			char name[256]{};
+			const auto size =
+			    FPDFFont_GetBaseFontName(font, name, sizeof(name));
+			if (size > 1 && size <= sizeof(name) && name[size - 1] == 0) {
+				fonts.emplace_back(name, size - 1);
+			}
+		}
+		FPDFPage_CloseAnnot(annotation);
+		FPDF_ClosePage(page);
+		return fonts;
 	}
 };
 } // namespace pdf
@@ -986,6 +1010,96 @@ TEST(FormFields, SingleChoicesRoundTripValuesPositionsNotesAndBookmarks) {
 			    EXPECT_EQ(old->entries[0].value, "old");
 			    ASSERT_TRUE(old->entries[0].options);
 			    EXPECT_TRUE(old->entries[0].options->front().selected);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, MixedFormsKeepPersistedTextAndChoiceFonts) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    wchar_t directory[1024]{};
+		    const auto length = GetEnvironmentVariableW(
+		        L"SableFormAppearanceEvidence", directory, 1024);
+		    ASSERT_LT(length, 1024u);
+		    for (const bool explicitFont : {false, true}) {
+			    for (const bool accent : {false, true}) {
+				    SCOPED_TRACE(explicitFont);
+				    SCOPED_TRACE(accent);
+				    const auto source = mixedFormPdf(explicitFont);
+				    const auto opened =
+				        pdf::openDocument(std::vector<std::uint8_t>(
+				            source.begin(), source.end()));
+				    ASSERT_TRUE(opened.document);
+				    auto& document = *opened.document;
+				    const auto value =
+				        accent ? u"Desktop caf\u00e9" : u"Desktop text";
+				    ASSERT_EQ(
+				        document.updateTextField(0, 1, u"initial", value,
+				                                 document.annotationRevision()),
+				        true);
+				    std::vector<std::string> firstFonts;
+				    for (const bool mixed : {false, true}) {
+					    SCOPED_TRACE(mixed);
+					    if (mixed) {
+						    for (const int position : {4, 5}) {
+							    const auto fields = document.formFields(0);
+							    ASSERT_TRUE(fields &&
+							                fields->entries.size() == 6);
+							    ASSERT_EQ(document.updateChoiceField(
+							                  0, fields->entries[position], 2,
+							                  fields->revision),
+							              true);
+						    }
+					    }
+					    const auto bytes =
+					        document.serializeForCopy(1024 * 1024);
+					    ASSERT_TRUE(bytes);
+					    const auto reopened = pdf::openDocument(*bytes);
+					    ASSERT_TRUE(reopened.document);
+					    // i read the saved AP objects before form setup or
+					    // drawing.
+					    const auto fonts =
+					        pdf::DocumentFormTest::appearanceFonts(
+					            *reopened.document, 1);
+					    EXPECT_FALSE(fonts.empty());
+					    if (explicitFont) {
+						    for (const auto& font : fonts) {
+							    EXPECT_EQ(font, "Helvetica");
+						    }
+					    }
+					    if (!mixed) {
+						    firstFonts = fonts;
+					    } else {
+						    EXPECT_EQ(fonts, firstFonts);
+						    for (const int index : {5, 6}) {
+							    const auto choiceFonts =
+							        pdf::DocumentFormTest::appearanceFonts(
+							            *reopened.document, index);
+							    EXPECT_FALSE(choiceFonts.empty());
+							    for (const auto& font : choiceFonts) {
+								    EXPECT_EQ(font, "Helvetica");
+							    }
+						    }
+					    }
+					    if (length) {
+						    const auto name =
+						        std::string(explicitFont ? "explicit-"
+						                                 : "legacy-") +
+						        (accent ? "accent-" : "ascii-") +
+						        (mixed ? "mixed.pdf" : "text.pdf");
+						    std::ofstream out(std::filesystem::path(directory) /
+						                          name,
+						                      std::ios::binary);
+						    out.write(
+						        reinterpret_cast<const char*>(bytes->data()),
+						        static_cast<std::streamsize>(bytes->size()));
+						    out.close();
+						    ASSERT_TRUE(out);
+					    }
+				    }
+			    }
 		    }
 	    })
 	    .get();
