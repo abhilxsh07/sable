@@ -160,6 +160,15 @@ The check supplies its save destination. Actual keyboard/pointer delivery,
 the Windows picker and Acrobat appearances/interoperability need a desktop
 pass separately.
 
+SableMultilineTest=true with SableTabsTest=true uses the same mixed-field
+check with a taller multiline field and a length limit. It checks wrapping,
+initial raw LF no-ops, Unicode and blank paragraphs, retained overlong
+drafts, Cancel, modal commands and save/reopen with all five field types.
+The native text draft is assigned directly. In a desktop pass, press Enter
+to insert paragraphs, include an empty line, and check that Enter leaves
+the dialog open. Apply and save a copy, reopen it, and compare unfocused
+paragraph appearances in another reader.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.

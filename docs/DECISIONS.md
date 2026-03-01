@@ -2165,3 +2165,12 @@ paragraphs. CR, LF and CRLF inputs each describe one break. The normalized
 value still has to fit the snapshot limit and survive focus commit and
 save/reopen unchanged. MaxLen truncation refuses the isolated copy rather
 than accepting partial text. Tabs keep the earlier full-value check too.
+
+## Native multiline field editor (2026-10-29)
+
+I open plain multiline text fields in the existing field dialog with return
+input, wrapping and a bounded height. Other text flags keep their earlier
+restrictions. Apply still compares the opened control value with its initial
+value, so an unchanged editor sends the exact PDF snapshot even if WinUI
+normalizes its line endings. The same queued transaction handles changed
+paragraphs, refusals and savepoints.

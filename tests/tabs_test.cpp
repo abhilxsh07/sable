@@ -112,6 +112,8 @@ struct TabsTest {
 	bool radioOnly = false;
 	bool choiceOnly = false, choiceList = false;
 	bool mixedFormOnly = false;
+	bool multilineOnly = false;
+	int multilineStage = 0;
 	std::uint64_t mixedRevision = 0;
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
@@ -3101,6 +3103,22 @@ struct TabsTest {
 		using namespace Microsoft::UI::Xaml::Automation;
 		const int kind = step < 45 ? step / 9 : (step - 47) / 2;
 		const int positions[] = {0, 1, 3, 4, 5};
+		const hstring textDraft =
+		    multilineOnly ? L"Edited caf\u00e9\n\nthird" : L"Edited caf\u00e9";
+		const auto paragraphs = [](std::wstring_view value) {
+			std::wstring result;
+			for (std::size_t i = 0; i < value.size(); ++i) {
+				if (value[i] == L'\r') {
+					result += L'\n';
+					if (i + 1 < value.size() && value[i + 1] == L'\n') {
+						++i;
+					}
+				} else {
+					result += value[i];
+				}
+			}
+			return result;
+		};
 		const auto read = [&] {
 			const auto reply =
 			    std::make_shared<std::promise<pdf::FormFieldsResult>>();
@@ -3123,13 +3141,17 @@ struct TabsTest {
 		const auto verify = [&](int completed) {
 			const auto fields = read();
 			const auto& e = fields->entries;
-			check(e[0].name == "text" &&
-			          e[0].value ==
-			              (completed > 0 ? "Edited caf\u00e9" : "initial") &&
-			          e[1].name == "box" &&
-			          e[1].value == (completed > 1 ? "Approved now" : "Off") &&
-			          e[1].checked == (completed > 1),
-			      "mixed text or checkbox value changed");
+			check(
+			    e[0].name == "text" &&
+			        e[0].value ==
+			            (completed > 0
+			                 ? (multilineOnly ? "Edited caf\u00e9\r\n\r\nthird"
+			                                  : "Edited caf\u00e9")
+			                 : (multilineOnly ? "first\nsecond" : "initial")) &&
+			        e[1].name == "box" &&
+			        e[1].value == (completed > 1 ? "Approved now" : "Off") &&
+			        e[1].checked == (completed > 1),
+			    "mixed text or checkbox value changed");
 			for (int i = 0; i < 2; ++i) {
 				const auto& member = e[i + 2];
 				check(member.name == "radio" &&
@@ -3183,7 +3205,8 @@ struct TabsTest {
 		const auto value = [&]() -> hstring {
 			const auto control = input();
 			if (kind == 0) {
-				return control.as<TextBox>().Text();
+				const auto text = control.as<TextBox>().Text();
+				return multilineOnly ? hstring(paragraphs(text)) : text;
 			}
 			if (kind < 3) {
 				return unbox_value_or<bool>(
@@ -3198,7 +3221,7 @@ struct TabsTest {
 		const auto draft = [&] {
 			const auto control = input();
 			if (kind == 0) {
-				control.as<TextBox>().Text(L"Edited caf\u00e9");
+				control.as<TextBox>().Text(textDraft);
 			} else if (kind < 3) {
 				const auto peer =
 				    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
@@ -3267,6 +3290,59 @@ struct TabsTest {
 			          !owner.m_notesSaving,
 			      "mixed modal keys changed the draft or reader");
 		};
+		if (multilineOnly && multilineStage < 4) {
+			switch (multilineStage) {
+			case 0:
+				mixedRevision = verify(0);
+				open(0);
+				break;
+			case 1: {
+				if (!v.m_noteDialog) {
+					return;
+				}
+				const auto text = input().as<TextBox>();
+				check(text.AcceptsReturn() &&
+				          text.TextWrapping() == TextWrapping::Wrap &&
+				          text.MinHeight() >= 100 && text.MaxHeight() <= 180 &&
+				          value() == L"first\nsecond",
+				      "multiline native editor lost paragraphs or wrapping");
+				text.Text(hstring(std::wstring(40, L'x') + L"\nlast"));
+				modal();
+				button(L"PrimaryButton");
+				break;
+			}
+			case 2: {
+				const auto text = input().as<TextBox>();
+				const auto error = v.m_noteDialog.Content()
+				                       .as<StackPanel>()
+				                       .Children()
+				                       .GetAt(2)
+				                       .as<TextBlock>();
+				check(!text.IsReadOnly() &&
+				          v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          !error.Text().empty() &&
+				          value() ==
+				              hstring(std::wstring(40, L'x') + L"\nlast") &&
+				          verify(0) == mixedRevision && !v.m_formsDirty &&
+				          !v.m_notesDirty,
+				      "multiline refusal lost the draft or changed live state");
+				draft();
+				modal();
+				button(L"CloseButton");
+				break;
+			}
+			case 3:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(0) == mixedRevision && !v.m_formsDirty,
+				      "multiline canceled retry changed the document");
+				break;
+			}
+			++multilineStage;
+			ticks = 0;
+			return;
+		}
 		if (step < 45) {
 			switch (step % 9) {
 			case 0:
@@ -3355,7 +3431,7 @@ struct TabsTest {
 				if (!v.m_noteDialog) {
 					return;
 				}
-				check(value() == (kind == 0  ? hstring(L"Edited caf\u00e9")
+				check(value() == (kind == 0  ? textDraft
 				                  : kind < 3 ? hstring(L"on")
 				                             : to_hstring(kind == 3 ? 2 : 1)),
 				      "mixed reopened editor lost its saved value");
@@ -3388,13 +3464,19 @@ struct TabsTest {
 			      "mixed saved note or bookmark changed");
 			std::ifstream original(buttonFieldPath, std::ios::binary);
 			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
-			          mixedFormPdf(),
+			          mixedFormPdf(true, multilineOnly),
 			      "mixed source changed");
 			std::fwprintf(
 			    stderr,
 			    L"PASS: mixed native fields, modal keys, no-op, "
 			    L"Cancel, Apply, save/reopen and source preservation; %ls\n",
 			    notesPath.c_str());
+			if (multilineOnly) {
+				std::fwprintf(
+				    stderr,
+				    L"PASS: multiline paragraphs, blank lines, "
+				    L"Unicode, raw no-op and retained MaxLen refusal\n");
+			}
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
@@ -7206,9 +7288,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
-	state->mixedFormOnly =
-	    GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
+	state->multilineOnly =
+	    GetEnvironmentVariableW(L"SableMultilineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->mixedFormOnly =
+	    state->multilineOnly ||
+	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
+	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
 	    GetEnvironmentVariableW(L"SableCheckBoxTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -7396,10 +7482,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		state->buttonFieldPath = makeTempDir("button_ui") / "button.pdf";
 		{
 			std::ofstream source(state->buttonFieldPath, std::ios::binary);
-			source << (state->mixedFormOnly ? mixedFormPdf()
-			           : state->choiceOnly  ? choicePdf(!state->choiceList)
-			           : state->radioOnly   ? radioPdf()
-			                                : checkBoxPdf());
+			source << (state->mixedFormOnly
+			               ? mixedFormPdf(true, state->multilineOnly)
+			           : state->choiceOnly ? choicePdf(!state->choiceList)
+			           : state->radioOnly  ? radioPdf()
+			                               : checkBoxPdf());
 		}
 		if (state->mixedFormOnly) {
 			window->openDocument(engine, L"tests/fixtures/pages.pdf", 1);

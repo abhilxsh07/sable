@@ -133,6 +133,9 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					            found->control.has_value();
 					        const bool selection =
 					            found != fields.rend() && singleChoice(*found);
+					        const bool text =
+					            found != fields.rend() &&
+					            found->type == pdf::FormFieldType::Text;
 					        constexpr int locked =
 					            FPDF_ANNOT_FLAG_READONLY |
 					            FPDF_ANNOT_FLAG_LOCKED |
@@ -153,7 +156,8 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					                         found->type ==
 					                             pdf::FormFieldType::ComboBox
 					                     ? FPDF_FORMFLAG_CHOICE_COMBO
-					                     : 0))) &&
+					                 : text ? FPDF_FORMFLAG_TEXT_MULTILINE
+					                        : 0))) &&
 					            !(found->annotationFlags & locked)) {
 						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,
@@ -229,6 +233,13 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		contents.Header(box_value(L"Value"));
 		contents.MinWidth(320);
 		contents.MaxLength(32767);
+		if (field.type == pdf::FormFieldType::Text &&
+		    (field.flags & FPDF_FORMFLAG_TEXT_MULTILINE)) {
+			contents.AcceptsReturn(true);
+			contents.TextWrapping(TextWrapping::Wrap);
+			contents.MinHeight(100);
+			contents.MaxHeight(180);
+		}
 		const auto raw = to_hstring(field.value);
 		contents.Text(raw);
 		Automation::AutomationProperties::SetName(contents, L"Field value");
