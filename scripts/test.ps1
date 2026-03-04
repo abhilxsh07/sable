@@ -36,7 +36,11 @@ Push-Location $root
 try {
 	foreach ($t in $tests) {
 		& $t.FullName --gtest_brief=1
-		if ($LASTEXITCODE -ne 0) { $failed++ }
+		$testExit = $LASTEXITCODE
+		if ($testExit -ne 0) {
+			Write-Output "test: $($t.Name) exited with code $testExit"
+			$failed++
+		}
 	}
 } finally {
 	Pop-Location
