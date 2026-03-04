@@ -169,6 +169,16 @@ to insert paragraphs, include an empty line, and check that Enter leaves
 the dialog open. Apply and save a copy, reopen it, and compare unfocused
 paragraph appearances in another reader.
 
+The 29 Oct desktop pass inserted two real Enter presses between accented
+text and a third line. Enter left the editor open, and Ctrl+Tab/Ctrl+W kept
+the draft. Apply displayed the empty paragraph on the page. The Windows
+picker canceled once, then saved to a path with spaces. A fresh Sable
+session restored the paragraphs; unchanged Apply closed without a save
+prompt. Original bytes stayed unchanged. Acrobat displayed the accented
+text and empty paragraph without field focus, beside the original note.
+Its recurring Font Capture application error also appeared on this copy;
+the cause remains unconfirmed.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.
