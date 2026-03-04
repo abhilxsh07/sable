@@ -2174,3 +2174,16 @@ restrictions. Apply still compares the opened control value with its initial
 value, so an unchanged editor sends the exact PDF snapshot even if WinUI
 normalizes its line endings. The same queued transaction handles changed
 paragraphs, refusals and savepoints.
+
+## Plain comb text transactions (2026-10-29)
+
+I allow the Comb flag on terminal text fields with one control and a numeric
+MaxLen reported as an integral cell count from 1 to 32767. Missing, invalid
+or unbounded counts refuse before no-op handling. Multiline, password,
+file-select, rich text, other specialized flags, inheritance and shared
+controls retain their earlier restrictions.
+
+The isolated focus-commit transaction still requires the complete requested
+value before and after save/reopen. It refuses truncation and transformed
+text rather than committing a partial code. Unicode values are checked as
+stored text; native input and saved cell appearances follow separately.

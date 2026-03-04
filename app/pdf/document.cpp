@@ -857,14 +857,30 @@ std::optional<bool> Document::updateFormField(
 		    FPDFAnnot_GetFormFieldFlags(context.handle, field.get());
 		const bool multiline = type == FormFieldType::Text &&
 		                       (flags & FPDF_FORMFLAG_TEXT_MULTILINE);
+		// the public header has no Comb constant. see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+		constexpr int combFlag = 1 << 24;
+		const bool comb = type == FormFieldType::Text && (flags & combFlag);
 		if ((flags & ~(plainFlags | (control ? radioFlags
 		                             : choice && type == FormFieldType::ComboBox
 		                                 ? FPDF_FORMFLAG_CHOICE_COMBO
 		                             : multiline ? FPDF_FORMFLAG_TEXT_MULTILINE
+		                             : comb      ? combFlag
 		                                         : 0))) ||
 		    (!multiline &&
 		     contents.find_first_of(u"\r\n") != std::u16string_view::npos)) {
 			return {};
+		}
+		if (comb) {
+			// i require a bounded cell count before opening the comb editor.
+			// see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp
+			float cells = 0;
+			if (!FPDFAnnot_GetNumberValue(field.get(), "MaxLen", &cells) ||
+			    !std::isfinite(cells) || cells < 1 || cells > 32767 ||
+			    std::floor(cells) != cells) {
+				return {};
+			}
 		}
 		const auto read = [&](FPDF_ANNOTATION annotation,
 		                      auto getter) -> std::optional<std::u16string> {
