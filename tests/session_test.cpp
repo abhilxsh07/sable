@@ -1390,6 +1390,144 @@ TEST_F(SessionTest, FormWritesOwnQueueOrderRefreshSnapshotsAndSave) {
 	EXPECT_EQ(fields->entries[0].value, "changed");
 }
 
+TEST_F(SessionTest, MultilineWritesOwnParagraphsAndKeepExactSnapshots) {
+	pdf::Session session(engine);
+	const auto bytes = mixedFormPdf(true, true);
+	const std::vector<std::uint8_t> original(bytes.begin(), bytes.end());
+	const auto source = writeTemp("multiline form.pdf", bytes);
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 6);
+	const int index = before->entries[0].index;
+	EXPECT_EQ(before->entries[0].value, "first\nsecond");
+	Reply<pdf::FormWriteResult> noOp;
+	ASSERT_TRUE(session.updateTextField(0, index, u"first\nsecond",
+	                                    u"first\nsecond", before->revision,
+	                                    noOp.callback()));
+	const auto same = noOp.wait();
+	ASSERT_TRUE(same && same->accepted);
+	EXPECT_FALSE(same->changed || same->canceled);
+	EXPECT_EQ(same->revision, before->revision);
+	const auto destination = source.parent_path() / "multiline copy.pdf";
+	Reply<pdf::SaveResult> unedited;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              unedited.callback()));
+	ASSERT_EQ(unedited.wait(), pdf::SaveResult::Saved);
+	pdf::Session unchanged(engine);
+	ASSERT_EQ(open(unchanged, destination).error, pdf::Error::None);
+	const auto raw = readForms(unchanged);
+	ASSERT_TRUE(raw && raw->entries.size() == 6);
+	EXPECT_EQ(raw->entries[0].value, "first\nsecond");
+	EXPECT_EQ(readFile(source), original);
+	Reply<pdf::FormWriteResult> first, stale;
+	Reply<pdf::FormFieldsResult> canceled;
+	std::u16string expected = u"first\nsecond";
+	std::u16string draft = u"Caf\u00e9\n\n\U0001F600";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextField(
+		    0, index, expected, draft, before->revision, first.callback()));
+		ASSERT_TRUE(session.updateTextField(
+		    0, index, u"Caf\u00e9\r\n\r\n\U0001F600", u"stale",
+		    before->revision, stale.callback()));
+		ASSERT_TRUE(session.formFields(0, canceled.callback()));
+		expected.assign(u"wrong");
+		draft.assign(u"caller changed this");
+		session.cancelForms();
+	}
+	const auto written = first.wait(), refused = stale.wait();
+	const auto stopped = canceled.wait();
+	ASSERT_TRUE(written && refused && stopped);
+	EXPECT_TRUE(written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	EXPECT_EQ(written->page, 0);
+	EXPECT_EQ(written->index, index);
+	EXPECT_GT(written->revision, before->revision);
+	EXPECT_FALSE(refused->accepted || refused->changed || refused->canceled);
+	EXPECT_TRUE(stopped->canceled);
+	EXPECT_FALSE(stopped->fields);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 6);
+	EXPECT_NE(after, before);
+	EXPECT_EQ(after->revision, written->revision);
+	EXPECT_EQ(after->entries[0].value, "Caf\u00e9\r\n\r\n\U0001F600");
+	EXPECT_EQ(before->entries[0].value, "first\nsecond");
+	for (std::size_t i = 1; i < after->entries.size(); ++i) {
+		EXPECT_EQ(after->entries[i].value, before->entries[i].value);
+	}
+	Reply<pdf::FormWriteResult> wrong, normalized;
+	ASSERT_TRUE(session.updateTextField(0, index, u"Caf\u00e9\n\n\U0001F600",
+	                                    u"ignored", after->revision,
+	                                    wrong.callback()));
+	ASSERT_TRUE(session.updateTextField(
+	    0, index, u"Caf\u00e9\r\n\r\n\U0001F600", u"Caf\u00e9\n\n\U0001F600",
+	    after->revision, normalized.callback()));
+	const auto rejected = wrong.wait(), equivalent = normalized.wait();
+	ASSERT_TRUE(rejected && equivalent);
+	EXPECT_FALSE(rejected->accepted || rejected->changed || rejected->canceled);
+	EXPECT_TRUE(equivalent->accepted);
+	EXPECT_FALSE(equivalent->changed || equivalent->canceled);
+	EXPECT_EQ(equivalent->revision, after->revision);
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto fields = readForms(reopened);
+	ASSERT_TRUE(fields && fields->entries.size() == 6);
+	for (std::size_t i = 0; i < fields->entries.size(); ++i) {
+		EXPECT_EQ(fields->entries[i].value, after->entries[i].value);
+	}
+	EXPECT_EQ(readFile(source), original);
+	EXPECT_NE(readFile(destination), original);
+}
+
+TEST_F(SessionTest, MultilineExpansionRefusesWithoutChangingSavedValues) {
+	pdf::Session session(engine);
+	const auto bytes = mixedFormPdf(true, true, 0);
+	const std::vector<std::uint8_t> original(bytes.begin(), bytes.end());
+	const auto source = writeTemp("unbounded multiline.pdf", bytes);
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 6);
+	const int index = before->entries[0].index;
+	Reply<pdf::FormWriteResult> oversized;
+	ASSERT_TRUE(session.updateTextField(
+	    0, index, u"first\nsecond", std::u16string(16384, u'\n'),
+	    before->revision, oversized.callback()));
+	const auto refused = oversized.wait();
+	ASSERT_TRUE(refused);
+	EXPECT_FALSE(refused->accepted || refused->changed || refused->canceled);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 6);
+	EXPECT_EQ(after->revision, before->revision);
+	EXPECT_EQ(after->entries[0].value, before->entries[0].value);
+	const auto destination = source.parent_path() / "unchanged.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	EXPECT_EQ(readFile(source), original);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto kept = readForms(reopened);
+	ASSERT_TRUE(kept && kept->entries.size() == 6);
+	for (std::size_t i = 0; i < kept->entries.size(); ++i) {
+		EXPECT_EQ(kept->entries[i].value, before->entries[i].value);
+	}
+	Reply<pdf::FormWriteResult> retry;
+	ASSERT_TRUE(session.updateTextField(0, index, u"first\nsecond", u"ok\nnext",
+	                                    after->revision, retry.callback()));
+	const auto written = retry.wait();
+	ASSERT_TRUE(written && written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	const auto current = readForms(session);
+	ASSERT_TRUE(current && current->entries.size() == 6);
+	EXPECT_EQ(current->entries[0].value, "ok\r\nnext");
+	EXPECT_EQ(current->revision, written->revision);
+}
+
 TEST_F(SessionTest, FormWriteRepliesAllowReentryAndThrowingCallbacks) {
 	pdf::Session session(engine);
 	ASSERT_EQ(open(session, writeTemp("reentrant form.pdf", manyPages(1, true)))

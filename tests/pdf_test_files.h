@@ -216,7 +216,7 @@ inline std::string choicePdf(bool combo) {
 
 // i keep every supported field beside a note and a direct bookmark.
 inline std::string mixedFormPdf(bool explicitFont = true,
-                                bool multiline = false) {
+                                bool multiline = false, int textLimit = 32) {
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
 	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
 	                            "[<FEFF00630061006600E9> (Same)] "
@@ -233,11 +233,14 @@ inline std::string mixedFormPdf(bool explicitFont = true,
 	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
 	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
-	    multiline ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	                "/V (first\\nsecond) /Ff 4096 /MaxLen 32 "
-	                "/F 4 /Rect [40 700 300 800] /P 3 0 R >>"
-	              : "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	                "/V (initial) /F 4 /Rect [40 700 190 720] /P 3 0 R >>",
+	    multiline
+	        ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
+	          "/V (first\\nsecond) /Ff 4096 " +
+	              (textLimit > 0 ? "/MaxLen " + std::to_string(textLimit) + " "
+	                             : "") +
+	              "/F 4 /Rect [40 700 300 800] /P 3 0 R >>"
+	        : "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
+	          "/V (initial) /F 4 /Rect [40 700 190 720] /P 3 0 R >>",
 	    "<< /Type /Annot /Subtype /Widget /FT /Btn /T (box) /F 4 "
 	    "/V /Off /AS /Off /Rect [40 650 90 670] /P 3 0 R "
 	    "/AP << /N << /Approved#20now 12 0 R /Off 13 0 R >> >> >>",
