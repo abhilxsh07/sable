@@ -187,6 +187,16 @@ desktop pass, type a boxed code, exceed its cells once, correct the draft,
 save a copy and compare unfocused glyph placement and cell borders in
 another reader. Stored Unicode values alone do not prove glyph appearance.
 
+The 29 Oct comb desktop pass refused 12345 in the four-cell field and kept
+the draft editable. Correcting it to café in the same dialog then applied
+successfully; Ctrl+Tab/Ctrl+W retained the corrected draft. Windows Save As
+canceled once, then saved to a path with spaces. A fresh Sable session
+restored one glyph per cell; unchanged Apply stayed clean. Acrobat showed
+all four accented-text glyphs and cell borders without field focus, beside
+the original note. Source and saved-file hashes stayed unchanged during
+reopen/viewing. Font Capture still reported its recurring application error;
+its cause remains unconfirmed.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.
