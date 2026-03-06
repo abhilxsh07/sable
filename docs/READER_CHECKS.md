@@ -179,6 +179,14 @@ text and empty paragraph without field focus, beside the original note.
 Its recurring Font Capture application error also appeared on this copy;
 the cause remains unconfirmed.
 
+SableCombTest=true with SableTabsTest=true runs the mixed-field check with
+a four-cell text field. It checks a retained five-character refusal, corrected
+draft cancellation, exact-length accented text, no-op/Apply and save/reopen
+beside the other field types. The native dialog stays single-line. In a
+desktop pass, type a boxed code, exceed its cells once, correct the draft,
+save a copy and compare unfocused glyph placement and cell borders in
+another reader. Stored Unicode values alone do not prove glyph appearance.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.

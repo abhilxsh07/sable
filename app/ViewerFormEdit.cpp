@@ -136,6 +136,13 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					        const bool text =
 					            found != fields.rend() &&
 					            found->type == pdf::FormFieldType::Text;
+					        // i keep comb and multiline flags exclusive. see:
+					        // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+					        const int textFlags =
+					            !text ? 0
+					            : found->flags & FPDF_FORMFLAG_TEXT_MULTILINE
+					                ? FPDF_FORMFLAG_TEXT_MULTILINE
+					                : 1 << 24;
 					        constexpr int locked =
 					            FPDF_ANNOT_FLAG_READONLY |
 					            FPDF_ANNOT_FLAG_LOCKED |
@@ -156,8 +163,7 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					                         found->type ==
 					                             pdf::FormFieldType::ComboBox
 					                     ? FPDF_FORMFLAG_CHOICE_COMBO
-					                 : text ? FPDF_FORMFLAG_TEXT_MULTILINE
-					                        : 0))) &&
+					                     : textFlags))) &&
 					            !(found->annotationFlags & locked)) {
 						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,

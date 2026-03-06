@@ -2187,3 +2187,11 @@ The isolated focus-commit transaction still requires the complete requested
 value before and after save/reopen. It refuses truncation and transformed
 text rather than committing a partial code. Unicode values are checked as
 stored text; native input and saved cell appearances follow separately.
+
+## Native comb field editing (2026-10-29)
+
+I use the existing single-line field dialog for plain comb text. Apply goes
+through the same queued transaction and retains refused drafts; the engine
+validates the cell count and complete value. Comb combined with Multiline
+stays outside the page gate. The dialog does not imitate the PDF's boxes;
+the saved page appearance remains PDFium's comb layout.

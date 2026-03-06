@@ -216,7 +216,8 @@ inline std::string choicePdf(bool combo) {
 
 // i keep every supported field beside a note and a direct bookmark.
 inline std::string mixedFormPdf(bool explicitFont = true,
-                                bool multiline = false, int textLimit = 32) {
+                                bool multiline = false, int textLimit = 32,
+                                bool comb = false) {
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
 	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
 	                            "[<FEFF00630061006600E9> (Same)] "
@@ -233,7 +234,12 @@ inline std::string mixedFormPdf(bool explicitFont = true,
 	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
 	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
-	    multiline
+	    comb ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
+	           "/V (AB) /Ff 16777216 /MaxLen " +
+	               std::to_string(textLimit) +
+	               " /BS << /W 1 /S /S >> /MK << /BC [0 0 0] >> "
+	               "/F 4 /Rect [40 700 190 720] /P 3 0 R >>"
+	    : multiline
 	        ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
 	          "/V (first\\nsecond) /Ff 4096 " +
 	              (textLimit > 0 ? "/MaxLen " + std::to_string(textLimit) + " "
