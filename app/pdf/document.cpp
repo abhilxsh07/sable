@@ -812,6 +812,33 @@ std::optional<bool> Document::updateFormField(
 	std::vector<int> members(control ? control->count : 0, -1);
 	std::vector<std::u16string> exports(members.size());
 	std::u16string replacement(contents);
+	std::optional<FormField> inheritedTarget;
+	constexpr int plainFlags = FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
+	const auto inheritedWidget = [&](FPDF_FORMHANDLE form,
+	                                 FPDF_ANNOTATION widget) {
+		// i require the actual widget in the resolved field, not just its
+		// name. count one also bounds appearance propagation. see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
+		if (!widget || !FPDFAnnot_HasKey(widget, "Parent") ||
+		    FPDFAnnot_GetFormFieldType(form, widget) !=
+		        static_cast<int>(FormFieldType::Text) ||
+		    FPDFAnnot_GetFormControlCount(form, widget) != 1 ||
+		    FPDFAnnot_GetFormControlIndex(form, widget) != 0 ||
+		    (FPDFAnnot_GetFormFieldFlags(form, widget) & ~plainFlags)) {
+			return false;
+		}
+		// i leave field data on the parent of this plain widget. see:
+		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_interactiveform.cpp
+		for (const auto key :
+		     {"T", "FT", "Ff", "V", "DV", "Kids", "MaxLen", "RV", "DA", "Q",
+		      "DS", "TU", "TM", "Opt", "I", "TI"}) {
+			if (FPDFAnnot_HasKey(widget, key)) {
+				return false;
+			}
+		}
+		AnnotationPtr parent(FPDFAnnot_GetLinkedAnnot(widget, "Parent"));
+		return !parent;
+	};
 	{
 		FormContext context(scratch.document->m_handle, pageIndex);
 		context.handle =
@@ -826,12 +853,10 @@ std::optional<bool> Document::updateFormField(
 		}
 		context.afterLoad();
 		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
-		// i leave inherited and specialized field behavior alone.
+		// i keep one control unless this is an inspected radio group.
 		// the pinned control-count implementation also handles text fields.
 		// see:
 		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
-		constexpr int plainFlags =
-		    FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
 		constexpr int protectedFlags =
 		    FPDF_ANNOT_FLAG_INVISIBLE | FPDF_ANNOT_FLAG_HIDDEN |
 		    FPDF_ANNOT_FLAG_NOVIEW | FPDF_ANNOT_FLAG_READONLY |
@@ -850,8 +875,31 @@ std::optional<bool> Document::updateFormField(
 		        static_cast<int>(type) ||
 		    FPDFAnnot_GetFormControlCount(context.handle, field.get()) !=
 		        (control ? control->count : 1) ||
-		    (!control && FPDFAnnot_HasKey(field.get(), "Parent"))) {
+		    (!control && type != FormFieldType::Text &&
+		     FPDFAnnot_HasKey(field.get(), "Parent"))) {
 			return {};
+		}
+		if (type == FormFieldType::Text &&
+		    FPDFAnnot_HasKey(field.get(), "Parent")) {
+			if (!inheritedWidget(context.handle, field.get())) {
+				return {};
+			}
+			const auto fields =
+			    scratch.document->formFields(pageIndex, canceled);
+			if (!fields || fields->limited) {
+				return {};
+			}
+			const auto target = std::find_if(
+			    fields->entries.begin(), fields->entries.end(),
+			    [index](const auto& item) { return item.index == index; });
+			if (target == fields->entries.end() || target->name.empty() ||
+			    std::count_if(fields->entries.begin(), fields->entries.end(),
+			                  [&](const auto& item) {
+				                  return item.name == target->name;
+			                  }) != 1) {
+				return {};
+			}
+			inheritedTarget = *target;
 		}
 		const int flags =
 		    FPDFAnnot_GetFormFieldFlags(context.handle, field.get());
@@ -1172,6 +1220,29 @@ std::optional<bool> Document::updateFormField(
 	if (!next.document || next.document->pageCount() != pageCount()) {
 		return {};
 	}
+	if (inheritedTarget) {
+		// i check saved ownership on another copy, keeping setup off live
+		// bytes even when a parent dictionary is involved.
+		auto proof = openDocument(next.document->m_data);
+		if (!proof.document || stopped()) {
+			return {};
+		}
+		FormContext context(proof.document->m_handle, pageIndex);
+		context.handle =
+		    FPDFDOC_InitFormFillEnvironment(context.document, &context);
+		if (!context.handle) {
+			return {};
+		}
+		context.page.reset(FPDF_LoadPage(context.document, pageIndex));
+		if (!context.page) {
+			return {};
+		}
+		context.afterLoad();
+		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
+		if (!inheritedWidget(context.handle, field.get()) || stopped()) {
+			return {};
+		}
+	}
 	const auto check = next.document->formFields(pageIndex, canceled);
 	if (!check || check->limited ||
 	    std::none_of(check->entries.begin(), check->entries.end(),
@@ -1179,6 +1250,11 @@ std::optional<bool> Document::updateFormField(
 		                 return field.index == index && field.type == type &&
 		                        (!checked || field.checked == checked) &&
 		                        (!choice || matchesChoice(field, true)) &&
+		                        (!inheritedTarget ||
+		                         (field.name == inheritedTarget->name &&
+		                          field.flags == inheritedTarget->flags &&
+		                          field.annotationFlags ==
+		                              inheritedTarget->annotationFlags)) &&
 		                        field.value == utf16ToUtf8(replacement);
 	                 })) {
 		return {};

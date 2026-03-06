@@ -2195,3 +2195,19 @@ through the same queued transaction and retains refused drafts; the engine
 validates the cell count and complete value. Comb combined with Multiline
 stays outside the page gate. The dialog does not imitate the PDF's boxes;
 the saved page appearance remains PDFium's comb layout.
+
+## Plain inherited text transactions (2026-10-29)
+
+I allow a plain single-line text widget to inherit its field data when the
+SDK reports one control and identifies that actual widget at control index
+zero. The child cannot carry field attributes or an annotation parent, and
+the page snapshot must contain its full field name only once. Effective
+flags are limited to Required and NoExport; inherited Multiline and Comb
+stay refused, along with shared controls and the earlier safety guards.
+
+I recheck ownership on an isolated saved copy, then require the reopened
+name, field flags, annotation flags and complete value to match. Parent
+MaxLen still goes through the full-value check, so truncation refuses the
+transaction. The public API resolves field ownership but cannot inspect an
+ordinary parent's raw dictionary or prove the whole parent tree well formed.
+This allowance follows that SDK model; it is not a raw tree validator.
