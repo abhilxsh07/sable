@@ -197,6 +197,15 @@ the original note. Source and saved-file hashes stayed unchanged during
 reopen/viewing. Font Capture still reported its recurring application error;
 its cause remains unconfirmed.
 
+SableInheritedTextTest=true with SableTabsTest=true runs the mixed-field
+check with a pure text widget inheriting its name, value, flags and MaxLen.
+It checks retained overlength drafts, single-line input, field identity,
+Cancel/no-op/Apply and save/reopen beside every other supported field type.
+The existing native dialog supplies the edit; no separate parent editor is
+needed. For desktop QA, type an accented value, save a copy, reopen it and
+check unfocused appearances in another reader. Shared widgets and inherited
+Multiline/Comb remain outside this path.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.

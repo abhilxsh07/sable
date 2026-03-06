@@ -1027,7 +1027,8 @@ TEST(FormFields, MixedFormsKeepPersistedTextAndChoiceFonts) {
 			    for (const bool accent : {false, true}) {
 				    SCOPED_TRACE(explicitFont);
 				    SCOPED_TRACE(accent);
-				    const auto source = mixedFormPdf(explicitFont);
+				    const auto source =
+				        mixedFormPdf({.explicitFont = explicitFont});
 				    const auto opened =
 				        pdf::openDocument(std::vector<std::uint8_t>(
 				            source.begin(), source.end()));

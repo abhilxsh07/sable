@@ -215,18 +215,25 @@ inline std::string choicePdf(bool combo) {
 }
 
 // i keep every supported field beside a note and a direct bookmark.
-inline std::string mixedFormPdf(bool explicitFont = true,
-                                bool multiline = false, int textLimit = 32,
-                                bool comb = false) {
+struct MixedFormOptions {
+	bool explicitFont = true, multiline = false, comb = false,
+	     inherited = false;
+	int textLimit = 32;
+};
+inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
+	const auto [explicitFont, multiline, comb, inherited, textLimit] = settings;
+	const auto parent = std::to_string(explicitFont ? 17 : 16) + " 0 R";
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
 	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
 	                            "[<FEFF00630061006600E9> (Same)] "
 	                            "[<FEFF00630061006600E9> (Same)]] ";
 	std::vector<std::string> objects{
 	    "<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R "
-	    "/AcroForm << /Fields [4 0 R 5 0 R 6 0 R 9 0 R 10 0 R] "
-	    "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
-	    "/DR << /Font << /Helv " +
+	    "/AcroForm << /Fields [" +
+	        std::string(inherited ? parent : "4 0 R") +
+	        " 5 0 R 6 0 R 9 0 R 10 0 R] "
+	        "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
+	        "/DR << /Font << /Helv " +
 	        std::string(explicitFont ? "16 0 R"
 	                                 : "<< /Type /Font /Subtype /Type1 "
 	                                   "/BaseFont /Helvetica >>") +
@@ -234,11 +241,13 @@ inline std::string mixedFormPdf(bool explicitFont = true,
 	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
 	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
-	    comb ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	           "/V (AB) /Ff 16777216 /MaxLen " +
-	               std::to_string(textLimit) +
-	               " /BS << /W 1 /S /S >> /MK << /BC [0 0 0] >> "
-	               "/F 4 /Rect [40 700 190 720] /P 3 0 R >>"
+	    inherited ? "<< /Type /Annot /Subtype /Widget /Parent " + parent +
+	                    " /F 4 /Rect [40 700 190 720] /P 3 0 R >>"
+	    : comb ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
+	             "/V (AB) /Ff 16777216 /MaxLen " +
+	                 std::to_string(textLimit) +
+	                 " /BS << /W 1 /S /S >> /MK << /BC [0 0 0] >> "
+	                 "/F 4 /Rect [40 700 190 720] /P 3 0 R >>"
 	    : multiline
 	        ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
 	          "/V (first\\nsecond) /Ff 4096 " +
@@ -276,6 +285,11 @@ inline std::string mixedFormPdf(bool explicitFont = true,
 		// i make the Latin encoding explicit for the saved appearances.
 		objects.push_back("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
 		                  "/Encoding /WinAnsiEncoding >>");
+	}
+	if (inherited) {
+		objects.push_back("<< /FT /Tx /T (text) /Ff 6 /V (initial) "
+		                  "/DV (default) /MaxLen " +
+		                  std::to_string(textLimit) + " /Kids [4 0 R] >>");
 	}
 	std::string bytes = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;

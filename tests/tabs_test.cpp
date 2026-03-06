@@ -114,6 +114,7 @@ struct TabsTest {
 	bool mixedFormOnly = false;
 	bool multilineOnly = false;
 	bool combOnly = false;
+	bool inheritedOnly = false;
 	int boundedTextStage = 0;
 	std::uint64_t mixedRevision = 0;
 	std::filesystem::path buttonFieldPath;
@@ -3108,7 +3109,9 @@ struct TabsTest {
 		                          : multilineOnly ? L"Edited caf\u00e9\n\nthird"
 		                                          : L"Edited caf\u00e9";
 		const hstring overlong =
-		    combOnly ? L"12345" : hstring(std::wstring(40, L'x') + L"\nlast");
+		    combOnly        ? L"12345"
+		    : inheritedOnly ? hstring(std::wstring(40, L'x'))
+		                    : hstring(std::wstring(40, L'x') + L"\nlast");
 		const auto paragraphs = [](std::wstring_view value) {
 			std::wstring result;
 			for (std::size_t i = 0; i < value.size(); ++i) {
@@ -3146,6 +3149,11 @@ struct TabsTest {
 			const auto fields = read();
 			const auto& e = fields->entries;
 			check(e[0].name == "text" &&
+			          e[0].flags == (inheritedOnly   ? 6
+			                         : combOnly      ? 16777216
+			                         : multilineOnly ? 4096
+			                                         : 0) &&
+			          e[0].annotationFlags == 4 &&
 			          e[0].value ==
 			              (completed > 0
 			                   ? (combOnly ? "caf\u00e9"
@@ -3247,7 +3255,7 @@ struct TabsTest {
 				                                                           : 1);
 			}
 		};
-		const auto button = [&](const wchar_t* name) {
+		const auto findButton = [&](const wchar_t* name) {
 			std::function<Button(DependencyObject)> find;
 			find = [&](const DependencyObject& node) -> Button {
 				if (const auto item = node.try_as<Button>();
@@ -3263,8 +3271,12 @@ struct TabsTest {
 				}
 				return nullptr;
 			};
-			const auto item = find(v.m_noteDialog);
-			check(item && item.IsEnabled(), "mixed dialog button unavailable");
+			return find(v.m_noteDialog);
+		};
+		const auto button = [&](const wchar_t* name) {
+			const auto item = findButton(name);
+			check(item != nullptr, "mixed dialog button missing");
+			check(item.IsEnabled(), "mixed dialog button disabled");
 			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
 			    .GetPattern(Peers::PatternInterface::Invoke)
 			    .as<Provider::IInvokeProvider>()
@@ -3297,7 +3309,12 @@ struct TabsTest {
 			          !owner.m_notesSaving,
 			      "mixed modal keys changed the draft or reader");
 		};
-		if ((multilineOnly || combOnly) && boundedTextStage < 4) {
+		if (v.m_noteDialog &&
+		    (!findButton(L"PrimaryButton") || !findButton(L"CloseButton"))) {
+			return;
+		}
+		if ((multilineOnly || combOnly || inheritedOnly) &&
+		    boundedTextStage < 4) {
 			switch (boundedTextStage) {
 			case 0:
 				mixedRevision = verify(0);
@@ -3308,8 +3325,9 @@ struct TabsTest {
 					return;
 				}
 				const auto text = input().as<TextBox>();
-				check(combOnly
-				          ? !text.AcceptsReturn() && value() == L"AB"
+				check(combOnly || inheritedOnly
+				          ? !text.AcceptsReturn() &&
+				                value() == (combOnly ? L"AB" : L"initial")
 				          : text.AcceptsReturn() &&
 				                text.TextWrapping() == TextWrapping::Wrap &&
 				                text.MinHeight() >= 100 &&
@@ -3473,8 +3491,10 @@ struct TabsTest {
 			      "mixed saved note or bookmark changed");
 			std::ifstream original(buttonFieldPath, std::ios::binary);
 			check(std::string(std::istreambuf_iterator<char>(original), {}) ==
-			          mixedFormPdf(true, multilineOnly, combOnly ? 4 : 32,
-			                       combOnly),
+			          mixedFormPdf({.multiline = multilineOnly,
+			                        .comb = combOnly,
+			                        .inherited = inheritedOnly,
+			                        .textLimit = combOnly ? 4 : 32}),
 			      "mixed source changed");
 			std::fwprintf(
 			    stderr,
@@ -3491,6 +3511,11 @@ struct TabsTest {
 				std::fwprintf(stderr,
 				              L"PASS: comb text, exact cells, Unicode, no-op "
 				              L"and retained overlength refusal\n");
+			}
+			if (inheritedOnly) {
+				std::fwprintf(stderr,
+				              L"PASS: inherited text identity, Unicode, no-op "
+				              L"and retained parent MaxLen refusal\n");
 			}
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
@@ -7303,14 +7328,18 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
-	state->combOnly = GetEnvironmentVariableW(L"SableCombTest", mode, 8) &&
+	state->inheritedOnly =
+	    GetEnvironmentVariableW(L"SableInheritedTextTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->combOnly = !state->inheritedOnly &&
+	                  GetEnvironmentVariableW(L"SableCombTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
 	state->multilineOnly =
-	    !state->combOnly &&
+	    !state->combOnly && !state->inheritedOnly &&
 	    GetEnvironmentVariableW(L"SableMultilineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->mixedFormOnly =
-	    state->multilineOnly || state->combOnly ||
+	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
 	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
 	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
@@ -7501,9 +7530,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		{
 			std::ofstream source(state->buttonFieldPath, std::ios::binary);
 			source << (state->mixedFormOnly
-			               ? mixedFormPdf(true, state->multilineOnly,
-			                              state->combOnly ? 4 : 32,
-			                              state->combOnly)
+			               ? mixedFormPdf(
+			                     {.multiline = state->multilineOnly,
+			                      .comb = state->combOnly,
+			                      .inherited = state->inheritedOnly,
+			                      .textLimit = state->combOnly ? 4 : 32})
 			           : state->choiceOnly ? choicePdf(!state->choiceList)
 			           : state->radioOnly  ? radioPdf()
 			                               : checkBoxPdf());

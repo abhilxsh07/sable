@@ -1392,7 +1392,7 @@ TEST_F(SessionTest, FormWritesOwnQueueOrderRefreshSnapshotsAndSave) {
 
 TEST_F(SessionTest, MultilineWritesOwnParagraphsAndKeepExactSnapshots) {
 	pdf::Session session(engine);
-	const auto bytes = mixedFormPdf(true, true);
+	const auto bytes = mixedFormPdf({.multiline = true});
 	const std::vector<std::uint8_t> original(bytes.begin(), bytes.end());
 	const auto source = writeTemp("multiline form.pdf", bytes);
 	ASSERT_TRUE(open(session, source).canFillForms);
@@ -1485,7 +1485,7 @@ TEST_F(SessionTest, MultilineWritesOwnParagraphsAndKeepExactSnapshots) {
 
 TEST_F(SessionTest, MultilineExpansionRefusesWithoutChangingSavedValues) {
 	pdf::Session session(engine);
-	const auto bytes = mixedFormPdf(true, true, 0);
+	const auto bytes = mixedFormPdf({.multiline = true, .textLimit = 0});
 	const std::vector<std::uint8_t> original(bytes.begin(), bytes.end());
 	const auto source = writeTemp("unbounded multiline.pdf", bytes);
 	ASSERT_TRUE(open(session, source).canFillForms);
