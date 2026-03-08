@@ -2211,3 +2211,16 @@ MaxLen still goes through the full-value check, so truncation refuses the
 transaction. The public API resolves field ownership but cannot inspect an
 ordinary parent's raw dictionary or prove the whole parent tree well formed.
 This allowance follows that SDK model; it is not a raw tree validator.
+
+## Inherited multiline text transactions (2026-10-29)
+
+I allow Multiline through the same inherited single-widget guard. Child
+field attributes, shared controls, actions and conflicting flags still
+refuse. Raw no-ops keep their original line endings; changed paragraphs use
+the existing CRLF transaction and complete saved-value check. Parent MaxLen
+truncation leaves the live document unchanged and allows a corrected retry.
+
+Inherited Comb stays refused: its numeric cell count belongs to the parent,
+which the annotation number API cannot inspect. The SDK ownership checks
+still do not prove the raw parent tree well formed. Native mixed-field and
+desktop paragraph checks follow separately.

@@ -824,7 +824,8 @@ std::optional<bool> Document::updateFormField(
 		        static_cast<int>(FormFieldType::Text) ||
 		    FPDFAnnot_GetFormControlCount(form, widget) != 1 ||
 		    FPDFAnnot_GetFormControlIndex(form, widget) != 0 ||
-		    (FPDFAnnot_GetFormFieldFlags(form, widget) & ~plainFlags)) {
+		    (FPDFAnnot_GetFormFieldFlags(form, widget) &
+		     ~(plainFlags | FPDF_FORMFLAG_TEXT_MULTILINE))) {
 			return false;
 		}
 		// i leave field data on the parent of this plain widget. see:

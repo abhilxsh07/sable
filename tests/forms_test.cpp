@@ -1411,8 +1411,9 @@ TEST(FormFields, InheritedTextRefusesShadowsAliasesAndUnsafeParents) {
 			    cases.push_back(formBytes({WIDGET + extra}, parent));
 		    }
 		    for (const std::string extra :
-		         {"/Ff 1", "/Ff 4096", "/Ff 8192", "/Ff 1048576",
-		          "/Ff 16777216 /MaxLen 4", "/Ff 33554432",
+		         {"/Ff 1", "/Ff 4097", "/Ff 12288", "/Ff 8392704",
+		          "/Ff 16781312 /MaxLen 4", "/Ff 33558528", "/Ff 8192",
+		          "/Ff 1048576", "/Ff 16777216 /MaxLen 4", "/Ff 33554432",
 		          "/AA << /Fo << /S /ResetForm >> >>", "/A <<>>",
 		          "/AA << /K << /S /JavaScript /JS (doSomething) >> >>",
 		          "/Type /Annot /Subtype /Widget /Rect [40 50 90 70]"}) {
@@ -1470,6 +1471,141 @@ TEST(FormFields, InheritedTextCancellationKeepsEveryLiveCheckpoint) {
 			    int calls = 0;
 			    EXPECT_FALSE(opened.document->updateTextField(
 			        0, 0, u"old", u"new", 1, [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, InheritedMultilineKeepsRawNoOpsAndSavedIdentity) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes({WIDGET + "/F 4"},
+		                  "/FT /Tx /T 6 0 R /Ff 4102 /V (first\\nsecond)", 1,
+		                  {.appearances = false, .outline = true});
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.formFields(0);
+		    ASSERT_TRUE(before && before->entries.size() == 1);
+		    EXPECT_EQ(before->entries[0].value, "first\nsecond");
+		    EXPECT_EQ(doc.updateTextField(0, 0, u"first\nsecond",
+		                                  u"first\nsecond", before->revision),
+		              false);
+		    EXPECT_FALSE(doc.updateTextField(
+		        0, 0, u"first\r\nsecond", u"changed\nline", before->revision));
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.annotationRevision(), before->revision);
+		    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+		    EXPECT_FALSE(pdf::DocumentFormTest::hasAppearance(doc));
+		    ASSERT_EQ(doc.addTextNote(0, 50, 60, u"Keep this note"), 1);
+		    ASSERT_EQ(doc.updateTextField(0, 0, u"first\nsecond",
+		                                  u"Caf\u00e9\r\n\r\U0001F600\nlast",
+		                                  doc.annotationRevision()),
+		              true);
+		    const auto after = doc.formFields(0);
+		    ASSERT_TRUE(after && after->entries.size() == 1);
+		    const auto& field = after->entries[0];
+		    EXPECT_EQ(field.name, before->entries[0].name);
+		    EXPECT_EQ(field.flags, 4102);
+		    EXPECT_EQ(field.annotationFlags, 4);
+		    EXPECT_EQ(field.value, "Caf\u00e9\r\n\r\n\U0001F600\r\nlast");
+		    EXPECT_TRUE(pdf::DocumentFormTest::hasAppearance(doc));
+		    EXPECT_EQ(doc.updateTextField(
+		                  0, 0, u"Caf\u00e9\r\n\r\n\U0001F600\r\nlast",
+		                  u"Caf\u00e9\n\n\U0001F600\nlast", after->revision),
+		              false);
+		    EXPECT_FALSE(doc.updateTextField(0, 0, u"first\nsecond", u"stale",
+		                                     before->revision));
+		    const auto saved = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(saved);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->formFields(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 1);
+		    EXPECT_EQ(kept->entries[0].name, field.name);
+		    EXPECT_EQ(kept->entries[0].value, field.value);
+		    EXPECT_EQ(kept->entries[0].flags, field.flags);
+		    EXPECT_EQ(kept->entries[0].annotationFlags, field.annotationFlags);
+		    EXPECT_EQ(reopened.document->textNote(0, 1), u"Keep this note");
+		    ASSERT_TRUE(reopened.document->outline());
+		    const auto link = reopened.document->outlineLink(0);
+		    ASSERT_TRUE(link && link->destination);
+		    EXPECT_EQ(link->destination->page, 0);
+		    ASSERT_EQ(doc.updateTextField(
+		                  0, 0, u"Caf\u00e9\r\n\r\n\U0001F600\r\nlast", u"",
+		                  after->revision),
+		              true);
+		    const auto cleared = doc.formFields(0);
+		    ASSERT_TRUE(cleared && cleared->entries.size() == 1);
+		    EXPECT_TRUE(cleared->entries[0].value.empty());
+		    EXPECT_EQ(before->entries[0].value, "first\nsecond");
+	    })
+	    .get();
+}
+
+TEST(FormFields, InheritedMultilineRefusalsKeepTheRetryIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = formBytes(
+		        {WIDGET}, "/FT /Tx /T (field) /Ff 4096 /V (x) /MaxLen 2");
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    for (const auto& input :
+		         {std::u16string(u"a\nb"), std::u16string(16384, u'\n'),
+		          std::u16string(u"tab\tvalue")}) {
+			    EXPECT_FALSE(doc.updateTextField(0, 0, u"x", input, 1));
+			    EXPECT_FALSE(doc.modified());
+			    EXPECT_EQ(doc.annotationRevision(), 1u);
+			    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+		    }
+		    ASSERT_EQ(doc.updateTextField(0, 0, u"x", u"ok", 1), true);
+		    const auto fields = doc.formFields(0);
+		    ASSERT_TRUE(fields && fields->entries.size() == 1);
+		    EXPECT_EQ(fields->entries[0].value, "ok");
+		    const auto exact = pdf::openDocument(formBytes(
+		        {WIDGET}, "/FT /Tx /T (field) /Ff 4096 /V (x) /MaxLen 3"));
+		    ASSERT_TRUE(exact.document);
+		    ASSERT_EQ(exact.document->updateTextField(0, 0, u"x", u"a\nb", 1),
+		              true);
+		    const auto paragraphs = exact.document->formFields(0);
+		    ASSERT_TRUE(paragraphs && paragraphs->entries.size() == 1);
+		    EXPECT_EQ(paragraphs->entries[0].value, "a\r\nb");
+	    })
+	    .get();
+}
+
+TEST(FormFields, InheritedMultilineCancellationKeepsEveryLiveCheckpoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes({WIDGET}, "/FT /Tx /T (field) /Ff 4096 /V (old)");
+		    const auto completed = pdf::openDocument(bytes);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextField(0, 0, u"old",
+		                                                  u"first\nsecond", 1,
+		                                                  [&] {
+			                                                  ++checkpoints;
+			                                                  return false;
+		                                                  }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextField(
+			        0, 0, u"old", u"first\nsecond", 1,
+			        [&] { return ++calls >= stop; }));
 			    EXPECT_FALSE(opened.document->modified());
 			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
 			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
