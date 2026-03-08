@@ -204,7 +204,13 @@ Cancel/no-op/Apply and save/reopen beside every other supported field type.
 The existing native dialog supplies the edit; no separate parent editor is
 needed. For desktop QA, type an accented value, save a copy, reopen it and
 check unfocused appearances in another reader. Shared widgets and inherited
-Multiline/Comb remain outside this path.
+Comb remain outside this path.
+
+Also set SableMultilineTest=true to run inherited paragraphs in the existing
+wrapping editor. This combined mode checks raw no-ops, blank lines, Unicode,
+retained parent-limit refusals and saved identity beside the other fields.
+For desktop QA, insert real Enter presses, save and reopen a copy, and check
+unfocused paragraph appearances in another reader.
 
 The 29 Oct inherited-text desktop pass refused a 33-character draft against
 the parent's 32-character limit and kept it editable. Correcting the same

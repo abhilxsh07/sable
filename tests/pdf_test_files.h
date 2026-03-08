@@ -242,7 +242,8 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
 	    "/Annots [11 0 R 4 0 R 5 0 R 7 0 R 8 0 R 9 0 R 10 0 R] >>",
 	    inherited ? "<< /Type /Annot /Subtype /Widget /Parent " + parent +
-	                    " /F 4 /Rect [40 700 190 720] /P 3 0 R >>"
+	                    " /F 4 /Rect [40 700 " +
+	                    (multiline ? "300 800" : "190 720") + "] /P 3 0 R >>"
 	    : comb ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
 	             "/V (AB) /Ff 16777216 /MaxLen " +
 	                 std::to_string(textLimit) +
@@ -287,9 +288,11 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 		                  "/Encoding /WinAnsiEncoding >>");
 	}
 	if (inherited) {
-		objects.push_back("<< /FT /Tx /T (text) /Ff 6 /V (initial) "
-		                  "/DV (default) /MaxLen " +
-		                  std::to_string(textLimit) + " /Kids [4 0 R] >>");
+		objects.push_back("<< /FT /Tx /T (text) /Ff " +
+		                  std::string(multiline ? "4102 /V (first\\nsecond) "
+		                                        : "6 /V (initial) ") +
+		                  "/DV (default) /MaxLen " + std::to_string(textLimit) +
+		                  " /Kids [4 0 R] >>");
 	}
 	std::string bytes = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;

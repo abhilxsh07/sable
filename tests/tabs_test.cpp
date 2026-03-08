@@ -3109,9 +3109,10 @@ struct TabsTest {
 		                          : multilineOnly ? L"Edited caf\u00e9\n\nthird"
 		                                          : L"Edited caf\u00e9";
 		const hstring overlong =
-		    combOnly        ? L"12345"
-		    : inheritedOnly ? hstring(std::wstring(40, L'x'))
-		                    : hstring(std::wstring(40, L'x') + L"\nlast");
+		    combOnly ? L"12345"
+		    : inheritedOnly && !multilineOnly
+		        ? hstring(std::wstring(40, L'x'))
+		        : hstring(std::wstring(40, L'x') + L"\nlast");
 		const auto paragraphs = [](std::wstring_view value) {
 			std::wstring result;
 			for (std::size_t i = 0; i < value.size(); ++i) {
@@ -3149,8 +3150,8 @@ struct TabsTest {
 			const auto fields = read();
 			const auto& e = fields->entries;
 			check(e[0].name == "text" &&
-			          e[0].flags == (inheritedOnly   ? 6
-			                         : combOnly      ? 16777216
+			          e[0].flags == (inheritedOnly ? (multilineOnly ? 4102 : 6)
+			                         : combOnly    ? 16777216
 			                         : multilineOnly ? 4096
 			                                         : 0) &&
 			          e[0].annotationFlags == 4 &&
@@ -3325,7 +3326,7 @@ struct TabsTest {
 					return;
 				}
 				const auto text = input().as<TextBox>();
-				check(combOnly || inheritedOnly
+				check(combOnly || (inheritedOnly && !multilineOnly)
 				          ? !text.AcceptsReturn() &&
 				                value() == (combOnly ? L"AB" : L"initial")
 				          : text.AcceptsReturn() &&
@@ -3516,6 +3517,11 @@ struct TabsTest {
 				std::fwprintf(stderr,
 				              L"PASS: inherited text identity, Unicode, no-op "
 				              L"and retained parent MaxLen refusal\n");
+				if (multilineOnly) {
+					std::fwprintf(
+					    stderr, L"PASS: inherited multiline native editor and "
+					            L"saved paragraph identity\n");
+				}
 			}
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
@@ -7335,7 +7341,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                  GetEnvironmentVariableW(L"SableCombTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
 	state->multilineOnly =
-	    !state->combOnly && !state->inheritedOnly &&
+	    !state->combOnly &&
 	    GetEnvironmentVariableW(L"SableMultilineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->mixedFormOnly =
