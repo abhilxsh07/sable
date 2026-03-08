@@ -212,6 +212,16 @@ retained parent-limit refusals and saved identity beside the other fields.
 For desktop QA, insert real Enter presses, save and reopen a copy, and check
 unfocused paragraph appearances in another reader.
 
+The 29 Oct inherited-paragraph desktop pass kept a refused 33-character
+draft editable against the parent's limit of 32. In the same dialog I typed
+Inherited café, pressed Enter twice, and added third. Enter left the editor
+open; Ctrl+Tab/Ctrl+W kept the draft. Apply and picker Cancel/spaced-path save
+passed. A fresh Sable session restored the blank paragraph; unchanged Apply
+closed without a save prompt. Acrobat displayed the accented paragraphs
+with focus on the page, beside the original note and untouched fields.
+Source and saved-copy hashes stayed intact. Font Capture failed again,
+this time reporting unreadable memory; its cause remains unconfirmed.
+
 The 29 Oct inherited-text desktop pass refused a 33-character draft against
 the parent's 32-character limit and kept it editable. Correcting the same
 draft to Inherited café applied successfully; Ctrl+Tab/Ctrl+W retained it.
