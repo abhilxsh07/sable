@@ -2224,3 +2224,18 @@ Inherited Comb stays refused: its numeric cell count belongs to the parent,
 which the annotation number API cannot inspect. The SDK ownership checks
 still do not prove the raw parent tree well formed. Native mixed-field and
 desktop paragraph checks follow separately.
+
+## Inherited checkbox value proof (2026-10-30)
+
+I keep inherited checkbox writes refused even when the SDK reports one
+control with matching export, checked state and value. That value comes
+from control appearances, so it can hide a parent's mismatched name-valued,
+string-valued or numeric V. An inherited Opt array also changes how the
+parent stores its value while leaving the same export visible.
+
+The regressions keep both check states and no-ops refused before and after
+save/reopen, with exact bytes and revisions intact. The inherited-text
+ownership allowance does not supply the raw parent V/type and Opt proof
+needed here; I won't use it to relax the checkbox guard.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formfield.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formcontrol.cpp

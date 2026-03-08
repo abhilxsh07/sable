@@ -2363,6 +2363,87 @@ TEST(FormFields, CheckBoxesRefuseInheritedSharedAndSignedDocuments) {
 }
 
 namespace {
+void expectInheritedCheckBoxRefusal(const std::vector<std::uint8_t>& bytes,
+                                    bool checked) {
+	auto saved = bytes;
+	for (int pass = 0; pass < 2; ++pass) {
+		SCOPED_TRACE(pass);
+		const auto opened = pdf::openDocument(saved);
+		ASSERT_TRUE(opened.document);
+		auto& doc = *opened.document;
+		const auto before = doc.formFields(0);
+		ASSERT_TRUE(before && !before->limited);
+		ASSERT_EQ(before->entries.size(), 1u);
+		const auto& field = before->entries[0];
+		EXPECT_EQ(field.type, pdf::FormFieldType::CheckBox);
+		EXPECT_EQ(field.name, "box");
+		EXPECT_EQ(field.flags, 6);
+		EXPECT_EQ(field.annotationFlags, 4);
+		EXPECT_EQ(field.checked, checked);
+		EXPECT_EQ(field.value, checked ? "Yes" : "Off");
+		ASSERT_TRUE(field.control);
+		EXPECT_EQ(field.control->count, 1);
+		EXPECT_EQ(field.control->index, 0);
+		EXPECT_EQ(field.control->exportValue, "Yes");
+		for (const bool desired : {false, true}) {
+			SCOPED_TRACE(desired);
+			EXPECT_FALSE(doc.updateCheckBox(0, 0, checked ? u"Yes" : u"Off",
+			                                desired, before->revision));
+			EXPECT_FALSE(doc.modified());
+			EXPECT_EQ(doc.annotationRevision(), before->revision);
+			EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+		}
+		const auto copy = doc.serializeForCopy(1024 * 1024);
+		ASSERT_TRUE(copy);
+		EXPECT_EQ(*copy, bytes);
+		saved = *copy;
+	}
+}
+} // namespace
+
+TEST(FormFields, InheritedCheckBoxesRefuseHiddenParentValueDisagreements) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const bool checked : {false, true}) {
+			    for (const std::string value :
+			         {checked ? "/Yes" : "/Off", "/Other", "(Yes)", "17"}) {
+				    SCOPED_TRACE(checked);
+				    SCOPED_TRACE(value);
+				    const auto bytes = formBytes(
+				        {WIDGET + "/F 4 /AS /" + (checked ? "Yes" : "Off") +
+				         " /AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"},
+				        "/FT /Btn /T (box) /Ff 6 /V " + value, 1,
+				        {.appearances = false, .painted = true});
+				    expectInheritedCheckBoxRefusal(bytes, checked);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, InheritedCheckBoxesRefuseMatchingExportsWithParentOptions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const bool checked : {false, true}) {
+			    for (const std::string value :
+			         {checked ? "/Yes" : "/Off", "/0"}) {
+				    SCOPED_TRACE(checked);
+				    SCOPED_TRACE(value);
+				    const auto bytes = formBytes(
+				        {WIDGET + "/F 4 /AS /" + (checked ? "Yes" : "Off") +
+				         " /AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"},
+				        "/FT /Btn /T (box) /Ff 6 /Opt [(Yes)] /V " + value, 1,
+				        {.appearances = false, .painted = true});
+				    expectInheritedCheckBoxRefusal(bytes, checked);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+namespace {
 // three plain kids under one radio parent; their on names are the exports
 std::vector<std::string> radioKids(const std::array<std::string, 3>& names,
                                    int on) {
