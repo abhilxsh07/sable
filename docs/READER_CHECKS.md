@@ -206,6 +206,16 @@ needed. For desktop QA, type an accented value, save a copy, reopen it and
 check unfocused appearances in another reader. Shared widgets and inherited
 Multiline/Comb remain outside this path.
 
+The 29 Oct inherited-text desktop pass refused a 33-character draft against
+the parent's 32-character limit and kept it editable. Correcting the same
+draft to Inherited café applied successfully; Ctrl+Tab/Ctrl+W retained it.
+Windows Save As canceled once, then saved to a path with spaces. A fresh
+Sable session restored the value; unchanged Apply closed without a save
+prompt. Acrobat showed the accented text with focus on the page, beside
+the original note and untouched field states. Source and saved-file hashes
+stayed unchanged during reopen/viewing. Font Capture reported its recurring
+application error again; its cause remains unconfirmed.
+
 The 29 Oct mixed-field desktop pass applied Unicode text, Space on the
 checkbox and an unselected radio option, Down on the combo, and a pointer
 selection of the third list option. Ctrl+Tab and Ctrl+W kept the text draft.
