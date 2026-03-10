@@ -217,12 +217,15 @@ inline std::string choicePdf(bool combo) {
 // i keep every supported field beside a note and a direct bookmark.
 struct MixedFormOptions {
 	bool explicitFont = true, multiline = false, comb = false,
-	     inherited = false;
+	     inherited = false, inheritedCheckBox = false;
 	int textLimit = 32;
 };
 inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
-	const auto [explicitFont, multiline, comb, inherited, textLimit] = settings;
+	const auto [explicitFont, multiline, comb, inherited, inheritedCheckBox,
+	            textLimit] = settings;
 	const auto parent = std::to_string(explicitFont ? 17 : 16) + " 0 R";
+	const auto boxParent =
+	    std::to_string((explicitFont ? 17 : 16) + (inherited ? 1 : 0)) + " 0 R";
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
 	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
 	                            "[<FEFF00630061006600E9> (Same)] "
@@ -230,8 +233,9 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	std::vector<std::string> objects{
 	    "<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R "
 	    "/AcroForm << /Fields [" +
-	        std::string(inherited ? parent : "4 0 R") +
-	        " 5 0 R 6 0 R 9 0 R 10 0 R] "
+	        std::string(inherited ? parent : "4 0 R") + " " +
+	        (inheritedCheckBox ? boxParent : "5 0 R") +
+	        " 6 0 R 9 0 R 10 0 R] "
 	        "/NeedAppearances false /DA (/Helv 10 Tf 0 g) "
 	        "/DR << /Font << /Helv " +
 	        std::string(explicitFont ? "16 0 R"
@@ -257,9 +261,13 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	              "/F 4 /Rect [40 700 300 800] /P 3 0 R >>"
 	        : "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
 	          "/V (initial) /F 4 /Rect [40 700 190 720] /P 3 0 R >>",
-	    "<< /Type /Annot /Subtype /Widget /FT /Btn /T (box) /F 4 "
-	    "/V /Off /AS /Off /Rect [40 650 90 670] /P 3 0 R "
-	    "/AP << /N << /Approved#20now 12 0 R /Off 13 0 R >> >> >>",
+	    inheritedCheckBox
+	        ? "<< /Type /Annot /Subtype /Widget /Parent " + boxParent +
+	              " /F 4 /AS /Off /Rect [40 650 90 670] /P 3 0 R "
+	              "/AP << /N << /Approved#20now 12 0 R /Off 13 0 R >> >> >>"
+	        : "<< /Type /Annot /Subtype /Widget /FT /Btn /T (box) /F 4 "
+	          "/V /Off /AS /Off /Rect [40 650 90 670] /P 3 0 R "
+	          "/AP << /N << /Approved#20now 12 0 R /Off 13 0 R >> >> >>",
 	    "<< /FT /Btn /Ff 49152 /T (radio) /V /First "
 	    "/Kids [7 0 R 8 0 R] >>",
 	    "<< /Type /Annot /Subtype /Widget /Parent 6 0 R /P 3 0 R "
@@ -293,6 +301,10 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 		                                        : "6 /V (initial) ") +
 		                  "/DV (default) /MaxLen " + std::to_string(textLimit) +
 		                  " /Kids [4 0 R] >>");
+	}
+	if (inheritedCheckBox) {
+		objects.push_back("<< /FT /Btn /T (box) /Ff 6 /V /Other "
+		                  "/Opt [(Approved now)] /Kids [5 0 R] >>");
 	}
 	std::string bytes = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;

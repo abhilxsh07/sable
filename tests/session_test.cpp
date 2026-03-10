@@ -1677,6 +1677,108 @@ TEST_F(SessionTest, CheckBoxWritesOwnTargetsRefreshSnapshotsAndSave) {
 	          (std::vector<std::uint8_t>(bytes.begin(), bytes.end())));
 }
 
+TEST_F(SessionTest, InheritedCheckBoxRefusalsLeaveTheQueueAndCopiesUsable) {
+	pdf::Session session(engine);
+	const auto bytes = mixedFormPdf({.inheritedCheckBox = true});
+	const auto original = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+	const auto source = writeTemp("inherited checkbox.pdf", bytes);
+	ASSERT_TRUE(open(session, source).canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 6);
+	const auto& box = before->entries[1];
+	EXPECT_EQ(box.name, "box");
+	EXPECT_EQ(box.flags, 6);
+	EXPECT_EQ(box.value, "Off");
+	EXPECT_EQ(box.checked, false);
+	ASSERT_TRUE(box.control);
+	EXPECT_EQ(box.control->count, 1);
+	EXPECT_EQ(box.control->index, 0);
+	EXPECT_EQ(box.control->exportValue, "Approved now");
+	Reply<pdf::FormWriteResult> changed, unchanged;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateCheckBox(
+		    0, box.index, u"Off", true, before->revision, changed.callback()));
+		ASSERT_TRUE(session.updateCheckBox(0, box.index, u"Off", false,
+		                                   before->revision,
+		                                   unchanged.callback()));
+		session.cancelForms();
+	}
+	for (auto* reply : {&changed, &unchanged}) {
+		const auto result = reply->wait();
+		ASSERT_TRUE(result);
+		EXPECT_FALSE(result->accepted || result->changed || result->canceled);
+		EXPECT_EQ(result->revision, 0u);
+		EXPECT_EQ(result->page, 0);
+		EXPECT_EQ(result->index, box.index);
+	}
+	const auto refreshed = readForms(session);
+	ASSERT_TRUE(refreshed && refreshed->entries.size() == 6);
+	EXPECT_NE(refreshed, before);
+	EXPECT_EQ(refreshed->revision, before->revision);
+	EXPECT_EQ(refreshed->entries[1].value, "Off");
+	EXPECT_EQ(refreshed->entries[1].checked, false);
+	const auto cleanCopy = source.parent_path() / "refused copy.pdf";
+	Reply<pdf::SaveResult> clean;
+	ASSERT_TRUE(session.saveEdits(cleanCopy, source, 1024 * 1024, {},
+	                              clean.callback()));
+	EXPECT_EQ(clean.wait(), pdf::SaveResult::Saved);
+	Reply<pdf::FormWriteResult> text;
+	ASSERT_TRUE(session.updateTextField(0, 1, u"initial", u"Edited caf\u00e9",
+	                                    before->revision, text.callback()));
+	const auto written = text.wait();
+	ASSERT_TRUE(written && written->accepted && written->changed);
+	EXPECT_FALSE(written->canceled);
+	EXPECT_GT(written->revision, before->revision);
+	const auto destination = source.parent_path() / "text edited copy.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	EXPECT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	for (const auto& path : {cleanCopy, destination}) {
+		pdf::Session reopened(engine);
+		ASSERT_EQ(open(reopened, path).error, pdf::Error::None);
+		const auto fields = readForms(reopened);
+		ASSERT_TRUE(fields && fields->entries.size() == 6);
+		EXPECT_EQ(fields->entries[0].value,
+		          path == cleanCopy ? "initial" : "Edited caf\u00e9");
+		EXPECT_EQ(fields->entries[1].checked, false);
+		EXPECT_EQ(fields->entries[1].value, "Off");
+		for (const bool desired : {false, true}) {
+			Reply<pdf::FormWriteResult> rejected;
+			ASSERT_TRUE(reopened.updateCheckBox(
+			    0, 2, u"Off", desired, fields->revision, rejected.callback()));
+			const auto result = rejected.wait();
+			ASSERT_TRUE(result);
+			EXPECT_FALSE(result->accepted || result->changed ||
+			             result->canceled);
+			EXPECT_EQ(result->revision, 0u);
+		}
+		const auto after = readForms(reopened);
+		ASSERT_TRUE(after && after->entries.size() == 6);
+		EXPECT_EQ(after->revision, fields->revision);
+		EXPECT_EQ(after->entries[0].value, fields->entries[0].value);
+		EXPECT_EQ(after->entries[1].value, "Off");
+		EXPECT_EQ(after->entries[1].checked, false);
+		EXPECT_TRUE(engine
+		                .run([path] {
+			                const auto opened = pdf::openFile(path);
+			                if (!opened.document) {
+				                return false;
+			                }
+			                const auto outline = opened.document->outline();
+			                const auto link = opened.document->outlineLink(0);
+			                return opened.document->textNote(0, 0) ==
+			                           u"Original" &&
+			                       outline && outline->entries.size() == 1 &&
+			                       link && link->destination &&
+			                       link->destination->page == 0;
+		                })
+		                .get());
+	}
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, CheckBoxRepliesCanQueueUncheckingAndThrow) {
 	pdf::Session session(engine);
 	ASSERT_EQ(open(session, writeTemp("reentrant checkbox.pdf",
