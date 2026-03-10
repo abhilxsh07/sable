@@ -160,6 +160,18 @@ The check supplies its save destination. Actual keyboard/pointer delivery,
 the Windows picker and Acrobat appearances/interoperability need a desktop
 pass separately.
 
+SableInheritedCheckBoxTest=true with SableTabsTest=true runs the mixed-field
+check with a pure checkbox widget inheriting /Ff 6, /V /Other and
+/Opt [(Approved now)]. It verifies one control at index zero and checks
+unchanged and checked Apply refusals, retained editable drafts and errors,
+modal commands, Cancel and the live unchecked state.
+Supported text, radio, combo and list edits still apply and survive a saved
+copy beside the untouched checkbox, note and bookmark. On reopen, the
+checkbox editor is canceled; the other editors check unchanged Apply.
+The source bytes must stay intact. This diagnostic takes precedence over
+the inherited-text, multiline and comb modes. It uses native automation
+peers and a supplied save path; actual input and the picker need desktop QA.
+
 SableMultilineTest=true with SableTabsTest=true uses the same mixed-field
 check with a taller multiline field and a length limit. It checks wrapping,
 initial raw LF no-ops, Unicode and blank paragraphs, retained overlong

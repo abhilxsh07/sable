@@ -115,7 +115,9 @@ struct TabsTest {
 	bool multilineOnly = false;
 	bool combOnly = false;
 	bool inheritedOnly = false;
+	bool inheritedCheckBoxOnly = false;
 	int boundedTextStage = 0;
+	int inheritedCheckBoxStage = 0;
 	std::uint64_t mixedRevision = 0;
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
@@ -3165,9 +3167,18 @@ struct TabsTest {
 			                      : multilineOnly ? "first\nsecond"
 			                                      : "initial")) &&
 			          e[1].name == "box" &&
-			          e[1].value == (completed > 1 ? "Approved now" : "Off") &&
-			          e[1].checked == (completed > 1),
+			          e[1].value == (completed > 1 && !inheritedCheckBoxOnly
+			                             ? "Approved now"
+			                             : "Off") &&
+			          e[1].checked == (completed > 1 && !inheritedCheckBoxOnly),
 			      "mixed text or checkbox value changed");
+			if (inheritedCheckBoxOnly) {
+				check(e[1].flags == 6 && e[1].control &&
+				          e[1].control->count == 1 &&
+				          e[1].control->index == 0 &&
+				          e[1].control->exportValue == "Approved now",
+				      "inherited checkbox identity changed");
+			}
 			for (int i = 0; i < 2; ++i) {
 				const auto& member = e[i + 2];
 				check(member.name == "radio" &&
@@ -3371,6 +3382,77 @@ struct TabsTest {
 			ticks = 0;
 			return;
 		}
+		if (inheritedCheckBoxOnly && step == 9) {
+			const auto refused = [&](hstring expected) {
+				check(v.m_noteDialog != nullptr,
+				      "inherited checkbox refusal closed the editor");
+				const auto error = v.m_noteDialog.Content()
+				                       .as<StackPanel>()
+				                       .Children()
+				                       .GetAt(2)
+				                       .as<TextBlock>();
+				check(value() == expected &&
+				          input().as<Control>().IsEnabled() &&
+				          v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          !error.Text().empty() && verify(1) == mixedRevision &&
+				          v.m_formsDirty && v.m_notesDirty,
+				      "inherited checkbox refusal lost draft or changed state");
+			};
+			switch (inheritedCheckBoxStage) {
+			case 0:
+				mixedRevision = verify(1);
+				open(1);
+				break;
+			case 1:
+				if (!v.m_noteDialog) {
+					return;
+				}
+				check(value() == L"off", "inherited checkbox opened checked");
+				modal();
+				button(L"PrimaryButton");
+				break;
+			case 2:
+				refused(L"off");
+				draft();
+				modal();
+				button(L"PrimaryButton");
+				break;
+			case 3:
+				refused(L"on");
+				button(L"CloseButton");
+				break;
+			case 4:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(1) == mixedRevision && v.m_formsDirty &&
+				          v.m_notesDirty,
+				      "inherited checkbox Cancel changed state");
+				open(1);
+				break;
+			case 5:
+				if (!v.m_noteDialog) {
+					return;
+				}
+				check(value() == L"off",
+				      "inherited checkbox kept refused draft");
+				modal();
+				button(L"CloseButton");
+				break;
+			case 6:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(1) == mixedRevision && v.m_formsDirty &&
+				          v.m_notesDirty,
+				      "inherited checkbox reopen changed state");
+				step = 18;
+				break;
+			}
+			++inheritedCheckBoxStage;
+			ticks = 0;
+			return;
+		}
 		if (step < 45) {
 			switch (step % 9) {
 			case 0:
@@ -3459,12 +3541,17 @@ struct TabsTest {
 				if (!v.m_noteDialog) {
 					return;
 				}
-				check(value() == (kind == 0  ? textDraft
-				                  : kind < 3 ? hstring(L"on")
-				                             : to_hstring(kind == 3 ? 2 : 1)),
+				check(value() ==
+				          (kind == 0 ? textDraft
+				           : kind < 3
+				               ? hstring(kind == 1 && inheritedCheckBoxOnly
+				                             ? L"off"
+				                             : L"on")
+				               : to_hstring(kind == 3 ? 2 : 1)),
 				      "mixed reopened editor lost its saved value");
 				modal();
-				button(L"PrimaryButton");
+				button(kind == 1 && inheritedCheckBoxOnly ? L"CloseButton"
+				                                          : L"PrimaryButton");
 			}
 		} else {
 			if (v.m_noteDialog) {
@@ -3495,6 +3582,7 @@ struct TabsTest {
 			          mixedFormPdf({.multiline = multilineOnly,
 			                        .comb = combOnly,
 			                        .inherited = inheritedOnly,
+			                        .inheritedCheckBox = inheritedCheckBoxOnly,
 			                        .textLimit = combOnly ? 4 : 32}),
 			      "mixed source changed");
 			std::fwprintf(
@@ -3512,6 +3600,11 @@ struct TabsTest {
 				std::fwprintf(stderr,
 				              L"PASS: comb text, exact cells, Unicode, no-op "
 				              L"and retained overlength refusal\n");
+			}
+			if (inheritedCheckBoxOnly) {
+				std::fwprintf(
+				    stderr, L"PASS: inherited checkbox retained unchanged and "
+				            L"checked refusals beside saved supported edits\n");
 			}
 			if (inheritedOnly) {
 				std::fwprintf(stderr,
@@ -7334,18 +7427,23 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->inheritedCheckBoxOnly =
+	    GetEnvironmentVariableW(L"SableInheritedCheckBoxTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->inheritedOnly =
+	    !state->inheritedCheckBoxOnly &&
 	    GetEnvironmentVariableW(L"SableInheritedTextTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
-	state->combOnly = !state->inheritedOnly &&
+	state->combOnly = !state->inheritedCheckBoxOnly && !state->inheritedOnly &&
 	                  GetEnvironmentVariableW(L"SableCombTest", mode, 8) &&
 	                  std::wstring_view(mode) == L"true";
 	state->multilineOnly =
-	    !state->combOnly &&
+	    !state->inheritedCheckBoxOnly && !state->combOnly &&
 	    GetEnvironmentVariableW(L"SableMultilineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->mixedFormOnly =
 	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
+	    state->inheritedCheckBoxOnly ||
 	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
 	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
@@ -7540,6 +7638,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 			                     {.multiline = state->multilineOnly,
 			                      .comb = state->combOnly,
 			                      .inherited = state->inheritedOnly,
+			                      .inheritedCheckBox =
+			                          state->inheritedCheckBoxOnly,
 			                      .textLimit = state->combOnly ? 4 : 32})
 			           : state->choiceOnly ? choicePdf(!state->choiceList)
 			           : state->radioOnly  ? radioPdf()
