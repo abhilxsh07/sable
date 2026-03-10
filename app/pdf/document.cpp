@@ -814,6 +814,9 @@ std::optional<bool> Document::updateFormField(
 	std::u16string replacement(contents);
 	std::optional<FormField> inheritedTarget;
 	constexpr int plainFlags = FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
+	// i keep DoNotSpellCheck on text fields. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+	constexpr int textPlainFlags = plainFlags | (1 << 22);
 	const auto inheritedWidget = [&](FPDF_FORMHANDLE form,
 	                                 FPDF_ANNOTATION widget) {
 		// i require the actual widget in the resolved field, not just its
@@ -825,7 +828,7 @@ std::optional<bool> Document::updateFormField(
 		    FPDFAnnot_GetFormControlCount(form, widget) != 1 ||
 		    FPDFAnnot_GetFormControlIndex(form, widget) != 0 ||
 		    (FPDFAnnot_GetFormFieldFlags(form, widget) &
-		     ~(plainFlags | FPDF_FORMFLAG_TEXT_MULTILINE))) {
+		     ~(textPlainFlags | FPDF_FORMFLAG_TEXT_MULTILINE))) {
 			return false;
 		}
 		// i leave field data on the parent of this plain widget. see:
@@ -910,12 +913,14 @@ std::optional<bool> Document::updateFormField(
 		// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
 		constexpr int combFlag = 1 << 24;
 		const bool comb = type == FormFieldType::Text && (flags & combFlag);
-		if ((flags & ~(plainFlags | (control ? radioFlags
-		                             : choice && type == FormFieldType::ComboBox
-		                                 ? FPDF_FORMFLAG_CHOICE_COMBO
-		                             : multiline ? FPDF_FORMFLAG_TEXT_MULTILINE
-		                             : comb      ? combFlag
-		                                         : 0))) ||
+		if ((flags &
+		     ~((type == FormFieldType::Text ? textPlainFlags : plainFlags) |
+		       (control ? radioFlags
+		        : choice && type == FormFieldType::ComboBox
+		            ? FPDF_FORMFLAG_CHOICE_COMBO
+		        : multiline ? FPDF_FORMFLAG_TEXT_MULTILINE
+		        : comb      ? combFlag
+		                    : 0))) ||
 		    (!multiline &&
 		     contents.find_first_of(u"\r\n") != std::u16string_view::npos)) {
 			return {};

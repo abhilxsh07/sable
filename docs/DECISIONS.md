@@ -2239,3 +2239,17 @@ ownership allowance does not supply the raw parent V/type and Opt proof
 needed here; I won't use it to relax the checkbox guard.
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formfield.cpp
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formcontrol.cpp
+
+## Text fields without spelling checks (2026-10-30)
+
+I allow DoNotSpellCheck on the existing terminal text paths and the bounded
+inherited single-line/multiline paths. The bit stays specific to text;
+checkboxes, radio groups and choice fields keep their earlier flag guards.
+DoNotScroll, conflicting text flags and inherited Comb stay refused.
+
+The same full-value transaction retains raw no-ops, paragraph normalization,
+limits, cancellation and saved identity. The pinned field/editor code does
+not use this flag to change values. The native editor must disable its
+spelling property for flagged text before I call the feature complete.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp

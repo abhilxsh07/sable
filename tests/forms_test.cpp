@@ -1614,6 +1614,191 @@ TEST(FormFields, InheritedMultilineCancellationKeepsEveryLiveCheckpoint) {
 	    .get();
 }
 
+TEST(FormFields, NoSpellCheckTextKeepsFlagsAndSavedContents) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const bool inherited : {false, true}) {
+			    for (const int style : {0, 4096, 16777216}) {
+				    if (inherited && style == 16777216) {
+					    continue;
+				    }
+				    SCOPED_TRACE(inherited);
+				    SCOPED_TRACE(style);
+				    const int flags = 4194304 | 6 | style;
+				    const auto attributes =
+				        "/FT /Tx /T (field) /Ff " + std::to_string(flags) +
+				        " /V (old) /MaxLen " + (style == 16777216 ? "4" : "32");
+				    const auto bytes = formBytes(
+				        {WIDGET + "/F 4 " + (inherited ? "" : attributes)},
+				        inherited ? attributes : "", 1,
+				        {.appearances = false, .outline = true});
+				    const auto opened = pdf::openDocument(bytes);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    const auto before = doc.formFields(0);
+				    ASSERT_TRUE(before && before->entries.size() == 1);
+				    EXPECT_EQ(doc.updateTextField(0, 0, u"old", u"old", 1),
+				              false);
+				    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+				    EXPECT_FALSE(doc.modified());
+				    ASSERT_TRUE(doc.outline());
+				    ASSERT_EQ(doc.addTextNote(0, 50, 60, u"Keep this note"), 1);
+				    const std::u16string input =
+				        style == 4096       ? u"Caf\u00e9\n\n\U0001F600"
+				        : style == 16777216 ? u"caf\u00e9"
+				                            : u"Caf\u00e9\U0001F600";
+				    const std::u16string stored =
+				        style == 4096 ? u"Caf\u00e9\r\n\r\n\U0001F600" : input;
+				    const std::string expected =
+				        style == 4096       ? "Caf\u00e9\r\n\r\n\U0001F600"
+				        : style == 16777216 ? "caf\u00e9"
+				                            : "Caf\u00e9\U0001F600";
+				    ASSERT_EQ(doc.updateTextField(0, 0, u"old", input,
+				                                  doc.annotationRevision()),
+				              true);
+				    const auto after = doc.formFields(0);
+				    ASSERT_TRUE(after && after->entries.size() == 1);
+				    EXPECT_EQ(after->entries[0].flags, flags);
+				    EXPECT_EQ(after->entries[0].annotationFlags, 4);
+				    EXPECT_EQ(after->entries[0].name, "field");
+				    EXPECT_EQ(after->entries[0].value, expected);
+				    EXPECT_EQ(doc.updateTextField(0, 0, stored, input,
+				                                  after->revision),
+				              false);
+				    EXPECT_FALSE(doc.updateTextField(0, 0, u"wrong", u"stale",
+				                                     after->revision));
+				    const auto saved = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(saved);
+				    const auto reopened = pdf::openDocument(*saved);
+				    ASSERT_TRUE(reopened.document);
+				    const auto kept = reopened.document->formFields(0);
+				    ASSERT_TRUE(kept && kept->entries.size() == 1);
+				    EXPECT_EQ(kept->entries[0].flags, flags);
+				    EXPECT_EQ(kept->entries[0].value, expected);
+				    EXPECT_EQ(reopened.document->textNote(0, 1),
+				              u"Keep this note");
+				    ASSERT_TRUE(reopened.document->outline());
+				    const auto link = reopened.document->outlineLink(0);
+				    ASSERT_TRUE(link && link->destination);
+				    EXPECT_EQ(link->destination->page, 0);
+				    ASSERT_EQ(
+				        doc.updateTextField(0, 0, stored, u"", after->revision),
+				        true);
+				    const auto cleared = doc.formFields(0);
+				    ASSERT_TRUE(cleared && cleared->entries.size() == 1);
+				    EXPECT_TRUE(cleared->entries[0].value.empty());
+				    EXPECT_EQ(before->entries[0].value, "old");
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, NoSpellCheckKeepsUnsafeAndNonTextWritesRefused) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const int extra :
+		         {1, 8192, 1048576, 8388608, 33554432, 4096 | 16777216}) {
+			    SCOPED_TRACE(extra);
+			    const auto bytes = formBytes(
+			        {WIDGET + "/FT /Tx /T (field) /V (old) /MaxLen 4 /Ff " +
+			         std::to_string(4194304 | extra)});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    for (const auto& value : {u"old", u"new"}) {
+				    EXPECT_FALSE(opened.document->updateTextField(0, 0, u"old",
+				                                                  value, 1));
+			    }
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+		    for (const bool inherited : {false, true}) {
+			    const std::string attributes =
+			        "/FT /Tx /T (field) /V (old) /Ff 4194304 /MaxLen 3";
+			    const auto bytes =
+			        formBytes({WIDGET + (inherited ? "" : attributes)},
+			                  inherited ? attributes : "");
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    EXPECT_FALSE(doc.updateTextField(0, 0, u"old", u"four", 1));
+			    EXPECT_FALSE(doc.modified());
+			    EXPECT_EQ(doc.annotationRevision(), 1u);
+			    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+			    ASSERT_EQ(doc.updateTextField(0, 0, u"old", u"ok", 1), true);
+		    }
+		    const auto inheritedComb = formBytes(
+		        {WIDGET}, "/FT /Tx /T (field) /V (old) /Ff 20971520 /MaxLen 4");
+		    const auto inherited = pdf::openDocument(inheritedComb);
+		    ASSERT_TRUE(inherited.document);
+		    EXPECT_FALSE(
+		        inherited.document->updateTextField(0, 0, u"old", u"new", 1));
+		    EXPECT_EQ(inherited.document->serialize(1024 * 1024),
+		              inheritedComb);
+		    for (const bool radio : {false, true}) {
+			    const auto bytes = formBytes(
+			        {WIDGET + "/FT /Btn /T (button) /V /Yes /AS /Yes /Ff " +
+			         std::to_string(4194304 | (radio ? 49152 : 0)) +
+			         " /AP << /N << /Yes 8 0 R /Off 7 0 R >> >>"},
+			        {}, 1, {.appearances = false, .painted = true});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(radio ? opened.document->updateRadioButton(
+			                             0, 0, u"Yes", {0, 1, "Yes"}, 1)
+			                       : opened.document->updateCheckBox(
+			                             0, 0, u"Yes", true, 1));
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+		    for (const bool combo : {false, true}) {
+			    const auto bytes =
+			        formBytes({CHOICE + "/Ff " +
+			                   std::to_string(4194304 | (combo ? 131072 : 0))});
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto fields = opened.document->formFields(0);
+			    ASSERT_TRUE(fields && fields->entries.size() == 1);
+			    EXPECT_FALSE(opened.document->updateChoiceField(
+			        0, fields->entries[0], 0, fields->revision));
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, NoSpellCheckCancellationKeepsEveryLiveCheckpoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes =
+		        formBytes({WIDGET}, "/FT /Tx /T (field) /Ff 4198400 /V (old)");
+		    const auto completed = pdf::openDocument(bytes);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextField(0, 0, u"old",
+		                                                  u"first\nsecond", 1,
+		                                                  [&] {
+			                                                  ++checkpoints;
+			                                                  return false;
+		                                                  }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextField(
+			        0, 0, u"old", u"first\nsecond", 1,
+			        [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
 TEST(FormFields, CombTextWritesRoundTripAndKeepOtherContents) {
 	pdf::Engine engine;
 	engine
