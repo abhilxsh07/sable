@@ -217,12 +217,13 @@ inline std::string choicePdf(bool combo) {
 // i keep every supported field beside a note and a direct bookmark.
 struct MixedFormOptions {
 	bool explicitFont = true, multiline = false, comb = false,
-	     inherited = false, inheritedCheckBox = false;
+	     inherited = false, inheritedCheckBox = false, noSpellCheck = false;
 	int textLimit = 32;
 };
 inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	const auto [explicitFont, multiline, comb, inherited, inheritedCheckBox,
-	            textLimit] = settings;
+	            noSpellCheck, textLimit] = settings;
+	const int spellFlag = noSpellCheck ? 4194304 : 0;
 	const auto parent = std::to_string(explicitFont ? 17 : 16) + " 0 R";
 	const auto boxParent =
 	    std::to_string((explicitFont ? 17 : 16) + (inherited ? 1 : 0)) + " 0 R";
@@ -249,18 +250,25 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	                    " /F 4 /Rect [40 700 " +
 	                    (multiline ? "300 800" : "190 720") + "] /P 3 0 R >>"
 	    : comb ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	             "/V (AB) /Ff 16777216 /MaxLen " +
+	             "/V (AB) /Ff " +
+	                 std::to_string(16777216 | spellFlag) + " /MaxLen " +
 	                 std::to_string(textLimit) +
 	                 " /BS << /W 1 /S /S >> /MK << /BC [0 0 0] >> "
 	                 "/F 4 /Rect [40 700 190 720] /P 3 0 R >>"
 	    : multiline
 	        ? "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	          "/V (first\\nsecond) /Ff 4096 " +
+	          "/V (first\\nsecond) /Ff " +
+	              std::to_string(4096 | spellFlag) + " " +
 	              (textLimit > 0 ? "/MaxLen " + std::to_string(textLimit) + " "
 	                             : "") +
 	              "/F 4 /Rect [40 700 300 800] /P 3 0 R >>"
 	        : "<< /Type /Annot /Subtype /Widget /FT /Tx /T (text) "
-	          "/V (initial) /F 4 /Rect [40 700 190 720] /P 3 0 R >>",
+	          "/V (initial) " +
+	              std::string(noSpellCheck ? "/Ff 4194304 " : "") +
+	              (noSpellCheck && textLimit > 0
+	                   ? "/MaxLen " + std::to_string(textLimit) + " "
+	                   : "") +
+	              "/F 4 /Rect [40 700 190 720] /P 3 0 R >>",
 	    inheritedCheckBox
 	        ? "<< /Type /Annot /Subtype /Widget /Parent " + boxParent +
 	              " /F 4 /AS /Off /Rect [40 650 90 670] /P 3 0 R "
@@ -296,11 +304,12 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 		                  "/Encoding /WinAnsiEncoding >>");
 	}
 	if (inherited) {
-		objects.push_back("<< /FT /Tx /T (text) /Ff " +
-		                  std::string(multiline ? "4102 /V (first\\nsecond) "
-		                                        : "6 /V (initial) ") +
-		                  "/DV (default) /MaxLen " + std::to_string(textLimit) +
-		                  " /Kids [4 0 R] >>");
+		objects.push_back(
+		    "<< /FT /Tx /T (text) /Ff " +
+		    std::to_string((multiline ? 4102 : 6) | spellFlag) +
+		    (multiline ? " /V (first\\nsecond) " : " /V (initial) ") +
+		    "/DV (default) /MaxLen " + std::to_string(textLimit) +
+		    " /Kids [4 0 R] >>");
 	}
 	if (inheritedCheckBox) {
 		objects.push_back("<< /FT /Btn /T (box) /Ff 6 /V /Other "

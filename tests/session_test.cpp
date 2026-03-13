@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -1388,6 +1389,121 @@ TEST_F(SessionTest, FormWritesOwnQueueOrderRefreshSnapshotsAndSave) {
 	const auto fields = readForms(reopened);
 	ASSERT_TRUE(fields);
 	EXPECT_EQ(fields->entries[0].value, "changed");
+}
+
+TEST_F(SessionTest, NoSpellCheckWritesKeepOwnedValuesFlagsAndSavedContents) {
+	const std::array<MixedFormOptions, 5> cases{
+	    {{.noSpellCheck = true},
+	     {.multiline = true, .noSpellCheck = true},
+	     {.comb = true, .noSpellCheck = true, .textLimit = 4},
+	     {.inherited = true, .noSpellCheck = true},
+	     {.multiline = true, .inherited = true, .noSpellCheck = true}}};
+	for (const auto& options : cases) {
+		SCOPED_TRACE(options.multiline);
+		SCOPED_TRACE(options.comb);
+		SCOPED_TRACE(options.inherited);
+		pdf::Session session(engine);
+		const auto bytes = mixedFormPdf(options);
+		const std::vector<std::uint8_t> original(bytes.begin(), bytes.end());
+		const auto source = writeTemp("no spelling.pdf", bytes);
+		ASSERT_TRUE(open(session, source).canFillForms);
+		const auto before = readForms(session);
+		ASSERT_TRUE(before && before->entries.size() == 6);
+		std::u16string expected = options.comb        ? u"AB"
+		                          : options.multiline ? u"first\nsecond"
+		                                              : u"initial";
+		std::u16string draft = options.comb ? u"caf\u00e9"
+		                       : options.multiline
+		                           ? u"Queued caf\u00e9\n\nthird"
+		                           : u"Queued caf\u00e9";
+		const std::u16string stored =
+		    options.multiline ? u"Queued caf\u00e9\r\n\r\nthird" : draft;
+		const std::string value = options.comb ? "caf\u00e9"
+		                          : options.multiline
+		                              ? "Queued caf\u00e9\r\n\r\nthird"
+		                              : "Queued caf\u00e9";
+		const int flags = 4194304 | (options.inherited ? 6 : 0) |
+		                  (options.comb        ? 16777216
+		                   : options.multiline ? 4096
+		                                       : 0);
+		EXPECT_EQ(before->entries[0].flags, flags);
+		Reply<pdf::FormWriteResult> overlong;
+		ASSERT_TRUE(
+		    session.updateTextField(0, 1, expected, std::u16string(40, u'x'),
+		                            before->revision, overlong.callback()));
+		const auto refused = overlong.wait();
+		ASSERT_TRUE(refused);
+		EXPECT_FALSE(refused->accepted || refused->changed ||
+		             refused->canceled);
+		const auto unchanged = readForms(session);
+		ASSERT_TRUE(unchanged && unchanged->entries.size() == 6);
+		EXPECT_EQ(unchanged->revision, before->revision);
+		EXPECT_EQ(unchanged->entries[0].value, before->entries[0].value);
+		Reply<pdf::FormWriteResult> changed, stale;
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session.updateTextField(
+			    0, 1, expected, draft, before->revision, changed.callback()));
+			ASSERT_TRUE(session.updateTextField(
+			    0, 1, stored, u"stale", before->revision, stale.callback()));
+			expected.assign(u"wrong");
+			draft.assign(u"caller changed this");
+			session.cancelForms();
+		}
+		const auto written = changed.wait(), rejected = stale.wait();
+		ASSERT_TRUE(written && rejected);
+		EXPECT_TRUE(written->accepted && written->changed);
+		EXPECT_FALSE(written->canceled);
+		EXPECT_FALSE(rejected->accepted || rejected->changed ||
+		             rejected->canceled);
+		const auto after = readForms(session);
+		ASSERT_TRUE(after && after->entries.size() == 6);
+		EXPECT_NE(after, before);
+		EXPECT_EQ(after->revision, written->revision);
+		EXPECT_GT(after->revision, before->revision);
+		EXPECT_EQ(after->entries[0].value, value);
+		EXPECT_EQ(after->entries[0].flags, flags);
+		for (std::size_t i = 1; i < after->entries.size(); ++i) {
+			EXPECT_EQ(after->entries[i].value, before->entries[i].value);
+			EXPECT_EQ(after->entries[i].checked, before->entries[i].checked);
+		}
+		Reply<pdf::FormWriteResult> noOp;
+		ASSERT_TRUE(session.updateTextField(0, 1, stored, stored,
+		                                    after->revision, noOp.callback()));
+		const auto same = noOp.wait();
+		ASSERT_TRUE(same && same->accepted);
+		EXPECT_FALSE(same->changed || same->canceled);
+		EXPECT_EQ(same->revision, after->revision);
+		const auto destination = source.parent_path() / "no spelling copy.pdf";
+		Reply<pdf::SaveResult> saved;
+		ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+		                              saved.callback()));
+		ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+		pdf::Session reopened(engine);
+		ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+		const auto kept = readForms(reopened);
+		ASSERT_TRUE(kept && kept->entries.size() == 6);
+		EXPECT_EQ(kept->entries[0].flags, flags);
+		for (std::size_t i = 0; i < kept->entries.size(); ++i) {
+			EXPECT_EQ(kept->entries[i].value, after->entries[i].value);
+			EXPECT_EQ(kept->entries[i].checked, after->entries[i].checked);
+		}
+		EXPECT_TRUE(engine
+		                .run([destination] {
+			                const auto opened = pdf::openFile(destination);
+			                if (!opened.document || opened.document->textNote(
+			                                            0, 0) != u"Original") {
+				                return false;
+			                }
+			                const auto outline = opened.document->outline();
+			                const auto link = opened.document->outlineLink(0);
+			                return outline && outline->entries.size() == 1 &&
+			                       link && link->destination &&
+			                       link->destination->page == 0;
+		                })
+		                .get());
+		EXPECT_EQ(readFile(source), original);
+	}
 }
 
 TEST_F(SessionTest, MultilineWritesOwnParagraphsAndKeepExactSnapshots) {
