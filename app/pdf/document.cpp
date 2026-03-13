@@ -817,6 +817,9 @@ std::optional<bool> Document::updateFormField(
 	// i keep DoNotSpellCheck on text fields. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
 	constexpr int textPlainFlags = plainFlags | (1 << 22);
+	// Sort is for writers; i keep the stored option order. see:
+	// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
+	constexpr int choiceFlags = 1 << 19;
 	const auto inheritedWidget = [&](FPDF_FORMHANDLE form,
 	                                 FPDF_ANNOTATION widget) {
 		// i require the actual widget in the resolved field, not just its
@@ -915,9 +918,10 @@ std::optional<bool> Document::updateFormField(
 		const bool comb = type == FormFieldType::Text && (flags & combFlag);
 		if ((flags &
 		     ~((type == FormFieldType::Text ? textPlainFlags : plainFlags) |
-		       (control ? radioFlags
-		        : choice && type == FormFieldType::ComboBox
-		            ? FPDF_FORMFLAG_CHOICE_COMBO
+		       (control     ? radioFlags
+		        : choice    ? choiceFlags | (type == FormFieldType::ComboBox
+		                                         ? FPDF_FORMFLAG_CHOICE_COMBO
+		                                         : 0)
 		        : multiline ? FPDF_FORMFLAG_TEXT_MULTILINE
 		        : comb      ? combFlag
 		                    : 0))) ||

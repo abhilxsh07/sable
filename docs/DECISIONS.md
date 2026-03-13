@@ -2261,3 +2261,19 @@ gate and set IsSpellCheckEnabled to false on their text box. Unflagged fields
 keep WinUI's default true. Text prediction keeps its existing setting.
 The flag stays text-only, and the queued writer retains its earlier guards.
 // see: https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.textbox.isspellcheckenabled?view=windows-app-sdk-1.8
+
+## Choice fields carrying Sort (2026-10-30)
+
+I allow Sort on the existing terminal single-choice combo/list transaction.
+Table 230 assigns sorting to writers; readers display the stored Opt order.
+I keep each option's index and label, including repeated labels and exports,
+instead of reordering them. The pinned combo/list editors do the same.
+
+The field still needs one control, its own Ch type and Opt array, matching
+snapshot metadata and an unambiguous selection. Editable, multi-select,
+CommitOnSelChange, inherited/shared and action-bearing choices stay refused.
+Sort stays out of text and button masks. The saved-copy transaction and
+cancellation checks keep their existing bounds; native editing follows.
+// see: https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_combobox.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
