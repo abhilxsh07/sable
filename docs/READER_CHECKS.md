@@ -172,6 +172,14 @@ The source bytes must stay intact. This diagnostic takes precedence over
 the inherited-text, multiline and comb modes. It uses native automation
 peers and a supplied save path; actual input and the picker need desktop QA.
 
+SableNoSpellCheckTest=true with SableTabsTest=true checks text flag bit 22
+and the native editor's disabled spell checking on every open, including
+the saved copy. It checks retained overlength drafts, Cancel, no-op, Apply,
+modal commands and save/reopen beside the other fields. Combine it with
+SableMultilineTest, SableCombTest or SableInheritedTextTest for those text
+variants, or SableInheritedCheckBoxTest for checkbox refusals beside it.
+Without the flag, the same checks require spell checking to stay enabled.
+
 SableMultilineTest=true with SableTabsTest=true uses the same mixed-field
 check with a taller multiline field and a length limit. It checks wrapping,
 initial raw LF no-ops, Unicode and blank paragraphs, retained overlong

@@ -116,6 +116,7 @@ struct TabsTest {
 	bool combOnly = false;
 	bool inheritedOnly = false;
 	bool inheritedCheckBoxOnly = false;
+	bool noSpellCheckOnly = false;
 	int boundedTextStage = 0;
 	int inheritedCheckBoxStage = 0;
 	std::uint64_t mixedRevision = 0;
@@ -3111,10 +3112,9 @@ struct TabsTest {
 		                          : multilineOnly ? L"Edited caf\u00e9\n\nthird"
 		                                          : L"Edited caf\u00e9";
 		const hstring overlong =
-		    combOnly ? L"12345"
-		    : inheritedOnly && !multilineOnly
-		        ? hstring(std::wstring(40, L'x'))
-		        : hstring(std::wstring(40, L'x') + L"\nlast");
+		    combOnly         ? L"12345"
+		    : !multilineOnly ? hstring(std::wstring(40, L'x'))
+		                     : hstring(std::wstring(40, L'x') + L"\nlast");
 		const auto paragraphs = [](std::wstring_view value) {
 			std::wstring result;
 			for (std::size_t i = 0; i < value.size(); ++i) {
@@ -3152,10 +3152,11 @@ struct TabsTest {
 			const auto fields = read();
 			const auto& e = fields->entries;
 			check(e[0].name == "text" &&
-			          e[0].flags == (inheritedOnly ? (multilineOnly ? 4102 : 6)
-			                         : combOnly    ? 16777216
-			                         : multilineOnly ? 4096
-			                                         : 0) &&
+			          e[0].flags == ((inheritedOnly ? (multilineOnly ? 4102 : 6)
+			                          : combOnly    ? 16777216
+			                          : multilineOnly ? 4096
+			                                          : 0) |
+			                         (noSpellCheckOnly ? 4194304 : 0)) &&
 			          e[0].annotationFlags == 4 &&
 			          e[0].value ==
 			              (completed > 0
@@ -3227,6 +3228,11 @@ struct TabsTest {
 			      : kind == 3 ? control.try_as<ComboBox>() != nullptr
 			                  : control.try_as<ListBox>() != nullptr,
 			      "mixed field has wrong native control");
+			if (kind == 0) {
+				check(control.as<TextBox>().IsSpellCheckEnabled() ==
+				          !noSpellCheckOnly,
+				      "mixed text spell-check flag changed");
+			}
 			return control;
 		};
 		const auto value = [&]() -> hstring {
@@ -3325,7 +3331,7 @@ struct TabsTest {
 		    (!findButton(L"PrimaryButton") || !findButton(L"CloseButton"))) {
 			return;
 		}
-		if ((multilineOnly || combOnly || inheritedOnly) &&
+		if ((multilineOnly || combOnly || inheritedOnly || noSpellCheckOnly) &&
 		    boundedTextStage < 4) {
 			switch (boundedTextStage) {
 			case 0:
@@ -3337,7 +3343,7 @@ struct TabsTest {
 					return;
 				}
 				const auto text = input().as<TextBox>();
-				check(combOnly || (inheritedOnly && !multilineOnly)
+				check(!multilineOnly
 				          ? !text.AcceptsReturn() &&
 				                value() == (combOnly ? L"AB" : L"initial")
 				          : text.AcceptsReturn() &&
@@ -3583,6 +3589,7 @@ struct TabsTest {
 			                        .comb = combOnly,
 			                        .inherited = inheritedOnly,
 			                        .inheritedCheckBox = inheritedCheckBoxOnly,
+			                        .noSpellCheck = noSpellCheckOnly,
 			                        .textLimit = combOnly ? 4 : 32}),
 			      "mixed source changed");
 			std::fwprintf(
@@ -3605,6 +3612,12 @@ struct TabsTest {
 				std::fwprintf(
 				    stderr, L"PASS: inherited checkbox retained unchanged and "
 				            L"checked refusals beside saved supported edits\n");
+			}
+			if (noSpellCheckOnly) {
+				std::fwprintf(
+				    stderr,
+				    L"PASS: no-spell-check text flag and native editor, "
+				    L"retained limit refusal and saved identity\n");
 			}
 			if (inheritedOnly) {
 				std::fwprintf(stderr,
@@ -7427,6 +7440,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->noSpellCheckOnly =
+	    GetEnvironmentVariableW(L"SableNoSpellCheckTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->inheritedCheckBoxOnly =
 	    GetEnvironmentVariableW(L"SableInheritedCheckBoxTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -7443,7 +7459,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->mixedFormOnly =
 	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
-	    state->inheritedCheckBoxOnly ||
+	    state->inheritedCheckBoxOnly || state->noSpellCheckOnly ||
 	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
 	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
@@ -7640,6 +7656,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 			                      .inherited = state->inheritedOnly,
 			                      .inheritedCheckBox =
 			                          state->inheritedCheckBoxOnly,
+			                      .noSpellCheck = state->noSpellCheckOnly,
 			                      .textLimit = state->combOnly ? 4 : 32})
 			           : state->choiceOnly ? choicePdf(!state->choiceList)
 			           : state->radioOnly  ? radioPdf()

@@ -30,6 +30,10 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace {
+// i keep this flag specific to text fields. see:
+// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+constexpr int NO_SPELL_CHECK_FLAG = 1 << 22;
+
 bool singleChoice(const pdf::FormField& field) {
 	if ((field.type != pdf::FormFieldType::ComboBox &&
 	     field.type != pdf::FormFieldType::ListBox) ||
@@ -139,10 +143,13 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					        // i keep comb and multiline flags exclusive. see:
 					        // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
 					        const int textFlags =
-					            !text ? 0
-					            : found->flags & FPDF_FORMFLAG_TEXT_MULTILINE
-					                ? FPDF_FORMFLAG_TEXT_MULTILINE
-					                : 1 << 24;
+					            !text
+					                ? 0
+					                : NO_SPELL_CHECK_FLAG |
+					                      (found->flags &
+					                               FPDF_FORMFLAG_TEXT_MULTILINE
+					                           ? FPDF_FORMFLAG_TEXT_MULTILINE
+					                           : 1 << 24);
 					        constexpr int locked =
 					            FPDF_ANNOT_FLAG_READONLY |
 					            FPDF_ANNOT_FLAG_LOCKED |
@@ -239,6 +246,10 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		contents.Header(box_value(L"Value"));
 		contents.MinWidth(320);
 		contents.MaxLength(32767);
+		if (field.type == pdf::FormFieldType::Text &&
+		    (field.flags & NO_SPELL_CHECK_FLAG)) {
+			contents.IsSpellCheckEnabled(false);
+		}
 		if (field.type == pdf::FormFieldType::Text &&
 		    (field.flags & FPDF_FORMFLAG_TEXT_MULTILINE)) {
 			contents.AcceptsReturn(true);

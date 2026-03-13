@@ -2253,3 +2253,11 @@ not use this flag to change values. The native editor must disable its
 spelling property for flagged text before I call the feature complete.
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp
+
+## Native text spelling settings (2026-10-30)
+
+I open the supported DoNotSpellCheck text fields through the existing native
+gate and set IsSpellCheckEnabled to false on their text box. Unflagged fields
+keep WinUI's default true. Text prediction keeps its existing setting.
+The flag stays text-only, and the queued writer retains its earlier guards.
+// see: https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.textbox.isspellcheckenabled?view=windows-app-sdk-1.8
