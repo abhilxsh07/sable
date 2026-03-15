@@ -217,20 +217,26 @@ inline std::string choicePdf(bool combo) {
 // i keep every supported field beside a note and a direct bookmark.
 struct MixedFormOptions {
 	bool explicitFont = true, multiline = false, comb = false,
-	     inherited = false, inheritedCheckBox = false, noSpellCheck = false;
+	     inherited = false, inheritedCheckBox = false, noSpellCheck = false,
+	     sortedChoices = false;
 	int textLimit = 32;
 };
 inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	const auto [explicitFont, multiline, comb, inherited, inheritedCheckBox,
-	            noSpellCheck, textLimit] = settings;
+	            noSpellCheck, sortedChoices, textLimit] = settings;
 	const int spellFlag = noSpellCheck ? 4194304 : 0;
+	const int sortFlag = sortedChoices ? 524288 : 0;
 	const auto parent = std::to_string(explicitFont ? 17 : 16) + " 0 R";
 	const auto boxParent =
 	    std::to_string((explicitFont ? 17 : 16) + (inherited ? 1 : 0)) + " 0 R";
 	const std::string paint = "0 0 0 rg 0 0 50 20 re f";
-	const std::string options = "/V (old) /I [0] /Opt [[(old) (First)] "
-	                            "[<FEFF00630061006600E9> (Same)] "
-	                            "[<FEFF00630061006600E9> (Same)]] ";
+	const std::string options = sortedChoices
+	                                ? "/V (old) /I [0] /Opt [[(old) (Zulu)] "
+	                                  "[<FEFF00630061006600E9> (Alpha)] "
+	                                  "[<FEFF00630061006600E9> (Alpha)]] "
+	                                : "/V (old) /I [0] /Opt [[(old) (First)] "
+	                                  "[<FEFF00630061006600E9> (Same)] "
+	                                  "[<FEFF00630061006600E9> (Same)]] ";
 	std::vector<std::string> objects{
 	    "<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R "
 	    "/AcroForm << /Fields [" +
@@ -285,9 +291,11 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	    "/Rect [40 550 90 570] /F 4 /AS /Off "
 	    "/AP << /N << /Next#20choice 12 0 R /Off 13 0 R >> >> >>",
 	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (combo) /F 4 "
-	    "/Ff 131072 " +
-	        options + "/Rect [40 480 190 510] /P 3 0 R >>",
-	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (list) /F 4 " + options +
+	    "/Ff " +
+	        std::to_string(131072 | sortFlag) + " " + options +
+	        "/Rect [40 480 190 510] /P 3 0 R >>",
+	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (list) /F 4 " +
+	        std::string(sortedChoices ? "/Ff 524288 " : "") + options +
 	        "/Rect [40 350 190 450] /P 3 0 R >>",
 	    "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
 	    "/Contents (Original) /P 3 0 R >>",

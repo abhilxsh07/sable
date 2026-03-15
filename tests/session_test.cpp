@@ -2162,7 +2162,7 @@ TEST_F(SessionTest, RadioWritesRespectCloseAndQueueBoundaries) {
 }
 
 TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
-	for (const int flags : {0, 131072}) {
+	for (const int flags : {0, 131072, 524288, 655360}) {
 		SCOPED_TRACE(flags);
 		pdf::Session session(engine);
 		const auto bytes = manyPages(1, true, false, flags);
@@ -2181,6 +2181,10 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 			ASSERT_TRUE(session.updateChoiceField(
 			    0, target, 2, before->revision, stale.callback()));
 			target.name = "wrong";
+			target.flags ^= 524288;
+			target.options->front().label = "wrong";
+			target.options->back().selected = true;
+			session.cancelForms();
 			target.value = "wrong";
 			target.options->front().selected = false;
 			target.options->back().label = "wrong";
@@ -2202,6 +2206,7 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 		ASSERT_EQ(after->entries[0].options->size(), 3u);
 		EXPECT_NE(after, before);
 		EXPECT_EQ(after->revision, written->revision);
+		EXPECT_EQ(after->entries[0].flags, flags);
 		EXPECT_EQ(after->entries[0].value, "caf\u00e9");
 		EXPECT_TRUE((*after->entries[0].options)[1].selected);
 		EXPECT_FALSE((*after->entries[0].options)[2].selected);
@@ -2219,7 +2224,7 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 		ASSERT_TRUE(refreshed);
 		EXPECT_NE(refreshed, after);
 		after = refreshed;
-		for (int mismatch = 0; mismatch < 5; ++mismatch) {
+		for (int mismatch = 0; mismatch < 6; ++mismatch) {
 			SCOPED_TRACE(mismatch);
 			auto bad = after->entries[0];
 			if (mismatch == 0) {
@@ -2230,6 +2235,8 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 				bad.options.reset();
 			} else if (mismatch == 3) {
 				bad.type = pdf::FormFieldType::Text;
+			} else if (mismatch == 5) {
+				bad.flags ^= 524288;
 			}
 			Reply<pdf::FormWriteResult> invalid;
 			ASSERT_TRUE(session.updateChoiceField(0, bad, mismatch == 4 ? 3 : 2,
@@ -2276,6 +2283,7 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 		ASSERT_TRUE(fields->entries[0].options);
 		ASSERT_EQ(fields->entries[0].options->size(), 3u);
 		EXPECT_EQ(fields->entries[0].value, "caf\u00e9");
+		EXPECT_EQ(fields->entries[0].flags, flags);
 		EXPECT_FALSE((*fields->entries[0].options)[1].selected);
 		EXPECT_TRUE((*fields->entries[0].options)[2].selected);
 		Reply<pdf::TextNoteResult> preserved;
@@ -2289,10 +2297,11 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 }
 
 TEST_F(SessionTest, MixedFormWritesPreserveEachOtherThroughSaveAndReopen) {
-	for (const bool reverse : {false, true}) {
-		SCOPED_TRACE(reverse);
+	for (const int mode : {0, 1, 2, 3}) {
+		SCOPED_TRACE(mode);
+		const bool reverse = (mode & 1) != 0, sorted = (mode & 2) != 0;
 		pdf::Session session(engine);
-		const auto bytes = mixedFormPdf();
+		const auto bytes = mixedFormPdf({.sortedChoices = sorted});
 		const auto original =
 		    std::vector<std::uint8_t>(bytes.begin(), bytes.end());
 		const auto source = writeTemp("mixed fields.pdf", bytes);
@@ -2331,13 +2340,17 @@ TEST_F(SessionTest, MixedFormWritesPreserveEachOtherThroughSaveAndReopen) {
 				EXPECT_EQ(field.type, i == 3 ? pdf::FormFieldType::ComboBox
 				                             : pdf::FormFieldType::ListBox);
 				EXPECT_EQ(field.name, i == 3 ? "combo" : "list");
+				EXPECT_EQ(field.flags,
+				          (i == 3 ? 131072 : 0) | (sorted ? 524288 : 0));
 				EXPECT_EQ(field.value, changed[i] ? "caf\u00e9" : "old");
 				ASSERT_TRUE(field.options);
 				ASSERT_EQ(field.options->size(), 3u);
 				for (int option = 0; option < 3; ++option) {
 					const auto& item = (*field.options)[option];
 					EXPECT_EQ(item.index, option);
-					EXPECT_EQ(item.label, option == 0 ? "First" : "Same");
+					EXPECT_EQ(item.label,
+					          sorted ? (option == 0 ? "Zulu" : "Alpha")
+					                 : (option == 0 ? "First" : "Same"));
 					EXPECT_EQ(item.selected,
 					          option == (changed[i] ? (i == 3 ? 2 : 1) : 0));
 				}
