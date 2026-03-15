@@ -160,6 +160,14 @@ The check supplies its save destination. Actual keyboard/pointer delivery,
 the Windows picker and Acrobat appearances/interoperability need a desktop
 pass separately.
 
+SableSortedChoiceTest=true with SableTabsTest=true runs the mixed-field
+check with Sort on the combo and list. Both native editors must keep the
+stored Zulu, Alpha, Alpha order and give repeated labels distinct items.
+Cancel, unchanged Apply, positional edits and save/reopen must retain the
+selected duplicate's index. Combine it with the text modes, including
+SableNoSpellCheckTest, or the inherited-checkbox refusal mode. Buttons and
+drafts use native automation; physical input and picker QA remain separate.
+
 SableInheritedCheckBoxTest=true with SableTabsTest=true runs the mixed-field
 check with a pure checkbox widget inheriting /Ff 6, /V /Other and
 /Opt [(Approved now)]. It verifies one control at index zero and checks

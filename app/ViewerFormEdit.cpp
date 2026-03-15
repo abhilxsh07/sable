@@ -33,6 +33,9 @@ namespace {
 // i keep this flag specific to text fields. see:
 // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
 constexpr int NO_SPELL_CHECK_FLAG = 1 << 22;
+// i preserve the stored option order for Sort fields. see:
+// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
+constexpr int SORT_CHOICE_FLAG = 1 << 19;
 
 bool singleChoice(const pdf::FormField& field) {
 	if ((field.type != pdf::FormFieldType::ComboBox &&
@@ -150,6 +153,14 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					                               FPDF_FORMFLAG_TEXT_MULTILINE
 					                           ? FPDF_FORMFLAG_TEXT_MULTILINE
 					                           : 1 << 24);
+					        const int choiceFlags =
+					            !selection
+					                ? 0
+					                : SORT_CHOICE_FLAG |
+					                      (found->type ==
+					                               pdf::FormFieldType::ComboBox
+					                           ? FPDF_FORMFLAG_CHOICE_COMBO
+					                           : 0);
 					        constexpr int locked =
 					            FPDF_ANNOT_FLAG_READONLY |
 					            FPDF_ANNOT_FLAG_LOCKED |
@@ -164,13 +175,9 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 					               radio) &&
 					              found->checked.has_value())) &&
 					            !(found->flags &
-					              ~(plain |
-					                (radio ? (1 << 14) | (1 << 15)
-					                 : selection &&
-					                         found->type ==
-					                             pdf::FormFieldType::ComboBox
-					                     ? FPDF_FORMFLAG_CHOICE_COMBO
-					                     : textFlags))) &&
+					              ~(plain | (radio       ? (1 << 14) | (1 << 15)
+					                         : selection ? choiceFlags
+					                                     : textFlags))) &&
 					            !(found->annotationFlags & locked)) {
 						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,

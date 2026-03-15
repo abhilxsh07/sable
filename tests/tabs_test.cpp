@@ -117,6 +117,7 @@ struct TabsTest {
 	bool inheritedOnly = false;
 	bool inheritedCheckBoxOnly = false;
 	bool noSpellCheckOnly = false;
+	bool sortedChoiceOnly = false;
 	int boundedTextStage = 0;
 	int inheritedCheckBoxStage = 0;
 	std::uint64_t mixedRevision = 0;
@@ -3193,6 +3194,8 @@ struct TabsTest {
 			for (int i = 3; i < 5; ++i) {
 				const auto& field = e[i + 1];
 				check(field.name == (i == 3 ? "combo" : "list") &&
+				          field.flags == ((i == 3 ? 131072 : 0) |
+				                          (sortedChoiceOnly ? 524288 : 0)) &&
 				          field.value ==
 				              (completed > i ? "caf\u00e9" : "old") &&
 				          field.options && field.options->size() == 3,
@@ -3200,7 +3203,10 @@ struct TabsTest {
 				for (int j = 0; j < 3; ++j) {
 					const auto& option = (*field.options)[j];
 					check(option.index == j &&
-					          option.label == (j == 0 ? "First" : "Same") &&
+					          option.label ==
+					              (sortedChoiceOnly
+					                   ? (j == 0 ? "Zulu" : "Alpha")
+					                   : (j == 0 ? "First" : "Same")) &&
 					          option.selected ==
 					              (j == (completed > i ? (i == 3 ? 2 : 1) : 0)),
 					      "mixed choice position changed");
@@ -3232,6 +3238,23 @@ struct TabsTest {
 				check(control.as<TextBox>().IsSpellCheckEnabled() ==
 				          !noSpellCheckOnly,
 				      "mixed text spell-check flag changed");
+			}
+			if (kind >= 3) {
+				const auto items = control.as<Primitives::Selector>().Items();
+				check(items.Size() == 3, "mixed native option count changed");
+				for (uint32_t i = 0; i < 3; ++i) {
+					const auto item = items.GetAt(i).as<ContentControl>();
+					check(kind == 3 ? item.try_as<ComboBoxItem>() != nullptr
+					                : item.try_as<ListBoxItem>() != nullptr,
+					      "mixed native option container changed");
+					check(unbox_value<hstring>(item.Content()) ==
+					          (sortedChoiceOnly
+					               ? (i == 0 ? L"Zulu" : L"Alpha")
+					               : (i == 0 ? L"First" : L"Same")),
+					      "mixed native option order changed");
+				}
+				check(items.GetAt(1) != items.GetAt(2),
+				      "mixed duplicate labels share an option container");
 			}
 			return control;
 		};
@@ -3590,6 +3613,7 @@ struct TabsTest {
 			                        .inherited = inheritedOnly,
 			                        .inheritedCheckBox = inheritedCheckBoxOnly,
 			                        .noSpellCheck = noSpellCheckOnly,
+			                        .sortedChoices = sortedChoiceOnly,
 			                        .textLimit = combOnly ? 4 : 32}),
 			      "mixed source changed");
 			std::fwprintf(
@@ -3618,6 +3642,11 @@ struct TabsTest {
 				    stderr,
 				    L"PASS: no-spell-check text flag and native editor, "
 				    L"retained limit refusal and saved identity\n");
+			}
+			if (sortedChoiceOnly) {
+				std::fwprintf(stderr,
+				              L"PASS: sorted choice flag keeps native option "
+				              L"order and saved positions\n");
 			}
 			if (inheritedOnly) {
 				std::fwprintf(stderr,
@@ -7440,6 +7469,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->sortedChoiceOnly =
+	    GetEnvironmentVariableW(L"SableSortedChoiceTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->noSpellCheckOnly =
 	    GetEnvironmentVariableW(L"SableNoSpellCheckTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -7460,6 +7492,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->mixedFormOnly =
 	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
 	    state->inheritedCheckBoxOnly || state->noSpellCheckOnly ||
+	    state->sortedChoiceOnly ||
 	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
 	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
@@ -7657,6 +7690,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 			                      .inheritedCheckBox =
 			                          state->inheritedCheckBoxOnly,
 			                      .noSpellCheck = state->noSpellCheckOnly,
+			                      .sortedChoices = state->sortedChoiceOnly,
 			                      .textLimit = state->combOnly ? 4 : 32})
 			           : state->choiceOnly ? choicePdf(!state->choiceList)
 			           : state->radioOnly  ? radioPdf()

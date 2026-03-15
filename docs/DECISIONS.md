@@ -2277,3 +2277,12 @@ cancellation checks keep their existing bounds; native editing follows.
 // see: https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_combobox.cpp
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
+
+## Native Sort-bearing choices (2026-10-30)
+
+I open supported Sort-bearing combo/list fields through the existing choice
+gate. Their native items keep the PDF's order and separate containers for
+repeated labels. Apply still uses the selected option index, so equal
+exports do not turn a positional change into a no-op. The same dialog keeps
+Cancel, modal commands, saved-copy reopen and earlier refusal behavior.
+Sort remains specific to choices; no field list is reordered.
