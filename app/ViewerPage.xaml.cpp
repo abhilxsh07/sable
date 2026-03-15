@@ -340,6 +340,7 @@ void ViewerPage::close() {
 	if (m_nativeResetTimeout) {
 		m_nativeResetTimeout.Stop();
 	}
+	hideFreeze();
 	m_sizeChanged.revoke();
 	m_layoutUpdated.revoke();
 	m_thumbScrolled.revoke();
@@ -484,6 +485,10 @@ bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
 // nothing changed, if that's more than one surface can hold; for now the
 // zoom just stays, see "Still undecided" in DECISIONS.md.
 bool ViewerPage::relayout(double zoom) {
+	// a layout that isn't the gesture's own leaves the freeze frame stale
+	if (m_freezeStage == FreezeStage::Landing) {
+		hideFreeze();
+	}
 	stopPan();
 	cancelSelectionDrag();
 	auto next = makeLayout(displaySizes(), zoom);
@@ -1607,18 +1612,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			    }
 		    });
 		m_manipulationStarted = Scroller().DirectManipulationStarted(
-		    auto_revoke, [this](auto&&, auto&&) {
-			    m_nativeZoom.reset();
-			    m_resettingGesture = false;
-			    m_holdCurrent = false;
-			    if (m_nativeResetTimeout) {
-				    m_nativeResetTimeout.Stop();
-			    }
-			    m_directManipulation = true;
-			    m_landingAt.reset();
-			    ++m_linkVersion;
-			    m_linkPending = false;
-		    });
+		    auto_revoke, [this](auto&&, auto&&) { nativeGestureStarted(); });
 		m_manipulationCompleted = Scroller().DirectManipulationCompleted(
 		    auto_revoke, [this](auto&&, auto&&) {
 			    m_directManipulation = false;
@@ -1767,6 +1761,8 @@ void ViewerPage::rebuildDevice() {
 		// and this runs again, instead of drawing old bitmaps on a new device
 		m_device = std::move(device);
 		m_surface->setDevice(*m_device.device);
+		// the freeze frame was drawn on the old device
+		dropFreeze();
 		requestNext();
 	} catch (...) {
 		showMessage(L"The graphics device stopped working: " + to_message());
@@ -2062,6 +2058,47 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 		}
 	}
 	drawSelectedAnnotation(context, pages);
+}
+
+// the freeze frame, in its own pixels: the pages as they stood when the
+// gesture ended, scaled by it
+void ViewerPage::drawFreeze(ID2D1DeviceContext& context, const RECT& rect) {
+	context.Clear(m_presentation || appearance::obsidian()
+	                  ? D2D1::ColorF(0, 0, 0)
+	                  : BACKGROUND);
+	if (!m_freeze || !m_layout) {
+		return;
+	}
+	auto& freeze = *m_freeze;
+	freeze.drawn = true;
+	// a freeze pixel is (document pixel - left/top) * factor
+	const RECT source{
+	    static_cast<LONG>(std::floor(freeze.left + rect.left / freeze.factor)),
+	    static_cast<LONG>(std::floor(freeze.top + rect.top / freeze.factor)),
+	    static_cast<LONG>(std::ceil(freeze.left + rect.right / freeze.factor)),
+	    static_cast<LONG>(std::ceil(freeze.top + rect.bottom / freeze.factor))};
+	D2D1::Matrix3x2F base;
+	context.GetTransform(&base);
+	context.SetTransform(
+	    D2D1::Matrix3x2F::Translation(static_cast<float>(-freeze.left),
+	                                  static_cast<float>(-freeze.top)) *
+	    D2D1::Matrix3x2F::Scale(static_cast<float>(freeze.factor),
+	                            static_cast<float>(freeze.factor)) *
+	    base);
+	context.PushAxisAlignedClip(D2D1::RectF(static_cast<float>(source.left),
+	                                        static_cast<float>(source.top),
+	                                        static_cast<float>(source.right),
+	                                        static_cast<float>(source.bottom)),
+	                            D2D1_ANTIALIAS_MODE_ALIASED);
+	try {
+		draw(context, source);
+	} catch (...) {
+		context.PopAxisAlignedClip();
+		context.SetTransform(base);
+		throw;
+	}
+	context.PopAxisAlignedClip();
+	context.SetTransform(base);
 }
 
 helpers::PixelRect ViewerPage::pixels(std::size_t page) const {

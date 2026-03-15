@@ -419,6 +419,33 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    m_nativeResetTimeout{nullptr};
 	bool m_directManipulation = false, m_nativeZoomQueued = false;
 	bool m_resettingGesture = false;
+	void resetNativeZoom();
+	void dropNativeZoom();
+	void nativeGestureStarted();
+	// The scroller's zoom resets a frame or more before the pages are laid out
+	// again, and that frame showed them at the old zoom in the wrong place.
+	// The gesture's last view is drawn over them until the new layout lands.
+	enum class FreezeStage { None, Showing, Resetting, Landing };
+	struct Freeze {
+		// the document pixel at the viewport's top left, and the scale
+		double left, top, factor;
+		bool drawn = false;
+	};
+	bool showFreeze();
+	void hideFreeze();
+	void dropFreeze();
+	void freezeFrame();
+	void drawFreeze(ID2D1DeviceContext& context, const RECT& rect);
+	std::optional<Freeze> m_freeze;
+	FreezeStage m_freezeStage = FreezeStage::None;
+	std::chrono::steady_clock::time_point m_freezeSince;
+	int m_freezeFrames = 0;
+	std::shared_ptr<pdf::Surface> m_freezeSurface;
+	winrt::Microsoft::UI::Xaml::Media::CompositionTarget::Rendering_revoker
+	    m_freezeRendering;
+#ifdef SABLE_SURFACE_TEST
+	int m_freezeShows = 0;
+#endif
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
 	void requestLink(winrt::Windows::Foundation::Point point,

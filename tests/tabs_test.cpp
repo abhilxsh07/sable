@@ -74,6 +74,7 @@ struct TabsTest {
 	bool longGesturesOnly = false;
 	Windows::Foundation::Point gesturePoint{};
 	int gestureRound = 0;
+	int freezeShows = 0;
 	helpers::PageSize gestureSize{};
 	bool layoutOnly = false;
 	bool presentationOnly = false;
@@ -6023,7 +6024,8 @@ struct TabsTest {
 		}
 		auto& v = *get_self<ViewerPage>(current);
 		check(!v.Message().IsOpen(), to_string(v.Message().Message()));
-		if (!ready(v) || ticks < 3 || v.m_resettingGesture || v.m_linkPending) {
+		if (!ready(v) || ticks < 3 || v.m_resettingGesture || v.m_linkPending ||
+		    v.m_freezeStage != ViewerPage::FreezeStage::None) {
 			return;
 		}
 		const auto click = [&v](std::size_t page, double x = .5) {
@@ -6076,12 +6078,31 @@ struct TabsTest {
 			check(v.m_visible.end == 1000,
 			      "last-page raster vanished during active native zoom");
 			v.m_directManipulation = false;
+			freezeShows = v.m_freezeShows;
+			// a gesture starting again under the freeze frame takes it down
+			// and keeps its own scale
+			v.finishNativeZoom();
+			check(v.m_freezeStage == ViewerPage::FreezeStage::Showing &&
+			          v.GestureFreeze().Visibility() == Visibility::Visible &&
+			          v.m_resettingGesture &&
+			          std::abs(v.Scroller().ZoomFactor() - .6f) < 1e-5,
+			      "ending a gesture didn't put the freeze frame up first");
+			v.nativeGestureStarted();
+			check(v.m_freezeStage == ViewerPage::FreezeStage::None &&
+			          !v.m_freezeSurface &&
+			          v.GestureFreeze().Visibility() == Visibility::Collapsed &&
+			          !v.m_resettingGesture && !v.m_nativeZoom,
+			      "a restarted gesture kept the freeze frame");
+			v.m_directManipulation = false;
 			v.queueNativeZoom();
 			break;
 		case 5:
 			check(std::abs(v.Scroller().ZoomFactor() - 1.f) < 1e-5 &&
 			          v.m_current >= 998 && v.m_wanted.end == 1000,
 			      "finishing zoom jumped away from the final page");
+			check(v.m_freezeShows >= freezeShows + 2 && !v.m_freezeSurface &&
+			          v.GestureFreeze().Visibility() == Visibility::Collapsed,
+			      "the freeze frame didn't cover the reset or stayed up");
 			if (gestureRound < 2) {
 				if (gestureRound == 0) {
 					const auto wanted = v.m_wanted;
