@@ -201,6 +201,7 @@ class Document {
 	                  const FormControl& control, std::uint64_t revision,
 	                  const std::function<bool()>& canceled = {});
 	// i select one option in a plain terminal combo/list from its snapshot.
+	// i use -1 to clear a single list without a default value.
 	std::optional<bool>
 	updateChoiceField(int page, const FormField& field, int option,
 	                  std::uint64_t revision,

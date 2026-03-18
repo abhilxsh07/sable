@@ -707,8 +707,10 @@ Document::updateChoiceField(int page, const FormField& field, int option,
 	if ((field.type != FormFieldType::ComboBox &&
 	     field.type != FormFieldType::ListBox) ||
 	    !field.options || field.options->empty() ||
-	    field.options->size() > 256 || option < 0 ||
-	    static_cast<std::size_t>(option) >= field.options->size() ||
+	    field.options->size() > 256 || option < -1 ||
+	    (option == -1 && field.type != FormFieldType::ListBox) ||
+	    (option >= 0 &&
+	     static_cast<std::size_t>(option) >= field.options->size()) ||
 	    std::any_of(
 	        field.options->begin(), field.options->end(),
 	        [](const auto& item) { return item.label.empty(); })) {
@@ -724,6 +726,7 @@ std::optional<bool> Document::updateFormField(
     const std::function<bool()>& canceled, std::optional<bool> checked,
     const FormControl* control, const FormField* choice, int choiceIndex) {
 	const auto stopped = [&] { return canceled && canceled(); };
+	const bool clearingChoice = choice && choiceIndex == -1;
 	const auto type = choice    ? choice->type
 	                  : control ? FormFieldType::RadioButton
 	                  : checked ? FormFieldType::CheckBox
@@ -820,6 +823,11 @@ std::optional<bool> Document::updateFormField(
 	// Sort is for writers; i keep the stored option order. see:
 	// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
 	constexpr int choiceFlags = 1 << 19;
+	const auto clearedChoice = [](FPDF_ANNOTATION widget) {
+		return widget && !FPDFAnnot_HasKey(widget, "Parent") &&
+		       !FPDFAnnot_HasKey(widget, "DV") &&
+		       !FPDFAnnot_HasKey(widget, "V") && !FPDFAnnot_HasKey(widget, "I");
+	};
 	const auto inheritedWidget = [&](FPDF_FORMHANDLE form,
 	                                 FPDF_ANNOTATION widget) {
 		// i require the actual widget in the resolved field, not just its
@@ -1007,6 +1015,7 @@ std::optional<bool> Document::updateFormField(
 			                  [](const auto& item) { return item.selected; });
 			if (!validNoteText(*previous) || selectedCount > 1 ||
 			    (previous->empty() ? selectedCount != 0 : selectedCount != 1) ||
+			    (clearingChoice && FPDFAnnot_HasKey(field.get(), "DV")) ||
 			    FPDFAnnot_HasKey(field.get(), "Kids") || named("FT") != u"Ch" ||
 			    FPDFAnnot_GetValueType(field.get(), "Opt") !=
 			        FPDF_OBJECT_ARRAY ||
@@ -1140,7 +1149,8 @@ std::optional<bool> Document::updateFormField(
 			}
 			replacement = std::move(normalized);
 		}
-		if (choice ? (*choice->options)[choiceIndex].selected
+		if (choice ? (clearingChoice ? previous->empty()
+		                             : (*choice->options)[choiceIndex].selected)
 		           : *previous == replacement) {
 			return false;
 		}
@@ -1153,8 +1163,18 @@ std::optional<bool> Document::updateFormField(
 			// i save the focused choice through focus loss too. see:
 			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_combobox.cpp
 			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
+			int selected = choiceIndex;
+			if (clearingChoice) {
+				const auto found = std::find_if(
+				    choice->options->begin(), choice->options->end(),
+				    [](const auto& item) { return item.selected; });
+				if (found == choice->options->end()) {
+					return {};
+				}
+				selected = found->index;
+			}
 			if (!FORM_SetIndexSelected(context.handle, context.page.get(),
-			                           choiceIndex, true)) {
+			                           selected, !clearingChoice)) {
 				return {};
 			}
 		} else if (checked) {
@@ -1177,10 +1197,15 @@ std::optional<bool> Document::updateFormField(
 		}
 		if (choice) {
 			const auto written = value(FPDFAnnot_GetFormFieldValue);
-			if (!written || written->empty() || !validNoteText(*written) ||
-			    named("V") != written ||
-			    FPDFAnnot_GetValueType(field.get(), "V") !=
-			        FPDF_OBJECT_STRING ||
+			// clearing removes V/I; DV would become the effective value.
+			// see:
+			// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formfield.cpp
+			if (!written || !validNoteText(*written) ||
+			    (clearingChoice
+			         ? !written->empty() || !clearedChoice(field.get())
+			         : written->empty() || named("V") != written ||
+			               FPDFAnnot_GetValueType(field.get(), "V") !=
+			                   FPDF_OBJECT_STRING) ||
 			    FPDFAnnot_GetOptionCount(context.handle, field.get()) !=
 			        static_cast<int>(choice->options->size())) {
 				return {};
@@ -1230,9 +1255,9 @@ std::optional<bool> Document::updateFormField(
 	if (!next.document || next.document->pageCount() != pageCount()) {
 		return {};
 	}
-	if (inheritedTarget) {
-		// i check saved ownership on another copy, keeping setup off live
-		// bytes even when a parent dictionary is involved.
+	if (inheritedTarget || clearingChoice) {
+		// i check saved ownership and cleared keys on another copy,
+		// keeping setup off live bytes.
 		auto proof = openDocument(next.document->m_data);
 		if (!proof.document || stopped()) {
 			return {};
@@ -1249,7 +1274,9 @@ std::optional<bool> Document::updateFormField(
 		}
 		context.afterLoad();
 		AnnotationPtr field(FPDFPage_GetAnnot(context.page.get(), index));
-		if (!inheritedWidget(context.handle, field.get()) || stopped()) {
+		if ((inheritedTarget &&
+		     !inheritedWidget(context.handle, field.get())) ||
+		    (clearingChoice && !clearedChoice(field.get())) || stopped()) {
 			return {};
 		}
 	}

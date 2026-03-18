@@ -2286,3 +2286,19 @@ repeated labels. Apply still uses the selected option index, so equal
 exports do not turn a positional change into a no-op. The same dialog keeps
 Cancel, modal commands, saved-copy reopen and earlier refusal behavior.
 Sort remains specific to choices; no field list is reordered.
+
+## Clearing a single-selection list (2026-11-02)
+
+I use option -1 to clear an existing terminal single-selection list through
+the same isolated focus-loss transaction. It deselects the current option,
+requires an empty effective value with no selected options, and proves V/I
+absent both before saving and on a separately reopened copy. Raw empty
+no-ops keep their original bytes and revision.
+
+I require DV absent: PDFium can report the default when V is removed.
+Combos cannot be deselected through this API. Inherited/shared, multi-select,
+protected and action-bearing lists keep their existing refusals, as do
+ambiguous snapshots and unsupported flags. Native clearing follows.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formfield.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_formfill.h
