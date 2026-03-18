@@ -2302,3 +2302,15 @@ ambiguous snapshots and unsupported flags. Native clearing follows.
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_listbox.cpp
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_formfield.cpp
 // see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_formfill.h
+
+## Native list clearing (2026-11-02)
+
+I add Clear selection to single-list dialogs and allow Apply with no item
+selected. Clearing only changes the draft until Apply; Cancel keeps the
+live selection. The clear button and selector are disabled while the queued
+write runs, then become usable again if it refuses the request.
+
+Lists with DV still refuse clearing through the engine guard. The empty
+draft stays available for Cancel or a valid selection retry. Combo dialogs
+keep their selection requirement and have no clear action. Saved empty
+lists reopen with unchanged Apply accepted through the same transaction.

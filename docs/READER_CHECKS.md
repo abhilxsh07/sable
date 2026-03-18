@@ -160,6 +160,15 @@ The check supplies its save destination. Actual keyboard/pointer delivery,
 the Windows picker and Acrobat appearances/interoperability need a desktop
 pass separately.
 
+SableClearListTest=true with SableTabsTest=true invokes the list's Clear
+selection button, checks Cancel and Apply, then saves and reopens an empty
+selection with unchanged Apply enabled. The button must be absent from
+combos and disabled during writes. SableDefaultListTest=true implies this
+mode and adds a default value: clear must refuse with its draft retained;
+Cancel restores the live selection, and selecting an option retries Apply.
+Both modes compose with Sort, text and inherited-checkbox checks. Native
+automation supplies drafts and the save path; physical input needs desktop QA.
+
 SableSortedChoiceTest=true with SableTabsTest=true runs the mixed-field
 check with Sort on the combo and list. Both native editors must keep the
 stored Zulu, Alpha, Alpha order and give repeated labels distinct items.

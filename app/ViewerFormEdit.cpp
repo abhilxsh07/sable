@@ -203,6 +203,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		const bool radio = field.type == pdf::FormFieldType::RadioButton;
 		const bool button = checkbox || radio;
 		const bool selection = singleChoice(field);
+		const bool clearList =
+		    selection && field.type == pdf::FormFieldType::ListBox;
 		if ((button && !field.checked.has_value()) ||
 		    (radio && !field.control) ||
 		    (!button && !selection && field.type != pdf::FormFieldType::Text)) {
@@ -299,14 +301,15 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 				}
 			}
 			options.SelectedIndex(selected);
-			dialog.IsPrimaryButtonEnabled(selected >= 0);
+			dialog.IsPrimaryButtonEnabled(clearList || selected >= 0);
 			options.SelectionChanged([prompt = make_weak(dialog),
-			                          list = make_weak(options)](auto&&,
-			                                                     auto&&) {
+			                          list = make_weak(options),
+			                          clearList](auto&&, auto&&) {
 				const auto view = prompt.get();
 				const auto control = list.get();
 				if (view && control) {
-					view.IsPrimaryButtonEnabled(control.SelectedIndex() >= 0);
+					view.IsPrimaryButtonEnabled(clearList ||
+					                            control.SelectedIndex() >= 0);
 				}
 			});
 		}
@@ -325,6 +328,19 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		TextBlock error;
 		error.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(error);
+		Button clearSelection;
+		if (clearList) {
+			clearSelection.Name(L"ClearFieldSelection");
+			clearSelection.Content(box_value(L"Clear selection"));
+			Automation::AutomationProperties::SetName(clearSelection,
+			                                          L"Clear selection");
+			clearSelection.Click([list = make_weak(options)](auto&&, auto&&) {
+				if (const auto field = list.get(); field && field.IsEnabled()) {
+					field.SelectedIndex(-1);
+				}
+			});
+			fields.Children().Append(clearSelection);
+		}
 		dialog.Content(fields);
 		const std::u16string expected(raw.begin(), raw.end());
 		const auto initial = std::make_shared<hstring>(contents.Text());
@@ -358,6 +374,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		                           text = make_weak(contents),
 		                           check = make_weak(choice), checkbox, radio,
 		                           list = make_weak(options), selection,
+		                           clear = make_weak(clearSelection), clearList,
 		                           target = field, control = field.control,
 		                           failure = make_weak(error), initial,
 		                           expected, session, page, index = field.index,
@@ -371,6 +388,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			const auto field = text.get();
 			const auto choice = check.get();
 			const auto options = list.get();
+			const auto clearButton = clear.get();
 			const auto message = failure.get();
 			if (!self || self->m_closed || self->m_noteBusy ||
 			    self->m_noteSaving || self->m_session.get() != session ||
@@ -383,7 +401,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			if (radio && !unbox_value_or<bool>(choice.IsChecked(), false)) {
 				return;
 			}
-			if (selection && options.SelectedIndex() < 0) {
+			if (selection && !clearList && options.SelectedIndex() < 0) {
 				return;
 			}
 			const auto value = field.Text();
@@ -395,14 +413,17 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			field.IsReadOnly(true);
 			choice.IsEnabled(false);
 			options.IsEnabled(false);
+			if (clearButton) {
+				clearButton.IsEnabled(false);
+			}
 			message.Text(L"Applying changes\u2026");
 			try {
-				auto reply = [weak, prompt, text, check, list,
+				auto reply = [weak, prompt, text, check, list, clear,
 				              button = checkbox || radio || selection, failure,
 				              session, queue = self->DispatcherQueue()](
 				                 pdf::FormWriteResult result) {
-					queue.TryEnqueue([weak, prompt, text, check, list, button,
-					                  failure, session, result] {
+					queue.TryEnqueue([weak, prompt, text, check, list, clear,
+					                  button, failure, session, result] {
 						const auto owner = weak.get();
 						if (!owner || owner->m_closed ||
 						    owner->m_session.get() != session) {
@@ -424,6 +445,9 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 									field.IsEnabled(true);
 								}
 								if (const auto field = list.get()) {
+									field.IsEnabled(true);
+								}
+								if (const auto field = clear.get()) {
 									field.IsEnabled(true);
 								}
 								dialog.IsPrimaryButtonEnabled(true);
@@ -478,6 +502,9 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			field.IsReadOnly(false);
 			choice.IsEnabled(true);
 			options.IsEnabled(true);
+			if (clearButton) {
+				clearButton.IsEnabled(true);
+			}
 			view.IsPrimaryButtonEnabled(true);
 			message.Text(
 			    checkbox || radio || selection

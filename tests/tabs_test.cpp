@@ -119,8 +119,10 @@ struct TabsTest {
 	bool inheritedCheckBoxOnly = false;
 	bool noSpellCheckOnly = false;
 	bool sortedChoiceOnly = false;
+	bool clearListOnly = false, defaultListOnly = false;
 	int boundedTextStage = 0;
 	int inheritedCheckBoxStage = 0;
+	int defaultListStage = 0;
 	std::uint64_t mixedRevision = 0;
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
@@ -3109,6 +3111,7 @@ struct TabsTest {
 		}
 		using namespace Microsoft::UI::Xaml::Automation;
 		const int kind = step < 45 ? step / 9 : (step - 47) / 2;
+		const int listSelection = clearListOnly && !defaultListOnly ? -1 : 1;
 		const int positions[] = {0, 1, 3, 4, 5};
 		const hstring textDraft = combOnly        ? L"caf\u00e9"
 		                          : multilineOnly ? L"Edited caf\u00e9\n\nthird"
@@ -3197,8 +3200,10 @@ struct TabsTest {
 				check(field.name == (i == 3 ? "combo" : "list") &&
 				          field.flags == ((i == 3 ? 131072 : 0) |
 				                          (sortedChoiceOnly ? 524288 : 0)) &&
-				          field.value ==
-				              (completed > i ? "caf\u00e9" : "old") &&
+				          field.value == (completed <= i ? "old"
+				                          : i == 4 && listSelection < 0
+				                              ? ""
+				                              : "caf\u00e9") &&
 				          field.options && field.options->size() == 3,
 				      "mixed choice value changed");
 				for (int j = 0; j < 3; ++j) {
@@ -3209,7 +3214,9 @@ struct TabsTest {
 					                   ? (j == 0 ? "Zulu" : "Alpha")
 					                   : (j == 0 ? "First" : "Same")) &&
 					          option.selected ==
-					              (j == (completed > i ? (i == 3 ? 2 : 1) : 0)),
+					              (j == (completed > i
+					                         ? (i == 3 ? 2 : listSelection)
+					                         : 0)),
 					      "mixed choice position changed");
 				}
 			}
@@ -3241,6 +3248,18 @@ struct TabsTest {
 				      "mixed text spell-check flag changed");
 			}
 			if (kind >= 3) {
+				const auto children =
+				    v.m_noteDialog.Content().as<StackPanel>().Children();
+				check(children.Size() == (kind == 3 ? 3u : 4u),
+				      "mixed choice clear button has wrong field type");
+				if (kind == 4) {
+					const auto clear = children.GetAt(3).as<Button>();
+					check(clear.Name() == L"ClearFieldSelection" &&
+					          unbox_value<hstring>(clear.Content()) ==
+					              L"Clear selection" &&
+					          clear.IsEnabled() == !v.m_noteBusy,
+					      "mixed list clear button has wrong state");
+				}
 				const auto items = control.as<Primitives::Selector>().Items();
 				check(items.Size() == 3, "mixed native option count changed");
 				for (uint32_t i = 0; i < 3; ++i) {
@@ -3292,6 +3311,20 @@ struct TabsTest {
 					    .as<Provider::ISelectionItemProvider>()
 					    .Select();
 				}
+			} else if (kind == 4 && clearListOnly) {
+				const auto clear = v.m_noteDialog.Content()
+				                       .as<StackPanel>()
+				                       .Children()
+				                       .GetAt(3)
+				                       .as<Button>();
+				Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+				    clear)
+				    .GetPattern(Peers::PatternInterface::Invoke)
+				    .as<Provider::IInvokeProvider>()
+				    .Invoke();
+				check(value() == L"-1" &&
+				          v.m_noteDialog.IsPrimaryButtonEnabled(),
+				      "mixed list clear did not enable an empty draft");
 			} else {
 				control.as<Primitives::Selector>().SelectedIndex(kind == 3 ? 2
 				                                                           : 1);
@@ -3483,6 +3516,75 @@ struct TabsTest {
 			ticks = 0;
 			return;
 		}
+		if (defaultListOnly && step == 36) {
+			const auto apply = [&] {
+				button(L"PrimaryButton");
+				check(v.m_noteBusy &&
+				          !v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          !input().as<Control>().IsEnabled(),
+				      "default list queued draft stayed editable");
+			};
+			const auto refused = [&] {
+				check(v.m_noteDialog != nullptr,
+				      "default list refusal closed the editor");
+				const auto error = v.m_noteDialog.Content()
+				                       .as<StackPanel>()
+				                       .Children()
+				                       .GetAt(2)
+				                       .as<TextBlock>();
+				check(value() == L"-1" && input().as<Control>().IsEnabled() &&
+				          v.m_noteDialog.IsPrimaryButtonEnabled() &&
+				          !error.Text().empty() && verify(4) == mixedRevision &&
+				          v.m_formsDirty && v.m_notesDirty,
+				      "default list refusal lost draft or changed live state");
+			};
+			switch (defaultListStage) {
+			case 0:
+				mixedRevision = verify(4);
+				open(5);
+				break;
+			case 1:
+			case 4:
+				if (!v.m_noteDialog) {
+					return;
+				}
+				check(value() == L"0", "default list lost its saved selection");
+				draft();
+				modal();
+				apply();
+				break;
+			case 2:
+				refused();
+				button(L"CloseButton");
+				break;
+			case 3:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(4) == mixedRevision,
+				      "default list Cancel changed the document");
+				open(5);
+				break;
+			case 5:
+				refused();
+				input().as<Primitives::Selector>().SelectedIndex(1);
+				modal();
+				apply();
+				break;
+			case 6:
+				if (v.m_noteDialog) {
+					return;
+				}
+				check(verify(5) > mixedRevision && v.m_formsDirty &&
+				          v.m_notesDirty,
+				      "default list selection retry lost the edit");
+				step = 45;
+				break;
+			}
+			++defaultListStage;
+			ticks = 0;
+			return;
+		}
 		if (step < 45) {
 			switch (step % 9) {
 			case 0:
@@ -3577,7 +3679,7 @@ struct TabsTest {
 				               ? hstring(kind == 1 && inheritedCheckBoxOnly
 				                             ? L"off"
 				                             : L"on")
-				               : to_hstring(kind == 3 ? 2 : 1)),
+				               : to_hstring(kind == 3 ? 2 : listSelection)),
 				      "mixed reopened editor lost its saved value");
 				modal();
 				button(kind == 1 && inheritedCheckBoxOnly ? L"CloseButton"
@@ -3615,6 +3717,7 @@ struct TabsTest {
 			                        .inheritedCheckBox = inheritedCheckBoxOnly,
 			                        .noSpellCheck = noSpellCheckOnly,
 			                        .sortedChoices = sortedChoiceOnly,
+			                        .listDefault = defaultListOnly,
 			                        .textLimit = combOnly ? 4 : 32}),
 			      "mixed source changed");
 			std::fwprintf(
@@ -3648,6 +3751,14 @@ struct TabsTest {
 				std::fwprintf(stderr,
 				              L"PASS: sorted choice flag keeps native option "
 				              L"order and saved positions\n");
+			}
+			if (clearListOnly) {
+				std::fwprintf(stderr, L"%ls",
+				              defaultListOnly
+				                  ? L"PASS: default list clear refusal retains "
+				                    L"draft and selection retry\n"
+				                  : L"PASS: cleared list native draft and "
+				                    L"saved empty selection\n");
 			}
 			if (inheritedOnly) {
 				std::fwprintf(stderr,
@@ -7490,6 +7601,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->defaultListOnly =
+	    GetEnvironmentVariableW(L"SableDefaultListTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->clearListOnly =
+	    state->defaultListOnly ||
+	    (GetEnvironmentVariableW(L"SableClearListTest", mode, 8) &&
+	     std::wstring_view(mode) == L"true");
 	state->sortedChoiceOnly =
 	    GetEnvironmentVariableW(L"SableSortedChoiceTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -7513,7 +7631,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->mixedFormOnly =
 	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
 	    state->inheritedCheckBoxOnly || state->noSpellCheckOnly ||
-	    state->sortedChoiceOnly ||
+	    state->sortedChoiceOnly || state->clearListOnly ||
 	    (GetEnvironmentVariableW(L"SableMixedFormTest", mode, 8) &&
 	     std::wstring_view(mode) == L"true");
 	state->checkBoxOnly =
@@ -7712,6 +7830,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 			                          state->inheritedCheckBoxOnly,
 			                      .noSpellCheck = state->noSpellCheckOnly,
 			                      .sortedChoices = state->sortedChoiceOnly,
+			                      .listDefault = state->defaultListOnly,
 			                      .textLimit = state->combOnly ? 4 : 32})
 			           : state->choiceOnly ? choicePdf(!state->choiceList)
 			           : state->radioOnly  ? radioPdf()
