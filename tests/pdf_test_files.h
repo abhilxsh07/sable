@@ -218,12 +218,12 @@ inline std::string choicePdf(bool combo) {
 struct MixedFormOptions {
 	bool explicitFont = true, multiline = false, comb = false,
 	     inherited = false, inheritedCheckBox = false, noSpellCheck = false,
-	     sortedChoices = false;
+	     sortedChoices = false, listDefault = false;
 	int textLimit = 32;
 };
 inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	const auto [explicitFont, multiline, comb, inherited, inheritedCheckBox,
-	            noSpellCheck, sortedChoices, textLimit] = settings;
+	            noSpellCheck, sortedChoices, listDefault, textLimit] = settings;
 	const int spellFlag = noSpellCheck ? 4194304 : 0;
 	const int sortFlag = sortedChoices ? 524288 : 0;
 	const auto parent = std::to_string(explicitFont ? 17 : 16) + " 0 R";
@@ -295,7 +295,8 @@ inline std::string mixedFormPdf(MixedFormOptions settings = {}) {
 	        std::to_string(131072 | sortFlag) + " " + options +
 	        "/Rect [40 480 190 510] /P 3 0 R >>",
 	    "<< /Type /Annot /Subtype /Widget /FT /Ch /T (list) /F 4 " +
-	        std::string(sortedChoices ? "/Ff 524288 " : "") + options +
+	        std::string(sortedChoices ? "/Ff 524288 " : "") +
+	        (listDefault ? "/DV (old) " : "") + options +
 	        "/Rect [40 350 190 450] /P 3 0 R >>",
 	    "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
 	    "/Contents (Original) /P 3 0 R >>",

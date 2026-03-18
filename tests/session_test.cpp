@@ -2296,6 +2296,199 @@ TEST_F(SessionTest, ChoiceWritesOwnSnapshotsRefreshCachesAndSave) {
 	}
 }
 
+TEST_F(SessionTest, ListClearsOwnSnapshotsRespectDefaultsAndSave) {
+	for (const bool sorted : {false, true}) {
+		for (const bool listDefault : {false, true}) {
+			SCOPED_TRACE(sorted);
+			SCOPED_TRACE(listDefault);
+			pdf::Session session(engine);
+			const auto bytes = mixedFormPdf(
+			    {.sortedChoices = sorted, .listDefault = listDefault});
+			const auto source = writeTemp("list clear.pdf", bytes);
+			ASSERT_TRUE(open(session, source).canFillForms);
+			const auto before = readForms(session);
+			ASSERT_TRUE(before && before->entries.size() == 6);
+			const auto verify = [&](const pdf::FormFields& fields,
+			                        int selected) {
+				EXPECT_FALSE(fields.limited);
+				ASSERT_EQ(fields.entries.size(), 6u);
+				for (int i = 0; i < 6; ++i) {
+					const auto& field = fields.entries[i];
+					const auto& old = before->entries[i];
+					EXPECT_EQ(field.index, old.index);
+					EXPECT_EQ(field.type, old.type);
+					EXPECT_EQ(field.name, old.name);
+					EXPECT_EQ(field.flags, old.flags);
+					EXPECT_EQ(field.annotationFlags, old.annotationFlags);
+					EXPECT_EQ(field.checked, old.checked);
+					EXPECT_EQ(field.value, i != 5          ? old.value
+					                       : selected < 0  ? ""
+					                       : selected == 0 ? "old"
+					                                       : "caf\u00e9");
+					if (old.control) {
+						ASSERT_TRUE(field.control);
+						EXPECT_EQ(field.control->index, old.control->index);
+						EXPECT_EQ(field.control->count, old.control->count);
+						EXPECT_EQ(field.control->exportValue,
+						          old.control->exportValue);
+					}
+					if (!old.options) {
+						continue;
+					}
+					ASSERT_TRUE(field.options);
+					ASSERT_EQ(field.options->size(), old.options->size());
+					for (std::size_t j = 0; j < field.options->size(); ++j) {
+						const auto& item = (*field.options)[j];
+						EXPECT_EQ(item.index, (*old.options)[j].index);
+						EXPECT_EQ(item.label, (*old.options)[j].label);
+						EXPECT_EQ(item.selected,
+						          i == 5 ? item.index == selected
+						                 : (*old.options)[j].selected);
+					}
+				}
+			};
+			auto target = before->entries[5];
+			ASSERT_TRUE(target.options && target.options->size() == 3);
+			Reply<pdf::FormWriteResult> cleared, stale;
+			{
+				Gate gate(engine);
+				ASSERT_TRUE(session.updateChoiceField(
+				    0, target, -1, before->revision, cleared.callback()));
+				if (!listDefault) {
+					ASSERT_TRUE(session.updateChoiceField(
+					    0, target, 2, before->revision, stale.callback()));
+				}
+				target.name = "wrong";
+				target.flags ^= 524288;
+				target.options->front().label = "wrong";
+				target.options->back().selected = true;
+				target.options.reset();
+				session.cancelForms();
+			}
+			const auto result = cleared.wait();
+			ASSERT_TRUE(result);
+			EXPECT_EQ(result->accepted, !listDefault);
+			EXPECT_EQ(result->changed, !listDefault);
+			EXPECT_FALSE(result->canceled);
+			EXPECT_EQ(result->page, 0);
+			EXPECT_EQ(result->index, 6);
+			EXPECT_EQ(result->revision, listDefault ? 0 : before->revision + 1);
+			if (!listDefault) {
+				const auto refused = stale.wait();
+				ASSERT_TRUE(refused);
+				EXPECT_FALSE(refused->accepted || refused->changed ||
+				             refused->canceled);
+				EXPECT_EQ(refused->revision, 0u);
+			}
+			auto after = readForms(session);
+			ASSERT_TRUE(after && after->entries.size() == 6);
+			EXPECT_NE(after, before);
+			EXPECT_EQ(after->revision,
+			          before->revision + (listDefault ? 0 : 1));
+			verify(*after, listDefault ? 0 : -1);
+			EXPECT_EQ(before->entries[5].value, "old");
+			ASSERT_TRUE(before->entries[5].options);
+			EXPECT_TRUE(before->entries[5].options->front().selected);
+			if (!listDefault) {
+				Reply<pdf::FormWriteResult> noOp;
+				ASSERT_TRUE(session.updateChoiceField(0, after->entries[5], -1,
+				                                      after->revision,
+				                                      noOp.callback()));
+				const auto same = noOp.wait();
+				ASSERT_TRUE(same && same->accepted);
+				EXPECT_FALSE(same->changed || same->canceled);
+				EXPECT_EQ(same->revision, after->revision);
+				const auto refreshed = readForms(session);
+				ASSERT_TRUE(refreshed && refreshed->entries.size() == 6);
+				EXPECT_NE(refreshed, after);
+				EXPECT_EQ(refreshed->revision, after->revision);
+				verify(*refreshed, -1);
+				after = refreshed;
+			}
+			Reply<pdf::FormWriteResult> selected;
+			ASSERT_TRUE(session.updateChoiceField(
+			    0, after->entries[5], 2, after->revision, selected.callback()));
+			const auto moved = selected.wait();
+			ASSERT_TRUE(moved && moved->accepted && moved->changed);
+			EXPECT_FALSE(moved->canceled);
+			after = readForms(session);
+			ASSERT_TRUE(after && after->entries.size() == 6);
+			verify(*after, 2);
+			for (int mismatch = 0; mismatch < 4; ++mismatch) {
+				SCOPED_TRACE(mismatch);
+				auto bad = mismatch == 1   ? after->entries[4]
+				           : mismatch == 3 ? before->entries[5]
+				                           : after->entries[5];
+				if (mismatch == 2) {
+					bad.flags ^= 524288;
+				}
+				Reply<pdf::FormWriteResult> invalid;
+				ASSERT_TRUE(session.updateChoiceField(
+				    0, bad, mismatch == 0 ? -2 : -1,
+				    mismatch == 3 ? before->revision : after->revision,
+				    invalid.callback()));
+				const auto refused = invalid.wait();
+				ASSERT_TRUE(refused);
+				EXPECT_FALSE(refused->accepted || refused->changed ||
+				             refused->canceled);
+				EXPECT_EQ(refused->revision, 0u);
+				const auto fresh = readForms(session);
+				ASSERT_TRUE(fresh && fresh->entries.size() == 6);
+				EXPECT_NE(fresh, after);
+				EXPECT_EQ(fresh->revision, after->revision);
+				verify(*fresh, 2);
+				after = fresh;
+			}
+			Reply<pdf::FormWriteResult> again;
+			ASSERT_TRUE(session.updateChoiceField(
+			    0, after->entries[5], -1, after->revision, again.callback()));
+			const auto retried = again.wait();
+			ASSERT_TRUE(retried);
+			EXPECT_EQ(retried->accepted, !listDefault);
+			EXPECT_EQ(retried->changed, !listDefault);
+			EXPECT_FALSE(retried->canceled);
+			EXPECT_EQ(retried->revision, listDefault ? 0 : after->revision + 1);
+			const auto destination = source.parent_path() / "cleared copy.pdf";
+			Reply<pdf::SaveResult> saved;
+			ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+			                              saved.callback()));
+			ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+			pdf::Session reopened(engine);
+			ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+			const auto fields = readForms(reopened);
+			ASSERT_TRUE(fields && fields->entries.size() == 6);
+			verify(*fields, listDefault ? 2 : -1);
+			Reply<pdf::FormWriteResult> persisted;
+			ASSERT_TRUE(reopened.updateChoiceField(0, fields->entries[5], -1,
+			                                       fields->revision,
+			                                       persisted.callback()));
+			const auto kept = persisted.wait();
+			ASSERT_TRUE(kept);
+			EXPECT_EQ(kept->accepted, !listDefault);
+			EXPECT_FALSE(kept->changed || kept->canceled);
+			EXPECT_EQ(kept->revision, listDefault ? 0 : fields->revision);
+			EXPECT_TRUE(
+			    engine
+			        .run([destination] {
+				        const auto opened = pdf::openFile(destination);
+				        if (!opened.document) {
+					        return false;
+				        }
+				        const auto outline = opened.document->outline();
+				        const auto link = opened.document->outlineLink(0);
+				        return opened.document->textNote(0, 0) == u"Original" &&
+				               outline && outline->entries.size() == 1 &&
+				               outline->entries[0].title == "Fields" && link &&
+				               link->destination &&
+				               link->destination->page == 0;
+			        })
+			        .get());
+			EXPECT_EQ(readFile(source),
+			          (std::vector<std::uint8_t>(bytes.begin(), bytes.end())));
+		}
+	}
+}
+
 TEST_F(SessionTest, MixedFormWritesPreserveEachOtherThroughSaveAndReopen) {
 	for (const int mode : {0, 1, 2, 3}) {
 		SCOPED_TRACE(mode);

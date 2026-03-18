@@ -168,6 +168,7 @@ class Session {
 	                       FormControl control, std::uint64_t revision,
 	                       std::function<void(FormWriteResult)> callback);
 	// i keep the value and every option from the same immutable snapshot.
+	// i use -1 to request a bounded single-list clear.
 	bool updateChoiceField(int page, FormField field, int option,
 	                       std::uint64_t revision,
 	                       std::function<void(FormWriteResult)> callback);
