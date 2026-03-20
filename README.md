@@ -10,6 +10,9 @@ and command line as NightPDF. After that it grows into a full reader, with
 comments, Fill & Sign, page organizing and more, all offline. See
 [docs/DESIGN.md](docs/DESIGN.md).
 
+The [feature checklist](docs/FEATURE_CHECKLIST.md) tracks what works, what
+is partial and what still needs implementation or verification.
+
 The native reader opens PDFs in tabs with page labels, thumbnails, password
 prompts, night filters and internal/web links. Text selection, Find, document
 outlines and attachment saving work across tabs. Reading tools include view
