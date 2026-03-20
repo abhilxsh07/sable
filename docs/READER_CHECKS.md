@@ -208,6 +208,17 @@ SableMultilineTest, SableCombTest or SableInheritedTextTest for those text
 variants, or SableInheritedCheckBoxTest for checkbox refusals beside it.
 Without the flag, the same checks require spell checking to stay enabled.
 
+The 2 Nov desktop comparison typed teh qqqzx café and a trailing space into
+the unflagged and DoNotSpellCheck editors. The unflagged draft showed red
+spelling underlines; the flagged draft showed none. Neither changed the
+typed words, so this does not establish an autocorrection difference. The
+unflagged draft was canceled. The flagged value applied and saved through
+Windows Save As to a path with spaces. Fresh Sable restored the accented
+text; unchanged Apply closed cleanly. Acrobat displayed it without field
+focus beside the original note and untouched controls. Source and saved
+hashes stayed unchanged. Font Capture reported exception 0xc06d007e;
+after dismissing it, the appearance check passed. Its cause is unconfirmed.
+
 SableMultilineTest=true with SableTabsTest=true uses the same mixed-field
 check with a taller multiline field and a length limit. It checks wrapping,
 initial raw LF no-ops, Unicode and blank paragraphs, retained overlong
