@@ -200,6 +200,18 @@ The source bytes must stay intact. This diagnostic takes precedence over
 the inherited-text, multiline and comb modes. It uses native automation
 peers and a supplied save path; actual input and the picker need desktop QA.
 
+The 2 Nov inherited-checkbox desktop pass refused unchanged Apply, then
+refused a checked draft and retained its check and error. Ctrl+W left the
+modal intact; Cancel discarded the draft. A neighboring text edit to
+Neighbor café applied and saved through Windows Save As to a spaced path.
+The picker lost cached filename-element access; typing into its visibly
+selected filename and pressing Return completed the save. Fresh Sable
+restored the text and showed the checkbox unchecked. Acrobat showed the
+accented text, unchecked required field, original note and unchanged radio
+and choice appearances without field focus. Source and saved hashes stayed
+unchanged. Font Capture again reported 0xc06d007e; dismissing it allowed the
+appearance check. This verifies refusal and preservation, not parent writes.
+
 SableNoSpellCheckTest=true with SableTabsTest=true checks text flag bit 22
 and the native editor's disabled spell checking on every open, including
 the saved copy. It checks retained overlength drafts, Cancel, no-op, Apply,
