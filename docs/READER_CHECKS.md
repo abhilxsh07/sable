@@ -169,6 +169,17 @@ Cancel restores the live selection, and selecting an option retries Apply.
 Both modes compose with Sort, text and inherited-checkbox checks. Native
 automation supplies drafts and the save path; physical input needs desktop QA.
 
+The 2 Nov default-list desktop pass retained an empty draft after refused
+Apply; Ctrl+W left the modal and error intact. Cancel kept the live Zulu
+selection. Clearing again refused, then choosing the first Alpha retried
+successfully. Combo Down/Enter selected the second Alpha in stored order.
+Windows Save As saved to a path with spaces; a picker owner mismatch was
+resolved by refocusing the reader and pressing Return. Fresh Sable restored
+both duplicate positions. Acrobat showed the selected list row, combo value
+and original note without field focus. Source and saved-copy hashes stayed
+unchanged. The desktop interruption occurred after the saved Sable check;
+the resumed Acrobat check completed without a Font Capture error.
+
 SableSortedChoiceTest=true with SableTabsTest=true runs the mixed-field
 check with Sort on the combo and list. Both native editors must keep the
 stored Zulu, Alpha, Alpha order and give repeated labels distinct items.
