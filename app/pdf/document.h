@@ -271,7 +271,7 @@ class Document {
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;
 	// A scratch copy keeps form normalization away from the live document.
-	// nullopt includes copies that cannot reopen without a password.
+	// Copies retain the credential and permissions of the opened document.
 	std::optional<FormFields>
 	formFields(int page, const std::function<bool()>& canceled = {}) const;
 	std::optional<Attachments>
@@ -321,15 +321,19 @@ class Document {
 	                const FormControl* control = nullptr,
 	                const FormField* choice = nullptr, int choiceIndex = -1);
 	Document* formDrawingDocument() const;
+	OpenResult reopenFormCopy(std::vector<std::uint8_t> data) const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,
 	                    int height, int rotation, bool printing) const;
 	friend OpenResult openDocument(std::vector<std::uint8_t> data,
 	                               const std::string& password);
-	Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle);
+	Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle,
+	         const std::string& password);
 
 	// PDFium reads straight from this, so it's declared first and goes last
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
+	// i keep this only for encrypted copies, never in settings or logs.
+	std::string m_password;
 	bool m_modified = false;
 	// i shift index proofs after removal, before another edit runs.
 	std::uint64_t m_annotationRevision = 1;

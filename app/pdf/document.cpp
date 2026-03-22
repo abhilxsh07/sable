@@ -449,9 +449,9 @@ OpenResult openDocument(std::vector<std::uint8_t> data,
 	}
 	// moving the vector keeps the same buffer, so PDFium's pointer stays good
 	try {
-		return {
-		    std::unique_ptr<Document>(new Document(std::move(data), handle)),
-		    Error::None};
+		return {std::unique_ptr<Document>(
+		            new Document(std::move(data), handle, password)),
+		        Error::None};
 	} catch (...) {
 		FPDF_CloseDocument(handle);
 		throw;
@@ -481,10 +481,16 @@ OpenResult openFile(const std::filesystem::path& path,
 	return openDocument(std::move(data), password);
 }
 
-Document::Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle)
-    : m_data(std::move(data)), m_handle(handle) {}
+Document::Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle,
+                   const std::string& password)
+    : m_data(std::move(data)), m_handle(handle),
+      m_password(FPDF_GetSecurityHandlerRevision(handle) >= 0 ? password : "") {
+}
 
 Document::~Document() {
+	if (!m_password.empty()) {
+		SecureZeroMemory(m_password.data(), m_password.size());
+	}
 	if (!m_handle) {
 		return;
 	}
@@ -581,6 +587,25 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	return out;
 }
 
+OpenResult Document::reopenFormCopy(std::vector<std::uint8_t> data) const {
+	if (offThread()) {
+		return {nullptr, Error::Unknown};
+	}
+	auto copy = openDocument(std::move(data), m_password);
+	if (copy.document) {
+		const auto handle = copy.document->m_handle;
+		if (FPDF_GetSecurityHandlerRevision(handle) !=
+		        FPDF_GetSecurityHandlerRevision(m_handle) ||
+		    FPDF_GetDocPermissions(handle) !=
+		        FPDF_GetDocPermissions(m_handle) ||
+		    FPDF_GetDocUserPermissions(handle) !=
+		        FPDF_GetDocUserPermissions(m_handle)) {
+			return {nullptr, Error::Security};
+		}
+	}
+	return copy;
+}
+
 Document* Document::formDrawingDocument() const {
 	if (offThread() || FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) {
 		return nullptr;
@@ -590,7 +615,7 @@ Document* Document::formDrawingDocument() const {
 		m_formDrawingRevision = m_annotationRevision;
 		try {
 			if (auto bytes = serialize(128 * 1024 * 1024)) {
-				m_formDrawing = openDocument(std::move(*bytes)).document;
+				m_formDrawing = reopenFormCopy(std::move(*bytes)).document;
 			}
 		} catch (...) {
 			// i keep the base page when an isolated copy cannot be made.
@@ -746,7 +771,7 @@ std::optional<bool> Document::updateFormField(
 	if (!bytes || stopped()) {
 		return {};
 	}
-	auto scratch = openDocument(std::move(*bytes));
+	auto scratch = reopenFormCopy(std::move(*bytes));
 	if (!scratch.document ||
 	    FPDF_GetFormType(scratch.document->m_handle) != FORMTYPE_ACRO_FORM) {
 		return {};
@@ -782,7 +807,7 @@ std::optional<bool> Document::updateFormField(
 	    tokens.find("/JavaScript") != std::string_view::npos) {
 		return {};
 	}
-	scratch = openDocument(std::move(*canonical));
+	scratch = reopenFormCopy(std::move(*canonical));
 	if (!scratch.document || stopped()) {
 		return {};
 	}
@@ -1251,14 +1276,14 @@ std::optional<bool> Document::updateFormField(
 	if (!saved || stopped()) {
 		return {};
 	}
-	auto next = openDocument(std::move(*saved));
+	auto next = reopenFormCopy(std::move(*saved));
 	if (!next.document || next.document->pageCount() != pageCount()) {
 		return {};
 	}
 	if (inheritedTarget || clearingChoice) {
 		// i check saved ownership and cleared keys on another copy,
 		// keeping setup off live bytes.
-		auto proof = openDocument(next.document->m_data);
+		auto proof = reopenFormCopy(next.document->m_data);
 		if (!proof.document || stopped()) {
 			return {};
 		}
@@ -2685,7 +2710,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 	if (!bytes || stopped()) {
 		return {};
 	}
-	const auto scratch = openDocument(std::move(*bytes));
+	const auto scratch = reopenFormCopy(std::move(*bytes));
 	if (!scratch.document || stopped()) {
 		return {};
 	}

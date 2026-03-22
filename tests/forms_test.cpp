@@ -265,7 +265,7 @@ TEST(FormFields, OrdinaryParentsStayOutsideTheAnnotationApi) {
 	    .get();
 }
 
-TEST(FormFields, PasswordFormsKeepTheirOriginalBytesBeforeScratchSupport) {
+TEST(FormFields, PasswordFormsRetainCredentialsPermissionsAndSavedValues) {
 	pdf::Engine engine;
 	engine
 	    .run([] {
@@ -284,12 +284,96 @@ TEST(FormFields, PasswordFormsKeepTheirOriginalBytesBeforeScratchSupport) {
 				    auto& doc = *opened.document;
 				    const auto original = doc.serialize(1024 * 1024);
 				    ASSERT_TRUE(original);
-				    EXPECT_FALSE(doc.formFields(0));
-				    EXPECT_FALSE(doc.updateTextField(0, 0, u"old", u"new", 1));
+				    const auto fields = doc.formFields(0);
+				    ASSERT_TRUE(fields && fields->entries.size() == 2);
+				    EXPECT_EQ(fields->entries[0].value, "old");
+				    EXPECT_EQ(fields->entries[1].value, "keep");
+				    EXPECT_TRUE(doc.render(0, 400, 300));
 				    EXPECT_FALSE(doc.modified());
 				    EXPECT_EQ(doc.annotationRevision(), 1u);
 				    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+				    const bool allowed =
+				        std::string_view(name) != "password_form_action.pdf" &&
+				        (std::string_view(name) != "password_form_denied.pdf" ||
+				         std::string_view(password) == "nightpdf");
+				    if (!allowed) {
+					    for (const auto* value : {u"old", u"new"}) {
+						    EXPECT_FALSE(
+						        doc.updateTextField(0, 0, u"old", value, 1));
+					    }
+					    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+					    EXPECT_EQ(doc.annotationRevision(), 1u);
+					    continue;
+				    }
+				    EXPECT_EQ(doc.updateTextField(0, 0, u"old", u"old", 1),
+				              false);
+				    EXPECT_FALSE(doc.updateTextField(0, 0, u"old",
+				                                     u"too long for field", 1));
+				    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+				    ASSERT_EQ(
+				        doc.updateTextField(0, 0, u"old", u"Caf\u00e9", 1),
+				        true);
+				    EXPECT_FALSE(
+				        doc.updateTextField(0, 1, u"keep", u"stale", 1));
+				    ASSERT_EQ(
+				        doc.updateTextField(0, 1, u"keep", u"neighbor", 2),
+				        true);
+				    const auto saved = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(saved);
+				    EXPECT_EQ(pdf::openDocument(*saved).error,
+				              pdf::Error::PasswordRequired);
+				    EXPECT_EQ(pdf::openDocument(*saved, "wrong").error,
+				              pdf::Error::WrongPassword);
+				    for (const auto* role : {"sable", "nightpdf"}) {
+					    const auto reopened = pdf::openDocument(*saved, role);
+					    ASSERT_TRUE(reopened.document);
+					    const auto before = pdf::openDocument(*original, role);
+					    ASSERT_TRUE(before.document);
+					    EXPECT_EQ(reopened.document->canFillForms(),
+					              before.document->canFillForms());
+					    EXPECT_EQ(reopened.document->canCopy(),
+					              before.document->canCopy());
+					    EXPECT_EQ(reopened.document->canAnnotate(),
+					              before.document->canAnnotate());
+					    const auto kept = reopened.document->formFields(0);
+					    ASSERT_TRUE(kept && kept->entries.size() == 2);
+					    EXPECT_EQ(kept->entries[0].value, "Caf\u00e9");
+					    EXPECT_EQ(kept->entries[1].value, "neighbor");
+					    EXPECT_EQ(reopened.document->textNote(0, 2),
+					              before.document->textNote(0, 2));
+				    }
 			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, PasswordFormCancellationLeavesEveryLiveCheckpointIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto path = fixturePath("password_form.pdf");
+		    const auto completed = pdf::openFile(path, "sable");
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextField(0, 0, u"old", u"new",
+		                                                  1,
+		                                                  [&] {
+			                                                  ++checkpoints;
+			                                                  return false;
+		                                                  }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    const auto opened = pdf::openFile(path, "sable");
+			    ASSERT_TRUE(opened.document);
+			    const auto original = opened.document->serialize(1024 * 1024);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextField(
+			        0, 0, u"old", u"new", 1, [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), original);
 		    }
 	    })
 	    .get();

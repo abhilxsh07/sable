@@ -2,6 +2,20 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Password-protected form copies (2026-11-02)
+
+I retain the supplied credential only on encrypted documents and clear its
+owned storage on destruction. Snapshots, drawing, canonical writes and
+saved ownership proofs reopen through the same helper. Every reopened copy
+must match the original security-handler revision, effective permissions
+and user permissions, including copies opened with an owner password.
+
+Save flags stay unchanged; no security-removal flag is used. Permission,
+action, signature and field-shape refusals still run before editing. The
+password stays out of session results, logs and settings. The saved copy
+still asks for its password, and both user and owner roles retain their
+access. This does not add password creation, removal or replacement tools.
+
 ## Remaining form proof gaps (2026-11-02)
 
 I checked the remaining E01 limits against chromium/8086. Ordinary field

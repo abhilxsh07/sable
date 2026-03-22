@@ -360,6 +360,70 @@ TEST_F(SessionTest, SaysWhyAFileWontOpen) {
 	          pdf::Error::Format);
 }
 
+TEST_F(SessionTest, PasswordFormWritesKeepCredentialsAcrossQueueAndSave) {
+	const auto source = fixturePath("password_form.pdf");
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_TRUE(open(session, source, "sable").canFillForms);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->entries.size() == 2);
+	Reply<pdf::FormWriteResult> first, stale;
+	Reply<pdf::FormFieldsResult> canceled;
+	std::u16string draft = u"Caf\u00e9";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextField(
+		    0, 0, u"old", draft, before->revision, first.callback()));
+		ASSERT_TRUE(session.updateTextField(
+		    0, 1, u"keep", u"stale", before->revision, stale.callback()));
+		ASSERT_TRUE(session.formFields(0, canceled.callback()));
+		draft.assign(u"changed caller");
+		session.cancelForms();
+	}
+	const auto written = first.wait(), refused = stale.wait();
+	const auto stopped = canceled.wait();
+	ASSERT_TRUE(written && refused && stopped);
+	EXPECT_TRUE(written->accepted && written->changed && !written->canceled);
+	EXPECT_FALSE(refused->accepted || refused->changed);
+	EXPECT_TRUE(stopped->canceled);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->entries.size() == 2);
+	EXPECT_EQ(after->entries[0].value, "Caf\u00e9");
+	EXPECT_EQ(after->entries[1].value, "keep");
+	EXPECT_EQ(after->revision, written->revision);
+	EXPECT_EQ(before->entries[0].value, "old");
+	Reply<pdf::FormWriteResult> noOp, tooLong, retry;
+	ASSERT_TRUE(session.updateTextField(0, 0, u"Caf\u00e9", u"Caf\u00e9",
+	                                    after->revision, noOp.callback()));
+	ASSERT_TRUE(session.updateTextField(0, 0, u"Caf\u00e9",
+	                                    u"too long for field", after->revision,
+	                                    tooLong.callback()));
+	ASSERT_TRUE(session.updateTextField(0, 1, u"keep", u"neighbor",
+	                                    after->revision, retry.callback()));
+	const auto same = noOp.wait(), longValue = tooLong.wait(),
+	           changed = retry.wait();
+	ASSERT_TRUE(same && longValue && changed);
+	EXPECT_TRUE(same->accepted && !same->changed);
+	EXPECT_FALSE(longValue->accepted || longValue->changed);
+	EXPECT_TRUE(changed->accepted && changed->changed);
+	const auto destination = tempDir() / "password copy.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	session.close();
+	pdf::Session without(engine), wrong(engine), reopened(engine);
+	EXPECT_EQ(open(without, destination).error, pdf::Error::PasswordRequired);
+	EXPECT_EQ(open(wrong, destination, "wrong").error,
+	          pdf::Error::WrongPassword);
+	ASSERT_EQ(open(reopened, destination, "sable").error, pdf::Error::None);
+	const auto kept = readForms(reopened);
+	ASSERT_TRUE(kept && kept->entries.size() == 2);
+	EXPECT_EQ(kept->entries[0].value, "Caf\u00e9");
+	EXPECT_EQ(kept->entries[1].value, "neighbor");
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, AsksForAPassword) {
 	pdf::Session without(engine);
 	EXPECT_EQ(open(without, fixturePath("password.pdf")).error,

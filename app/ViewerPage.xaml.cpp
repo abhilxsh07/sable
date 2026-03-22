@@ -169,7 +169,7 @@ bool ViewerPage::takeFocus() {
 
 // pdf.js's PasswordPrompt (password_prompt.js): the label, a masked box,
 // Cancel and OK. OK does nothing until something's typed, Enter is OK and
-// Esc is Cancel. The password goes to the open and isn't kept.
+// Esc is Cancel. The document keeps the credential for isolated form copies.
 fire_and_forget ViewerPage::askPassword(bool incorrect) {
 	weak_ref<ViewerPage> weak;
 	PasswordBox box{nullptr};
