@@ -2,6 +2,30 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Remaining form proof gaps (2026-11-02)
+
+I checked the remaining E01 limits against chromium/8086. Ordinary field
+parents are dictionaries, not annotations. GetLinkedAnnot requires Type
+Annot, so it cannot expose their raw V/type, Opt or MaxLen. Effective field
+values still cannot prove an inherited checkbox's stored value, and the
+number API cannot prove an inherited Comb cell count. Both stay refused.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
+
+DoNotScroll changes the editor's scrolling and overflow behavior. The
+public form API has no overflow query; a complete stored value alone does
+not prove it fits the field. I keep this flag refused too.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/formfiller/cffl_textfield.cpp
+
+Password forms open successfully, but snapshots, drawing and transactions
+reopen their scratch copies without the supplied password. I can carry that
+credential in the document's lifetime and keep the existing save flags:
+PDFium retains security unless explicitly asked to remove it. This is the
+next bounded slice, with saved encryption/permission checks and the earlier
+field, action and signature guards intact. No password belongs in settings,
+logs or a temporary file. The fixtures use the existing RC4 test writer.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_save.h
+
 ## Reader save repairs (2026-10-25)
 
 Save a Copy and Ctrl+S use Save notes while a tab has unsaved edits. Cancel

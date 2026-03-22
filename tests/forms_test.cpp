@@ -60,6 +60,17 @@ struct DocumentFormTest {
 		FPDF_ClosePage(page);
 		return result;
 	}
+	static bool hasParentAnnotation(const Document& document) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto widget = FPDFPage_GetAnnot(page, 0);
+		EXPECT_TRUE(FPDFAnnot_HasKey(widget, "Parent"));
+		const auto parent = FPDFAnnot_GetLinkedAnnot(widget, "Parent");
+		const bool result = parent != nullptr;
+		FPDFPage_CloseAnnot(parent);
+		FPDFPage_CloseAnnot(widget);
+		FPDF_ClosePage(page);
+		return result;
+	}
 	static std::vector<std::string> appearanceFonts(const Document& document,
 	                                                int index) {
 		std::vector<std::string> fonts;
@@ -235,6 +246,54 @@ struct FormCanvas {
 	}
 };
 } // namespace
+
+TEST(FormFields, OrdinaryParentsStayOutsideTheAnnotationApi) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto& parent :
+		         {"/FT /Tx /Ff 16777216 /T (comb) /V (old) /MaxLen 4",
+		          "/FT /Btn /T (check) /V /Wrong /Opt [(hidden)]"}) {
+			    const auto bytes = formBytes({WIDGET}, parent);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(pdf::DocumentFormTest::hasParentAnnotation(
+			        *opened.document));
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(FormFields, PasswordFormsKeepTheirOriginalBytesBeforeScratchSupport) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto* name :
+		         {"password_form.pdf", "password_form_denied.pdf",
+		          "password_form_action.pdf"}) {
+			    SCOPED_TRACE(name);
+			    const auto path = fixturePath(name);
+			    EXPECT_EQ(pdf::openFile(path).error,
+			              pdf::Error::PasswordRequired);
+			    EXPECT_EQ(pdf::openFile(path, "wrong").error,
+			              pdf::Error::WrongPassword);
+			    for (const auto* password : {"sable", "nightpdf"}) {
+				    const auto opened = pdf::openFile(path, password);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    const auto original = doc.serialize(1024 * 1024);
+				    ASSERT_TRUE(original);
+				    EXPECT_FALSE(doc.formFields(0));
+				    EXPECT_FALSE(doc.updateTextField(0, 0, u"old", u"new", 1));
+				    EXPECT_FALSE(doc.modified());
+				    EXPECT_EQ(doc.annotationRevision(), 1u);
+				    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+			    }
+		    }
+	    })
+	    .get();
+}
 
 TEST(FormFields, InheritedSnapshotsOutliveTheDocumentAndEngine) {
 	std::optional<pdf::FormFields> result;

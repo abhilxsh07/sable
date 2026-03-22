@@ -575,6 +575,35 @@ def properties_pdf(large=False, missing=False) -> bytes:
     return w.finish(1, 5)
 
 
+def password_form_pdf(permissions: int = -4, action: bool = False) -> bytes:
+    ident = md5(b"Sable password form")
+    key, security = standard_handler(
+        USER_PASSWORD, OWNER_PASSWORD, permissions, ident
+    )
+    w = Writer(ident, key)
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+    w.add(3, "<< /Fields [5 0 R 6 0 R] /NeedAppearances true "
+          f"/DA {w.string(3, '/Helv 16 Tf 0 g')} "
+          "/DR << /Font << /Helv 7 0 R >> >> >>")
+    w.add(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] "
+          "/Annots [5 0 R 6 0 R 8 0 R] >>")
+    for num, name, value, rect, limit in (
+        (5, "Name", "old", "40 210 360 250", " /MaxLen 12"),
+        (6, "Neighbor", "keep", "40 130 360 170", ""),
+    ):
+        extra = " /AA << /V << /S /ResetForm >> >>" if action else ""
+        w.add(num, "<< /Type /Annot /Subtype /Widget /FT /Tx /P 4 0 R "
+              f"/Rect [{rect}] /F 4 /T {w.string(num, name)} "
+              f"/V {w.string(num, value)}{limit}{extra} >>")
+    w.add(7, FONT)
+    w.add(8, "<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] "
+          f"/Contents {w.string(8, 'Keep this note')} >>")
+    w.add(9, f"<< /Title {w.string(9, 'Password form')} >>")
+    w.add(10, security)
+    return w.finish(1, 9, 10)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -585,6 +614,9 @@ def main() -> None:
             f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
         )))
     files = {
+        "password_form.pdf": password_form_pdf(),
+        "password_form_denied.pdf": password_form_pdf(-3904),
+        "password_form_action.pdf": password_form_pdf(action=True),
         "annotations.pdf": annotations_pdf(),
         "note_attachment.pdf": note_attachment_pdf(),
         "note_offsets.pdf": build_pdf("note_offsets.pdf", [(
