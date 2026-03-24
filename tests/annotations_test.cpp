@@ -2029,3 +2029,161 @@ TEST(AnnotationTargets, DeletionProofsSurviveIndexShiftsWithoutBookScans) {
 	    })
 	    .get();
 }
+
+TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto* file :
+		         {"notes_allowed.pdf", "pages.pdf", "password.pdf"}) {
+			    SCOPED_TRACE(file);
+			    const bool encrypted = std::string_view(file) == "password.pdf";
+			    const auto original = annotationBytes(file);
+			    const auto opened =
+			        pdf::openDocument(original, encrypted ? "sable" : "");
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    ASSERT_TRUE(doc.addTextBox(0, {40, 100, 240, 160},
+			                               u"Box (one) \\ two",
+			                               u"Author \u03a9", 1));
+			    EXPECT_TRUE(doc.modified());
+			    EXPECT_EQ(doc.annotationRevision(), 2u);
+			    const auto notes = doc.annotations(0);
+			    ASSERT_TRUE(notes && notes->entries.size() == 1);
+			    EXPECT_EQ(notes->entries[0].subtype, "FreeText");
+			    EXPECT_EQ(notes->entries[0].contents, "Box (one) \\ two");
+			    EXPECT_EQ(notes->entries[0].author, "Author \u03a9");
+			    EXPECT_EQ(notes->entries[0].flags, FPDF_ANNOT_FLAG_PRINT);
+			    const auto raster = doc.render(0, 400, 400);
+			    ASSERT_TRUE(raster);
+			    const auto bytes = doc.serializeForCopy(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    const auto saved =
+			        pdf::openDocument(*bytes, encrypted ? "sable" : "");
+			    ASSERT_TRUE(saved.document);
+			    const auto after = saved.document->render(0, 400, 400);
+			    ASSERT_TRUE(after);
+			    EXPECT_EQ(raster->pixels, after->pixels);
+			    EXPECT_EQ(annotationBytes(file), original);
+			    EXPECT_FALSE(
+			        doc.addTextBox(0, {40, 180, 240, 240}, u"Another", {}, 2));
+			    EXPECT_EQ(doc.annotationRevision(), 2u);
+			    if (encrypted) {
+				    EXPECT_EQ(pdf::openDocument(*bytes).error,
+				              pdf::Error::PasswordRequired);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxRefusalsLeaveTheLiveDocumentIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("notes_allowed.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    for (const auto* text : {u"", u"first\nsecond", u"Caf\u00e9", u"\t",
+		                             u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
+			    EXPECT_FALSE(
+			        doc.addTextBox(0, {40, 100, 60, 120}, text, {}, 1));
+		    }
+		    for (const auto& box :
+		         {pdf::AnnotationBounds{-1, 100, 240, 160},
+		          pdf::AnnotationBounds{40, 100, 40, 160},
+		          pdf::AnnotationBounds{40, 160, 240, 100},
+		          pdf::AnnotationBounds{
+		              40, 100, 240, std::numeric_limits<float>::infinity()}}) {
+			    EXPECT_FALSE(doc.addTextBox(0, box, u"Text", {}, 1));
+		    }
+		    EXPECT_FALSE(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Text", {}, 0));
+		    EXPECT_FALSE(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Text", {}, 2));
+		    EXPECT_FALSE(
+		        doc.addTextBox(-1, {40, 100, 240, 160}, u"Text", {}, 1));
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+		    for (const auto& bytes :
+		         {annotationBytes("notes_denied.pdf"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          sharedHighlightBytes(2)}) {
+			    const auto refused = pdf::openDocument(bytes);
+			    ASSERT_TRUE(refused.document);
+			    EXPECT_FALSE(refused.document->addTextBox(
+			        0, {40, 100, 180, 160}, u"Text", {}, 1));
+			    EXPECT_EQ(refused.document->serialize(1024 * 1024), bytes);
+			    EXPECT_FALSE(refused.document->modified());
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxCancellationKeepsEveryLiveCheckpoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("notes_allowed.pdf");
+		    const auto completed = pdf::openDocument(original);
+		    ASSERT_TRUE(completed.document);
+		    int checkpoints = 0;
+		    ASSERT_TRUE(completed.document->addTextBox(0, {40, 100, 240, 160},
+		                                               u"Text", {}, 1, [&] {
+			                                               ++checkpoints;
+			                                               return false;
+		                                               }));
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    const auto opened = pdf::openDocument(original);
+			    ASSERT_TRUE(opened.document);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->addTextBox(
+			        0, {40, 100, 240, 160}, u"Text", {}, 1,
+			        [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), original);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxesKeepNotesBookmarksAndPrintableAppearances) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("outline.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto outline = doc.outline();
+		    ASSERT_TRUE(outline && !outline->entries.empty());
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link);
+		    const auto note = doc.addTextNote(0, 30, 40, u"Keep note");
+		    ASSERT_TRUE(note);
+		    ASSERT_TRUE(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Printed box", {}, 1));
+		    EXPECT_EQ(doc.textNote(0, *note, 2), u"Keep note");
+		    const auto kept = doc.outlineLink(0);
+		    ASSERT_TRUE(kept);
+		    EXPECT_EQ(kept->uri, link->uri);
+		    const auto print = doc.printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(print);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto after =
+		        saved.document->printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(after);
+		    EXPECT_EQ(print->pixels, after->pixels);
+		    EXPECT_EQ(saved.document->textNote(0, *note), u"Keep note");
+		    const auto savedOutline = saved.document->outline();
+		    ASSERT_TRUE(savedOutline);
+		    EXPECT_EQ(savedOutline->entries.size(), outline->entries.size());
+	    })
+	    .get();
+}

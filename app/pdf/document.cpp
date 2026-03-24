@@ -1362,6 +1362,194 @@ std::optional<bool> Document::updateFormField(
 	return true;
 }
 
+std::optional<int> Document::addTextBox(int index,
+                                        const AnnotationBounds& bounds,
+                                        std::u16string_view contents,
+                                        std::u16string_view author,
+                                        std::uint64_t revision,
+                                        const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || !revision || !currentRevision(revision) || index < 0 ||
+	    index >= pageCount() || !canAnnotate() || stopped() ||
+	    contents.empty() || contents.size() > 128 || !validNoteText(author) ||
+	    std::any_of(contents.begin(), contents.end(),
+	                [](char16_t c) { return c < 32 || c > 126; }) ||
+	    !std::isfinite(bounds.left) || !std::isfinite(bounds.bottom) ||
+	    !std::isfinite(bounds.right) || !std::isfinite(bounds.top) ||
+	    bounds.right <= bounds.left || bounds.top <= bounds.bottom ||
+	    FPDF_GetFormType(m_handle) != FORMTYPE_NONE ||
+	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
+		return {};
+	}
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto scratch = reopenFormCopy(std::move(*bytes));
+	if (!scratch.document) {
+		return {};
+	}
+	scratch.document->m_modified = true;
+	// i expand object streams before checking hidden signature material.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
+	auto canonical = scratch.document->serialize(limit, canceled);
+	if (!canonical || stopped()) {
+		return {};
+	}
+	const std::string_view tokens(
+	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	if (tokens.find("/Sig") != std::string_view::npos ||
+	    tokens.find("/DocMDP") != std::string_view::npos) {
+		return {};
+	}
+	scratch = reopenFormCopy(std::move(*canonical));
+	if (!scratch.document || stopped()) {
+		return {};
+	}
+	auto expected = editCounts();
+	if (!expected) {
+		return {};
+	}
+	int added = -1;
+	const std::u16string text(contents), name(author);
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, index));
+		FS_RECTF box{};
+		if (!page || !FPDF_GetPageBoundingBox(page.get(), &box) ||
+		    !std::isfinite(box.left) || !std::isfinite(box.bottom) ||
+		    !std::isfinite(box.right) || !std::isfinite(box.top) ||
+		    bounds.left < box.left || bounds.bottom < box.bottom ||
+		    bounds.right > box.right || bounds.top > box.top) {
+			return {};
+		}
+		added = FPDFPage_GetAnnotCount(page.get());
+		if (added < 0 || added >= 4096 || (*expected)[index] != added) {
+			return {};
+		}
+		++(*expected)[index];
+		AnnotationPtr note(
+		    FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_FREETEXT));
+		const FS_RECTF rect{bounds.left, bounds.top, bounds.right,
+		                    bounds.bottom};
+		// @todo: expose the text-box font size with the native editor.
+		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "Contents",
+		        reinterpret_cast<FPDF_WIDESTRING>(text.c_str())) ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "T",
+		        reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "DA",
+		        reinterpret_cast<FPDF_WIDESTRING>(u"/Helv 12 Tf 0 g")) ||
+		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT)) {
+			return {};
+		}
+	}
+	if (stopped() || !scratch.document->checkEditCounts(*expected, {index}) ||
+	    !scratch.document->render(index, 64, 64) || stopped()) {
+		return {};
+	}
+	std::u16string literal = u"(";
+	for (auto c : text) {
+		if (c == u'(' || c == u')' || c == u'\\') {
+			literal += u'\\';
+		}
+		literal += c;
+	}
+	literal += u") Tj";
+	const auto proof = [&](const Document& document) {
+		PagePtr page(FPDF_LoadPage(document.m_handle, index));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), added)
+		                        : nullptr);
+		FS_RECTF rect{};
+		if (!note || FPDFAnnot_GetSubtype(note.get()) != FPDF_ANNOT_FREETEXT ||
+		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
+		    !FPDFAnnot_GetRect(note.get(), &rect) || rect.left != bounds.left ||
+		    rect.bottom != bounds.bottom || rect.right != bounds.right ||
+		    rect.top != bounds.top || !FPDFAnnot_HasKey(note.get(), "AP")) {
+			return false;
+		}
+		const auto size = FPDFAnnot_GetAP(note.get(), 0, nullptr, 0);
+		if (size < 2 || size > 65536 || size % 2) {
+			return false;
+		}
+		std::vector<FPDF_WCHAR> ap(size / 2);
+		if (FPDFAnnot_GetAP(note.get(), 0, ap.data(), size) != size ||
+		    ap.back() ||
+		    std::u16string(ap.begin(), ap.end() - 1).find(literal) ==
+		        std::u16string::npos) {
+			return false;
+		}
+		int textObjects = 0;
+		const int count = FPDFAnnot_GetObjectCount(note.get());
+		if (count < 1 || count > 16) {
+			return false;
+		}
+		for (int i = 0; i < count; ++i) {
+			const auto object = FPDFAnnot_GetObject(note.get(), i);
+			if (FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_TEXT) {
+				continue;
+			}
+			++textObjects;
+			float left, bottom, right, top, sizeInPoints;
+			char font[64]{};
+			const auto face = FPDFTextObj_GetFont(object);
+			if (!FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) ||
+			    !std::isfinite(left) || !std::isfinite(bottom) ||
+			    !std::isfinite(right) || !std::isfinite(top) ||
+			    left < bounds.left || bottom < bounds.bottom ||
+			    right > bounds.right || top > bounds.top ||
+			    !FPDFTextObj_GetFontSize(object, &sizeInPoints) ||
+			    sizeInPoints != 12 ||
+			    FPDFFont_GetBaseFontName(face, font, sizeof(font)) != 10 ||
+			    std::string_view(font) != "Helvetica") {
+				return false;
+			}
+		}
+		return textObjects == 1 && !stopped();
+	};
+	if (!proof(*scratch.document)) {
+		return {};
+	}
+	scratch.document->m_modified = true;
+	auto saved = scratch.document->serialize(limit, canceled);
+	if (!saved || stopped()) {
+		return {};
+	}
+	auto next = reopenFormCopy(std::move(*saved));
+	if (!next.document || next.document->pageCount() != pageCount() ||
+	    !proof(*next.document) ||
+	    !next.document->checkEditCounts(*expected, {index})) {
+		return {};
+	}
+	const auto notes = next.document->annotations(index, canceled);
+	if (!notes || notes->limited || notes->entries.empty() ||
+	    notes->entries.back().index != added ||
+	    notes->entries.back().contents != utf16ToUtf8(text) ||
+	    notes->entries.back().author != utf16ToUtf8(name)) {
+		return {};
+	}
+	if (!m_outlineBookmarks.empty() &&
+	    (!next.document->outline(canceled) ||
+	     next.document->m_outlineBookmarks.size() !=
+	         m_outlineBookmarks.size())) {
+		return {};
+	}
+	if (stopped()) {
+		return {};
+	}
+	m_data.swap(next.document->m_data);
+	std::swap(m_handle, next.document->m_handle);
+	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return added;
+}
+
 std::optional<int> Document::addTextNote(int index, float x, float y,
                                          std::u16string_view contents,
                                          std::u16string_view author) {
