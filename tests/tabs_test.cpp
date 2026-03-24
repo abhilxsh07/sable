@@ -113,6 +113,7 @@ struct TabsTest {
 	bool radioOnly = false;
 	bool choiceOnly = false, choiceList = false;
 	bool mixedFormOnly = false;
+	bool passwordFormOnly = false;
 	bool multilineOnly = false;
 	bool combOnly = false;
 	bool inheritedOnly = false;
@@ -3094,6 +3095,246 @@ struct TabsTest {
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
+		}
+		++step;
+		ticks = 0;
+	}
+	void passwordFormTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (v.m_noteBusy || v.m_noteSaving ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		using namespace Microsoft::UI::Xaml::Automation;
+		const auto dialog =
+		    step < 2 || step == 11 ? v.m_passwordDialog : v.m_noteDialog;
+		std::function<Button(DependencyObject, const wchar_t*)> find;
+		find = [&](const DependencyObject& node,
+		           const wchar_t* name) -> Button {
+			if (const auto item = node.try_as<Button>();
+			    item && item.Name() == name) {
+				return item;
+			}
+			for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node);
+			     ++i) {
+				if (const auto item = find(
+				        Media::VisualTreeHelper::GetChild(node, i), name)) {
+					return item;
+				}
+			}
+			return nullptr;
+		};
+		if (dialog && !find(dialog, L"PrimaryButton")) {
+			return;
+		}
+		const auto button = [&](const wchar_t* name) {
+			const auto item = find(dialog, name);
+			check(item && item.IsEnabled(), "password form button unavailable");
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		if (step < 2 || step == 11) {
+			if (!dialog) {
+				return;
+			}
+			const auto children = dialog.Content().as<StackPanel>().Children();
+			if (step == 1) {
+				check(children.GetAt(0).as<TextBlock>().Text() ==
+				          L"Invalid password. Please try again.",
+				      "wrong password did not return to the prompt");
+			}
+			children.GetAt(1).as<PasswordBox>().Password(step == 0 ? L"wrong"
+			                                                       : L"sable");
+			button(L"PrimaryButton");
+			++step;
+			ticks = 0;
+			return;
+		}
+		if (!ready(v)) {
+			return;
+		}
+		const auto read = [&] {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::FormFieldsResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->formFields(0,
+			                              [reply](auto result) {
+				                              reply->set_value(
+				                                  std::move(result));
+			                              }),
+			      "password form read not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "password form read timed out");
+			const auto result = future.get();
+			check(result.fields && !result.fields->limited &&
+			          result.fields->entries.size() == 2,
+			      "password form snapshot missing");
+			return result.fields;
+		};
+		const auto open = [&](int index = 0) {
+			const auto fields = read();
+			const auto& bounds = fields->entries[index].displayBounds;
+			check(bounds.has_value(), "password form hit bounds missing");
+			const auto& page = v.m_layout->pages()[0];
+			v.requestFormAt(
+			    {static_cast<float>(
+			         page.x + page.width * (bounds->left + bounds->right) / 2),
+			     static_cast<float>(page.y +
+			                        page.height *
+			                            (bounds->top + bounds->bottom) / 2)});
+		};
+		const auto input = [&] {
+			check(v.m_noteDialog != nullptr, "password form editor missing");
+			return v.m_noteDialog.Content()
+			    .as<StackPanel>()
+			    .Children()
+			    .GetAt(1)
+			    .as<TextBox>();
+		};
+		switch (step) {
+		case 2:
+			mixedRevision = read()->revision;
+			open();
+			break;
+		case 3:
+		case 13:
+			if (!dialog) {
+				return;
+			}
+			check(input().Text() == (step == 3 ? L"old" : L"Caf\u00e9"),
+			      "password form opened with wrong text");
+			button(L"PrimaryButton");
+			break;
+		case 4:
+			if (dialog) {
+				return;
+			}
+			check(!v.m_formsDirty && read()->revision == mixedRevision,
+			      "password form no-op changed the document");
+			open();
+			break;
+		case 5:
+			if (!dialog) {
+				return;
+			}
+			input().Text(L"too long for field");
+			button(L"PrimaryButton");
+			check(v.m_noteBusy && input().IsReadOnly(),
+			      "queued password form stayed editable");
+			break;
+		case 6: {
+			const auto text = input();
+			check(text.Text() == L"too long for field" && !text.IsReadOnly() &&
+			          dialog.IsPrimaryButtonEnabled() &&
+			          !dialog.Content()
+			               .as<StackPanel>()
+			               .Children()
+			               .GetAt(2)
+			               .as<TextBlock>()
+			               .Text()
+			               .empty() &&
+			          !v.m_formsDirty && read()->revision == mixedRevision,
+			      "password form refusal lost its draft");
+			const auto tab = owner.Tabs().SelectedIndex();
+			check(!owner.routeKey('W', helpers::SHORTCUT_CTRL, false) &&
+			          owner.routeKey(VK_TAB, helpers::SHORTCUT_CTRL, false) &&
+			          owner.Tabs().SelectedIndex() == tab &&
+			          text.Text() == L"too long for field",
+			      "password form modal shortcut escaped");
+			text.Text(L"Caf\u00e9");
+			button(L"PrimaryButton");
+			break;
+		}
+		case 7:
+			if (dialog) {
+				return;
+			}
+			check(v.m_formsDirty && read()->entries[0].value == "Caf\u00e9",
+			      "password form corrected retry failed");
+			open();
+			break;
+		case 8:
+		case 15:
+			if (!dialog) {
+				return;
+			}
+			input().Text(L"cancel this");
+			button(L"CloseButton");
+			break;
+		case 9:
+			if (dialog) {
+				return;
+			}
+			check(read()->entries[0].value == "Caf\u00e9",
+			      "Cancel changed password form");
+			notesPath = buttonFieldPath.parent_path() / "password copy.pdf";
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 10:
+			check(notesSave.GetResults() && !v.m_notesDirty && !v.m_formsDirty,
+			      "password form savepoint failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path, "nightpdf");
+				          return pdf::openFile(path).error ==
+				                     pdf::Error::PasswordRequired &&
+				                 saved.document &&
+				                 saved.document->textNote(0, 2) ==
+				                     u"Keep this note";
+			          })
+			          .get(),
+			      "password form copy lost protection or its note");
+			owner.openDocument(engine, notesPath, 1);
+			break;
+		case 12:
+			check(read()->entries[0].value == "Caf\u00e9" &&
+			          read()->entries[1].value == "keep",
+			      "fresh password form lost its values");
+			mixedRevision = read()->revision;
+			open();
+			break;
+		case 14:
+			if (dialog) {
+				return;
+			}
+			check(!v.m_formsDirty && read()->revision == mixedRevision,
+			      "reopened password form no-op changed savepoint");
+			open(1);
+			break;
+		case 16: {
+			if (dialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_formsDirty &&
+			          read()->entries[1].value == "keep",
+			      "reopened password form Cancel changed neighbor");
+			std::ifstream source(buttonFieldPath, std::ios::binary);
+			std::ifstream fixture("tests/fixtures/password_form.pdf",
+			                      std::ios::binary);
+			check(std::string(std::istreambuf_iterator<char>(source), {}) ==
+			          std::string(std::istreambuf_iterator<char>(fixture), {}),
+			      "password form source changed");
+			std::fwprintf(stderr,
+			              L"PASS: password prompt, native field, no-op, "
+			              L"refusal/retry, modal keys, Cancel and encrypted "
+			              L"reopen; %ls\n",
+			              notesPath.c_str());
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
 		}
 		++step;
 		ticks = 0;
@@ -6933,6 +7174,10 @@ struct TabsTest {
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
 			}
+			if (passwordFormOnly) {
+				passwordFormTick(*self);
+				return;
+			}
 			if (mixedFormOnly) {
 				mixedFormTick(*self);
 				return;
@@ -7628,6 +7873,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    !state->inheritedCheckBoxOnly && !state->combOnly &&
 	    GetEnvironmentVariableW(L"SableMultilineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->passwordFormOnly =
+	    GetEnvironmentVariableW(L"SablePasswordFormTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->mixedFormOnly =
 	    state->multilineOnly || state->combOnly || state->inheritedOnly ||
 	    state->inheritedCheckBoxOnly || state->noSpellCheckOnly ||
@@ -7752,12 +8000,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->mixedFormOnly || state->choiceOnly || state->checkBoxOnly ||
-	    state->radioOnly || state->settingsOnly || state->windowsOnly ||
-	    state->filtersOnly || state->linksOnly || state->printOnly ||
-	    state->finishOnly || state->editOnly || state->musicOnly ||
-	    state->selectionOnly || state->findOnly || state->outlineOnly ||
-	    state->attachmentsOnly || state->commentsOnly ||
+	if (state->passwordFormOnly || state->mixedFormOnly || state->choiceOnly ||
+	    state->checkBoxOnly || state->radioOnly || state->settingsOnly ||
+	    state->windowsOnly || state->filtersOnly || state->linksOnly ||
+	    state->printOnly || state->finishOnly || state->editOnly ||
+	    state->musicOnly || state->selectionOnly || state->findOnly ||
+	    state->outlineOnly || state->attachmentsOnly || state->commentsOnly ||
 	    state->attachmentSaveOnly || state->annotationActionsOnly ||
 	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
 	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
@@ -7816,8 +8064,14 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->mixedFormOnly || state->choiceOnly || state->checkBoxOnly ||
-	    state->radioOnly) {
+	if (state->passwordFormOnly) {
+		state->buttonFieldPath = makeTempDir("password_ui") / "password.pdf";
+		std::filesystem::copy_file("tests/fixtures/password_form.pdf",
+		                           state->buttonFieldPath);
+		window->openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+		window->openDocument(engine, state->buttonFieldPath, 1);
+	} else if (state->mixedFormOnly || state->choiceOnly ||
+	           state->checkBoxOnly || state->radioOnly) {
 		state->buttonFieldPath = makeTempDir("button_ui") / "button.pdf";
 		{
 			std::ofstream source(state->buttonFieldPath, std::ios::binary);

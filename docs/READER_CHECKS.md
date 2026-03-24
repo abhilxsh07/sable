@@ -149,6 +149,14 @@ selection and Cancel passed. A text-field no-op and clean app close passed;
 all three source hashes stayed unchanged. The real save picker and
 mixed-field interoperability still need a pass.
 
+SablePasswordFormTest=true with SableTabsTest=true runs the encrypted text
+form check. It exercises wrong/correct password prompts, native no-op,
+length refusal/retry, modal shortcuts, Cancel and saved-copy reopening.
+Build with SableSurfaceTest=true. The 2 Nov desktop pass also saved through
+the Windows picker and reopened the accented value in a fresh process.
+The saved file still needed its password; the source stayed unchanged.
+Other encryption revisions and viewer interoperability remain open.
+
 SableMixedFormTest=true with SableTabsTest=true runs all five supported
 field types in one document. It checks page hit testing, Apply, Cancel,
 no-op revisions and dirty state, then reopens the saved copy in a new tab

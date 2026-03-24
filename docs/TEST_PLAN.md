@@ -2,6 +2,32 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Password-protected forms (2 November 2026)
+
+The encrypted form fixtures cover user and owner access, permission and
+action refusals, full-value length checks, cancellation, stale queued writes,
+no-ops and corrected retries. Saved copies still reject missing/wrong
+passwords. Both roles retain their permissions, values and note access.
+
+SablePasswordFormTest runs the native password prompt, including a wrong
+attempt, then field hit testing, unchanged Apply, a retained length refusal,
+corrected Apply, queued controls, modal keys and Cancel. It saves a copy,
+opens a fresh tab through the password prompt and checks both field values
+and a clean no-op savepoint. The source bytes stay unchanged.
+
+The desktop pass used the normal 225a28b runtime. Real pointer input opened
+Name, an overlong Apply retained its draft, Ctrl+W kept the modal open and
+the corrected value `Café desktop` applied. The real Windows picker saved
+`desktop password copy.pdf`; its Save accelerator worked after the pointer
+helper reported a window-bounds mismatch. A fresh process required the
+password, displayed the accented value and unchanged neighbor, and accepted
+unchanged Apply. The source matches its committed blob. The saved SHA-256
+is `dd21346be078420f40e6195284b9a03dc363568903330941d1e84a713cd9fad0`.
+
+Evidence: `D:\NightPdf\verify-password-native-20261102-225a28b`.
+These fixtures use the existing revision-3 RC4 writer. Other encryption
+revisions and broader viewer interoperability need separate checks.
+
 ## Saved markup in Acrobat (26 October 2026)
 
 I opened the disposable saved copy from the e01a5a2 package in the installed
