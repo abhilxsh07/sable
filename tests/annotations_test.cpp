@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 #include <fpdf_annot.h>
 #include <fpdfview.h>
+#include <fpdf_edit.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -32,6 +33,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 struct DocumentEditTest {
+	static bool freeText(Document& document, const FS_RECTF& rect,
+	                     std::u16string_view contents) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto note = FPDFPage_CreateAnnot(page, FPDF_ANNOT_FREETEXT);
+		const std::u16string text(contents);
+		const bool result =
+		    note && FPDFAnnot_SetRect(note, &rect) &&
+		    FPDFAnnot_SetStringValue(
+		        note, "Contents",
+		        reinterpret_cast<FPDF_WIDESTRING>(text.c_str())) &&
+		    FPDFAnnot_SetStringValue(
+		        note, "DA",
+		        reinterpret_cast<FPDF_WIDESTRING>(u"/Helv 12 Tf 0 g")) &&
+		    FPDFAnnot_SetFlags(note, FPDF_ANNOT_FLAG_PRINT);
+		FPDFPage_CloseAnnot(note);
+		FPDF_ClosePage(page);
+		document.m_modified = true;
+		return result;
+	}
+	static std::u16string appearance(const Document& document, bool& fits,
+	                                 int& count) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto note = FPDFPage_GetAnnot(page, 0);
+		FS_RECTF rect{};
+		fits = FPDFAnnot_GetRect(note, &rect) != 0;
+		std::vector<FPDF_WCHAR> ap(FPDFAnnot_GetAP(note, 0, nullptr, 0) / 2);
+		if (ap.empty() ||
+		    FPDFAnnot_GetAP(note, 0, ap.data(),
+		                    static_cast<unsigned long>(ap.size() * 2)) !=
+		        ap.size() * 2) {
+			fits = false;
+		}
+		count = FPDFAnnot_GetObjectCount(note);
+		for (int i = 0; i < count; ++i) {
+			const auto object = FPDFAnnot_GetObject(note, i);
+			if (FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_TEXT) {
+				continue;
+			}
+			float left, bottom, right, top;
+			fits =
+			    fits &&
+			    FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) &&
+			    left >= rect.left && bottom >= rect.bottom &&
+			    right <= rect.right && top <= rect.top;
+		}
+		std::u16string result(ap.begin(), ap.empty() ? ap.end() : ap.end() - 1);
+		FPDFPage_CloseAnnot(note);
+		FPDF_ClosePage(page);
+		return result;
+	}
 	static std::size_t pageLoads(const Document& document) {
 		return document.m_editPageLoads;
 	}
@@ -41,6 +92,65 @@ struct DocumentEditTest {
 	}
 };
 } // namespace pdf
+
+TEST(Annotations, FreeTextAppearanceSurvivesSavedReload) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(pdf::DocumentEditTest::freeText(
+		        doc, {40, 160, 240, 100}, u"Plain text box"));
+		    ASSERT_TRUE(doc.render(0, 400, 400));
+		    bool fits = false;
+		    int count = 0;
+		    EXPECT_NE(pdf::DocumentEditTest::appearance(doc, fits, count)
+		                  .find(u"(Plain text box) Tj"),
+		              std::u16string::npos);
+		    EXPECT_TRUE(fits);
+		    EXPECT_GT(count, 0);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    EXPECT_NE(
+		        pdf::DocumentEditTest::appearance(*saved.document, fits, count)
+		            .find(u"(Plain text box) Tj"),
+		        std::u16string::npos);
+		    EXPECT_TRUE(fits);
+		    EXPECT_GT(count, 0);
+	    })
+	    .get();
+}
+
+TEST(Annotations, FreeTextAppearanceExposesOverflowAndCollapsedParagraphs) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const bool narrow : {false, true}) {
+			    const auto opened =
+			        pdf::openFile(fixturePath("notes_allowed.pdf"));
+			    ASSERT_TRUE(opened.document);
+			    ASSERT_TRUE(pdf::DocumentEditTest::freeText(
+			        *opened.document, {40, 160, narrow ? 60.f : 240.f, 100},
+			        narrow ? u"WWWWWWWWWWWW" : u"first\nsecond"));
+			    ASSERT_TRUE(opened.document->render(0, 400, 400));
+			    bool fits = false;
+			    int count = 0;
+			    const auto ap = pdf::DocumentEditTest::appearance(
+			        *opened.document, fits, count);
+			    if (narrow) {
+				    EXPECT_FALSE(fits);
+			    } else {
+				    EXPECT_EQ(ap.find(u"first\nsecond"), std::u16string::npos);
+				    EXPECT_NE(ap.find(u"(firstsecond) Tj"),
+				              std::u16string::npos);
+			    }
+		    }
+	    })
+	    .get();
+}
 
 namespace {
 std::vector<std::uint8_t> annotationBytes(const char* name) {

@@ -2,6 +2,23 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## First text-box appearance proof (2026-11-02)
+
+I use PDFium's FreeText appearance generator on an isolated copy. Its
+standard-font stream survives saving, but line breaks collapse and narrow
+boxes clip. The page text extractor does not decode annotation text
+objects, so it cannot prove the requested text survived in the appearance.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_generateap.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_edittext.cpp
+
+The first writer is bounded to printable single-line ASCII. I verify its
+literal appearance text and text-object bounds before and after saving.
+Existing AcroForm dictionaries stay refused so their font resources cannot
+replace the generated standard font. This also means another box after a
+generated AcroForm needs a later resource-ownership proof. Multiline,
+Unicode, font choices, placement and a native editor remain separate work.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_view.cpp
+
 ## Password-protected form copies (2026-11-02)
 
 I retain the supplied credential only on encrypted documents and clear its
