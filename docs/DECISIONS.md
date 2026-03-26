@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued first text-box writes (2026-11-02)
+
+I queue the rectangle, text, author and explicit snapshot revision as owned
+values. Successful writes refresh the form cache and the session's annotation
+revision. Read cancellation does not cancel writes. Closing can cancel the
+isolated transaction before commit; a committed result remains a change even
+if its callback closes the session. Callbacks run outside the session lock.
+
+The queue retains the writer's first-box and appearance restrictions. Saved
+copies contain real FreeText annotations, while the native editor and page
+placement are still separate work.
+
 ## Isolated first text-box writes (2026-11-02)
 
 I create the first bounded FreeText box on an isolated rewritten document.

@@ -535,6 +535,48 @@ void Session::cancelForms() {
 	++m_state->m_formGeneration;
 }
 
+bool Session::addTextBox(int page, AnnotationBounds bounds,
+                         std::u16string contents, std::u16string author,
+                         std::uint64_t revision,
+                         std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !revision || !state->m_ready || state->m_closed ||
+		    contents.empty() || contents.size() > 128 ||
+		    author.size() > 32767) {
+			return false;
+		}
+	}
+	state->m_engine.post(
+	    [state, page, bounds, revision, contents = std::move(contents),
+	     author = std::move(author), callback = std::move(callback)] {
+		    NoteResult result;
+		    result.page = page;
+		    try {
+			    const auto canceled = [state] { return state->closed(); };
+			    if (!canceled()) {
+				    result.index = state->m_document->addTextBox(
+				        page, bounds, contents, author, revision, canceled);
+				    result.changed = result.index.has_value();
+				    if (result.changed) {
+					    state->m_forms.reset();
+					    std::lock_guard lock(state->m_mutex);
+					    state->m_annotationRevision =
+					        state->m_document->annotationRevision();
+				    }
+			    }
+			    result.canceled = !result.changed && canceled();
+		    } catch (...) {
+			    result.canceled = state->closed();
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't add a PDF text box.");
+		    }
+		    callback(std::move(result));
+	    });
+	return true;
+}
+
 bool Session::addTextNote(int page, float x, float y, std::u16string contents,
                           std::u16string author,
                           std::function<void(NoteResult)> callback) {

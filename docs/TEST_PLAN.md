@@ -2,6 +2,32 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## First text-box backend (2 November 2026)
+
+The appearance checks establish a bounded single-line FreeText path.
+Paragraph breaks collapse and narrow boxes clip; page text extraction cannot
+decode annotation text objects. The writer accepts up to 128 printable ASCII
+characters before any AcroForm font resources exist. Existing resources and
+a second box remain refused until resource ownership can be proved.
+
+The isolated transaction checks the complete escaped literal, one 12-point
+Helvetica text object, finite glyph bounds inside the requested rectangle,
+metadata and annotation counts. The saved/reopened copy passes the same
+proof before replacing live bytes. Tests cover PDF-string escaping,
+permissions, stale revisions, signatures, shared arrays, invalid geometry,
+all cancellation checkpoints, note/bookmark preservation, encrypted input
+and identical saved raster/print output. Source fixtures stay unchanged.
+
+Queue checks cover owned rectangles/drafts/authors, stale requests,
+independent read cancellation, refreshed form snapshots, neighboring note
+edits, save/reopen, session close/destruction, callback reentry and exceptions.
+Native placement, an editor, Unicode, multiline and other viewer checks
+remain open. This backend checkpoint does not complete the text-box tool.
+
+Evidence: `D:\NightPdf\verify-textbox-appearance-20261102-c983d1d`,
+`D:\NightPdf\verify-textbox-write-20261102-482768f` and
+`D:\NightPdf\verify-textbox-session-20261102-58b87a1`.
+
 ## Password-protected forms (2 November 2026)
 
 The encrypted form fixtures cover user and owner access, permission and
