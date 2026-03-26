@@ -1377,7 +1377,8 @@ std::optional<int> Document::addTextBox(int index,
 	    !std::isfinite(bounds.left) || !std::isfinite(bounds.bottom) ||
 	    !std::isfinite(bounds.right) || !std::isfinite(bounds.top) ||
 	    bounds.right <= bounds.left || bounds.top <= bounds.bottom ||
-	    FPDF_GetFormType(m_handle) != FORMTYPE_NONE ||
+	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
+	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
 	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
 		return {};
 	}
@@ -1404,6 +1405,27 @@ std::optional<int> Document::addTextBox(int index,
 	    tokens.find("/DocMDP") != std::string_view::npos) {
 		return {};
 	}
+	// the rewrite expands object streams and canonicalizes names. i choose
+	// an absent name so existing DR fonts cannot replace this box's font.
+	// strings/streams can cause a conservative collision too. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_generateap.cpp
+	std::string fontName;
+	for (int candidate = 0; candidate < 4096; ++candidate) {
+		if (stopped()) {
+			return {};
+		}
+		auto name = "SableTextBoxFont" + std::to_string(candidate);
+		if (tokens.find("/" + name) == std::string_view::npos) {
+			fontName = std::move(name);
+			break;
+		}
+	}
+	if (fontName.empty()) {
+		return {};
+	}
+	const std::string appearance = "/" + fontName + " 12 Tf 0 g";
+	const std::u16string defaultAppearance(appearance.begin(),
+	                                       appearance.end());
 	scratch = reopenFormCopy(std::move(*canonical));
 	if (!scratch.document || stopped()) {
 		return {};
@@ -1443,13 +1465,27 @@ std::optional<int> Document::addTextBox(int index,
 		        reinterpret_cast<FPDF_WIDESTRING>(name.c_str())) ||
 		    !FPDFAnnot_SetStringValue(
 		        note.get(), "DA",
-		        reinterpret_cast<FPDF_WIDESTRING>(u"/Helv 12 Tf 0 g")) ||
+		        reinterpret_cast<FPDF_WIDESTRING>(defaultAppearance.c_str())) ||
 		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT)) {
 			return {};
 		}
 	}
-	if (stopped() || !scratch.document->checkEditCounts(*expected, {index}) ||
-	    !scratch.document->render(index, 64, 64) || stopped()) {
+	if (stopped() || !scratch.document->checkEditCounts(*expected, {index})) {
+		return {};
+	}
+	{
+		// render this isolated document directly; render() isolates forms
+		// again.
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, index));
+		BitmapPtr bitmap(FPDFBitmap_Create(64, 64, 1));
+		if (!page || !bitmap || stopped()) {
+			return {};
+		}
+		FPDFBitmap_FillRect(bitmap.get(), 0, 0, 64, 64, 0xFFFFFFFF);
+		FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, 64, 64, 0,
+		                      FPDF_ANNOT);
+	}
+	if (stopped()) {
 		return {};
 	}
 	std::u16string literal = u"(";

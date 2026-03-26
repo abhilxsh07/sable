@@ -212,7 +212,7 @@ class Document {
 	std::optional<int> addTextNote(int page, float x, float y,
 	                               std::u16string_view contents,
 	                               std::u16string_view author = {});
-	// One printable single-line box, before any AcroForm font resources exist.
+	// A printable single-line box with an unused standard-font resource name.
 	std::optional<int> addTextBox(int page, const AnnotationBounds& bounds,
 	                              std::u16string_view contents,
 	                              std::u16string_view author,

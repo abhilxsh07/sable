@@ -2,6 +2,20 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Independent text-box font resources (2026-11-02)
+
+I choose a SableTextBoxFont name absent from the fully rewritten PDF before
+creating each box. The rewrite expands object streams and canonicalizes
+escaped names; an absent name cannot resolve to an existing DR font. PDFium
+then creates its standard fallback font under that name. I leave existing
+fonts alone and repeat the saved literal, Helvetica and glyph-bound checks.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfdoc/cpdf_generateap.cpp
+
+The search is bounded to 4096 names. Matching strings/streams can skip names
+conservatively; exhausting the names refuses without changing live bytes.
+Multiple boxes and existing AcroForm fields now use the same isolated path.
+Malformed resources, signatures and the earlier text/geometry guards remain.
+
 ## Queued first text-box writes (2026-11-02)
 
 I queue the rectangle, text, author and explicit snapshot revision as owned

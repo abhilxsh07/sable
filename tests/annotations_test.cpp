@@ -53,9 +53,9 @@ struct DocumentEditTest {
 		return result;
 	}
 	static std::u16string appearance(const Document& document, bool& fits,
-	                                 int& count) {
+	                                 int& count, int index = 0) {
 		const auto page = FPDF_LoadPage(document.m_handle, 0);
-		const auto note = FPDFPage_GetAnnot(page, 0);
+		const auto note = FPDFPage_GetAnnot(page, index);
 		FS_RECTF rect{};
 		fits = FPDFAnnot_GetRect(note, &rect) != 0;
 		std::vector<FPDF_WCHAR> ap(FPDFAnnot_GetAP(note, 0, nullptr, 0) / 2);
@@ -158,11 +158,12 @@ std::vector<std::uint8_t> annotationBytes(const char* name) {
 	return {std::istreambuf_iterator<char>(file), {}};
 }
 std::vector<std::uint8_t> editableNoteBytes(const std::string& fields,
-                                            std::string_view type = "Text") {
+                                            std::string_view type = "Text",
+                                            std::string catalog = {}) {
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	for (const auto& body : std::vector<std::string>{
-	         "<< /Type /Catalog /Pages 2 0 R >>",
+	         "<< /Type /Catalog /Pages 2 0 R " + catalog + " >>",
 	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
 	         "/Annots [4 0 R] >>",
@@ -2065,9 +2066,9 @@ TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
 			    ASSERT_TRUE(after);
 			    EXPECT_EQ(raster->pixels, after->pixels);
 			    EXPECT_EQ(annotationBytes(file), original);
-			    EXPECT_FALSE(
+			    EXPECT_TRUE(
 			        doc.addTextBox(0, {40, 180, 240, 240}, u"Another", {}, 2));
-			    EXPECT_EQ(doc.annotationRevision(), 2u);
+			    EXPECT_EQ(doc.annotationRevision(), 3u);
 			    if (encrypted) {
 				    EXPECT_EQ(pdf::openDocument(*bytes).error,
 				              pdf::Error::PasswordRequired);
@@ -2184,6 +2185,125 @@ TEST(Annotations, TextBoxesKeepNotesBookmarksAndPrintableAppearances) {
 		    const auto savedOutline = saved.document->outline();
 		    ASSERT_TRUE(savedOutline);
 		    EXPECT_EQ(savedOutline->entries.size(), outline->entries.size());
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxFontsSkipExistingAndEscapedResourceNames) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = editableNoteBytes(
+		        "/Contents (Keep)", "Text",
+		        "/AcroForm << /Fields [] /DR << /Font << "
+		        "/SableTextBoxFont#30 << /Type /Font /Subtype /Type1 /BaseFont "
+		        "/Courier >> "
+		        "/Helv << /Type /Font /Subtype /Type1 /BaseFont /Courier >> "
+		        ">> >> >> /Probe (/SableTextBoxFont1)");
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {20, 100, 180, 160}, u"Independent", {}, 1),
+		        1);
+		    bool fits = false;
+		    int count = 0;
+		    const auto ap =
+		        pdf::DocumentEditTest::appearance(doc, fits, count, 1);
+		    EXPECT_NE(ap.find(u"/SableTextBoxFont2 12 Tf"),
+		              std::u16string::npos);
+		    EXPECT_TRUE(fits);
+		    EXPECT_EQ(doc.textNote(0, 0, 2), u"Keep");
+		    const auto saved = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(saved);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    EXPECT_EQ(reopened.document->addTextBox(0, {20, 180, 180, 240},
+		                                            u"Next", {}, 1),
+		              2);
+		    const auto next = pdf::DocumentEditTest::appearance(
+		        *reopened.document, fits, count, 2);
+		    EXPECT_NE(next.find(u"/SableTextBoxFont3 12 Tf"),
+		              std::u16string::npos);
+		    EXPECT_TRUE(fits);
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxesPreserveMixedFieldsAcrossMultipleWritesAndReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto pdf = mixedFormPdf({.explicitFont = true});
+		    const std::vector<std::uint8_t> original(pdf.begin(), pdf.end());
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.formFields(0);
+		    ASSERT_TRUE(before && before->entries.size() == 6);
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"First box", {}, 1), 7);
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 200, 240, 260}, u"Second box", {}, 2),
+		        8);
+		    const auto fields = doc.formFields(0);
+		    ASSERT_TRUE(fields && fields->entries.size() == 6);
+		    for (std::size_t i = 0; i < 6; ++i) {
+			    EXPECT_EQ(fields->entries[i].value, before->entries[i].value);
+			    EXPECT_EQ(fields->entries[i].checked,
+			              before->entries[i].checked);
+			    EXPECT_EQ(fields->entries[i].flags, before->entries[i].flags);
+		    }
+		    EXPECT_EQ(doc.textNote(0, 0, 3), u"Original");
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    ASSERT_EQ(saved.document->addTextBox(0, {40, 300, 240, 360},
+		                                         u"Third box", {}, 1),
+		              9);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 10);
+		    EXPECT_EQ(notes->entries[7].contents, "First box");
+		    EXPECT_EQ(notes->entries[8].contents, "Second box");
+		    EXPECT_EQ(notes->entries[9].contents, "Third box");
+		    const auto kept = saved.document->formFields(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 6);
+		    for (std::size_t i = 0; i < 6; ++i) {
+			    EXPECT_EQ(kept->entries[i].value, before->entries[i].value);
+		    }
+		    ASSERT_TRUE(saved.document->outline());
+		    const auto link = saved.document->outlineLink(0);
+		    ASSERT_TRUE(link && link->destination);
+		    EXPECT_EQ(link->destination->page, 0);
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxMalformedOrExhaustedFontResourcesKeepLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    std::string occupied = "/Probe (";
+		    for (int i = 0; i < 4096; ++i) {
+			    occupied += "/SableTextBoxFont" + std::to_string(i) + " ";
+		    }
+		    occupied += ")";
+		    for (const auto& catalog :
+		         {occupied,
+		          std::string(
+		              "/AcroForm << /Fields [] /DR << /Font 123 >> >>")}) {
+			    const auto bytes =
+			        editableNoteBytes("/Contents (Keep)", "Text", catalog);
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_FALSE(opened.document->addTextBox(0, {20, 100, 180, 160},
+			                                             u"Refused", {}, 1));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
 	    })
 	    .get();
 }
