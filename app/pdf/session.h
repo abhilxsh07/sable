@@ -182,6 +182,10 @@ class Session {
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,
 	                std::u16string author, std::uint64_t revision,
 	                std::function<void(NoteResult)> callback);
+	bool addTextBoxAt(int page, double x, double y, int rotation,
+	                  std::u16string contents, std::u16string author,
+	                  std::uint64_t revision,
+	                  std::function<void(NoteResult)> callback);
 	bool addCenteredTextNote(int page, std::u16string contents,
 	                         std::u16string author,
 	                         std::function<void(NoteResult)> callback);
@@ -248,6 +252,12 @@ class Session {
 	void close();
 
   private:
+	bool writeTextBox(int page, AnnotationBounds bounds,
+	                  std::u16string contents, std::u16string author,
+	                  std::uint64_t revision,
+	                  std::function<void(NoteResult)> callback,
+	                  std::optional<AnnotationPoint> point = {},
+	                  int rotation = 0);
 	bool writeFormField(int page, int index, std::u16string expected,
 	                    std::u16string contents, std::uint64_t revision,
 	                    std::optional<bool> checked,

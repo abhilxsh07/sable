@@ -1586,6 +1586,44 @@ std::optional<int> Document::addTextBox(int index,
 	return added;
 }
 
+std::optional<int>
+Document::addTextBoxAt(int index, double x, double y, int rotation,
+                       std::u16string_view contents, std::u16string_view author,
+                       std::uint64_t revision,
+                       const std::function<bool()>& canceled) {
+	if (offThread() || index < 0 || index >= pageCount() || !std::isfinite(x) ||
+	    !std::isfinite(y) || x < 0 || x > 1 || y < 0 || y > 1 || rotation < 0 ||
+	    rotation > 3 || (canceled && canceled())) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	FS_RECTF box{};
+	double px = 0, py = 0;
+	constexpr int GRID = 1 << 20;
+	if (!page || !FPDF_GetPageBoundingBox(page.get(), &box) ||
+	    !std::isfinite(box.left) || !std::isfinite(box.bottom) ||
+	    !std::isfinite(box.right) || !std::isfinite(box.top) ||
+	    double(box.right) - box.left < 4 || double(box.top) - box.bottom < 4 ||
+	    !FPDF_DeviceToPage(page.get(), 0, 0, GRID, GRID, rotation,
+	                       static_cast<int>(std::lround(x * GRID)),
+	                       static_cast<int>(std::lround(y * GRID)), &px, &py) ||
+	    !std::isfinite(px) || !std::isfinite(py)) {
+		return {};
+	}
+	// @todo: expose the default text-box dimensions with resize controls.
+	const double width = (std::min)(200., double(box.right) - box.left);
+	const double height = (std::min)(60., double(box.top) - box.bottom);
+	const double left =
+	    std::clamp(px - width / 2, double(box.left), double(box.right) - width);
+	const double bottom = std::clamp(py - height / 2, double(box.bottom),
+	                                 double(box.top) - height);
+	const AnnotationBounds bounds{
+	    static_cast<float>(left), static_cast<float>(bottom),
+	    static_cast<float>(left + width), static_cast<float>(bottom + height)};
+	page.reset();
+	return addTextBox(index, bounds, contents, author, revision, canceled);
+}
+
 std::optional<int> Document::addTextNote(int index, float x, float y,
                                          std::u16string_view contents,
                                          std::u16string_view author) {

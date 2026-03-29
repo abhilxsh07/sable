@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Displayed text-box placement (2026-11-02)
+
+I map the displayed page fraction through PDFium with the same crop and
+extra-rotation convention as note placement. The first box is 200 by 60 PDF
+points, reduced to the visible page if necessary, centered on the click and
+clamped inside the visible bounds. The saved glyph-fit proof still decides
+whether the text fits. Resizing stays separate from this placement step.
+
+The queue owns the displayed point and rotation with the draft and revision.
+Raw-coordinate requests keep their existing path; both share commit, cache,
+cancellation and close behavior.
+
 ## Independent text-box font resources (2026-11-02)
 
 I choose a SableTextBoxFont name absent from the fully rewritten PDF before

@@ -539,6 +539,24 @@ bool Session::addTextBox(int page, AnnotationBounds bounds,
                          std::u16string contents, std::u16string author,
                          std::uint64_t revision,
                          std::function<void(NoteResult)> callback) {
+	return writeTextBox(page, bounds, std::move(contents), std::move(author),
+	                    revision, std::move(callback));
+}
+
+bool Session::addTextBoxAt(int page, double x, double y, int rotation,
+                           std::u16string contents, std::u16string author,
+                           std::uint64_t revision,
+                           std::function<void(NoteResult)> callback) {
+	return writeTextBox(page, {}, std::move(contents), std::move(author),
+	                    revision, std::move(callback), AnnotationPoint{x, y},
+	                    rotation);
+}
+
+bool Session::writeTextBox(int page, AnnotationBounds bounds,
+                           std::u16string contents, std::u16string author,
+                           std::uint64_t revision,
+                           std::function<void(NoteResult)> callback,
+                           std::optional<AnnotationPoint> point, int rotation) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -548,32 +566,37 @@ bool Session::addTextBox(int page, AnnotationBounds bounds,
 			return false;
 		}
 	}
-	state->m_engine.post(
-	    [state, page, bounds, revision, contents = std::move(contents),
-	     author = std::move(author), callback = std::move(callback)] {
-		    NoteResult result;
-		    result.page = page;
-		    try {
-			    const auto canceled = [state] { return state->closed(); };
-			    if (!canceled()) {
-				    result.index = state->m_document->addTextBox(
-				        page, bounds, contents, author, revision, canceled);
-				    result.changed = result.index.has_value();
-				    if (result.changed) {
-					    state->m_forms.reset();
-					    std::lock_guard lock(state->m_mutex);
-					    state->m_annotationRevision =
-					        state->m_document->annotationRevision();
-				    }
-			    }
-			    result.canceled = !result.changed && canceled();
-		    } catch (...) {
-			    result.canceled = state->closed();
-			    diagnostics::write(diagnostics::Level::Error,
-			                       "Couldn't add a PDF text box.");
-		    }
-		    callback(std::move(result));
-	    });
+	state->m_engine.post([state, page, bounds, revision, point, rotation,
+	                      contents = std::move(contents),
+	                      author = std::move(author),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = page;
+		try {
+			const auto canceled = [state] { return state->closed(); };
+			if (!canceled()) {
+				result.index = point ? state->m_document->addTextBoxAt(
+				                           page, point->x, point->y, rotation,
+				                           contents, author, revision, canceled)
+				                     : state->m_document->addTextBox(
+				                           page, bounds, contents, author,
+				                           revision, canceled);
+				result.changed = result.index.has_value();
+				if (result.changed) {
+					state->m_forms.reset();
+					std::lock_guard lock(state->m_mutex);
+					state->m_annotationRevision =
+					    state->m_document->annotationRevision();
+				}
+			}
+			result.canceled = !result.changed && canceled();
+		} catch (...) {
+			result.canceled = state->closed();
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't add a PDF text box.");
+		}
+		callback(std::move(result));
+	});
 	return true;
 }
 

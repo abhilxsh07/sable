@@ -157,16 +157,16 @@ std::vector<std::uint8_t> annotationBytes(const char* name) {
 	std::ifstream file(fixturePath(name), std::ios::binary);
 	return {std::istreambuf_iterator<char>(file), {}};
 }
-std::vector<std::uint8_t> editableNoteBytes(const std::string& fields,
-                                            std::string_view type = "Text",
-                                            std::string catalog = {}) {
+std::vector<std::uint8_t>
+editableNoteBytes(const std::string& fields, std::string_view type = "Text",
+                  std::string catalog = {},
+                  std::string pageBox = "/MediaBox [0 0 200 300]") {
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	for (const auto& body : std::vector<std::string>{
 	         "<< /Type /Catalog /Pages 2 0 R " + catalog + " >>",
 	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
-	         "/Annots [4 0 R] >>",
+	         "<< /Type /Page /Parent 2 0 R " + pageBox + " /Annots [4 0 R] >>",
 	         "<< /Type /Annot /Subtype /" + std::string(type) +
 	             " /Rect [40 50 60 70] " + fields + " >>"}) {
 		offsets.push_back(data.size());
@@ -2303,6 +2303,103 @@ TEST(Annotations, TextBoxMalformedOrExhaustedFontResourcesKeepLiveBytes) {
 			    EXPECT_FALSE(opened.document->modified());
 			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
 			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, DisplayedTextBoxesFollowCropAndAllPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    const auto bytes =
+				        editableNoteBytes("/Contents (Keep)", "Text", {},
+				                          "/MediaBox [0 0 400 600] /CropBox "
+				                          "[20 40 380 560] /Rotate " +
+				                              std::to_string(intrinsic * 90));
+				    for (bool center : {false, true}) {
+					    const auto opened = pdf::openDocument(bytes);
+					    ASSERT_TRUE(opened.document);
+					    ASSERT_EQ(opened.document->addTextBoxAt(
+					                  0, center ? .5 : 0, center ? .5 : 0,
+					                  rotation, u"Placed", {}, 1),
+					              1);
+					    const auto notes = opened.document->annotations(0);
+					    ASSERT_TRUE(notes && notes->entries.size() == 2 &&
+					                notes->entries[1].bounds);
+					    const auto& box = *notes->entries[1].bounds;
+					    const int turn = (intrinsic + rotation) % 4;
+					    const float left =
+					        center ? 100.f : (turn < 2 ? 20.f : 180.f);
+					    const float bottom =
+					        center ? 270.f
+					               : (turn == 0 || turn == 3 ? 500.f : 40.f);
+					    EXPECT_FLOAT_EQ(box.left, left);
+					    EXPECT_FLOAT_EQ(box.bottom, bottom);
+					    EXPECT_FLOAT_EQ(box.right, left + 200);
+					    EXPECT_FLOAT_EQ(box.top, bottom + 60);
+					    const auto saved =
+					        opened.document->serialize(1024 * 1024);
+					    ASSERT_TRUE(saved);
+					    const auto reopened = pdf::openDocument(*saved);
+					    ASSERT_TRUE(reopened.document);
+					    const auto kept = reopened.document->annotations(0);
+					    ASSERT_TRUE(kept && kept->entries.size() == 2 &&
+					                kept->entries[1].bounds);
+					    EXPECT_FLOAT_EQ(kept->entries[1].bounds->left, left);
+					    EXPECT_FLOAT_EQ(kept->entries[1].bounds->bottom,
+					                    bottom);
+				    }
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, DisplayedTextBoxRefusalsAndSmallPagesKeepLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto bytes = editableNoteBytes("/Contents (Keep)");
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    for (const auto& point :
+		         {pdf::AnnotationPoint{-1, .5}, pdf::AnnotationPoint{.5, 2},
+		          pdf::AnnotationPoint{std::numeric_limits<double>::quiet_NaN(),
+		                               .5}}) {
+			    EXPECT_FALSE(opened.document->addTextBoxAt(0, point.x, point.y,
+			                                               0, u"Text", {}, 1));
+		    }
+		    for (int turn : {-1, 4}) {
+			    EXPECT_FALSE(opened.document->addTextBoxAt(0, .5, .5, turn,
+			                                               u"Text", {}, 1));
+		    }
+		    EXPECT_FALSE(opened.document->addTextBoxAt(
+		        0, .5, .5, 0, u"Text", {}, 1, [] { return true; }));
+		    EXPECT_FALSE(
+		        opened.document->addTextBoxAt(0, .5, .5, 0, u"Text", {}, 2));
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    for (const auto* media :
+		         {"/MediaBox [0 0 100 40]", "/MediaBox [0 0 3 3]"}) {
+			    const auto smallBytes =
+			        editableNoteBytes("/Contents (Keep)", "Text", {}, media);
+			    const auto doc = pdf::openDocument(smallBytes);
+			    ASSERT_TRUE(doc.document);
+			    const auto result =
+			        doc.document->addTextBoxAt(0, 1, 1, 0, u"Small", {}, 1);
+			    if (std::string_view(media).find("100") !=
+			        std::string_view::npos) {
+				    ASSERT_EQ(result, 1);
+				    const auto notes = doc.document->annotations(0);
+				    ASSERT_TRUE(notes && notes->entries[1].bounds);
+				    EXPECT_FLOAT_EQ(notes->entries[1].bounds->left, 0);
+				    EXPECT_FLOAT_EQ(notes->entries[1].bounds->right, 100);
+			    } else {
+				    EXPECT_FALSE(result);
+				    EXPECT_EQ(doc.document->serialize(1024 * 1024), smallBytes);
+			    }
 		    }
 	    })
 	    .get();

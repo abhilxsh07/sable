@@ -218,6 +218,11 @@ class Document {
 	                              std::u16string_view author,
 	                              std::uint64_t revision,
 	                              const std::function<bool()>& canceled = {});
+	std::optional<int> addTextBoxAt(int page, double x, double y, int rotation,
+	                                std::u16string_view contents,
+	                                std::u16string_view author,
+	                                std::uint64_t revision,
+	                                const std::function<bool()>& canceled = {});
 	// Serialization does not clear this flag or replace the backing bytes.
 	// x/y are displayed-page fractions; rotation is extra clockwise turns.
 	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,

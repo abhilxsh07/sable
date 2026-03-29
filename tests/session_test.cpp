@@ -3841,3 +3841,64 @@ TEST_F(SessionTest, TextBoxCallbacksCanReenterCloseAndThrowAfterCommit) {
 		EXPECT_EQ(*calls, 1);
 	}
 }
+
+TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
+	pdf::Session session(engine);
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+	Reply<pdf::NoteResult> first, stale, second, invalid;
+	std::u16string draft = u"First placed";
+	double x = 1, y = 1;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(
+		    session.addTextBoxAt(0, x, y, 0, draft, {}, 1, first.callback()));
+		ASSERT_TRUE(session.addTextBoxAt(0, 0, 0, 0, u"Stale", {}, 1,
+		                                 stale.callback()));
+		ASSERT_TRUE(session.addTextBoxAt(0, 0, 0, 0, u"Second placed", {}, 2,
+		                                 second.callback()));
+		ASSERT_TRUE(session.addTextBoxAt(0, .5, .5, 4, u"Invalid", {}, 3,
+		                                 invalid.callback()));
+		x = 0;
+		y = 0;
+		draft.assign(u"Changed caller");
+		session.cancelForms();
+		session.cancelAnnotations();
+	}
+	const auto a = first.wait(), b = stale.wait(), c = second.wait(),
+	           d = invalid.wait();
+	ASSERT_TRUE(a && b && c && d);
+	EXPECT_EQ(a->index, 0);
+	EXPECT_TRUE(a->changed && !a->canceled);
+	EXPECT_FALSE(b->index || b->changed || b->canceled);
+	EXPECT_EQ(c->index, 1);
+	EXPECT_TRUE(c->changed && !c->canceled);
+	EXPECT_FALSE(d->index || d->changed || d->canceled);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 3);
+	EXPECT_NE(fresh, cached);
+	const auto destination = tempDir() / "placed boxes.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> read;
+	ASSERT_TRUE(reopened.annotations(0, read.callback()));
+	const auto notes = read.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 2);
+	const auto& e = notes->annotations->entries;
+	EXPECT_EQ(e[0].contents, "First placed");
+	EXPECT_EQ(e[1].contents, "Second placed");
+	ASSERT_TRUE(e[0].bounds && e[1].bounds);
+	EXPECT_FLOAT_EQ(e[0].bounds->left, 395);
+	EXPECT_FLOAT_EQ(e[0].bounds->bottom, 0);
+	EXPECT_FLOAT_EQ(e[1].bounds->left, 0);
+	EXPECT_FLOAT_EQ(e[1].bounds->top, 842);
+	EXPECT_EQ(readFile(source), original);
+}
