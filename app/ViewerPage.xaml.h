@@ -235,10 +235,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	void beginNotePlacement();
+	void beginNotePlacement(bool textBox = false);
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	bool m_notePlacing = false;
+	bool m_textBoxPlacement = false;
+	winrt::fire_and_forget editTextBox(NoteTarget target);
+	winrt::hstring m_textBoxDraft, m_textBoxAuthor;
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});

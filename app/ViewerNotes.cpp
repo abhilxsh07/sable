@@ -23,14 +23,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
 #include <cmath>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
-void ViewerPage::beginNotePlacement() {
+void ViewerPage::beginNotePlacement(bool textBox) {
 	clearAnnotationSelection();
-	if (m_notePlacing) {
+	if (m_notePlacing && m_textBoxPlacement == textBox) {
 		cancelNotePlacement();
 		return;
 	}
@@ -43,6 +44,7 @@ void ViewerPage::beginNotePlacement() {
 	leavePageBox();
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
+	m_textBoxPlacement = textBox;
 	m_notePlacing = true;
 	showComments();
 	Scroller().Focus(FocusState::Programmatic);
@@ -78,12 +80,227 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		    y >= 0 && y <= 1) {
 			m_notePlacing = false;
 			showComments();
-			editNote(
-			    NoteTarget{static_cast<int>(page), x, y, key(page).rotation});
+			const NoteTarget target{static_cast<int>(page), x, y,
+			                        key(page).rotation};
+			if (m_textBoxPlacement) {
+				editTextBox(target);
+			} else {
+				editNote(target);
+			}
 			break;
 		}
 	}
 	return true;
+}
+
+fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
+	const auto lifetime = get_strong();
+	try {
+		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
+		    !commentsOpen() || !XamlRoot() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+		    (m_notesAvailable && !m_notesAvailable())) {
+			co_return;
+		}
+		leavePageBox();
+		const auto session = m_session.get();
+		struct Snapshot {
+			handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+			pdf::FormFieldsResult result;
+		};
+		const auto snapshot = std::make_shared<Snapshot>();
+		check_bool(static_cast<bool>(snapshot->ready));
+		m_noteBusy = true;
+		showComments();
+		const apartment_context ui;
+		check_bool(session->formFields(target.page, [snapshot](auto result) {
+			snapshot->result = std::move(result);
+			SetEvent(snapshot->ready.get());
+		}));
+		co_await resume_on_signal(snapshot->ready.get());
+		co_await ui;
+		m_noteBusy = false;
+		if (m_closed || m_session.get() != session || !commentsOpen() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
+			co_return;
+		}
+		if (!snapshot->result.fields || snapshot->result.canceled) {
+			showNotice(L"Couldn't read this page for a text box. Try again.");
+			showComments();
+			co_return;
+		}
+		const auto revision = snapshot->result.fields->revision;
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Title(box_value(L"Add text box"));
+		dialog.PrimaryButtonText(L"Add");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::None);
+		StackPanel fields;
+		fields.Spacing(12);
+		TextBlock location;
+		location.Text(
+		    L"Page " + to_hstring(target.page + 1) +
+		    L" \u00b7 One line, up to 128 characters. Use English letters, "
+		    L"numbers, spaces and standard punctuation.");
+		location.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(location);
+		TextBox author;
+		author.Header(box_value(L"Author (optional)"));
+		author.MaxLength(32767);
+		author.Text(m_textBoxAuthor);
+		fields.Children().Append(author);
+		TextBox contents;
+		contents.Header(box_value(L"Text"));
+		contents.MaxLength(128);
+		contents.MinWidth(280);
+		contents.Text(m_textBoxDraft);
+		Automation::AutomationProperties::SetName(contents, L"Text box text");
+		fields.Children().Append(contents);
+		TextBlock error;
+		error.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(error);
+		dialog.Content(fields);
+		dialog.IsPrimaryButtonEnabled(!contents.Text().empty());
+		contents.TextChanged(
+		    [prompt = make_weak(dialog)](auto&& sender, auto&&) {
+			    if (const auto view = prompt.get()) {
+				    view.IsPrimaryButtonEnabled(
+				        !sender.template as<TextBox>().Text().empty());
+			    }
+		    });
+		dialog.Opened([contents](auto&&, auto&&) {
+			contents.Focus(FocusState::Programmatic);
+			contents.SelectAll();
+		});
+		dialog.Closing(
+		    [weak = get_weak()](const ContentDialog& sender,
+		                        const ContentDialogClosingEventArgs& args) {
+			    if (const auto self = weak.get();
+			        self && self->m_noteBusy && self->m_noteDialog == sender) {
+				    args.Cancel(true);
+			    }
+		    });
+		const auto recover = [weak = get_weak(), session,
+		                      prompt = make_weak(dialog),
+		                      text = make_weak(contents),
+		                      writer = make_weak(author),
+		                      failure = make_weak(error)](hstring message) {
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			const auto field = text.get();
+			const auto name = writer.get();
+			if (!self || self->m_closed || self->m_session.get() != session ||
+			    !view || !field || !name || self->m_noteDialog != view) {
+				return;
+			}
+			self->m_noteBusy = false;
+			field.IsReadOnly(false);
+			name.IsReadOnly(false);
+			view.IsPrimaryButtonEnabled(!field.Text().empty());
+			if (const auto label = failure.get()) {
+				label.Text(message);
+			}
+			self->showComments();
+		};
+		dialog.PrimaryButtonClick(
+		    [weak = get_weak(), session, target, revision,
+		     prompt = make_weak(dialog), text = make_weak(contents),
+		     writer = make_weak(author), failure = make_weak(error),
+		     recover](auto&&, const ContentDialogButtonClickEventArgs& args) {
+			    args.Cancel(true);
+			    const auto self = weak.get();
+			    const auto view = prompt.get();
+			    const auto field = text.get();
+			    const auto name = writer.get();
+			    if (!self || self->m_closed || self->m_noteBusy || !view ||
+			        !field || !name || field.Text().empty() ||
+			        self->m_session.get() != session) {
+				    return;
+			    }
+			    self->m_noteBusy = true;
+			    view.IsPrimaryButtonEnabled(false);
+			    field.IsReadOnly(true);
+			    name.IsReadOnly(true);
+			    if (const auto label = failure.get()) {
+				    label.Text(L"Adding text box\u2026");
+			    }
+			    try {
+				    const auto value = field.Text(), by = name.Text();
+				    const bool queued = session->addTextBoxAt(
+				        target.page, target.x, target.y, target.rotation,
+				        std::u16string(value.begin(), value.end()),
+				        std::u16string(by.begin(), by.end()), revision,
+				        [weak, session, prompt, text, recover,
+				         queue = self->DispatcherQueue()](auto result) {
+					        queue.TryEnqueue([weak, session, prompt, text,
+					                          recover, result] {
+						        const auto owner = weak.get();
+						        if (!owner || owner->m_closed ||
+						            owner->m_session.get() != session) {
+							        return;
+						        }
+						        try {
+							        if (result.index) {
+								        owner->m_noteBusy = false;
+								        owner->m_notesDirty =
+								            owner->m_notesDirty ||
+								            result.changed;
+								        if (const auto input = text.get()) {
+									        input.Text(L"");
+								        }
+								        if (const auto dialog = prompt.get()) {
+									        dialog.Hide();
+								        }
+								        owner->refreshNotes();
+								        owner->showComments();
+							        } else {
+								        recover(L"Couldn't add this text box. "
+								                L"The PDF may restrict "
+								                L"this change, or the text may "
+								                L"not fit. Use one line of "
+								                L"English letters, numbers and "
+								                L"standard punctuation. "
+								                L"Your draft is still here.");
+							        }
+						        } catch (...) {
+							        diagnostics::write(
+							            diagnostics::Level::Error,
+							            "Couldn't refresh the text box.");
+						        }
+					        });
+				        });
+				    if (queued) {
+					    self->showComments();
+					    return;
+				    }
+			    } catch (...) {
+			    }
+			    recover(
+			        L"Couldn't queue this text box. Your draft is still here.");
+		    });
+		m_noteDialog = dialog;
+		co_await dialog.ShowAsync();
+		if (m_noteDialog == dialog) {
+			m_noteDialog = nullptr;
+		}
+		m_textBoxDraft = contents.Text();
+		m_textBoxAuthor = author.Text();
+		if (!m_closed) {
+			showComments();
+		}
+	} catch (...) {
+		m_noteBusy = false;
+		if (m_noteDialog) {
+			m_noteDialog.Hide();
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showNotice(L"Couldn't open the text box editor. Try again.");
+			showComments();
+		}
+	}
 }
 
 fire_and_forget ViewerPage::editNote(std::optional<NoteTarget> target) {

@@ -2,6 +2,36 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Multiple text boxes and native placement (2 November 2026)
+
+Each box chooses a canonical font-resource name absent from the rewritten
+PDF. Escaped names, string collisions, malformed/exhausted resources,
+multiple boxes and adding after reopen pass. Mixed form values, notes and
+bookmarks survive. Appearance generation now renders the actual isolated
+transaction rather than sending it through another form-rendering copy.
+
+Displayed placement passes all 16 intrinsic/view rotation combinations on
+cropped pages, centers and edges, reduced small-page boxes, invalid inputs,
+stale queued requests and saved neighbors. Default boxes are 200 by 60 PDF
+points and stay inside the visible page; resizing is still open.
+
+The native Comments > More command opens the text-box dialog after a page
+click. A typed overflowing line refused, restored editing and retained its
+draft; Ctrl+W kept the modal open. Cancel left zero comments and Save disabled.
+The next placement retained that draft, a corrected native value added the
+first box, and another placement added the second. The Windows picker saved
+both via its keyboard path after cached element indexes failed. A fresh
+process displayed both complete lines, both Comments rows and disabled Save.
+The source hash stayed unchanged and both disposable readers closed.
+
+Saved SHA-256:
+`b7dbed8dfd6b5e7fc5e195feef5218f115cadbc7bc443a27e1107de3903e23d8`.
+Evidence: `D:\NightPdf\verify-textbox-fonts-20261102-6ca50c4`,
+`D:\NightPdf\verify-textbox-placement-20261102-9b771ac` and
+`D:\NightPdf\verify-textbox-desktop-20261102-321902e`.
+Unicode, multiline, resize/existing-box editing, other viewers and broader
+desktop/accessibility checks remain open. ARM64 is compiled, not executed.
+
 ## First text-box backend (2 November 2026)
 
 The appearance checks establish a bounded single-line FreeText path.

@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Native text-box placement and creation (2026-11-02)
+
+Comments > More now offers Place text box on page. It shares note placement's
+page hit, gap handling and cancellation. The native dialog keeps its own
+text/author drafts, reads the current revision before opening and queues the
+displayed point. Refusals retain the draft; queued controls and closing stay
+blocked until the result arrives. Accepted boxes use the existing comments,
+dirty-state and Save a Copy path.
+
+The dialog describes the single-line, 128-character English-text boundary.
+The fixed initial rectangle and 12-point font keep the earlier backend proof.
+Resizing, Unicode/multiline and editing existing boxes remain separate work.
+
 ## Displayed text-box placement (2026-11-02)
 
 I map the displayed page fraction through PDFium with the same crop and

@@ -125,6 +125,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement();
 		}
 	});
+	PlaceTextBoxButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(true);
+		}
+	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -205,8 +210,14 @@ void ViewerPage::showComments() {
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
-	PlaceNoteButton().Text(m_notePlacing ? L"Cancel placement"
-	                                     : L"Place note on page");
+	PlaceNoteButton().Text(m_notePlacing && !m_textBoxPlacement
+	                           ? L"Cancel placement"
+	                           : L"Place note on page");
+	PlaceTextBoxButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
+	                               !m_noteSaving);
+	PlaceTextBoxButton().Text(m_notePlacing && m_textBoxPlacement
+	                              ? L"Cancel text box placement"
+	                              : L"Place text box on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().Content(
@@ -241,12 +252,14 @@ void ViewerPage::showComments() {
 	    (m_commentScan.done() && !m_commentScan.limited() ? L"" : L"+"));
 	Automation::AutomationProperties::SetName(
 	    CommentsCount(), to_hstring(notes.size()) + L" comments loaded");
-	NotesState().Text(m_notePlacing
-	                      ? L"Click a page to place a note. Esc cancels."
-	                  : m_noteBusy   ? L"Updating comments\u2026"
-	                  : m_noteSaving ? L"Saving comments\u2026"
-	                  : m_notesDirty ? L"Unsaved changes"
-	                                 : L"");
+	NotesState().Text(
+	    m_notePlacing  ? (m_textBoxPlacement
+	                          ? L"Click a page to place a text box. Esc cancels."
+	                          : L"Click a page to place a note. Esc cancels.")
+	    : m_noteBusy   ? L"Updating comments\u2026"
+	    : m_noteSaving ? L"Saving comments\u2026"
+	    : m_notesDirty ? L"Unsaved changes"
+	                   : L"");
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);
 	const bool visible = commentsOpen() &&

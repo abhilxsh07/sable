@@ -22,6 +22,10 @@ Dark theme and **Obsidian (AMOLED)**, with pure-black resting app surfaces.
 The theme changes live and is saved for the next launch. The PDF's night
 filter stays separate from the app theme.
 
+Comments > More > Place text box on page adds a single-line box where you
+click. Use English letters, numbers and standard punctuation. Save a copy
+to keep it; resizing and editing existing boxes are still separate work.
+
 Spotify and Apple Music sessions add a music button with playback controls,
 track information, artwork and a seek bar when the player supports it. Real
 players, print-dialog input, physical printers, monitor moves and notification
