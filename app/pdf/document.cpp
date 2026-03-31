@@ -1586,6 +1586,345 @@ std::optional<int> Document::addTextBox(int index,
 	return added;
 }
 
+std::optional<Annotation>
+Document::textBox(const AnnotationTarget& target,
+                  const std::function<bool()>& canceled) {
+	if (offThread() || target.subtype != "FreeText" || !matchesTarget(target)) {
+		return {};
+	}
+	const auto notes = annotations(target.page, canceled);
+	if (!notes || notes->limited) {
+		return {};
+	}
+	for (const auto& note : notes->entries) {
+		if (note.target == target) {
+			const std::u16string text(note.contents.begin(),
+			                          note.contents.end());
+			const auto result = updateTextBox(note, text, canceled);
+			return result && !*result ? std::optional{note} : std::nullopt;
+		}
+	}
+	return {};
+}
+
+std::optional<bool>
+Document::updateTextBox(const Annotation& expected,
+                        std::u16string_view contents,
+                        const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	const auto& target = expected.target;
+	const auto plain = [](auto text) {
+		return !text.empty() && text.size() <= 128 &&
+		       std::all_of(text.begin(), text.end(),
+		                   [](auto c) { return c >= 32 && c <= 126; });
+	};
+	if (offThread() || stopped() ||
+	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
+	    !canAnnotate() || !expected.bounds || target.subtype != "FreeText" ||
+	    expected.subtype != target.subtype || expected.index != target.index ||
+	    !plain(contents) || !plain(expected.contents) ||
+	    !matchesTarget(target) || !canSerializeEdits(canceled) ||
+	    !provenUnique(target.page, target.index)) {
+		return {};
+	}
+	const auto notes = annotations(target.page, canceled);
+	if (!notes || notes->limited) {
+		return {};
+	}
+	const auto found =
+	    std::find_if(notes->entries.begin(), notes->entries.end(),
+	                 [&](const auto& note) { return note.target == target; });
+	const auto& bounds = *expected.bounds;
+	if (found == notes->entries.end() || !found->bounds ||
+	    found->contents != expected.contents ||
+	    found->author != expected.author || found->flags != expected.flags ||
+	    found->flags != FPDF_ANNOT_FLAG_PRINT ||
+	    found->bounds->left != bounds.left ||
+	    found->bounds->bottom != bounds.bottom ||
+	    found->bounds->right != bounds.right ||
+	    found->bounds->top != bounds.top) {
+		return {};
+	}
+	const auto read = [](FPDF_ANNOTATION note, const char* key,
+	                     int mode = -1) -> std::optional<std::u16string> {
+		const auto size = mode < 0
+		                      ? FPDFAnnot_GetStringValue(note, key, nullptr, 0)
+		                      : FPDFAnnot_GetAP(note, mode, nullptr, 0);
+		if (size < 2 || size > 65536 || size % 2) {
+			return {};
+		}
+		std::vector<FPDF_WCHAR> text(size / 2);
+		const auto copied =
+		    mode < 0 ? FPDFAnnot_GetStringValue(note, key, text.data(), size)
+		             : FPDFAnnot_GetAP(note, mode, text.data(), size);
+		if (copied != size || text.back()) {
+			return {};
+		}
+		return std::u16string(text.begin(), text.end() - 1);
+	};
+	std::u16string author;
+	{
+		PagePtr page(FPDF_LoadPage(m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		if (!note || !m_linkedPages ||
+		    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get(),
+		                        *m_linkedPages, m_editPageLoads)) {
+			return {};
+		}
+		for (const auto* key :
+		     {"RC", "DS", "RD", "BS", "BE", "C", "CA", "BM", "Q", "IT", "CL",
+		      "Rotate", "LE", "OC", "A", "AA"}) {
+			if (FPDFAnnot_HasKey(note.get(), key)) {
+				return {};
+			}
+		}
+		if (FPDFAnnot_GetValueType(note.get(), "Contents") !=
+		        FPDF_OBJECT_STRING ||
+		    FPDFAnnot_GetValueType(note.get(), "DA") != FPDF_OBJECT_STRING ||
+		    !FPDFAnnot_HasKey(note.get(), "AP")) {
+			return {};
+		}
+		for (int mode : {1, 2}) {
+			if (FPDFAnnot_GetAP(note.get(), mode, nullptr, 0) != 2) {
+				return {};
+			}
+		}
+		if (FPDFAnnot_HasKey(note.get(), "T")) {
+			if (FPDFAnnot_GetValueType(note.get(), "T") != FPDF_OBJECT_STRING) {
+				return {};
+			}
+			const auto by = read(note.get(), "T");
+			if (!by || !validNoteText(*by) ||
+			    utf16ToUtf8(*by) != expected.author) {
+				return {};
+			}
+			author = *by;
+		}
+	}
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto scratch = reopenFormCopy(std::move(*bytes));
+	if (!scratch.document) {
+		return {};
+	}
+	const std::u16string previous(expected.contents.begin(),
+	                              expected.contents.end());
+	const auto reference = scratch.document->addTextBox(
+	    target.page, bounds, previous, author, 1, canceled);
+	if (!reference || stopped()) {
+		return {};
+	}
+	// i compare the complete old appearance against a fresh standard box.
+	// the resource prefix alone does not prove its font or encoding. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_edittext.cpp
+	const auto equivalent = [&](FPDF_DOCUMENT document, FPDF_PAGE page,
+	                            FPDF_ANNOTATION note, FPDF_ANNOTATION model,
+	                            bool normalize) {
+		auto ap = read(note, nullptr, 0), correct = read(model, nullptr, 0);
+		const auto da = read(note, "DA"), standard = read(model, "DA");
+		if (!ap || !correct || !da || !standard) {
+			return false;
+		}
+		if (normalize) {
+			const auto end = da->find(u' '), other = standard->find(u' ');
+			if (end == std::u16string::npos || other == std::u16string::npos ||
+			    da->substr(end) != u" 12 Tf 0 g" || da->front() != u'/') {
+				return false;
+			}
+			const auto token = da->substr(0, end) + u" 12 Tf";
+			const auto replacement = standard->substr(0, other) + u" 12 Tf";
+			for (auto at = ap->find(token); at != std::u16string::npos;
+			     at = ap->find(token, at + replacement.size())) {
+				ap->replace(at, token.size(), replacement);
+			}
+		}
+		if (*ap != *correct ||
+		    FPDFAnnot_GetObjectCount(note) != FPDFAnnot_GetObjectCount(model)) {
+			return false;
+		}
+		int texts = 0;
+		for (int i = 0; i < FPDFAnnot_GetObjectCount(note); ++i) {
+			const auto a = FPDFAnnot_GetObject(note, i),
+			           b = FPDFAnnot_GetObject(model, i);
+			if (FPDFPageObj_GetType(a) != FPDFPageObj_GetType(b)) {
+				return false;
+			}
+			if (FPDFPageObj_GetType(a) != FPDF_PAGEOBJ_TEXT) {
+				continue;
+			}
+			++texts;
+			const auto fa = FPDFTextObj_GetFont(a), fb = FPDFTextObj_GetFont(b);
+			size_t na = 0, nb = 0;
+			if (FPDFFont_GetIsEmbedded(fa) != 0 ||
+			    !FPDFFont_GetFontData(fa, nullptr, 0, &na) ||
+			    !FPDFFont_GetFontData(fb, nullptr, 0, &nb) || na != nb || !na ||
+			    na > 1024 * 1024) {
+				return false;
+			}
+			std::vector<std::uint8_t> data(na), expectedData(nb);
+			if (!FPDFFont_GetFontData(fa, data.data(), data.size(), &na) ||
+			    !FPDFFont_GetFontData(fb, expectedData.data(),
+			                          expectedData.size(), &nb) ||
+			    data != expectedData) {
+				return false;
+			}
+			BitmapPtr image(
+			    FPDFTextObj_GetRenderedBitmap(document, page, a, 2));
+			BitmapPtr sample(
+			    FPDFTextObj_GetRenderedBitmap(document, page, b, 2));
+			if (!image || !sample) {
+				return false;
+			}
+			const int width = FPDFBitmap_GetWidth(image.get()),
+			          height = FPDFBitmap_GetHeight(image.get());
+			if (width < 1 || width > 8192 || height < 1 || height > 512 ||
+			    FPDFBitmap_GetWidth(sample.get()) != width ||
+			    FPDFBitmap_GetHeight(sample.get()) != height ||
+			    FPDFBitmap_GetFormat(image.get()) != FPDFBitmap_BGRA ||
+			    FPDFBitmap_GetFormat(sample.get()) != FPDFBitmap_BGRA) {
+				return false;
+			}
+			const auto* pixels = static_cast<const std::uint8_t*>(
+			    FPDFBitmap_GetBuffer(image.get()));
+			const auto* modelPixels = static_cast<const std::uint8_t*>(
+			    FPDFBitmap_GetBuffer(sample.get()));
+			for (int y = 0; y < height; ++y) {
+				if (std::memcmp(pixels + y * FPDFBitmap_GetStride(image.get()),
+				                modelPixels +
+				                    y * FPDFBitmap_GetStride(sample.get()),
+				                static_cast<size_t>(width) * 4)) {
+					return false;
+				}
+			}
+		}
+		return texts == 1 && !stopped();
+	};
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index)),
+		    model(FPDFPage_GetAnnot(page.get(), *reference));
+		if (!equivalent(scratch.document->m_handle, page.get(), note.get(),
+		                model.get(), true)) {
+			return {};
+		}
+		if (contents == previous) {
+			return false;
+		}
+		model.reset();
+		note.reset();
+		if (!FPDFPage_RemoveAnnot(page.get(), *reference)) {
+			return {};
+		}
+	}
+	scratch.document->invalidateEdits();
+	scratch.document->m_modified = true;
+	const auto created = scratch.document->addTextBox(
+	    target.page, bounds, contents, author,
+	    scratch.document->annotationRevision(), canceled);
+	if (!created || stopped()) {
+		return {};
+	}
+	std::u16string appearance;
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index)),
+		    model(FPDFPage_GetAnnot(page.get(), *created));
+		const auto da = read(model.get(), "DA");
+		const std::u16string replacement(contents);
+		if (!da ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "Contents",
+		        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str())) ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "DA",
+		        reinterpret_cast<FPDF_WIDESTRING>(da->c_str())) ||
+		    !FPDFAnnot_SetAP(note.get(), 0, nullptr)) {
+			return {};
+		}
+		note.reset();
+		model.reset();
+		page.reset();
+		PagePtr rendered(
+		    FPDF_LoadPage(scratch.document->m_handle, target.page));
+		BitmapPtr bitmap(FPDFBitmap_Create(64, 64, 1));
+		if (!rendered || !bitmap || stopped()) {
+			return {};
+		}
+		FPDFBitmap_FillRect(bitmap.get(), 0, 0, 64, 64, 0xFFFFFFFF);
+		FPDF_RenderPageBitmap(bitmap.get(), rendered.get(), 0, 0, 64, 64, 0,
+		                      FPDF_ANNOT);
+		note.reset(FPDFPage_GetAnnot(rendered.get(), target.index));
+		model.reset(FPDFPage_GetAnnot(rendered.get(), *created));
+		if (!equivalent(scratch.document->m_handle, rendered.get(), note.get(),
+		                model.get(), false)) {
+			return {};
+		}
+		appearance = *read(note.get(), nullptr, 0);
+		model.reset();
+		note.reset();
+		if (!FPDFPage_RemoveAnnot(rendered.get(), *created)) {
+			return {};
+		}
+	}
+	scratch.document->invalidateEdits();
+	scratch.document->m_modified = true;
+	auto saved = scratch.document->serialize(limit, canceled);
+	if (!saved || stopped()) {
+		return {};
+	}
+	auto next = reopenFormCopy(std::move(*saved));
+	if (!next.document || next.document->pageCount() != pageCount()) {
+		return {};
+	}
+	const auto counts = editCounts();
+	if (!counts || !next.document->checkEditCounts(*counts, {target.page})) {
+		return {};
+	}
+	const auto kept = next.document->annotations(target.page, canceled);
+	if (!kept || kept->limited) {
+		return {};
+	}
+	const auto after = std::find_if(
+	    kept->entries.begin(), kept->entries.end(),
+	    [&](const auto& note) { return note.index == target.index; });
+	if (after == kept->entries.end() || !after->bounds ||
+	    after->contents != utf16ToUtf8(std::u16string(contents)) ||
+	    after->author != expected.author || after->flags != expected.flags ||
+	    after->bounds->left != bounds.left ||
+	    after->bounds->bottom != bounds.bottom ||
+	    after->bounds->right != bounds.right ||
+	    after->bounds->top != bounds.top) {
+		return {};
+	}
+	{
+		PagePtr page(FPDF_LoadPage(next.document->m_handle, target.page));
+		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index));
+		if (read(note.get(), nullptr, 0) != appearance) {
+			return {};
+		}
+	}
+	if (!m_outlineBookmarks.empty() &&
+	    (!next.document->outline(canceled) ||
+	     next.document->m_outlineBookmarks.size() !=
+	         m_outlineBookmarks.size())) {
+		return {};
+	}
+	if (stopped()) {
+		return {};
+	}
+	m_data.swap(next.document->m_data);
+	std::swap(m_handle, next.document->m_handle);
+	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return true;
+}
+
 std::optional<int>
 Document::addTextBoxAt(int index, double x, double y, int rotation,
                        std::u16string_view contents, std::u16string_view author,

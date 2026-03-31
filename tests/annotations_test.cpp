@@ -33,6 +33,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 struct DocumentEditTest {
+	static const std::vector<std::uint8_t>& rawBytes(const Document& document) {
+		return document.m_data;
+	}
+	static void replaceAppearance(Document& document, int index) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto note = FPDFPage_GetAnnot(page, index);
+		ASSERT_TRUE(FPDFAnnot_SetAP(note, 0,
+		                            reinterpret_cast<FPDF_WIDESTRING>(
+		                                u"q 1 0 0 rg 40 100 200 60 re f Q")));
+		FPDFPage_CloseAnnot(note);
+		FPDF_ClosePage(page);
+		document.m_modified = true;
+	}
 	static bool freeText(Document& document, const FS_RECTF& rect,
 	                     std::u16string_view contents) {
 		const auto page = FPDF_LoadPage(document.m_handle, 0);
@@ -2401,6 +2414,169 @@ TEST(Annotations, DisplayedTextBoxRefusalsAndSmallPagesKeepLiveBytes) {
 				    EXPECT_EQ(doc.document->serialize(1024 * 1024), smallBytes);
 			    }
 		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExistingTextBoxesKeepTheirIndexGeometryAndNeighbors) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("outline.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_EQ(doc.addTextNote(0, 20, 30, u"Keep note"), 0);
+		    ASSERT_EQ(doc.addTextBox(0, {40, 100, 240, 160}, u"Original",
+		                             u"Author", 1),
+		              1);
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 200, 240, 260}, u"Neighbor", {}, 2), 2);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    const auto box = notes->entries[1];
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    ASSERT_TRUE(doc.textBox(box.target));
+		    EXPECT_EQ(doc.updateTextBox(box, u"Original"), false);
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    ASSERT_EQ(doc.updateTextBox(box, u"Edited (box)"), true);
+		    EXPECT_EQ(doc.annotationRevision(), 4u);
+		    EXPECT_FALSE(doc.updateTextBox(box, u"Stale"));
+		    const auto after = doc.annotations(0);
+		    ASSERT_TRUE(after && after->entries.size() == 3);
+		    EXPECT_EQ(after->entries[1].contents, "Edited (box)");
+		    EXPECT_EQ(after->entries[1].author, "Author");
+		    ASSERT_TRUE(after->entries[1].bounds);
+		    EXPECT_FLOAT_EQ(after->entries[1].bounds->left, 40);
+		    EXPECT_EQ(after->entries[2].contents, "Neighbor");
+		    EXPECT_EQ(doc.textNote(0, 0, 4), u"Keep note");
+		    const auto print = doc.printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(print);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto saved = reopened.document->annotations(0);
+		    ASSERT_TRUE(saved);
+		    ASSERT_TRUE(reopened.document->textBox(saved->entries[1].target));
+		    const auto raster =
+		        reopened.document->printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(raster);
+		    EXPECT_EQ(print->pixels, raster->pixels);
+		    ASSERT_TRUE(reopened.document->outline());
+		    EXPECT_EQ(reopened.document->textNote(0, 0), u"Keep note");
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxEditsRefuseUnsupportedSnapshotsAndKeepBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Original", {}, 1), 0);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes);
+		    const auto box = notes->entries[0];
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    for (const auto* value : {u"", u"Caf\u00e9", u"first\nsecond",
+		                              u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
+			    EXPECT_FALSE(doc.updateTextBox(box, value));
+			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    }
+		    auto wrong = box;
+		    wrong.bounds->left += 1;
+		    EXPECT_FALSE(doc.updateTextBox(wrong, u"Text"));
+		    wrong = box;
+		    wrong.contents = "Different";
+		    EXPECT_FALSE(doc.updateTextBox(wrong, u"Text"));
+		    wrong = box;
+		    wrong.author = "Different";
+		    EXPECT_FALSE(doc.updateTextBox(wrong, u"Text"));
+		    EXPECT_EQ(doc.annotationRevision(), 2u);
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    for (const auto* extra :
+		         {"/RC (rich)", "/F 132", "/IRT 4 0 R", "/BS << /W 5 >>"}) {
+			    const auto bytes = editableNoteBytes(
+			        std::string("/Contents (Original) /DA (/Helv 12 Tf 0 g) ") +
+			            extra,
+			        "FreeText");
+			    const auto styled = pdf::openDocument(bytes);
+			    ASSERT_TRUE(styled.document);
+			    const auto found = styled.document->annotations(0);
+			    ASSERT_TRUE(found && !found->entries.empty());
+			    EXPECT_FALSE(
+			        styled.document->textBox(found->entries[0].target));
+			    EXPECT_FALSE(styled.document->updateTextBox(found->entries[0],
+			                                                u"Original"));
+			    EXPECT_EQ(styled.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxEditCancellationPreservesEveryCheckpoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto seed = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(seed.document);
+		    ASSERT_TRUE(seed.document->addTextBox(0, {40, 100, 240, 160},
+		                                          u"Original", {}, 1));
+		    const auto bytes = seed.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto completed = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(completed.document);
+		    const auto snapshot = completed.document->annotations(0);
+		    ASSERT_TRUE(snapshot);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextBox(snapshot->entries[0],
+		                                                u"Edited",
+		                                                [&] {
+			                                                ++checkpoints;
+			                                                return false;
+		                                                }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    const auto opened = pdf::openDocument(*bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto notes = opened.document->annotations(0);
+			    ASSERT_TRUE(notes);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextBox(
+			        notes->entries[0], u"Edited",
+			        [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations,
+     TextBoxEditRejectsChangedAppearanceBehindAGenuineResourceName) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Original", {}, 1));
+		    pdf::DocumentEditTest::replaceAppearance(doc, 0);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes);
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_FALSE(doc.textBox(notes->entries[0].target));
+		    EXPECT_FALSE(doc.updateTextBox(notes->entries[0], u"Original"));
+		    EXPECT_FALSE(doc.updateTextBox(notes->entries[0], u"Edited"));
+		    EXPECT_EQ(doc.annotationRevision(), 2u);
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
 	    })
 	    .get();
 }

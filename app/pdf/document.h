@@ -223,6 +223,12 @@ class Document {
 	                                std::u16string_view author,
 	                                std::uint64_t revision,
 	                                const std::function<bool()>& canceled = {});
+	std::optional<Annotation>
+	textBox(const AnnotationTarget& target,
+	        const std::function<bool()>& canceled = {});
+	std::optional<bool>
+	updateTextBox(const Annotation& expected, std::u16string_view contents,
+	              const std::function<bool()>& canceled = {});
 	// Serialization does not clear this flag or replace the backing bytes.
 	// x/y are displayed-page fractions; rotation is extra clockwise turns.
 	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,

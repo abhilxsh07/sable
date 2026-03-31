@@ -2436,3 +2436,16 @@ Lists with DV still refuse clearing through the engine guard. The empty
 draft stays available for Cancel or a valid selection retry. Combo dialogs
 keep their selection requirement and have no clear action. Saved empty
 lists reopen with unchanged Apply accepted through the same transaction.
+
+## Editing a plain text box (2026-11-03)
+
+I accept existing FreeText only when its complete appearance matches a fresh
+standard box at the same rectangle: one 12-point Helvetica line, matching
+font bytes and rendered glyphs. A familiar resource name alone proves nothing.
+The text stays printable ASCII, at most 128 characters, with fixed author and
+geometry. Styled, linked, protected and ambiguous boxes stay refused.
+
+I replace Contents and its generated appearance on an isolated copy, keep the
+original annotation index, and check the saved copy before swapping documents.
+Unchanged Apply still proves the old appearance but leaves live bytes and
+revision alone. Cancellation and overflow discard the isolated work.
