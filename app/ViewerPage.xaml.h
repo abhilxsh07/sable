@@ -240,7 +240,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	bool m_notePlacing = false;
 	bool m_textBoxPlacement = false;
-	winrt::fire_and_forget editTextBox(NoteTarget target);
+	winrt::fire_and_forget
+	editTextBox(NoteTarget target,
+	            std::optional<pdf::Annotation> existing = {});
 	winrt::hstring m_textBoxDraft, m_textBoxAuthor;
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,

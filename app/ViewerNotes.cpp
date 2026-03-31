@@ -93,7 +93,9 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 	return true;
 }
 
-fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
+fire_and_forget
+ViewerPage::editTextBox(NoteTarget target,
+                        std::optional<pdf::Annotation> existing) {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
@@ -105,36 +107,41 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 		}
 		leavePageBox();
 		const auto session = m_session.get();
-		struct Snapshot {
-			handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
-			pdf::FormFieldsResult result;
-		};
-		const auto snapshot = std::make_shared<Snapshot>();
-		check_bool(static_cast<bool>(snapshot->ready));
-		m_noteBusy = true;
-		showComments();
-		const apartment_context ui;
-		check_bool(session->formFields(target.page, [snapshot](auto result) {
-			snapshot->result = std::move(result);
-			SetEvent(snapshot->ready.get());
-		}));
-		co_await resume_on_signal(snapshot->ready.get());
-		co_await ui;
-		m_noteBusy = false;
-		if (m_closed || m_session.get() != session || !commentsOpen() ||
-		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
-			co_return;
-		}
-		if (!snapshot->result.fields || snapshot->result.canceled) {
-			showNotice(L"Couldn't read this page for a text box. Try again.");
+		std::uint64_t revision = existing ? existing->target.revision : 0;
+		if (!existing) {
+			struct Snapshot {
+				handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+				pdf::FormFieldsResult result;
+			};
+			const auto snapshot = std::make_shared<Snapshot>();
+			check_bool(static_cast<bool>(snapshot->ready));
+			m_noteBusy = true;
 			showComments();
-			co_return;
+			const apartment_context ui;
+			check_bool(
+			    session->formFields(target.page, [snapshot](auto result) {
+				    snapshot->result = std::move(result);
+				    SetEvent(snapshot->ready.get());
+			    }));
+			co_await resume_on_signal(snapshot->ready.get());
+			co_await ui;
+			m_noteBusy = false;
+			if (m_closed || m_session.get() != session || !commentsOpen() ||
+			    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
+				co_return;
+			}
+			if (!snapshot->result.fields || snapshot->result.canceled) {
+				showNotice(
+				    L"Couldn't read this page for a text box. Try again.");
+				showComments();
+				co_return;
+			}
+			revision = snapshot->result.fields->revision;
 		}
-		const auto revision = snapshot->result.fields->revision;
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Add text box"));
-		dialog.PrimaryButtonText(L"Add");
+		dialog.Title(box_value(existing ? L"Edit text box" : L"Add text box"));
+		dialog.PrimaryButtonText(existing ? L"Apply" : L"Add");
 		dialog.CloseButtonText(L"Cancel");
 		dialog.DefaultButton(ContentDialogButton::None);
 		StackPanel fields;
@@ -147,15 +154,17 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
 		TextBox author;
-		author.Header(box_value(L"Author (optional)"));
+		author.Header(box_value(existing ? L"Author" : L"Author (optional)"));
 		author.MaxLength(32767);
-		author.Text(m_textBoxAuthor);
+		author.Text(existing ? to_hstring(existing->author) : m_textBoxAuthor);
+		author.IsReadOnly(existing.has_value());
 		fields.Children().Append(author);
 		TextBox contents;
 		contents.Header(box_value(L"Text"));
 		contents.MaxLength(128);
 		contents.MinWidth(280);
-		contents.Text(m_textBoxDraft);
+		contents.Text(existing ? to_hstring(existing->contents)
+		                       : m_textBoxDraft);
 		Automation::AutomationProperties::SetName(contents, L"Text box text");
 		fields.Children().Append(contents);
 		TextBlock error;
@@ -183,6 +192,7 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 			    }
 		    });
 		const auto recover = [weak = get_weak(), session,
+		                      editing = existing.has_value(),
 		                      prompt = make_weak(dialog),
 		                      text = make_weak(contents),
 		                      writer = make_weak(author),
@@ -197,7 +207,7 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 			}
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
-			name.IsReadOnly(false);
+			name.IsReadOnly(editing);
 			view.IsPrimaryButtonEnabled(!field.Text().empty());
 			if (const auto label = failure.get()) {
 				label.Text(message);
@@ -205,7 +215,7 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 			self->showComments();
 		};
 		dialog.PrimaryButtonClick(
-		    [weak = get_weak(), session, target, revision,
+		    [weak = get_weak(), session, target, revision, existing,
 		     prompt = make_weak(dialog), text = make_weak(contents),
 		     writer = make_weak(author), failure = make_weak(error),
 		     recover](auto&&, const ContentDialogButtonClickEventArgs& args) {
@@ -224,53 +234,65 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 			    field.IsReadOnly(true);
 			    name.IsReadOnly(true);
 			    if (const auto label = failure.get()) {
-				    label.Text(L"Adding text box\u2026");
+				    label.Text(existing ? L"Applying text box\u2026"
+				                        : L"Adding text box\u2026");
 			    }
 			    try {
 				    const auto value = field.Text(), by = name.Text();
-				    const bool queued = session->addTextBoxAt(
-				        target.page, target.x, target.y, target.rotation,
-				        std::u16string(value.begin(), value.end()),
-				        std::u16string(by.begin(), by.end()), revision,
-				        [weak, session, prompt, text, recover,
-				         queue = self->DispatcherQueue()](auto result) {
-					        queue.TryEnqueue([weak, session, prompt, text,
-					                          recover, result] {
-						        const auto owner = weak.get();
-						        if (!owner || owner->m_closed ||
-						            owner->m_session.get() != session) {
-							        return;
-						        }
-						        try {
-							        if (result.index) {
-								        owner->m_noteBusy = false;
-								        owner->m_notesDirty =
-								            owner->m_notesDirty ||
-								            result.changed;
-								        if (const auto input = text.get()) {
-									        input.Text(L"");
-								        }
-								        if (const auto dialog = prompt.get()) {
-									        dialog.Hide();
-								        }
-								        owner->refreshNotes();
-								        owner->showComments();
-							        } else {
-								        recover(L"Couldn't add this text box. "
-								                L"The PDF may restrict "
-								                L"this change, or the text may "
-								                L"not fit. Use one line of "
-								                L"English letters, numbers and "
-								                L"standard punctuation. "
-								                L"Your draft is still here.");
-							        }
-						        } catch (...) {
-							        diagnostics::write(
-							            diagnostics::Level::Error,
-							            "Couldn't refresh the text box.");
-						        }
-					        });
-				        });
+				    const auto completed = [weak, session, prompt, text,
+				                            recover,
+				                            editing = existing.has_value(),
+				                            queue = self->DispatcherQueue()](
+				                               auto result) {
+					    queue.TryEnqueue([weak, session, prompt, text, recover,
+					                      editing, result] {
+						    const auto owner = weak.get();
+						    if (!owner || owner->m_closed ||
+						        owner->m_session.get() != session) {
+							    return;
+						    }
+						    try {
+							    if (result.index) {
+								    owner->m_noteBusy = false;
+								    owner->m_notesDirty =
+								        owner->m_notesDirty || result.changed;
+								    if (const auto input = text.get();
+								        input && !editing) {
+									    input.Text(L"");
+								    }
+								    if (const auto dialog = prompt.get()) {
+									    dialog.Hide();
+								    }
+								    if (result.changed) {
+									    owner->refreshNotes();
+								    }
+								    owner->showComments();
+							    } else {
+								    recover(L"Couldn't apply this text box. "
+								            L"The PDF may restrict "
+								            L"this change, or the text may "
+								            L"not fit. Use one line of "
+								            L"English letters, numbers and "
+								            L"standard punctuation. "
+								            L"Your draft is still here.");
+							    }
+						    } catch (...) {
+							    diagnostics::write(
+							        diagnostics::Level::Error,
+							        "Couldn't refresh the text box.");
+						    }
+					    });
+				    };
+				    const std::u16string replacement(value.begin(),
+				                                     value.end());
+				    const bool queued =
+				        existing ? session->updateTextBox(
+				                       *existing, replacement, completed)
+				                 : session->addTextBoxAt(
+				                       target.page, target.x, target.y,
+				                       target.rotation, replacement,
+				                       std::u16string(by.begin(), by.end()),
+				                       revision, completed);
 				    if (queued) {
 					    self->showComments();
 					    return;
@@ -285,8 +307,10 @@ fire_and_forget ViewerPage::editTextBox(NoteTarget target) {
 		if (m_noteDialog == dialog) {
 			m_noteDialog = nullptr;
 		}
-		m_textBoxDraft = contents.Text();
-		m_textBoxAuthor = author.Text();
+		if (!existing) {
+			m_textBoxDraft = contents.Text();
+			m_textBoxAuthor = author.Text();
+		}
 		if (!m_closed) {
 			showComments();
 		}

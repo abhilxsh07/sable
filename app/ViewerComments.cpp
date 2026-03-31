@@ -237,13 +237,17 @@ void ViewerPage::showComments() {
 	    (selected >= 0 && static_cast<std::size_t>(selected) < notes.size());
 	CommentActions().Visibility(selectedRow ? XVisibility::Visible
 	                                        : XVisibility::Collapsed);
+	const bool selectedBox =
+	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	    notes[selected].subtype == "FreeText";
 	Automation::AutomationProperties::SetName(
-	    EditNoteButton(),
-	    selectedMarkup ? L"Edit selected comment" : L"Edit selected note");
+	    EditNoteButton(), selectedBox      ? L"Edit selected text box"
+	                      : selectedMarkup ? L"Edit selected comment"
+	                                       : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !m_notePlacing &&
-	    (selectedMarkup ||
+	    (selectedBox || selectedMarkup ||
 	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	      notes[selected].subtype == "Text")));
 	DeleteNoteButton().IsEnabled(canDeleteAnnotation());

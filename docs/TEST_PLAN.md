@@ -2,6 +2,34 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Existing text-box editing (3 November 2026)
+
+The engine accepts a box only after its complete old appearance, font bytes
+and rendered glyphs match a fresh standard box. Edits keep the annotation
+index, rectangle, author and neighbors. Saved copies retain notes/bookmarks;
+no-op, stale, overflow, changed appearance and cancellation keep live bytes.
+The queue owns snapshots and drafts, refreshes caches after changes and keeps
+inventory reads separate from editor reads. Close/destruction and callback
+reentry/exception checks pass.
+
+Native Comments > Edit opens the supported box with a read-only author.
+Unchanged Apply keeps Save disabled. Overflow refuses with an editable draft;
+Ctrl+W retains the dialog, and Cancel keeps the original text and clean state.
+Native typing replaces the first line with Edited desktop box. The page and
+Comments update while Second desktop box keeps its text and rectangle.
+The Windows picker saves to a path with spaces. A fresh process displays both
+lines, lists both comments and opens the saved box for an unchanged Apply
+without making it dirty. Both disposable readers close and source bytes stay
+unchanged. Saved SHA-256:
+`53e5e5676afe5b64d5920f54b6ad1f8ec4f77d23d72faf65b0dbb598776821ee`.
+
+Debug x64/ARM64 build without warnings; all 676 enabled x64 tests and format
+pass. One test stays disabled and ARM64 is compiled, not executed.
+Evidence: `D:\NightPdf\verify-textbox-edit-20261103-3908811`,
+`D:\NightPdf\verify-textbox-session-20261103-d5116ff` and
+`D:\NightPdf\verify-textbox-editor-20261103-3ee9064`.
+Resize, Unicode/multiline, broader styles and other-viewer QA remain open.
+
 ## Multiple text boxes and native placement (2 November 2026)
 
 Each box chooses a canonical font-resource name absent from the rewritten

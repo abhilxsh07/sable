@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Editing text boxes from Comments (2026-11-03)
+
+I enable Edit for FreeText rows and ask the engine to prove support before
+opening the shared native text-box dialog. Existing boxes start with their
+saved text and a read-only author. Apply queues the owned snapshot; refusal
+restores editing with the draft intact. Cancel leaves the box alone.
+
+Accepted no-ops close without marking the tab dirty. Changed text refreshes
+the page and Comments through the existing save path. Editing never replaces
+the new-box draft or author. Size, position, deletion, Unicode and multiline
+text remain outside this step; unsupported styles show a refusal notice.
+
 ## Queued existing text-box edits (2026-11-03)
 
 I return an owned, proved Annotation snapshot for the native editor and queue

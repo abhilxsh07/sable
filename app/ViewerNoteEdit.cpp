@@ -35,7 +35,8 @@ void ViewerPage::beginNoteEdit() {
 	    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable()) || selected < 0 ||
 	    static_cast<std::size_t>(selected) >= rows.size() ||
-	    (rows[selected].subtype != "Text" &&
+	    (rows[selected].subtype != "FreeText" &&
+	     rows[selected].subtype != "Text" &&
 	     rows[selected].subtype != "Highlight" &&
 	     rows[selected].subtype != "Underline" &&
 	     rows[selected].subtype != "StrikeOut")) {
@@ -53,6 +54,42 @@ void ViewerPage::beginNoteEdit() {
 	m_noteBusy = true;
 	try {
 		const auto session = m_session.get();
+		if (rows[selected].subtype == "FreeText") {
+			const bool queued = session->textBox(
+			    rows[selected].target,
+			    [weak = get_weak(), queue = DispatcherQueue(),
+			     session](pdf::TextBoxResult result) {
+				    queue.TryEnqueue(
+				        [weak, session, result = std::move(result)] {
+					        const auto self = weak.get();
+					        if (!self || self->m_closed ||
+					            self->m_session.get() != session) {
+						        return;
+					        }
+					        self->m_noteBusy = false;
+					        self->showComments();
+					        if (result.box && !result.canceled) {
+						        const auto page = result.box->target.page;
+						        self->editTextBox({page, 0, 0, 0},
+						                          std::move(result.box));
+					        } else if (!result.canceled) {
+						        self->showNotice(
+						            L"Couldn't edit this text box. "
+						            L"It may use an unsupported style or "
+						            L"belong to a protected PDF.");
+					        }
+				        });
+			    });
+			if (queued) {
+				showComments();
+				return;
+			}
+			m_noteBusy = false;
+			showComments();
+			showNotice(L"Couldn't queue the text box editor. Try again.");
+			return;
+		}
+
 		const auto reply = [weak = get_weak(), queue = DispatcherQueue(),
 		                    session, markup](pdf::TextNoteResult result) {
 			queue.TryEnqueue([weak, session, markup,
