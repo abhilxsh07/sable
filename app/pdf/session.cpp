@@ -70,6 +70,7 @@ struct Session::State {
 	std::uint64_t m_outlineGeneration = 0;
 	std::uint64_t m_annotationGeneration = 0;
 	std::uint64_t m_formGeneration = 0;
+	std::uint64_t m_textBoxGeneration = 0;
 	std::uint64_t m_annotationRevision = 1;
 	// only the engine thread touches this bounded, single-page snapshot.
 	std::shared_ptr<const FormFields> m_forms;
@@ -479,6 +480,7 @@ bool Session::annotations(int page,
 void Session::cancelAnnotations() {
 	std::lock_guard lock(m_state->m_mutex);
 	++m_state->m_annotationGeneration;
+	++m_state->m_textBoxGeneration;
 }
 
 bool Session::formFields(int page,
@@ -594,6 +596,85 @@ bool Session::writeTextBox(int page, AnnotationBounds bounds,
 			result.canceled = state->closed();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't add a PDF text box.");
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::textBox(AnnotationTarget target,
+                      std::function<void(TextBoxResult)> callback) {
+	const auto state = m_state;
+	std::uint64_t generation = 0;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !target.revision || target.subtype != "FreeText" ||
+		    !state->m_ready || state->m_closed) {
+			return false;
+		}
+		generation = ++state->m_textBoxGeneration;
+	}
+	state->m_engine.post([state, generation, target = std::move(target),
+	                      callback = std::move(callback)] {
+		TextBoxResult result;
+		const auto canceled = [state, generation] {
+			std::lock_guard lock(state->m_mutex);
+			return state->m_closed || generation != state->m_textBoxGeneration;
+		};
+		try {
+			if (!canceled()) {
+				result.box = state->m_document->textBox(target, canceled);
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't read a PDF text box.");
+		}
+		result.canceled = canceled();
+		if (result.canceled) {
+			result.box.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::updateTextBox(Annotation expected, std::u16string contents,
+                            std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !expected.target.revision ||
+		    expected.target.subtype != "FreeText" || !state->m_ready ||
+		    state->m_closed || contents.empty() || contents.size() > 128) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, expected = std::move(expected),
+	                      contents = std::move(contents),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = expected.target.page;
+		try {
+			const auto canceled = [state] { return state->closed(); };
+			if (!canceled()) {
+				const auto changed = state->m_document->updateTextBox(
+				    expected, contents, canceled);
+				if (changed) {
+					result.index = expected.target.index;
+					result.changed = *changed;
+					if (*changed) {
+						state->m_forms.reset();
+						std::lock_guard lock(state->m_mutex);
+						state->m_annotationRevision =
+						    state->m_document->annotationRevision();
+					}
+				}
+			}
+			result.canceled = !result.index && canceled();
+		} catch (...) {
+			result.canceled = state->closed();
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't edit a PDF text box.");
 		}
 		callback(std::move(result));
 	});

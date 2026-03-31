@@ -235,6 +235,38 @@ class SessionTest : public ::testing::Test {
 		return result ? result->fields : nullptr;
 	}
 
+	fs::path textBoxSource() {
+		const auto bytes =
+		    engine
+		        .run([] {
+			        auto opened = pdf::openFile(fixturePath("outline.pdf"));
+			        if (!opened.document ||
+			            !opened.document->addTextBox(0, {40, 100, 240, 160},
+			                                         u"Original", u"Author",
+			                                         1) ||
+			            !opened.document->addTextBox(0, {40, 200, 240, 260},
+			                                         u"Neighbor", {}, 2)) {
+				        return std::optional<std::vector<std::uint8_t>>{};
+			        }
+			        return opened.document->serialize(1024 * 1024);
+		        })
+		        .get();
+		EXPECT_TRUE(bytes);
+		return bytes ? writeTemp("existing boxes.pdf",
+		                         std::string(bytes->begin(), bytes->end()))
+		             : fs::path{};
+	}
+	std::optional<pdf::Annotation> readBox(pdf::Session& session,
+	                                       std::uint64_t revision = 1) {
+		Reply<pdf::TextBoxResult> reply;
+		if (!session.textBox({0, 0, "FreeText", revision}, reply.callback())) {
+			ADD_FAILURE() << "box read wasn't accepted";
+			return {};
+		}
+		const auto result = reply.wait();
+		return result ? result->box : std::nullopt;
+	}
+
 	pdf::Engine engine;
 
   private:
@@ -3901,4 +3933,177 @@ TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
 	EXPECT_FLOAT_EQ(e[1].bounds->left, 0);
 	EXPECT_FLOAT_EQ(e[1].bounds->top, 842);
 	EXPECT_EQ(readFile(source), original);
+}
+
+TEST_F(SessionTest, ExistingBoxQueueOwnsSnapshotsAndKeepsNoOpAndStaleResults) {
+	const auto source = textBoxSource();
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	auto box = readBox(session);
+	ASSERT_TRUE(box);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+	Reply<pdf::NoteResult> noop, first, stale;
+	std::u16string draft = u"Owned edit";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextBox(*box, u"Original", noop.callback()));
+		ASSERT_TRUE(session.updateTextBox(*box, draft, first.callback()));
+		ASSERT_TRUE(session.updateTextBox(*box, u"Stale", stale.callback()));
+		box->contents.clear();
+		box->author.clear();
+		box->bounds->left = -100;
+		draft.assign(u"Changed caller");
+		session.cancelAnnotations();
+		session.cancelForms();
+	}
+	const auto a = noop.wait(), b = first.wait(), c = stale.wait();
+	ASSERT_TRUE(a && b && c);
+	EXPECT_TRUE(a->index && !a->changed && !a->canceled);
+	EXPECT_TRUE(b->index && b->changed && !b->canceled);
+	EXPECT_FALSE(c->index || c->changed || c->canceled);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 2);
+	EXPECT_NE(fresh, cached);
+	EXPECT_EQ(cached->revision, 1u);
+	box = readBox(session, 2);
+	ASSERT_TRUE(box && box->bounds);
+	EXPECT_EQ(box->contents, "Owned edit");
+	EXPECT_EQ(box->author, "Author");
+	EXPECT_FLOAT_EQ(box->bounds->left, 40);
+	Reply<pdf::NoteResult> overflow;
+	ASSERT_TRUE(session.updateTextBox(*box, std::u16string(128, u'W'),
+	                                  overflow.callback()));
+	const auto refused = overflow.wait();
+	ASSERT_TRUE(refused);
+	EXPECT_FALSE(refused->index || refused->changed || refused->canceled);
+	EXPECT_EQ(readForms(session), fresh);
+	const auto destination = tempDir() / "edited boxes.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto kept = readBox(reopened);
+	ASSERT_TRUE(kept);
+	EXPECT_EQ(kept->contents, "Owned edit");
+	EXPECT_EQ(kept->author, "Author");
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 2);
+	EXPECT_EQ(notes->annotations->entries[1].contents, "Neighbor");
+	Reply<pdf::OutlineResult> outline;
+	ASSERT_TRUE(reopened.outline(outline.callback()));
+	const auto bookmarks = outline.wait();
+	ASSERT_TRUE(bookmarks && bookmarks->outline);
+	EXPECT_FALSE(bookmarks->outline->entries.empty());
+	EXPECT_EQ(readFile(source), original);
+}
+
+TEST_F(SessionTest, BoxReadCancellationIsIndependentOfInventoryAndWrites) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, textBoxSource()).error, pdf::Error::None);
+	const auto box = readBox(session);
+	ASSERT_TRUE(box);
+	Reply<pdf::TextBoxResult> superseded, current, canceled;
+	Reply<pdf::AnnotationsResult> inventory;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.textBox(box->target, superseded.callback()));
+		ASSERT_TRUE(session.textBox(box->target, current.callback()));
+		ASSERT_TRUE(session.annotations(0, inventory.callback()));
+	}
+	const auto a = superseded.wait(), b = current.wait();
+	ASSERT_TRUE(a && b);
+	EXPECT_TRUE(a->canceled && !a->box);
+	EXPECT_TRUE(b->box && !b->canceled);
+	ASSERT_TRUE(inventory.wait());
+	Reply<pdf::NoteResult> write;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.textBox(box->target, canceled.callback()));
+		ASSERT_TRUE(
+		    session.updateTextBox(*box, u"Committed", write.callback()));
+		session.cancelAnnotations();
+	}
+	const auto stopped = canceled.wait();
+	const auto edited = write.wait();
+	ASSERT_TRUE(stopped && edited);
+	EXPECT_TRUE(stopped->canceled && !stopped->box);
+	EXPECT_TRUE(edited->index && edited->changed && !edited->canceled);
+	EXPECT_FALSE(readBox(session));
+	EXPECT_TRUE(readBox(session, 2));
+}
+
+TEST_F(SessionTest, ExistingBoxCloseAndDestructionCancelPendingWorkOnce) {
+	const auto source = textBoxSource();
+	for (bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+		const auto box = readBox(*session);
+		ASSERT_TRUE(box);
+		Reply<pdf::NoteResult> write;
+		Reply<pdf::TextBoxResult> read;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session->textBox(box->target, read.callback()));
+			ASSERT_TRUE(session->updateTextBox(
+			    *box, u"Closed", [calls, cb = write.callback()](auto result) {
+				    ++*calls;
+				    cb(std::move(result));
+			    }));
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+		}
+		const auto a = write.wait();
+		const auto b = read.wait();
+		ASSERT_TRUE(a && b);
+		EXPECT_TRUE(a->canceled && !a->index && !a->changed);
+		EXPECT_TRUE(b->canceled && !b->box);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+}
+
+TEST_F(SessionTest, ExistingBoxCallbacksReenterAndThrowAfterCommit) {
+	const auto source = textBoxSource();
+	for (bool throws : {false, true}) {
+		pdf::Session session(engine);
+		ASSERT_EQ(open(session, source).error, pdf::Error::None);
+		const auto box = readBox(session);
+		ASSERT_TRUE(box);
+		Reply<pdf::NoteResult> write;
+		Reply<pdf::TextBoxResult> read;
+		const auto queued = std::make_shared<std::atomic<bool>>(false);
+		ASSERT_TRUE(session.updateTextBox(
+		    *box, u"Committed",
+		    [&session, throws, queued, cb = write.callback(),
+		     next = read.callback()](auto result) {
+			    EXPECT_TRUE(pdf::Engine::onThread());
+			    *queued = session.textBox({0, 0, "FreeText", 2}, next);
+			    cb(std::move(result));
+			    if (throws) {
+				    throw std::runtime_error("callback failed");
+			    }
+			    session.close();
+		    }));
+		const auto a = write.wait();
+		const auto b = read.wait();
+		ASSERT_TRUE(a && b);
+		EXPECT_TRUE(*queued && a->index && a->changed && !a->canceled);
+		if (throws) {
+			ASSERT_TRUE(b->box && !b->canceled);
+			EXPECT_EQ(b->box->contents, "Committed");
+		} else {
+			EXPECT_TRUE(b->canceled && !b->box);
+		}
+	}
 }

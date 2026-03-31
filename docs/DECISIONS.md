@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued existing text-box edits (2026-11-03)
+
+I return an owned, proved Annotation snapshot for the native editor and queue
+that snapshot with replacement text. Box reads have a separate generation so
+Comments inventory reads do not cancel them. Canceling annotation reads also
+cancels box reads; writes only observe close before the document swap.
+
+Accepted no-ops return the original index without changing the revision or
+cache. Changed writes refresh the form cache and session annotation revision.
+Callbacks run outside the lock and a committed result stays committed if its
+callback closes the session or throws. The engine's style limits still apply.
+
 ## Native text-box placement and creation (2026-11-02)
 
 Comments > More now offers Place text box on page. It shares note placement's

@@ -87,6 +87,10 @@ struct MarkupResult {
 	bool changed = false, canceled = false;
 };
 using HighlightResult = MarkupResult;
+struct TextBoxResult {
+	std::optional<Annotation> box;
+	bool canceled = false;
+};
 struct TextNoteResult {
 	int page = 0, index = 0;
 	std::optional<std::u16string> contents;
@@ -197,6 +201,12 @@ class Session {
 	bool markText(TextSelection selection, TextMarkup markup,
 	              std::function<void(MarkupResult)> callback,
 	              HighlightColor color = HighlightColor::Yellow);
+	// Box reads have their own generation; cancelAnnotations also cancels them.
+	// Writes own the proved snapshot and only close can cancel a pending edit.
+	bool textBox(AnnotationTarget target,
+	             std::function<void(TextBoxResult)> callback);
+	bool updateTextBox(Annotation expected, std::u16string contents,
+	                   std::function<void(NoteResult)> callback);
 	bool textNote(int page, int index,
 	              std::function<void(TextNoteResult)> callback,
 	              std::uint64_t revision = 0);
