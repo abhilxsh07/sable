@@ -1611,6 +1611,20 @@ std::optional<bool>
 Document::updateTextBox(const Annotation& expected,
                         std::u16string_view contents,
                         const std::function<bool()>& canceled) {
+	return writeTextBox(expected, contents, {}, canceled);
+}
+
+std::optional<bool>
+Document::updateTextBox(const Annotation& expected,
+                        std::u16string_view contents, TextBoxSize size,
+                        const std::function<bool()>& canceled) {
+	return writeTextBox(expected, contents, size, canceled);
+}
+
+std::optional<bool>
+Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
+                       std::optional<TextBoxSize> size,
+                       const std::function<bool()>& canceled) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& target = expected.target;
 	const auto plain = [](auto text) {
@@ -1635,6 +1649,22 @@ Document::updateTextBox(const Annotation& expected,
 	    std::find_if(notes->entries.begin(), notes->entries.end(),
 	                 [&](const auto& note) { return note.target == target; });
 	const auto& bounds = *expected.bounds;
+	auto destination = bounds;
+	if (size) {
+		if (!std::isfinite(size->width) || !std::isfinite(size->height) ||
+		    size->width <= 0 || size->height <= 0) {
+			return {};
+		}
+		// i keep exact coordinates when the requested dimensions match.
+		if (size->width != bounds.right - bounds.left) {
+			destination.right = bounds.left + size->width;
+		}
+		if (size->height != bounds.top - bounds.bottom) {
+			destination.bottom = bounds.top - size->height;
+		}
+	}
+	const bool sameBounds = destination.right == bounds.right &&
+	                        destination.bottom == bounds.bottom;
 	if (found == notes->entries.end() || !found->bounds ||
 	    found->contents != expected.contents ||
 	    found->author != expected.author || found->flags != expected.flags ||
@@ -1811,7 +1841,7 @@ Document::updateTextBox(const Annotation& expected,
 		                model.get(), true)) {
 			return {};
 		}
-		if (contents == previous) {
+		if (contents == previous && sameBounds) {
 			return false;
 		}
 		model.reset();
@@ -1823,7 +1853,7 @@ Document::updateTextBox(const Annotation& expected,
 	scratch.document->invalidateEdits();
 	scratch.document->m_modified = true;
 	const auto created = scratch.document->addTextBox(
-	    target.page, bounds, contents, author,
+	    target.page, destination, contents, author,
 	    scratch.document->annotationRevision(), canceled);
 	if (!created || stopped()) {
 		return {};
@@ -1835,7 +1865,9 @@ Document::updateTextBox(const Annotation& expected,
 		    model(FPDFPage_GetAnnot(page.get(), *created));
 		const auto da = read(model.get(), "DA");
 		const std::u16string replacement(contents);
-		if (!da ||
+		const FS_RECTF rect{destination.left, destination.top,
+		                    destination.right, destination.bottom};
+		if (!da || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetStringValue(
 		        note.get(), "Contents",
 		        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str())) ||
@@ -1894,10 +1926,10 @@ Document::updateTextBox(const Annotation& expected,
 	if (after == kept->entries.end() || !after->bounds ||
 	    after->contents != utf16ToUtf8(std::u16string(contents)) ||
 	    after->author != expected.author || after->flags != expected.flags ||
-	    after->bounds->left != bounds.left ||
-	    after->bounds->bottom != bounds.bottom ||
-	    after->bounds->right != bounds.right ||
-	    after->bounds->top != bounds.top) {
+	    after->bounds->left != destination.left ||
+	    after->bounds->bottom != destination.bottom ||
+	    after->bounds->right != destination.right ||
+	    after->bounds->top != destination.top) {
 		return {};
 	}
 	{

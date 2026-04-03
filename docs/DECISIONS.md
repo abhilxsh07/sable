@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Bounded text-box resizing (2026-11-03)
+
+I extend the existing text transaction with width and height in PDF points.
+The PDF top-left anchor stays fixed; width grows right and height grows down
+in unrotated page coordinates. Matching sizes keep the exact old rectangle.
+The old appearance still needs the complete standard-box proof before a new
+reference proves the requested text and size. I update Rect and regenerate
+AP on the isolated copy, then verify saved geometry before the document swap.
+
+Invalid sizes, crop overflow and clipped glyphs refuse without changing live
+bytes or revision. The fixed author, single ASCII line, 12-point Helvetica
+and protected/shared/style refusals stay in place. Native controls follow.
+
 ## Editing text boxes from Comments (2026-11-03)
 
 I enable Edit for FreeText rows and ask the engine to prove support before

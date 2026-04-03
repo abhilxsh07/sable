@@ -229,6 +229,10 @@ class Document {
 	std::optional<bool>
 	updateTextBox(const Annotation& expected, std::u16string_view contents,
 	              const std::function<bool()>& canceled = {});
+	// Resizing keeps the PDF top-left anchor and proves the complete new line.
+	std::optional<bool>
+	updateTextBox(const Annotation& expected, std::u16string_view contents,
+	              TextBoxSize size, const std::function<bool()>& canceled = {});
 	// Serialization does not clear this flag or replace the backing bytes.
 	// x/y are displayed-page fractions; rotation is extra clockwise turns.
 	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,
@@ -337,6 +341,10 @@ class Document {
 	                std::optional<bool> checked,
 	                const FormControl* control = nullptr,
 	                const FormField* choice = nullptr, int choiceIndex = -1);
+	std::optional<bool> writeTextBox(const Annotation& expected,
+	                                 std::u16string_view contents,
+	                                 std::optional<TextBoxSize> size,
+	                                 const std::function<bool()>& canceled);
 	Document* formDrawingDocument() const;
 	OpenResult reopenFormCopy(std::vector<std::uint8_t> data) const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,

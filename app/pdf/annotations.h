@@ -28,6 +28,9 @@ namespace pdf {
 struct AnnotationBounds {
 	float left = 0, bottom = 0, right = 0, top = 0;
 };
+struct TextBoxSize {
+	float width = 0, height = 0;
+};
 // Fractions from the top left of the cropped, intrinsically rotated page.
 struct AnnotationPoint {
 	double x = 0, y = 0;

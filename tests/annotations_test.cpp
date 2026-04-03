@@ -2580,3 +2580,251 @@ TEST(Annotations,
 	    })
 	    .get();
 }
+
+TEST(Annotations, TextBoxResizingKeepsTopLeftIndexAuthorAndNeighbors) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("outline.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_EQ(doc.addTextNote(0, 20, 30, u"Keep note"), 0);
+		    ASSERT_EQ(doc.addTextBox(0, {40, 200, 240, 260}, u"Original",
+		                             u"Author", 1),
+		              1);
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 100, 240, 160}, u"Neighbor", {}, 2), 2);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes);
+		    const auto box = notes->entries[1];
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_EQ(
+		        doc.updateTextBox(box, u"Original", pdf::TextBoxSize{200, 60}),
+		        false);
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    EXPECT_EQ(doc.annotationRevision(), 3u);
+		    ASSERT_EQ(doc.updateTextBox(box, u"Wider replacement line",
+		                                pdf::TextBoxSize{300, 90}),
+		              true);
+		    EXPECT_FALSE(
+		        doc.updateTextBox(box, u"Stale", pdf::TextBoxSize{250, 60}));
+		    const auto after = doc.annotations(0);
+		    ASSERT_TRUE(after && after->entries.size() == 3);
+		    const auto& changed = after->entries[1];
+		    ASSERT_TRUE(changed.bounds);
+		    EXPECT_EQ(changed.index, 1);
+		    EXPECT_EQ(changed.author, "Author");
+		    EXPECT_FLOAT_EQ(changed.bounds->left, 40);
+		    EXPECT_FLOAT_EQ(changed.bounds->top, 260);
+		    EXPECT_FLOAT_EQ(changed.bounds->right, 340);
+		    EXPECT_FLOAT_EQ(changed.bounds->bottom, 170);
+		    EXPECT_EQ(after->entries[2].contents, "Neighbor");
+		    EXPECT_FLOAT_EQ(after->entries[2].bounds->top, 160);
+		    const auto print = doc.printRaster(0, 400, 400, 0, 0, 400, 400);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes && print);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto kept = saved.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 3);
+		    EXPECT_EQ(kept->entries[1].contents, "Wider replacement line");
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->right, 340);
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->bottom, 170);
+		    EXPECT_EQ(saved.document->textNote(0, 0), u"Keep note");
+		    const auto outline = saved.document->outline();
+		    ASSERT_TRUE(outline);
+		    EXPECT_FALSE(outline->entries.empty());
+		    const auto printed =
+		        saved.document->printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(printed);
+		    EXPECT_EQ(printed->pixels, print->pixels);
+		    EXPECT_TRUE(saved.document->textBox(kept->entries[1].target));
+		    EXPECT_EQ(saved.document->updateTextBox(kept->entries[1], u"Short",
+		                                            pdf::TextBoxSize{180, 45}),
+		              true);
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxSizeRefusalsKeepExactLiveBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(
+		        doc.addTextBox(0, {40, 200, 240, 260}, u"Original", {}, 1));
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes);
+		    const auto box = notes->entries[0];
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    const auto nan = std::numeric_limits<float>::quiet_NaN();
+		    const auto inf = std::numeric_limits<float>::infinity();
+		    for (const auto size : {pdf::TextBoxSize{0, 60},
+		                            {-1, 60},
+		                            {200, 0},
+		                            {200, -1},
+		                            {nan, 60},
+		                            {200, inf},
+		                            {inf, 60},
+		                            {200, nan},
+		                            {600, 60},
+		                            {200, 900},
+		                            {1, 60},
+		                            {200, 1}}) {
+			    EXPECT_FALSE(doc.updateTextBox(box, u"Original", size));
+			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+			    EXPECT_EQ(doc.annotationRevision(), 2u);
+		    }
+		    pdf::DocumentEditTest::replaceAppearance(doc, 0);
+		    EXPECT_FALSE(
+		        doc.updateTextBox(box, u"Original", pdf::TextBoxSize{300, 90}));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+	    })
+	    .get();
+}
+
+TEST(Annotations, ResizedBoxesStayInsideCroppedRotatedPages) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (int turn = 0; turn < 4; ++turn) {
+			    const auto bytes =
+			        editableNoteBytes("/Contents (Keep)", "Text", {},
+			                          "/MediaBox [0 0 400 600] /CropBox [20 40 "
+			                          "380 560] /Rotate " +
+			                              std::to_string(turn * 90));
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    ASSERT_EQ(
+			        doc.addTextBox(0, {40, 200, 240, 260}, u"Text", {}, 1), 1);
+			    const auto notes = doc.annotations(0);
+			    ASSERT_TRUE(notes);
+			    const auto& box = notes->entries[1];
+			    EXPECT_FALSE(
+			        doc.updateTextBox(box, u"Text", pdf::TextBoxSize{341, 60}));
+			    EXPECT_FALSE(doc.updateTextBox(box, u"Text",
+			                                   pdf::TextBoxSize{200, 221}));
+			    ASSERT_EQ(
+			        doc.updateTextBox(box, u"Text", pdf::TextBoxSize{340, 220}),
+			        true);
+			    const auto saved = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    const auto after = reopened.document->annotations(0);
+			    ASSERT_TRUE(after && after->entries.size() == 2);
+			    EXPECT_FLOAT_EQ(after->entries[1].bounds->left, 40);
+			    EXPECT_FLOAT_EQ(after->entries[1].bounds->top, 260);
+			    EXPECT_FLOAT_EQ(after->entries[1].bounds->right, 380);
+			    EXPECT_FLOAT_EQ(after->entries[1].bounds->bottom, 40);
+			    for (int view = 0; view < 4; ++view) {
+				    const auto before = doc.render(0, 400, 400, view);
+				    const auto kept =
+				        reopened.document->render(0, 400, 400, view);
+				    ASSERT_TRUE(before && kept);
+				    EXPECT_EQ(before->pixels, kept->pixels);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, TextBoxResizeCancellationKeepsEverySavepoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto seed = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(seed.document);
+		    ASSERT_TRUE(seed.document->addTextBox(0, {40, 200, 240, 260},
+		                                          u"Original", {}, 1));
+		    const auto bytes = seed.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto completed = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(completed.document);
+		    const auto notes = completed.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextBox(
+		                  notes->entries[0], u"Original",
+		                  pdf::TextBoxSize{300, 90},
+		                  [&] {
+			                  ++checkpoints;
+			                  return false;
+		                  }),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    const auto opened = pdf::openDocument(*bytes);
+			    ASSERT_TRUE(opened.document);
+			    const auto snapshot = opened.document->annotations(0);
+			    ASSERT_TRUE(snapshot);
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextBox(
+			        snapshot->entries[0], u"Original",
+			        pdf::TextBoxSize{300, 90},
+			        [&] { return ++calls >= stop; }));
+			    EXPECT_FALSE(opened.document->modified());
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ResizedEncryptedBoxesKeepTheirPasswordAndPermissions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("password.pdf"), "sable");
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(
+		        doc.addTextBox(0, {40, 200, 240, 260}, u"Original", {}, 1));
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(doc.updateTextBox(notes->entries.back(), u"Resized",
+		                                pdf::TextBoxSize{300, 90}),
+		              true);
+		    const auto bytes = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(pdf::openDocument(*bytes).error,
+		              pdf::Error::PasswordRequired);
+		    const auto saved = pdf::openDocument(*bytes, "sable");
+		    ASSERT_TRUE(saved.document && saved.document->canAnnotate());
+		    const auto kept = saved.document->annotations(0);
+		    ASSERT_TRUE(kept);
+		    EXPECT_EQ(kept->entries.back().contents, "Resized");
+		    EXPECT_FLOAT_EQ(kept->entries.back().bounds->right, 340);
+	    })
+	    .get();
+}
+
+TEST(Annotations, FractionalTextBoxSizesKeepExactNoOpCoordinates) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.addTextBox(0, {40.1f, 100.2f, 240.3f, 160.4f},
+		                               u"Fraction", {}, 1));
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries[0].bounds);
+		    const auto box = notes->entries[0];
+		    const auto& rect = *box.bounds;
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_EQ(
+		        doc.updateTextBox(box, u"Fraction",
+		                          pdf::TextBoxSize{rect.right - rect.left,
+		                                           rect.top - rect.bottom}),
+		        false);
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    EXPECT_EQ(doc.annotationRevision(), 2u);
+	    })
+	    .get();
+}
