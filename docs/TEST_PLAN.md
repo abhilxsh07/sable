@@ -2,6 +2,22 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Text-box Acrobat appearance check (3 November 2026)
+
+Acrobat opens the saved Edited desktop box and untouched Second desktop box.
+Both complete lines and rectangles display without selecting annotations;
+Comments contains the two matching entries. The file keeps SHA-256
+`53e5e5676afe5b64d5920f54b6ad1f8ec4f77d23d72faf65b0dbb598776821ee`.
+
+Maximizing the viewer also shows both complete lines. Its Font Capture
+process raises the same application error observed in earlier form checks.
+Dismissing that helper and returning to Acrobat keeps both appearances.
+The cause remains unconfirmed. I close the disposable viewer without saving.
+This checks these two normal appearances, not printing or wider styles.
+
+Debug x64/ARM64 build without warnings; all 676 enabled x64 tests and format
+pass. Evidence: `D:\NightPdf\verify-textbox-acrobat-20261103-084dd48`.
+
 ## Existing text-box editing (3 November 2026)
 
 The engine accepts a box only after its complete old appearance, font bytes
