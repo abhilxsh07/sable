@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued text-box sizes (2026-11-03)
+
+The existing text-box queue accepts owned width/height together with the
+proved snapshot and replacement text. Both entry points use the same write
+completion, cache refresh and revision handling. Read cancellation leaves
+size writes alone; close can cancel before the isolated document swap.
+Matching dimensions and contents keep the cache and revision. Changed sizes
+save through the existing copy path and preserve neighboring annotations.
+
 ## Bounded text-box resizing (2026-11-03)
 
 I extend the existing text transaction with width and height in PDF points.

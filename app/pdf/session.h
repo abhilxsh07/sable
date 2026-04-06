@@ -207,6 +207,9 @@ class Session {
 	             std::function<void(TextBoxResult)> callback);
 	bool updateTextBox(Annotation expected, std::u16string contents,
 	                   std::function<void(NoteResult)> callback);
+	bool updateTextBox(Annotation expected, std::u16string contents,
+	                   TextBoxSize size,
+	                   std::function<void(NoteResult)> callback);
 	bool textNote(int page, int index,
 	              std::function<void(TextNoteResult)> callback,
 	              std::uint64_t revision = 0);
@@ -262,6 +265,9 @@ class Session {
 	void close();
 
   private:
+	bool changeTextBox(Annotation expected, std::u16string contents,
+	                   std::optional<TextBoxSize> size,
+	                   std::function<void(NoteResult)> callback);
 	bool writeTextBox(int page, AnnotationBounds bounds,
 	                  std::u16string contents, std::u16string author,
 	                  std::uint64_t revision,

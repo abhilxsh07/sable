@@ -4107,3 +4107,165 @@ TEST_F(SessionTest, ExistingBoxCallbacksReenterAndThrowAfterCommit) {
 		}
 	}
 }
+
+TEST_F(SessionTest, BoxSizesOwnQueuedDimensionsAndPreserveSavedNeighbors) {
+	const auto source = textBoxSource();
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	auto box = readBox(session);
+	ASSERT_TRUE(box);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+	Reply<pdf::NoteResult> noop;
+	ASSERT_TRUE(session.updateTextBox(
+	    *box, u"Original", pdf::TextBoxSize{200, 60}, noop.callback()));
+	const auto same = noop.wait();
+	ASSERT_TRUE(same && same->index && !same->changed && !same->canceled);
+	EXPECT_EQ(readForms(session), cached);
+	pdf::TextBoxSize size{270, 90};
+	std::u16string text = u"Owned dimensions";
+	Reply<pdf::NoteResult> write, stale;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextBox(*box, text, size, write.callback()));
+		ASSERT_TRUE(
+		    session.updateTextBox(*box, u"Stale", size, stale.callback()));
+		size = {1, 1};
+		text.clear();
+		box->bounds->top = -100;
+		session.cancelAnnotations();
+		session.cancelForms();
+	}
+	const auto changed = write.wait(), refused = stale.wait();
+	ASSERT_TRUE(changed && refused);
+	EXPECT_TRUE(changed->index && changed->changed && !changed->canceled);
+	EXPECT_FALSE(refused->index || refused->changed || refused->canceled);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 2);
+	EXPECT_NE(fresh, cached);
+	const auto current = readBox(session, 2);
+	ASSERT_TRUE(current && current->bounds);
+	EXPECT_EQ(current->contents, "Owned dimensions");
+	EXPECT_EQ(current->author, "Author");
+	EXPECT_FLOAT_EQ(current->bounds->left, 40);
+	EXPECT_FLOAT_EQ(current->bounds->top, 160);
+	EXPECT_FLOAT_EQ(current->bounds->right, 310);
+	EXPECT_FLOAT_EQ(current->bounds->bottom, 70);
+	const auto destination = tempDir() / "resized boxes.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	const auto kept = readBox(reopened);
+	ASSERT_TRUE(kept && kept->bounds);
+	EXPECT_EQ(kept->contents, "Owned dimensions");
+	EXPECT_FLOAT_EQ(kept->bounds->right, 310);
+	EXPECT_FLOAT_EQ(kept->bounds->bottom, 70);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 2);
+	EXPECT_EQ(notes->annotations->entries[1].contents, "Neighbor");
+	EXPECT_FLOAT_EQ(notes->annotations->entries[1].bounds->top, 260);
+	EXPECT_EQ(readFile(source), original);
+}
+
+TEST_F(SessionTest, QueuedBoxSizeRefusalsKeepCacheAndRevision) {
+	pdf::Session session(engine), cold(engine);
+	ASSERT_EQ(open(session, textBoxSource()).error, pdf::Error::None);
+	const auto box = readBox(session);
+	ASSERT_TRUE(box);
+	const auto cached = readForms(session);
+	for (const auto size : {pdf::TextBoxSize{1, 60},
+	                        {200, 1},
+	                        {0, 60},
+	                        {200, -1},
+	                        {1000, 90},
+	                        {200, 1000}}) {
+		Reply<pdf::NoteResult> write;
+		ASSERT_TRUE(
+		    session.updateTextBox(*box, u"Original", size, write.callback()));
+		const auto refused = write.wait();
+		ASSERT_TRUE(refused);
+		EXPECT_FALSE(refused->index || refused->changed || refused->canceled);
+		EXPECT_EQ(readForms(session), cached);
+	}
+	Reply<pdf::NoteResult> unused;
+	EXPECT_FALSE(cold.updateTextBox(*box, u"Cold", pdf::TextBoxSize{250, 60},
+	                                unused.callback()));
+	EXPECT_FALSE(
+	    session.updateTextBox(*box, u"Text", pdf::TextBoxSize{250, 60}, {}));
+	EXPECT_FALSE(session.updateTextBox(*box, {}, pdf::TextBoxSize{250, 60},
+	                                   unused.callback()));
+	const auto kept = readBox(session);
+	ASSERT_TRUE(kept && kept->bounds);
+	EXPECT_EQ(kept->contents, "Original");
+	EXPECT_FLOAT_EQ(kept->bounds->right, 240);
+}
+
+TEST_F(SessionTest, BoxSizeRequestsKeepCloseAndCallbackBoundaries) {
+	const auto source = textBoxSource();
+	for (bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+		const auto box = readBox(*session);
+		ASSERT_TRUE(box);
+		Reply<pdf::NoteResult> write;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session->updateTextBox(
+			    *box, u"Closed", pdf::TextBoxSize{270, 90},
+			    [calls, cb = write.callback()](auto result) {
+				    ++*calls;
+				    cb(std::move(result));
+			    }));
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+		}
+		const auto stopped = write.wait();
+		ASSERT_TRUE(stopped);
+		EXPECT_TRUE(stopped->canceled && !stopped->index && !stopped->changed);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+	for (bool throws : {false, true}) {
+		pdf::Session session(engine);
+		ASSERT_EQ(open(session, source).error, pdf::Error::None);
+		const auto box = readBox(session);
+		ASSERT_TRUE(box);
+		Reply<pdf::NoteResult> write;
+		Reply<pdf::TextBoxResult> read;
+		const auto queued = std::make_shared<std::atomic<bool>>(false);
+		ASSERT_TRUE(session.updateTextBox(
+		    *box, u"Committed", pdf::TextBoxSize{270, 90},
+		    [&session, throws, queued, cb = write.callback(),
+		     next = read.callback()](auto result) {
+			    EXPECT_TRUE(pdf::Engine::onThread());
+			    *queued = session.textBox({0, 0, "FreeText", 2}, next);
+			    cb(std::move(result));
+			    if (throws) {
+				    throw std::runtime_error("callback failed");
+			    }
+			    session.close();
+		    }));
+		const auto changed = write.wait();
+		const auto after = read.wait();
+		ASSERT_TRUE(changed && after);
+		EXPECT_TRUE(*queued && changed->index && changed->changed &&
+		            !changed->canceled);
+		if (throws) {
+			ASSERT_TRUE(after->box && after->box->bounds && !after->canceled);
+			EXPECT_FLOAT_EQ(after->box->bounds->right, 310);
+		} else {
+			EXPECT_TRUE(after->canceled && !after->box);
+		}
+	}
+}

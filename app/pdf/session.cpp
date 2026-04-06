@@ -640,6 +640,20 @@ bool Session::textBox(AnnotationTarget target,
 
 bool Session::updateTextBox(Annotation expected, std::u16string contents,
                             std::function<void(NoteResult)> callback) {
+	return changeTextBox(std::move(expected), std::move(contents), {},
+	                     std::move(callback));
+}
+
+bool Session::updateTextBox(Annotation expected, std::u16string contents,
+                            TextBoxSize size,
+                            std::function<void(NoteResult)> callback) {
+	return changeTextBox(std::move(expected), std::move(contents), size,
+	                     std::move(callback));
+}
+
+bool Session::changeTextBox(Annotation expected, std::u16string contents,
+                            std::optional<TextBoxSize> size,
+                            std::function<void(NoteResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -649,7 +663,7 @@ bool Session::updateTextBox(Annotation expected, std::u16string contents,
 			return false;
 		}
 	}
-	state->m_engine.post([state, expected = std::move(expected),
+	state->m_engine.post([state, size, expected = std::move(expected),
 	                      contents = std::move(contents),
 	                      callback = std::move(callback)] {
 		NoteResult result;
@@ -657,8 +671,11 @@ bool Session::updateTextBox(Annotation expected, std::u16string contents,
 		try {
 			const auto canceled = [state] { return state->closed(); };
 			if (!canceled()) {
-				const auto changed = state->m_document->updateTextBox(
-				    expected, contents, canceled);
+				const auto changed =
+				    size ? state->m_document->updateTextBox(expected, contents,
+				                                            *size, canceled)
+				         : state->m_document->updateTextBox(expected, contents,
+				                                            canceled);
 				if (changed) {
 					result.index = expected.target.index;
 					result.changed = *changed;
