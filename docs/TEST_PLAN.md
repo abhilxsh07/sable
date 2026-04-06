@@ -2,6 +2,43 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Bounded text-box sizing (3 November 2026)
+
+The engine keeps a box's PDF top-left anchor, index, author and neighbors
+while changing width/height. Exact and fractional no-ops retain live bytes.
+Growth/shrink, invalid sizes, clipped glyphs, crop edges and every intrinsic
+and view rotation pass. Saved print rasters match; encrypted copies retain
+the password. Every cancellation checkpoint keeps the original savepoint.
+Owned queue sizes survive caller changes and independent read cancellation;
+no-op/refused caches, stale requests, saved neighbors, close/destruction and
+callback reentry/exception boundaries pass.
+
+Comments > Edit exposes width/height in PDF points with a read-only author.
+An invalid width remains editable with a validation message; Cancel keeps
+Save disabled. A one-point width refuses, restores both size fields and
+keeps the draft through Ctrl+W. Corrected native width input and height
+produce a size-only 240 by 80 point change, preserving both lines and the
+neighbor's rectangle. The Windows picker saves to a path with spaces.
+Fresh-process reopen retains the two appearances, Comments entries and
+sizes; unchanged Apply stays clean. A rotated view retains both appearances.
+
+The first native pass exposed float noise in displayed widths. The final
+build shows readable two-decimal point values while keeping the original
+float for unchanged text; tiny positive sizes never display zero. Both the
+original 200 by 60 display and the saved 240 by 80 display pass clean Apply.
+The final build repeats the size edit, picker save and fresh-process reopen.
+Source and saved hashes stay unchanged through the final no-op, and all
+disposable readers close. Final saved SHA-256:
+`87c0839a58a494c86c40fdbfc6cb7a1131e5ad55ad9ce8505a0efebc930ffc9c`.
+
+Debug x64/ARM64 build without warnings; all 687 enabled x64 tests and format
+pass. One test stays disabled; ARM64 execution needs Windows on ARM.
+Evidence: `D:\NightPdf\verify-textbox-resize-20261103-1fb474f`,
+`D:\NightPdf\verify-textbox-size-queue-20261103-22af457` and
+`D:\NightPdf\verify-textbox-size-native-20261103-988533b`.
+Resized-box Acrobat/printing, narrow-dialog accessibility, Unicode/multiline
+and wider styles remain open.
+
 ## Text-box Acrobat appearance check (3 November 2026)
 
 Acrobat opens the saved Edited desktop box and untouched Second desktop box.

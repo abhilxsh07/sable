@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "comments.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <iterator>
 #include <string_view>
 #include <utility>
@@ -62,6 +64,59 @@ void sanitize(std::string& value, bool multiline) {
 	value.resize(used);
 }
 } // namespace
+
+std::string textBoxDimension(float value) {
+	if (!std::isfinite(value) || value <= 0) {
+		return {};
+	}
+	char text[64];
+	auto result = std::to_chars(std::begin(text), std::end(text), value,
+	                            std::chars_format::fixed, 2);
+	if (result.ec != std::errc{}) {
+		return {};
+	}
+	std::string shown(text, result.ptr);
+	while (shown.size() > 1 && shown.back() == '0') {
+		shown.pop_back();
+	}
+	if (shown.back() == '.') {
+		shown.pop_back();
+	}
+	// i keep tiny positive sizes readable instead of showing zero points.
+	if (shown == "0") {
+		result = std::to_chars(std::begin(text), std::end(text), value);
+		shown = result.ec == std::errc{} ? std::string(text, result.ptr) : "";
+	}
+	return shown;
+}
+
+std::optional<float> parseTextBoxDimension(std::string_view text,
+                                           std::optional<float> original) {
+	// rounded display text must not change the original coordinates.
+	if (original && text == textBoxDimension(*original) &&
+	    std::isfinite(*original) && *original > 0) {
+		return original;
+	}
+	while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
+		text.remove_prefix(1);
+	}
+	while (!text.empty() && (text.back() == ' ' || text.back() == '\t')) {
+		text.remove_suffix(1);
+	}
+	if (!text.empty() && text.front() == '+') {
+		text.remove_prefix(1);
+	}
+	if (text.empty()) {
+		return {};
+	}
+	float value = 0;
+	const auto [end, error] =
+	    std::from_chars(text.data(), text.data() + text.size(), value);
+	return error == std::errc{} && end == text.data() + text.size() &&
+	               std::isfinite(value) && value > 0
+	           ? std::optional{value}
+	           : std::nullopt;
+}
 
 std::string_view commentLabel(std::string_view subtype) {
 	if (subtype == "Text") {

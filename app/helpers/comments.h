@@ -28,6 +28,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace helpers {
 std::string_view commentLabel(std::string_view subtype);
+// i use PDF points with an explicit decimal point.
+std::string textBoxDimension(float value);
+std::optional<float> parseTextBoxDimension(std::string_view text,
+                                           std::optional<float> original = {});
 struct CommentRow {
 	int page = 0, index = 0;
 	std::string subtype, author, text;

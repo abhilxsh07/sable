@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 #include <utility>
+#include <limits>
 #include "comments.h"
 
 namespace {
@@ -176,3 +177,38 @@ TEST(CommentScan, GlobalByteLimitKeepsWholeUnicodeStrings) {
 	EXPECT_TRUE(scan.limited());
 }
 } // namespace
+
+TEST(TextBoxDimension, PositiveCompleteNumbersAndInvalidDrafts) {
+	EXPECT_EQ(helpers::parseTextBoxDimension("200"), 200.f);
+	EXPECT_EQ(helpers::parseTextBoxDimension("  +60.25\t"), 60.25f);
+	EXPECT_EQ(helpers::parseTextBoxDimension("2e2"), 200.f);
+	for (const auto* text :
+	     {"", " ", "+", "0", "-1", "nan", "inf", "1e1000", "1e-1000", "20pt",
+	      "20 30", "20,5", "20\n", "--2"}) {
+		EXPECT_FALSE(helpers::parseTextBoxDimension(text)) << text;
+	}
+}
+
+TEST(TextBoxDimension, RoundedDisplayKeepsExactUnchangedSizes) {
+	for (const float value : {200.f, 60.f, 200.20001f, 60.199997f, 0.001f,
+	                          (std::numeric_limits<float>::max)(),
+	                          (std::numeric_limits<float>::min)()}) {
+		const auto text = helpers::textBoxDimension(value);
+		ASSERT_FALSE(text.empty());
+		EXPECT_EQ(helpers::parseTextBoxDimension(text, value), value) << text;
+	}
+	EXPECT_EQ(helpers::textBoxDimension(199.99998f), "200");
+	EXPECT_EQ(helpers::textBoxDimension(239.99998f), "240");
+	EXPECT_EQ(helpers::textBoxDimension(60.199997f), "60.2");
+	EXPECT_EQ(helpers::textBoxDimension(0.001f), "0.001");
+	EXPECT_EQ(helpers::parseTextBoxDimension("250", 239.99998f), 250.f);
+	EXPECT_FALSE(helpers::parseTextBoxDimension("", 200.f));
+	EXPECT_TRUE(helpers::textBoxDimension(0).empty());
+	EXPECT_TRUE(helpers::textBoxDimension(-1).empty());
+	EXPECT_TRUE(
+	    helpers::textBoxDimension(std::numeric_limits<float>::infinity())
+	        .empty());
+	EXPECT_TRUE(
+	    helpers::textBoxDimension(std::numeric_limits<float>::quiet_NaN())
+	        .empty());
+}

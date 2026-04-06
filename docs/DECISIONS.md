@@ -2,6 +2,21 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Native text-box width and height (2026-11-03)
+
+Comments > Edit shows width/height in PDF points for supported boxes. Size
+follows the original page orientation, with a fixed PDF top-left corner and
+author. I show sizes to two decimal places and retain the original float
+when its displayed text stays unchanged. Tiny positive sizes keep enough
+digits to avoid showing zero. Unchanged Apply keeps the exact rectangle.
+The parser consumes a complete positive finite number; invalid text stays
+in the controls with an explanation.
+
+Apply owns dimensions with the text snapshot. Pending controls are read-only;
+refusal restores them with their drafts, and Cancel leaves the box alone.
+The existing dirty-state, page/Comments refresh and copy-save path handle
+accepted changes. New-box placement keeps its existing initial size/drafts.
+
 ## Queued text-box sizes (2026-11-03)
 
 The existing text-box queue accepts owned width/height together with the

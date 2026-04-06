@@ -98,9 +98,10 @@ ViewerPage::editTextBox(NoteTarget target,
                         std::optional<pdf::Annotation> existing) {
 	const auto lifetime = get_strong();
 	try {
-		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
-		    !commentsOpen() || !XamlRoot() ||
+		if ((existing && !existing->bounds) || m_closed || !m_layout ||
+		    !m_session || !m_noteAllowed || m_noteBusy || m_noteSaving ||
+		    m_noteDialog || m_passwordDialog || !commentsOpen() ||
+		    !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {
 			co_return;
@@ -167,6 +168,36 @@ ViewerPage::editTextBox(NoteTarget target,
 		                       : m_textBoxDraft);
 		Automation::AutomationProperties::SetName(contents, L"Text box text");
 		fields.Children().Append(contents);
+		TextBox width, height;
+		if (existing) {
+			width.Header(box_value(L"Width (pt)"));
+			height.Header(box_value(L"Height (pt)"));
+			width.MaxLength(64);
+			height.MaxLength(64);
+			const auto& rect = *existing->bounds;
+			width.Text(
+			    to_hstring(helpers::textBoxDimension(rect.right - rect.left)));
+			height.Text(
+			    to_hstring(helpers::textBoxDimension(rect.top - rect.bottom)));
+			Automation::AutomationProperties::SetName(
+			    width, L"Text box width in PDF points");
+			Automation::AutomationProperties::SetName(
+			    height, L"Text box height in PDF points");
+			Grid sizes;
+			sizes.ColumnSpacing(12);
+			sizes.ColumnDefinitions().Append(ColumnDefinition{});
+			sizes.ColumnDefinitions().Append(ColumnDefinition{});
+			Grid::SetColumn(height, 1);
+			sizes.Children().Append(width);
+			sizes.Children().Append(height);
+			fields.Children().Append(sizes);
+			TextBlock units;
+			units.Text(
+			    L"Size uses the PDF's original orientation. 72 pt = 1 inch. "
+			    L"The top-left corner stays fixed.");
+			units.TextWrapping(TextWrapping::Wrap);
+			fields.Children().Append(units);
+		}
 		TextBlock error;
 		error.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(error);
@@ -196,6 +227,7 @@ ViewerPage::editTextBox(NoteTarget target,
 		                      prompt = make_weak(dialog),
 		                      text = make_weak(contents),
 		                      writer = make_weak(author),
+		                      wide = make_weak(width), tall = make_weak(height),
 		                      failure = make_weak(error)](hstring message) {
 			const auto self = weak.get();
 			const auto view = prompt.get();
@@ -208,42 +240,81 @@ ViewerPage::editTextBox(NoteTarget target,
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
 			name.IsReadOnly(editing);
+			if (const auto dimension = wide.get()) {
+				dimension.IsReadOnly(false);
+			}
+			if (const auto dimension = tall.get()) {
+				dimension.IsReadOnly(false);
+			}
 			view.IsPrimaryButtonEnabled(!field.Text().empty());
 			if (const auto label = failure.get()) {
 				label.Text(message);
 			}
 			self->showComments();
 		};
-		dialog.PrimaryButtonClick(
-		    [weak = get_weak(), session, target, revision, existing,
-		     prompt = make_weak(dialog), text = make_weak(contents),
-		     writer = make_weak(author), failure = make_weak(error),
-		     recover](auto&&, const ContentDialogButtonClickEventArgs& args) {
-			    args.Cancel(true);
-			    const auto self = weak.get();
-			    const auto view = prompt.get();
-			    const auto field = text.get();
-			    const auto name = writer.get();
-			    if (!self || self->m_closed || self->m_noteBusy || !view ||
-			        !field || !name || field.Text().empty() ||
-			        self->m_session.get() != session) {
-				    return;
-			    }
-			    self->m_noteBusy = true;
-			    view.IsPrimaryButtonEnabled(false);
-			    field.IsReadOnly(true);
-			    name.IsReadOnly(true);
-			    if (const auto label = failure.get()) {
-				    label.Text(existing ? L"Applying text box\u2026"
-				                        : L"Adding text box\u2026");
-			    }
-			    try {
-				    const auto value = field.Text(), by = name.Text();
-				    const auto completed = [weak, session, prompt, text,
-				                            recover,
-				                            editing = existing.has_value(),
-				                            queue = self->DispatcherQueue()](
-				                               auto result) {
+		dialog.PrimaryButtonClick([weak = get_weak(), session, target, revision,
+		                           existing, prompt = make_weak(dialog),
+		                           text = make_weak(contents),
+		                           writer = make_weak(author),
+		                           failure = make_weak(error),
+		                           wide = make_weak(width),
+		                           tall = make_weak(height), recover](
+		                              auto&&,
+		                              const ContentDialogButtonClickEventArgs&
+		                                  args) {
+			args.Cancel(true);
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			const auto field = text.get();
+			const auto name = writer.get();
+			if (!self || self->m_closed || self->m_noteBusy || !view ||
+			    !field || !name || field.Text().empty() ||
+			    self->m_session.get() != session) {
+				return;
+			}
+			std::optional<pdf::TextBoxSize> size;
+			if (existing) {
+				const auto w = wide.get(), h = tall.get();
+				if (!w || !h) {
+					return;
+				}
+				const auto parsedWidth = helpers::parseTextBoxDimension(
+				    to_string(w.Text()),
+				    existing->bounds->right - existing->bounds->left);
+				const auto parsedHeight = helpers::parseTextBoxDimension(
+				    to_string(h.Text()),
+				    existing->bounds->top - existing->bounds->bottom);
+				if (!parsedWidth || !parsedHeight) {
+					if (const auto label = failure.get()) {
+						label.Text(
+						    L"Enter positive width and height in PDF points. "
+						    L"Use a decimal point for fractional sizes. Your "
+						    L"draft is still here.");
+					}
+					return;
+				}
+				size = pdf::TextBoxSize{*parsedWidth, *parsedHeight};
+			}
+			self->m_noteBusy = true;
+			view.IsPrimaryButtonEnabled(false);
+			field.IsReadOnly(true);
+			name.IsReadOnly(true);
+			if (const auto dimension = wide.get()) {
+				dimension.IsReadOnly(true);
+			}
+			if (const auto dimension = tall.get()) {
+				dimension.IsReadOnly(true);
+			}
+			if (const auto label = failure.get()) {
+				label.Text(existing ? L"Applying text box\u2026"
+				                    : L"Adding text box\u2026");
+			}
+			try {
+				const auto value = field.Text(), by = name.Text();
+				const auto completed =
+				    [weak, session, prompt, text, recover,
+				     editing = existing.has_value(),
+				     queue = self->DispatcherQueue()](auto result) {
 					    queue.TryEnqueue([weak, session, prompt, text, recover,
 					                      editing, result] {
 						    const auto owner = weak.get();
@@ -271,7 +342,8 @@ ViewerPage::editTextBox(NoteTarget target,
 								    recover(L"Couldn't apply this text box. "
 								            L"The PDF may restrict "
 								            L"this change, or the text may "
-								            L"not fit. Use one line of "
+								            L"not fit inside the page or box. "
+								            L"Use one line of "
 								            L"English letters, numbers and "
 								            L"standard punctuation. "
 								            L"Your draft is still here.");
@@ -283,25 +355,23 @@ ViewerPage::editTextBox(NoteTarget target,
 						    }
 					    });
 				    };
-				    const std::u16string replacement(value.begin(),
-				                                     value.end());
-				    const bool queued =
-				        existing ? session->updateTextBox(
-				                       *existing, replacement, completed)
-				                 : session->addTextBoxAt(
-				                       target.page, target.x, target.y,
-				                       target.rotation, replacement,
-				                       std::u16string(by.begin(), by.end()),
-				                       revision, completed);
-				    if (queued) {
-					    self->showComments();
-					    return;
-				    }
-			    } catch (...) {
-			    }
-			    recover(
-			        L"Couldn't queue this text box. Your draft is still here.");
-		    });
+				const std::u16string replacement(value.begin(), value.end());
+				const bool queued =
+				    existing
+				        ? session->updateTextBox(*existing, replacement, *size,
+				                                 completed)
+				        : session->addTextBoxAt(
+				              target.page, target.x, target.y, target.rotation,
+				              replacement, std::u16string(by.begin(), by.end()),
+				              revision, completed);
+				if (queued) {
+					self->showComments();
+					return;
+				}
+			} catch (...) {
+			}
+			recover(L"Couldn't queue this text box. Your draft is still here.");
+		});
 		m_noteDialog = dialog;
 		co_await dialog.ShowAsync();
 		if (m_noteDialog == dialog) {

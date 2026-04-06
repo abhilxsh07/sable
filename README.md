@@ -25,7 +25,9 @@ filter stays separate from the app theme.
 Comments > More > Place text box on page adds a single-line box where you
 click. Use English letters, numbers and standard punctuation. Save a copy
 to keep it. Select a supported box in Comments and choose Edit to change
-its text. Author and size stay fixed; resizing is still separate work.
+its text and width/height in PDF points. Its author and PDF top-left corner
+stay fixed. Unsupported styles and sizes that clip text or leave the page
+are refused; the draft stays available to correct.
 
 Spotify and Apple Music sessions add a music button with playback controls,
 track information, artwork and a seek bar when the player supports it. Real
