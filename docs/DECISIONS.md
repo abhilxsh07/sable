@@ -2,6 +2,13 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Scrollable text-box fields (2026-11-03)
+
+I put the text-box fields in a scroll viewer sized to the dialog host.
+Short windows can reveal sizes and refusal text by scrolling while the
+dialog keeps Apply and Cancel below the fields. Keyboard focus brings the
+size inputs into view.
+
 ## Native text-box width and height (2026-11-03)
 
 Comments > Edit shows width/height in PDF points for supported boxes. Size

@@ -201,7 +201,24 @@ ViewerPage::editTextBox(NoteTarget target,
 		TextBlock error;
 		error.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(error);
-		dialog.Content(fields);
+		ScrollViewer scroll;
+		scroll.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
+		scroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+		scroll.Padding({0, 0, 12, 0});
+		scroll.Content(fields);
+		const auto fit = [body = make_weak(scroll),
+		                  root = make_weak(XamlRoot())] {
+			if (const auto content = body.get()) {
+				if (const auto host = root.get()) {
+					content.MaxHeight(
+					    (std::max)(80., host.Size().Height - 210.));
+				}
+			}
+		};
+		fit();
+		const auto sizeChanged =
+		    XamlRoot().Changed(auto_revoke, [fit](auto&&, auto&&) { fit(); });
+		dialog.Content(scroll);
 		dialog.IsPrimaryButtonEnabled(!contents.Text().empty());
 		contents.TextChanged(
 		    [prompt = make_weak(dialog)](auto&& sender, auto&&) {

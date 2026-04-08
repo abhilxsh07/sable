@@ -2,6 +2,17 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Narrow text-box editor (3 November 2026)
+
+At 550 by 413 the dialog clipped the size inputs and wheel input did not
+scroll its content. I put the fields in a scroll viewer sized to the host.
+Tab now reveals the complete width input and height remains visible beside
+it. Apply refuses a one-point width and wheel scrolling reveals the full
+message and retained draft. Both actions remain visible and Escape returns
+to the selected Comments row with Save disabled. The verification copy
+keeps its hash. The short reader rail can still overlap the page box.
+Debug x64 and ARM64 build without warnings; all 687 enabled tests pass.
+
 ## Resized text boxes in Acrobat (3 November 2026)
 
 The 240 by 80 point copy and the subsequent 150 by 55 point copy both
