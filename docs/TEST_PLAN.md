@@ -2,6 +2,20 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Resized text boxes in Acrobat (3 November 2026)
+
+The 240 by 80 point copy and the subsequent 150 by 55 point copy both
+show complete unfocused lines, the resized border and both Comments rows.
+The grown copy also shows both appearances after Rotate view right. Acrobat
+Print with Document and Markups previews both boxes in both files. I cancel
+at preview. The earlier Font Capture application error recurs and the
+viewer and preview remain usable after dismissing it.
+
+Input and grown-copy hashes match the sizing checkpoint. The shrunk copy
+keeps SHA-256 `dd73dc9c84c92bd3e121a99e585def053528fd87c4c3f72c294be40063b8489e`.
+Evidence is in `D:\NightPdf\verify-textbox-next-20261103-ca82772`.
+Debug x64 and ARM64 build without warnings; all 687 enabled tests pass.
+
 ## Bounded text-box sizing (3 November 2026)
 
 The engine keeps a box's PDF top-left anchor, index, author and neighbors
