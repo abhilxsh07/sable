@@ -29,12 +29,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <utility>
 #include "pdf/document.h"
 #include "pdf/engine.h"
+#include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
 
 namespace pdf {
 struct DocumentEditTest {
 	static const std::vector<std::uint8_t>& rawBytes(const Document& document) {
 		return document.m_data;
+	}
+	static auto multiline(const Document& document, const FS_RECTF& rect,
+	                      std::u16string_view text) {
+		return multilineBoxAppearance(document.m_handle, rect, text);
+	}
+	static void checkMultiline(Document& document, const FS_RECTF& rect,
+	                           const MultilineBoxAppearance& model,
+	                           bool install) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		ASSERT_TRUE(page);
+		const auto note = FPDFPage_GetAnnot(page, 0);
+		EXPECT_TRUE(note);
+		if (install) {
+			EXPECT_TRUE(FPDFAnnot_SetAP(
+			    note, 0,
+			    reinterpret_cast<FPDF_WIDESTRING>(model.stream.c_str())));
+		}
+		EXPECT_TRUE(matchesMultilineBoxAppearance(note, rect, model));
+		for (int i = 0; i < FPDFAnnot_GetObjectCount(note); ++i) {
+			float x, y, r, t;
+			if (FPDFPageObj_GetBounds(FPDFAnnot_GetObject(note, i), &x, &y, &r,
+			                          &t)) {
+				EXPECT_GE(x, rect.left) << i;
+				EXPECT_GE(y, rect.bottom) << i;
+				EXPECT_LE(r, rect.right) << i;
+				EXPECT_LE(t, rect.top) << i;
+			}
+		}
+		float first = 0, last = 0, left = 0, bottom = 0, right = 0;
+		EXPECT_TRUE(FPDFPageObj_GetBounds(FPDFAnnot_GetObject(note, 1), &left,
+		                                  &bottom, &right, &first));
+		EXPECT_TRUE(FPDFPageObj_GetBounds(FPDFAnnot_GetObject(note, 2), &left,
+		                                  &bottom, &right, &last));
+		EXPECT_NEAR(first - last, 30.f, .01f);
+		FPDFPage_CloseAnnot(note);
+		FPDF_ClosePage(page);
 	}
 	static void replaceAppearance(Document& document, int index) {
 		const auto page = FPDF_LoadPage(document.m_handle, 0);
@@ -2825,6 +2862,68 @@ TEST(Annotations, FractionalTextBoxSizesKeepExactNoOpCoordinates) {
 		        false);
 		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
 		    EXPECT_EQ(doc.annotationRevision(), 2u);
+	    })
+	    .get();
+}
+
+TEST(Annotations, MultilineBoxPathsKeepBlankLinesAndSavedPixels) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const FS_RECTF rect{40, 180, 240, 100};
+		    const std::u16string text = u"First (line) \\\n\nFirst (line) \\";
+		    const auto model =
+		        pdf::DocumentEditTest::multiline(doc, rect, text);
+		    ASSERT_TRUE(model);
+		    ASSERT_EQ(model->paintedLines, 2);
+		    const auto blank = doc.render(0, 400, 400);
+		    ASSERT_TRUE(blank);
+		    ASSERT_TRUE(pdf::DocumentEditTest::freeText(doc, rect, text));
+		    pdf::DocumentEditTest::checkMultiline(doc, rect, *model, true);
+		    const auto raster = doc.render(0, 400, 400);
+		    const auto printed = doc.printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(raster && printed);
+		    EXPECT_NE(raster->pixels, blank->pixels);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    pdf::DocumentEditTest::checkMultiline(*reopened.document, rect,
+		                                          *model, false);
+		    const auto notes = reopened.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    EXPECT_EQ(notes->entries[0].contents,
+		              "First (line) \\\n\nFirst (line) \\");
+		    const auto saved = reopened.document->render(0, 400, 400);
+		    const auto savedPrint =
+		        reopened.document->printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(saved && savedPrint);
+		    EXPECT_EQ(saved->pixels, raster->pixels);
+		    EXPECT_EQ(savedPrint->pixels, printed->pixels);
+	    })
+	    .get();
+}
+
+TEST(Annotations, MultilineBoxPathsRefuseWrappingAndVerticalOverflow) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    const auto& doc = *opened.document;
+		    const FS_RECTF rect{40, 180, 240, 100};
+		    EXPECT_FALSE(pdf::DocumentEditTest::multiline(
+		        doc, {40, 180, 60, 100}, u"First\nSecond"));
+		    EXPECT_FALSE(pdf::DocumentEditTest::multiline(
+		        doc, {40, 130, 240, 100}, u"First\n\nSecond"));
+		    for (const auto* text :
+		         {u" \n ", u"First\r\nSecond", u"First\ncaf\u00e9",
+		          u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
+			    EXPECT_FALSE(pdf::DocumentEditTest::multiline(doc, rect, text));
+		    }
 	    })
 	    .get();
 }

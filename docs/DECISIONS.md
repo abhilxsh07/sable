@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Explicit lines in text-box appearances (2026-11-03)
+
+The pinned FreeText generator flattens paragraph breaks. I build a bounded
+vector appearance from the standard Helvetica glyphs and keep exact text in
+Contents. SetAP replaces the stream and its resources, so the vector stream
+uses no font name. An inset filled border also avoids the extra stroke bounds
+reported by the path parser.
+
+I keep LF breaks, including empty rows, and refuse any line that would need
+wrapping. The proof accepts up to eight rows and 128 ASCII characters and
+checks every path against the box, exact saved stream bytes and saved raster.
+The 12-point face and the original single-line writer stay in place.
+
 ## Scrollable text-box fields (2026-11-03)
 
 I put the text-box fields in a scroll viewer sized to the dialog host.
