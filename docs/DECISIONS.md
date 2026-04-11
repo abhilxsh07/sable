@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Isolated writes for explicit text-box lines (2026-11-03)
+
+I opt into explicit lines at the engine boundary. Creation, replacement
+and resizing still use the saved-copy transaction and preserve the index,
+author, anchor, permissions and neighboring annotations. Existing editor
+requests use the single-line layout until they can preserve LF drafts.
+
+An old multiline appearance must match the complete generated stream and
+its bounded paths. I also compare its drawing to a fresh stream on a
+throwaway page with unrelated drawing removed. Matching stream bytes alone
+cannot prove placement because the appearance dictionary can scale them.
+Both layout and render comparisons can refuse unsupported older boxes.
+
 ## Explicit lines in text-box appearances (2026-11-03)
 
 The pinned FreeText generator flattens paragraph breaks. I build a bounded

@@ -207,30 +207,35 @@ std::vector<std::uint8_t> annotationBytes(const char* name) {
 	std::ifstream file(fixturePath(name), std::ios::binary);
 	return {std::istreambuf_iterator<char>(file), {}};
 }
-std::vector<std::uint8_t>
-editableNoteBytes(const std::string& fields, std::string_view type = "Text",
-                  std::string catalog = {},
-                  std::string pageBox = "/MediaBox [0 0 200 300]") {
+std::vector<std::uint8_t> editableNoteBytes(
+    const std::string& fields, std::string_view type = "Text",
+    std::string catalog = {}, std::string pageBox = "/MediaBox [0 0 200 300]",
+    std::string rect = "[40 50 60 70]", std::string appearance = {}) {
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
-	for (const auto& body : std::vector<std::string>{
-	         "<< /Type /Catalog /Pages 2 0 R " + catalog + " >>",
-	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-	         "<< /Type /Page /Parent 2 0 R " + pageBox + " /Annots [4 0 R] >>",
-	         "<< /Type /Annot /Subtype /" + std::string(type) +
-	             " /Rect [40 50 60 70] " + fields + " >>"}) {
+	std::vector<std::string> bodies{
+	    "<< /Type /Catalog /Pages 2 0 R " + catalog + " >>",
+	    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	    "<< /Type /Page /Parent 2 0 R " + pageBox + " /Annots [4 0 R] >>",
+	    "<< /Type /Annot /Subtype /" + std::string(type) + " /Rect " + rect +
+	        " " + fields + " >>"};
+	if (!appearance.empty()) {
+		bodies.push_back(std::move(appearance));
+	}
+	for (const auto& body : bodies) {
 		offsets.push_back(data.size());
 		data +=
 		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
 	}
 	const auto xref = data.size();
-	data += "xref\n0 5\n0000000000 65535 f \n";
+	const auto size = std::to_string(offsets.size() + 1);
+	data += "xref\n0 " + size + "\n0000000000 65535 f \n";
 	for (const auto offset : offsets) {
 		char line[21];
 		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
 		data += line;
 	}
-	data += "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" +
+	data += "trailer\n<< /Size " + size + " /Root 1 0 R >>\nstartxref\n" +
 	        std::to_string(xref) + "\n%%EOF\n";
 	return {data.begin(), data.end()};
 }
@@ -2924,6 +2929,177 @@ TEST(Annotations, MultilineBoxPathsRefuseWrappingAndVerticalOverflow) {
 		          u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
 			    EXPECT_FALSE(pdf::DocumentEditTest::multiline(doc, rect, text));
 		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExplicitLineBoxesEditResizeAndReopenOnCroppedPage) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = editableNoteBytes(
+		        "/Contents (Keep)", "Text", {},
+		        "/MediaBox [0 0 400 300] /CropBox [20 30 380 270] /Rotate 90");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    const pdf::AnnotationBounds bounds{40, 100, 240, 180};
+		    EXPECT_FALSE(
+		        doc.addTextBox(0, bounds, u"First\n\nSecond", u"Author", 1));
+		    ASSERT_EQ(doc.addTextBox(0, bounds, u"First\n\nSecond", u"Author",
+		                             1, {}, layout),
+		              1);
+		    ASSERT_EQ(
+		        doc.addTextBox(0, {40, 190, 240, 250}, u"Neighbor", {}, 2), 2);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    const auto& box = notes->entries[1];
+		    ASSERT_EQ(box.contents, "First\n\nSecond");
+		    EXPECT_FALSE(doc.textBox(box.target));
+		    EXPECT_TRUE(doc.textBox(box.target, {}, layout));
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_EQ(doc.updateTextBox(box, u"First\n\nSecond", {}, layout),
+		              false);
+		    EXPECT_FALSE(doc.updateTextBox(box, u"First\n\nSecond",
+		                                   pdf::TextBoxSize{200, 30}, {},
+		                                   layout));
+		    EXPECT_FALSE(doc.updateTextBox(box, u"First\n\nSecond",
+		                                   pdf::TextBoxSize{400, 80}, {},
+		                                   layout));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    ASSERT_EQ(doc.updateTextBox(box, u"Updated\n\nLast (line)",
+		                                pdf::TextBoxSize{250, 65}, {}, layout),
+		              true);
+		    EXPECT_FALSE(doc.updateTextBox(box, u"Stale\nText", {}, layout));
+		    const auto print = doc.printRaster(0, 400, 400, 0, 0, 400, 400);
+		    const auto saved = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(saved && print);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 3 &&
+		                kept->entries[1].bounds);
+		    EXPECT_EQ(kept->entries[0].contents, "Keep");
+		    EXPECT_EQ(kept->entries[1].contents, "Updated\n\nLast (line)");
+		    EXPECT_EQ(kept->entries[1].author, "Author");
+		    EXPECT_EQ(kept->entries[1].index, box.index);
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->left, 40);
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->top, 180);
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->right, 290);
+		    EXPECT_FLOAT_EQ(kept->entries[1].bounds->bottom, 115);
+		    EXPECT_EQ(kept->entries[2].contents, "Neighbor");
+		    const auto raster =
+		        reopened.document->printRaster(0, 400, 400, 0, 0, 400, 400);
+		    ASSERT_TRUE(raster);
+		    EXPECT_EQ(raster->pixels, print->pixels);
+		    EXPECT_TRUE(reopened.document->textBox(kept->entries[1].target, {},
+		                                           layout));
+		    EXPECT_EQ(reopened.document->updateTextBox(kept->entries[1],
+		                                               u"One line", {}, layout),
+		              true);
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExplicitLineBoxesRefuseChangedAppearancePlacement) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto seed = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(seed.document);
+		    const FS_RECTF rect{40, 180, 240, 100};
+		    const auto model = pdf::DocumentEditTest::multiline(
+		        *seed.document, rect, u"First\n\nFirst");
+		    ASSERT_TRUE(model);
+		    std::string path;
+		    for (char16_t c : model->stream) {
+			    ASSERT_LE(c, 127);
+			    path.push_back(static_cast<char>(c));
+		    }
+		    const auto bytes = editableNoteBytes(
+		        "/F 4 /Contents (First\n\nFirst) /DA (/Helv 12 Tf 0 g) /AP << "
+		        "/N 5 0 R >>",
+		        "FreeText", {}, "/MediaBox [0 0 400 300]", "[40 100 240 180]",
+		        "<< /Type /XObject /Subtype /Form /BBox [40 100 300 180] "
+		        "/Length " +
+		            std::to_string(path.size()) + " >>\nstream\n" + path +
+		            "endstream");
+		    const auto opened = pdf::openDocument(bytes);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    pdf::DocumentEditTest::checkMultiline(doc, rect, *model, false);
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    EXPECT_FALSE(doc.textBox(notes->entries[0].target, {}, layout));
+		    EXPECT_FALSE(doc.updateTextBox(notes->entries[0],
+		                                   u"Replacement\nText", {}, layout));
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_EQ(doc.serialize(1024 * 1024), bytes);
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExplicitLineBoxCancellationKeepsEncryptedSavepoint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto seed =
+		        pdf::openFile(fixturePath("password.pdf"), "sable");
+		    ASSERT_TRUE(seed.document);
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    ASSERT_TRUE(seed.document->addTextBox(
+		        0, {40, 100, 240, 180}, u"First\nSecond", {}, 1, {}, layout));
+		    const auto bytes = seed.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(pdf::openDocument(*bytes).error,
+		              pdf::Error::PasswordRequired);
+		    const auto completed = pdf::openDocument(*bytes, "sable");
+		    ASSERT_TRUE(completed.document);
+		    const auto notes = completed.document->annotations(0);
+		    ASSERT_TRUE(notes && !notes->entries.empty());
+		    int checkpoints = 0;
+		    ASSERT_EQ(completed.document->updateTextBox(
+		                  notes->entries.back(), u"Changed\nSecond",
+		                  [&] {
+			                  ++checkpoints;
+			                  return false;
+		                  },
+		                  layout),
+		              true);
+		    ASSERT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    const auto opened = pdf::openDocument(*bytes, "sable");
+			    ASSERT_TRUE(opened.document);
+			    const auto snapshot = opened.document->annotations(0);
+			    ASSERT_TRUE(snapshot && !snapshot->entries.empty());
+			    int calls = 0;
+			    EXPECT_FALSE(opened.document->updateTextBox(
+			        snapshot->entries.back(), u"Changed\nSecond",
+			        [&] { return ++calls >= stop; }, layout));
+			    EXPECT_EQ(opened.document->annotationRevision(), 1u);
+			    EXPECT_EQ(opened.document->serialize(1024 * 1024), bytes);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ExplicitLineBoxesRefusePagesBeyondTheRenderProofBudget) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = editableNoteBytes(
+		        "/Contents (Keep)", "Text", {}, "/MediaBox [0 0 18000 300]");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const pdf::AnnotationBounds bounds{40, 100, 240, 180};
+		    EXPECT_FALSE(doc.addTextBox(0, bounds, u"First\nSecond", {}, 1, {},
+		                                pdf::TextBoxLayout::ExplicitLines));
+		    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_EQ(doc.addTextBox(0, bounds, u"One line", {}, 1), 1);
 	    })
 	    .get();
 }

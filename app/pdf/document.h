@@ -51,6 +51,7 @@ enum class Error {
 
 using SaveResult = helpers::FileSaveResult;
 enum class TextMarkup { Highlight, Underline, StrikeOut };
+enum class TextBoxLayout { SingleLine, ExplicitLines };
 struct CommentContents {
 	std::u16string text;
 	bool present = false;
@@ -212,27 +213,32 @@ class Document {
 	std::optional<int> addTextNote(int page, float x, float y,
 	                               std::u16string_view contents,
 	                               std::u16string_view author = {});
-	// A printable single-line box with an unused standard-font resource name.
-	std::optional<int> addTextBox(int page, const AnnotationBounds& bounds,
-	                              std::u16string_view contents,
-	                              std::u16string_view author,
-	                              std::uint64_t revision,
-	                              const std::function<bool()>& canceled = {});
-	std::optional<int> addTextBoxAt(int page, double x, double y, int rotation,
-	                                std::u16string_view contents,
-	                                std::u16string_view author,
-	                                std::uint64_t revision,
-	                                const std::function<bool()>& canceled = {});
+	// Explicit lines are opt-in until the editor can preserve line breaks.
+	std::optional<int>
+	addTextBox(int page, const AnnotationBounds& bounds,
+	           std::u16string_view contents, std::u16string_view author,
+	           std::uint64_t revision,
+	           const std::function<bool()>& canceled = {},
+	           TextBoxLayout layout = TextBoxLayout::SingleLine);
+	std::optional<int>
+	addTextBoxAt(int page, double x, double y, int rotation,
+	             std::u16string_view contents, std::u16string_view author,
+	             std::uint64_t revision,
+	             const std::function<bool()>& canceled = {},
+	             TextBoxLayout layout = TextBoxLayout::SingleLine);
 	std::optional<Annotation>
 	textBox(const AnnotationTarget& target,
-	        const std::function<bool()>& canceled = {});
+	        const std::function<bool()>& canceled = {},
+	        TextBoxLayout layout = TextBoxLayout::SingleLine);
 	std::optional<bool>
 	updateTextBox(const Annotation& expected, std::u16string_view contents,
-	              const std::function<bool()>& canceled = {});
+	              const std::function<bool()>& canceled = {},
+	              TextBoxLayout layout = TextBoxLayout::SingleLine);
 	// Resizing keeps the PDF top-left anchor and proves the complete new line.
 	std::optional<bool>
 	updateTextBox(const Annotation& expected, std::u16string_view contents,
-	              TextBoxSize size, const std::function<bool()>& canceled = {});
+	              TextBoxSize size, const std::function<bool()>& canceled = {},
+	              TextBoxLayout layout = TextBoxLayout::SingleLine);
 	// Serialization does not clear this flag or replace the backing bytes.
 	// x/y are displayed-page fractions; rotation is extra clockwise turns.
 	std::optional<int> addTextNoteAt(int page, double x, double y, int rotation,
@@ -344,7 +350,8 @@ class Document {
 	std::optional<bool> writeTextBox(const Annotation& expected,
 	                                 std::u16string_view contents,
 	                                 std::optional<TextBoxSize> size,
-	                                 const std::function<bool()>& canceled);
+	                                 const std::function<bool()>& canceled,
+	                                 TextBoxLayout layout);
 	Document* formDrawingDocument() const;
 	OpenResult reopenFormCopy(std::vector<std::uint8_t> data) const;
 	void drawFormFields(int page, void* bitmap, int x, int y, int width,

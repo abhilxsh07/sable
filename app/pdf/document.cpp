@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document.h"
 #include "note_visibility.h"
+#include "text_box_appearance.h"
 
 #include <cassert>
 #include <algorithm>
@@ -69,6 +70,111 @@ struct AnnotationCloser {
 };
 using AnnotationPtr = std::unique_ptr<fpdf_annotation_t__, AnnotationCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
+
+bool boxText(std::u16string_view text, TextBoxLayout layout) {
+	return !text.empty() && text.size() <= 128 &&
+	       std::all_of(text.begin(), text.end(), [layout](char16_t c) {
+		       return (c >= 32 && c <= 126) ||
+		              (c == u'\n' && layout == TextBoxLayout::ExplicitLines);
+	       });
+}
+
+struct BoxProofRegion {
+	int pageWidth, pageHeight, left, top, width, height, objects;
+};
+
+std::optional<BoxProofRegion> boxProofRegion(FPDF_PAGE page,
+                                             const FS_RECTF& rect) {
+	const auto pageWidth = std::ceil(2. * FPDF_GetPageWidthF(page));
+	const auto pageHeight = std::ceil(2. * FPDF_GetPageHeightF(page));
+	if (!(pageWidth >= 1 && pageWidth <= 32768 && pageHeight >= 1 &&
+	      pageHeight <= 32768)) {
+		return {};
+	}
+	const int w = static_cast<int>(pageWidth), h = static_cast<int>(pageHeight);
+	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	if (!FPDF_PageToDevice(page, 0, 0, w, h, 0, rect.left, rect.top, &x0,
+	                       &y0) ||
+	    !FPDF_PageToDevice(page, 0, 0, w, h, 0, rect.right, rect.bottom, &x1,
+	                       &y1) ||
+	    (std::min)(x0, x1) < -1 || (std::min)(y0, y1) < -1 ||
+	    (std::max)(x0, x1) > w + 1 || (std::max)(y0, y1) > h + 1) {
+		return {};
+	}
+	const int width = std::abs(x1 - x0) + 4, height = std::abs(y1 - y0) + 4;
+	const int left = (std::min)(x0, x1) - 2, top = (std::min)(y0, y1) - 2;
+	const int objects = FPDFPage_CountObjects(page);
+	if (static_cast<long long>(width) * height > 4 * 1024 * 1024 ||
+	    objects < 0 || objects > 4096) {
+		return {};
+	}
+	return BoxProofRegion{w, h, left, top, width, height, objects};
+}
+
+// i compare the old stream's actual drawing on a throwaway page. its
+// appearance dictionary can affect placement even when the bytes match.
+bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
+                         const MultilineBoxAppearance& model,
+                         const std::function<bool()>& stopped) {
+	const auto region = boxProofRegion(page, rect);
+	const int annotations = FPDFPage_GetAnnotCount(page);
+	if (!region || index < 0 || index >= annotations || annotations > 4096) {
+		return false;
+	}
+	const auto [w, h, left, top, width, height, objects] = *region;
+	for (int i = objects - 1; i >= 0; --i) {
+		const auto object = FPDFPage_GetObject(page, i);
+		if (stopped() || !object || !FPDFPage_RemoveObject(page, object)) {
+			return false;
+		}
+		FPDFPageObj_Destroy(object);
+	}
+	for (int i = annotations - 1; i >= 0; --i) {
+		if (stopped() || (i != index && !FPDFPage_RemoveAnnot(page, i))) {
+			return false;
+		}
+	}
+	const auto render = [&] {
+		BitmapPtr bitmap(FPDFBitmap_Create(width, height, 1));
+		if (bitmap && !stopped()) {
+			FPDFBitmap_FillRect(bitmap.get(), 0, 0, width, height, 0xFFFFFFFF);
+			FPDF_RenderPageBitmap(bitmap.get(), page, -left, -top, w, h, 0,
+			                      FPDF_ANNOT);
+		}
+		return bitmap;
+	};
+	const auto before = render();
+	AnnotationPtr note(FPDFPage_GetAnnot(page, 0));
+	if (!before || stopped() ||
+	    !FPDFAnnot_SetAP(
+	        note.get(), 0,
+	        reinterpret_cast<FPDF_WIDESTRING>(model.stream.c_str()))) {
+		return false;
+	}
+	note.reset();
+	const auto after = render();
+	if (!after || stopped()) {
+		return false;
+	}
+	const auto* a =
+	    static_cast<const std::uint8_t*>(FPDFBitmap_GetBuffer(before.get()));
+	const auto* b =
+	    static_cast<const std::uint8_t*>(FPDFBitmap_GetBuffer(after.get()));
+	const auto stride = FPDFBitmap_GetStride(before.get());
+	if (!a || !b || stride != FPDFBitmap_GetStride(after.get())) {
+		return false;
+	}
+	bool ink = false;
+	for (int y = 0; y < height; ++y) {
+		const auto* row = b + y * stride;
+		if (stopped() || std::memcmp(a + y * stride, row, width * 4u)) {
+			return false;
+		}
+		ink = ink ||
+		      std::any_of(row, row + width * 4, [](auto c) { return c < 255; });
+	}
+	return ink;
+}
 
 // i only inspect this page; callbacks cannot run actions or start timers.
 struct FormContext : FPDF_FORMFILLINFO {
@@ -1362,18 +1468,14 @@ std::optional<bool> Document::updateFormField(
 	return true;
 }
 
-std::optional<int> Document::addTextBox(int index,
-                                        const AnnotationBounds& bounds,
-                                        std::u16string_view contents,
-                                        std::u16string_view author,
-                                        std::uint64_t revision,
-                                        const std::function<bool()>& canceled) {
+std::optional<int> Document::addTextBox(
+    int index, const AnnotationBounds& bounds, std::u16string_view contents,
+    std::u16string_view author, std::uint64_t revision,
+    const std::function<bool()>& canceled, TextBoxLayout layout) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	if (offThread() || !revision || !currentRevision(revision) || index < 0 ||
 	    index >= pageCount() || !canAnnotate() || stopped() ||
-	    contents.empty() || contents.size() > 128 || !validNoteText(author) ||
-	    std::any_of(contents.begin(), contents.end(),
-	                [](char16_t c) { return c < 32 || c > 126; }) ||
+	    !boxText(contents, layout) || !validNoteText(author) ||
 	    !std::isfinite(bounds.left) || !std::isfinite(bounds.bottom) ||
 	    !std::isfinite(bounds.right) || !std::isfinite(bounds.top) ||
 	    bounds.right <= bounds.left || bounds.top <= bounds.bottom ||
@@ -1435,6 +1537,8 @@ std::optional<int> Document::addTextBox(int index,
 		return {};
 	}
 	int added = -1;
+	const FS_RECTF rect{bounds.left, bounds.top, bounds.right, bounds.bottom};
+	std::optional<MultilineBoxAppearance> lines;
 	const std::u16string text(contents), name(author);
 	{
 		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, index));
@@ -1446,6 +1550,16 @@ std::optional<int> Document::addTextBox(int index,
 		    bounds.right > box.right || bounds.top > box.top) {
 			return {};
 		}
+		if (contents.find(u'\n') != std::u16string_view::npos) {
+			if (!boxProofRegion(page.get(), rect)) {
+				return {};
+			}
+			lines = multilineBoxAppearance(scratch.document->m_handle, rect,
+			                               contents);
+			if (!lines || stopped()) {
+				return {};
+			}
+		}
 		added = FPDFPage_GetAnnotCount(page.get());
 		if (added < 0 || added >= 4096 || (*expected)[index] != added) {
 			return {};
@@ -1453,8 +1567,6 @@ std::optional<int> Document::addTextBox(int index,
 		++(*expected)[index];
 		AnnotationPtr note(
 		    FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_FREETEXT));
-		const FS_RECTF rect{bounds.left, bounds.top, bounds.right,
-		                    bounds.bottom};
 		// @todo: expose the text-box font size with the native editor.
 		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetStringValue(
@@ -1488,6 +1600,17 @@ std::optional<int> Document::addTextBox(int index,
 	if (stopped()) {
 		return {};
 	}
+	if (lines) {
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, index));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), added)
+		                        : nullptr);
+		if (!note || !FPDFAnnot_HasKey(note.get(), "AP") ||
+		    !FPDFAnnot_SetAP(
+		        note.get(), 0,
+		        reinterpret_cast<FPDF_WIDESTRING>(lines->stream.c_str()))) {
+			return {};
+		}
+	}
 	std::u16string literal = u"(";
 	for (auto c : text) {
 		if (c == u'(' || c == u')' || c == u'\\') {
@@ -1507,6 +1630,10 @@ std::optional<int> Document::addTextBox(int index,
 		    rect.bottom != bounds.bottom || rect.right != bounds.right ||
 		    rect.top != bounds.top || !FPDFAnnot_HasKey(note.get(), "AP")) {
 			return false;
+		}
+		if (lines) {
+			return matchesMultilineBoxAppearance(note.get(), rect, *lines) &&
+			       !stopped();
 		}
 		const auto size = FPDFAnnot_GetAP(note.get(), 0, nullptr, 0);
 		if (size < 2 || size > 65536 || size % 2) {
@@ -1588,7 +1715,7 @@ std::optional<int> Document::addTextBox(int index,
 
 std::optional<Annotation>
 Document::textBox(const AnnotationTarget& target,
-                  const std::function<bool()>& canceled) {
+                  const std::function<bool()>& canceled, TextBoxLayout layout) {
 	if (offThread() || target.subtype != "FreeText" || !matchesTarget(target)) {
 		return {};
 	}
@@ -1600,43 +1727,44 @@ Document::textBox(const AnnotationTarget& target,
 		if (note.target == target) {
 			const std::u16string text(note.contents.begin(),
 			                          note.contents.end());
-			const auto result = updateTextBox(note, text, canceled);
+			const auto result = updateTextBox(note, text, canceled, layout);
 			return result && !*result ? std::optional{note} : std::nullopt;
 		}
 	}
 	return {};
 }
 
-std::optional<bool>
-Document::updateTextBox(const Annotation& expected,
-                        std::u16string_view contents,
-                        const std::function<bool()>& canceled) {
-	return writeTextBox(expected, contents, {}, canceled);
+std::optional<bool> Document::updateTextBox(
+    const Annotation& expected, std::u16string_view contents,
+    const std::function<bool()>& canceled, TextBoxLayout layout) {
+	return writeTextBox(expected, contents, {}, canceled, layout);
 }
 
-std::optional<bool>
-Document::updateTextBox(const Annotation& expected,
-                        std::u16string_view contents, TextBoxSize size,
-                        const std::function<bool()>& canceled) {
-	return writeTextBox(expected, contents, size, canceled);
+std::optional<bool> Document::updateTextBox(
+    const Annotation& expected, std::u16string_view contents, TextBoxSize size,
+    const std::function<bool()>& canceled, TextBoxLayout layout) {
+	return writeTextBox(expected, contents, size, canceled, layout);
 }
 
 std::optional<bool>
 Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
                        std::optional<TextBoxSize> size,
-                       const std::function<bool()>& canceled) {
+                       const std::function<bool()>& canceled,
+                       TextBoxLayout layout) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& target = expected.target;
-	const auto plain = [](auto text) {
-		return !text.empty() && text.size() <= 128 &&
-		       std::all_of(text.begin(), text.end(),
-		                   [](auto c) { return c >= 32 && c <= 126; });
-	};
+	if (expected.contents.size() > 128) {
+		return {};
+	}
+	const std::u16string previous(expected.contents.begin(),
+	                              expected.contents.end());
+	const bool oldLines = previous.find(u'\n') != std::u16string::npos;
+	const bool newLines = contents.find(u'\n') != std::u16string_view::npos;
 	if (offThread() || stopped() ||
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    !canAnnotate() || !expected.bounds || target.subtype != "FreeText" ||
 	    expected.subtype != target.subtype || expected.index != target.index ||
-	    !plain(contents) || !plain(expected.contents) ||
+	    !boxText(contents, layout) || !boxText(previous, layout) ||
 	    !matchesTarget(target) || !canSerializeEdits(canceled) ||
 	    !provenUnique(target.page, target.index)) {
 		return {};
@@ -1737,14 +1865,34 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	if (!bytes || stopped()) {
 		return {};
 	}
+	if (oldLines) {
+		auto isolated = reopenFormCopy(*bytes);
+		if (!isolated.document || stopped()) {
+			return {};
+		}
+		const auto handle = isolated.document->m_handle;
+		const FS_RECTF rect{bounds.left, bounds.top, bounds.right,
+		                    bounds.bottom};
+		const auto model = multilineBoxAppearance(handle, rect, previous);
+		PagePtr page(FPDF_LoadPage(handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		if (!note || !model ||
+		    !matchesMultilineBoxAppearance(note.get(), rect, *model)) {
+			return {};
+		}
+		note.reset();
+		if (!matchesBoxRendering(page.get(), target.index, rect, *model,
+		                         stopped)) {
+			return {};
+		}
+	}
 	auto scratch = reopenFormCopy(std::move(*bytes));
 	if (!scratch.document) {
 		return {};
 	}
-	const std::u16string previous(expected.contents.begin(),
-	                              expected.contents.end());
 	const auto reference = scratch.document->addTextBox(
-	    target.page, bounds, previous, author, 1, canceled);
+	    target.page, bounds, previous, author, 1, canceled, layout);
 	if (!reference || stopped()) {
 		return {};
 	}
@@ -1837,8 +1985,9 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
 		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index)),
 		    model(FPDFPage_GetAnnot(page.get(), *reference));
-		if (!equivalent(scratch.document->m_handle, page.get(), note.get(),
-		                model.get(), true)) {
+		if (stopped() ||
+		    (!oldLines && !equivalent(scratch.document->m_handle, page.get(),
+		                              note.get(), model.get(), true))) {
 			return {};
 		}
 		if (contents == previous && sameBounds) {
@@ -1854,8 +2003,17 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	scratch.document->m_modified = true;
 	const auto created = scratch.document->addTextBox(
 	    target.page, destination, contents, author,
-	    scratch.document->annotationRevision(), canceled);
+	    scratch.document->annotationRevision(), canceled, layout);
 	if (!created || stopped()) {
+		return {};
+	}
+	const FS_RECTF rect{destination.left, destination.top, destination.right,
+	                    destination.bottom};
+	const auto lines =
+	    newLines
+	        ? multilineBoxAppearance(scratch.document->m_handle, rect, contents)
+	        : std::optional<MultilineBoxAppearance>{};
+	if (newLines && !lines) {
 		return {};
 	}
 	std::u16string appearance;
@@ -1865,8 +2023,6 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 		    model(FPDFPage_GetAnnot(page.get(), *created));
 		const auto da = read(model.get(), "DA");
 		const std::u16string replacement(contents);
-		const FS_RECTF rect{destination.left, destination.top,
-		                    destination.right, destination.bottom};
 		if (!da || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetStringValue(
 		        note.get(), "Contents",
@@ -1874,7 +2030,10 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 		    !FPDFAnnot_SetStringValue(
 		        note.get(), "DA",
 		        reinterpret_cast<FPDF_WIDESTRING>(da->c_str())) ||
-		    !FPDFAnnot_SetAP(note.get(), 0, nullptr)) {
+		    !FPDFAnnot_SetAP(
+		        note.get(), 0,
+		        lines ? reinterpret_cast<FPDF_WIDESTRING>(lines->stream.c_str())
+		              : nullptr)) {
 			return {};
 		}
 		note.reset();
@@ -1891,11 +2050,16 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 		                      FPDF_ANNOT);
 		note.reset(FPDFPage_GetAnnot(rendered.get(), target.index));
 		model.reset(FPDFPage_GetAnnot(rendered.get(), *created));
-		if (!equivalent(scratch.document->m_handle, rendered.get(), note.get(),
-		                model.get(), false)) {
+		if (lines
+		        ? !matchesMultilineBoxAppearance(note.get(), rect, *lines) ||
+		              !matchesMultilineBoxAppearance(model.get(), rect, *lines)
+		        : !equivalent(scratch.document->m_handle, rendered.get(),
+		                      note.get(), model.get(), false)) {
 			return {};
 		}
-		appearance = *read(note.get(), nullptr, 0);
+		if (!lines) {
+			appearance = *read(note.get(), nullptr, 0);
+		}
 		model.reset();
 		note.reset();
 		if (!FPDFPage_RemoveAnnot(rendered.get(), *created)) {
@@ -1935,7 +2099,8 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	{
 		PagePtr page(FPDF_LoadPage(next.document->m_handle, target.page));
 		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index));
-		if (read(note.get(), nullptr, 0) != appearance) {
+		if (lines ? !matchesMultilineBoxAppearance(note.get(), rect, *lines)
+		          : read(note.get(), nullptr, 0) != appearance) {
 			return {};
 		}
 	}
@@ -1957,11 +2122,10 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	return true;
 }
 
-std::optional<int>
-Document::addTextBoxAt(int index, double x, double y, int rotation,
-                       std::u16string_view contents, std::u16string_view author,
-                       std::uint64_t revision,
-                       const std::function<bool()>& canceled) {
+std::optional<int> Document::addTextBoxAt(
+    int index, double x, double y, int rotation, std::u16string_view contents,
+    std::u16string_view author, std::uint64_t revision,
+    const std::function<bool()>& canceled, TextBoxLayout layout) {
 	if (offThread() || index < 0 || index >= pageCount() || !std::isfinite(x) ||
 	    !std::isfinite(y) || x < 0 || x > 1 || y < 0 || y > 1 || rotation < 0 ||
 	    rotation > 3 || (canceled && canceled())) {
@@ -1992,7 +2156,8 @@ Document::addTextBoxAt(int index, double x, double y, int rotation,
 	    static_cast<float>(left), static_cast<float>(bottom),
 	    static_cast<float>(left + width), static_cast<float>(bottom + height)};
 	page.reset();
-	return addTextBox(index, bounds, contents, author, revision, canceled);
+	return addTextBox(index, bounds, contents, author, revision, canceled,
+	                  layout);
 }
 
 std::optional<int> Document::addTextNote(int index, float x, float y,
