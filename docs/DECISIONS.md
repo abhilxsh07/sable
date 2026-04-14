@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Multiline text boxes in Comments (2026-11-03)
+
+Enter adds a line in the shared text-box editor. I turn CR and CRLF into
+LF before queueing a draft, and count the normalized text against the
+128-character limit. The editor can wrap long text for display. The PDF
+keeps the actual breaks and refuses a line that is too wide. I keep the
+draft in the dialog so it can be shortened or the existing box resized.
+
+New boxes start with the same placement and size. The edit dialog can
+grow a box for more lines if the page has room. The existing snapshot
+proofs still decide whether a saved box can be edited.
+
 ## Isolated writes for explicit text-box lines (2026-11-03)
 
 I opt into explicit lines at the engine boundary. Creation, replacement

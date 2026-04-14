@@ -150,8 +150,9 @@ ViewerPage::editTextBox(NoteTarget target,
 		TextBlock location;
 		location.Text(
 		    L"Page " + to_hstring(target.page + 1) +
-		    L" \u00b7 One line, up to 128 characters. Use English letters, "
-		    L"numbers, spaces and standard punctuation.");
+		    L" \u00b7 Up to 8 lines and 128 characters. Use English letters, "
+		    L"numbers, spaces and standard punctuation. Press Enter for a "
+		    L"new line. The text must fit inside the box.");
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
 		TextBox author;
@@ -162,7 +163,10 @@ ViewerPage::editTextBox(NoteTarget target,
 		fields.Children().Append(author);
 		TextBox contents;
 		contents.Header(box_value(L"Text"));
-		contents.MaxLength(128);
+		contents.AcceptsReturn(true);
+		contents.TextWrapping(TextWrapping::Wrap);
+		contents.MinHeight(100);
+		contents.MaxHeight(180);
 		contents.MinWidth(280);
 		contents.Text(existing ? to_hstring(existing->contents)
 		                       : m_textBoxDraft);
@@ -312,6 +316,26 @@ ViewerPage::editTextBox(NoteTarget target,
 				}
 				size = pdf::TextBoxSize{*parsedWidth, *parsedHeight};
 			}
+			const auto value = field.Text();
+			std::u16string replacement;
+			replacement.reserve((std::min)(value.size(), 128u));
+			for (hstring::size_type i = 0; i < value.size(); ++i) {
+				if (replacement.size() == 128) {
+					if (const auto label = failure.get()) {
+						label.Text(L"Use up to 128 characters, including "
+						           L"line breaks. Your draft is still here.");
+					}
+					return;
+				}
+				if (value[i] == L'\r') {
+					replacement.push_back(u'\n');
+					if (i + 1 < value.size() && value[i + 1] == L'\n') {
+						++i;
+					}
+				} else {
+					replacement.push_back(static_cast<char16_t>(value[i]));
+				}
+			}
 			self->m_noteBusy = true;
 			view.IsPrimaryButtonEnabled(false);
 			field.IsReadOnly(true);
@@ -327,7 +351,7 @@ ViewerPage::editTextBox(NoteTarget target,
 				                    : L"Adding text box\u2026");
 			}
 			try {
-				const auto value = field.Text(), by = name.Text();
+				const auto by = name.Text();
 				const auto completed =
 				    [weak, session, prompt, text, recover,
 				     editing = existing.has_value(),
@@ -360,9 +384,7 @@ ViewerPage::editTextBox(NoteTarget target,
 								            L"The PDF may restrict "
 								            L"this change, or the text may "
 								            L"not fit inside the page or box. "
-								            L"Use one line of "
-								            L"English letters, numbers and "
-								            L"standard punctuation. "
+								            L"Check the text and box size. "
 								            L"Your draft is still here.");
 							    }
 						    } catch (...) {
@@ -372,15 +394,16 @@ ViewerPage::editTextBox(NoteTarget target,
 						    }
 					    });
 				    };
-				const std::u16string replacement(value.begin(), value.end());
+				constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
 				const bool queued =
-				    existing
-				        ? session->updateTextBox(*existing, replacement, *size,
-				                                 completed)
-				        : session->addTextBoxAt(
-				              target.page, target.x, target.y, target.rotation,
-				              replacement, std::u16string(by.begin(), by.end()),
-				              revision, completed);
+				    existing ? session->updateTextBox(*existing,
+				                                      std::move(replacement),
+				                                      *size, completed, layout)
+				             : session->addTextBoxAt(
+				                   target.page, target.x, target.y,
+				                   target.rotation, std::move(replacement),
+				                   std::u16string(by.begin(), by.end()),
+				                   revision, completed, layout);
 				if (queued) {
 					self->showComments();
 					return;

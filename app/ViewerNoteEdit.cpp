@@ -79,7 +79,8 @@ void ViewerPage::beginNoteEdit() {
 						            L"belong to a protected PDF.");
 					        }
 				        });
-			    });
+			    },
+			    pdf::TextBoxLayout::ExplicitLines);
 			if (queued) {
 				showComments();
 				return;
