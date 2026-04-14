@@ -185,11 +185,13 @@ class Session {
 	                 std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,
 	                std::u16string author, std::uint64_t revision,
-	                std::function<void(NoteResult)> callback);
+	                std::function<void(NoteResult)> callback,
+	                TextBoxLayout layout = TextBoxLayout::SingleLine);
 	bool addTextBoxAt(int page, double x, double y, int rotation,
 	                  std::u16string contents, std::u16string author,
 	                  std::uint64_t revision,
-	                  std::function<void(NoteResult)> callback);
+	                  std::function<void(NoteResult)> callback,
+	                  TextBoxLayout layout = TextBoxLayout::SingleLine);
 	bool addCenteredTextNote(int page, std::u16string contents,
 	                         std::u16string author,
 	                         std::function<void(NoteResult)> callback);
@@ -204,12 +206,15 @@ class Session {
 	// Box reads have their own generation; cancelAnnotations also cancels them.
 	// Writes own the proved snapshot and only close can cancel a pending edit.
 	bool textBox(AnnotationTarget target,
-	             std::function<void(TextBoxResult)> callback);
+	             std::function<void(TextBoxResult)> callback,
+	             TextBoxLayout layout = TextBoxLayout::SingleLine);
 	bool updateTextBox(Annotation expected, std::u16string contents,
-	                   std::function<void(NoteResult)> callback);
+	                   std::function<void(NoteResult)> callback,
+	                   TextBoxLayout layout = TextBoxLayout::SingleLine);
 	bool updateTextBox(Annotation expected, std::u16string contents,
 	                   TextBoxSize size,
-	                   std::function<void(NoteResult)> callback);
+	                   std::function<void(NoteResult)> callback,
+	                   TextBoxLayout layout = TextBoxLayout::SingleLine);
 	bool textNote(int page, int index,
 	              std::function<void(TextNoteResult)> callback,
 	              std::uint64_t revision = 0);
@@ -267,13 +272,13 @@ class Session {
   private:
 	bool changeTextBox(Annotation expected, std::u16string contents,
 	                   std::optional<TextBoxSize> size,
-	                   std::function<void(NoteResult)> callback);
-	bool writeTextBox(int page, AnnotationBounds bounds,
-	                  std::u16string contents, std::u16string author,
-	                  std::uint64_t revision,
-	                  std::function<void(NoteResult)> callback,
-	                  std::optional<AnnotationPoint> point = {},
-	                  int rotation = 0);
+	                   std::function<void(NoteResult)> callback,
+	                   TextBoxLayout layout);
+	bool
+	writeTextBox(int page, AnnotationBounds bounds, std::u16string contents,
+	             std::u16string author, std::uint64_t revision,
+	             std::function<void(NoteResult)> callback, TextBoxLayout layout,
+	             std::optional<AnnotationPoint> point = {}, int rotation = 0);
 	bool writeFormField(int page, int index, std::u16string expected,
 	                    std::u16string contents, std::uint64_t revision,
 	                    std::optional<bool> checked,

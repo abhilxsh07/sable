@@ -4174,6 +4174,82 @@ TEST_F(SessionTest, BoxSizesOwnQueuedDimensionsAndPreserveSavedNeighbors) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, ExplicitBoxLinesStayOwnedAndSurviveSave) {
+	constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+	const auto source = textBoxSource();
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	std::u16string draft = u"First\n\nThird";
+	Reply<pdf::NoteResult> created;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.addTextBoxAt(0, .5, .5, 0, draft, u"Writer", 1,
+		                                 created.callback(), layout));
+		draft.clear();
+	}
+	const auto added = created.wait();
+	ASSERT_TRUE(added && added->index && added->changed && !added->canceled);
+	const pdf::AnnotationTarget target{0, *added->index, "FreeText", 2};
+	Reply<pdf::TextBoxResult> read, legacy;
+	ASSERT_TRUE(session.textBox(target, legacy.callback()));
+	const auto unsupported = legacy.wait();
+	ASSERT_TRUE(unsupported && !unsupported->box && !unsupported->canceled);
+	ASSERT_TRUE(session.textBox(target, read.callback(), layout));
+	const auto current = read.wait();
+	ASSERT_TRUE(current && current->box && !current->canceled);
+	EXPECT_EQ(current->box->contents, "First\n\nThird");
+	EXPECT_EQ(current->box->author, "Writer");
+
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 2);
+	Reply<pdf::NoteResult> noop, overflow, updated, stale;
+	ASSERT_TRUE(session.updateTextBox(*current->box, u"First\n\nThird",
+	                                  noop.callback(), layout));
+	const auto same = noop.wait();
+	ASSERT_TRUE(same && same->index && !same->changed && !same->canceled);
+	ASSERT_TRUE(session.updateTextBox(*current->box, u"One\nTwo\nThree\nFour",
+	                                  overflow.callback(), layout));
+	const auto refused = overflow.wait();
+	ASSERT_TRUE(refused && !refused->index && !refused->canceled);
+	EXPECT_EQ(readForms(session), cached);
+	draft = u"One\nTwo\nThree\nFour";
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.updateTextBox(*current->box, draft,
+		                                  pdf::TextBoxSize{200, 75},
+		                                  updated.callback(), layout));
+		ASSERT_TRUE(session.updateTextBox(*current->box, u"Stale\nDraft",
+		                                  stale.callback(), layout));
+		draft.clear();
+	}
+	const auto changed = updated.wait(), missed = stale.wait();
+	ASSERT_TRUE(changed && changed->index && changed->changed);
+	ASSERT_TRUE(missed && !missed->index && !missed->canceled);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 3);
+
+	const auto destination = tempDir() / "explicit lines.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::TextBoxResult> reopenedBox;
+	ASSERT_TRUE(reopened.textBox({0, *added->index, "FreeText", 1},
+	                             reopenedBox.callback(), layout));
+	const auto kept = reopenedBox.wait();
+	ASSERT_TRUE(kept && kept->box && kept->box->bounds);
+	EXPECT_EQ(kept->box->contents, "One\nTwo\nThree\nFour");
+	EXPECT_EQ(kept->box->author, "Writer");
+	EXPECT_FLOAT_EQ(kept->box->bounds->top - kept->box->bounds->bottom, 75);
+	const auto neighbor = readBox(reopened);
+	ASSERT_TRUE(neighbor);
+	EXPECT_EQ(neighbor->contents, "Original");
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, QueuedBoxSizeRefusalsKeepCacheAndRevision) {
 	pdf::Session session(engine), cold(engine);
 	ASSERT_EQ(open(session, textBoxSource()).error, pdf::Error::None);
