@@ -2,6 +2,20 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Multiline text boxes in Acrobat (3 November 2026)
+
+I open the same Windows picker copy from the Sable check below. Acrobat
+shows all three boxes with no comment selected. The multiline box keeps
+the blank second row and the complete fourth row. Comments shows all the
+text and both neighboring entries.
+
+Print with Document and Markups shows all three boxes at the starting
+scale and at 198% with Fit. The blank row and fourth line are visible in
+the enlarged preview. I restore the sizing setting and cancel the dialog.
+The Font Capture application error recurs on open. Page, Comments and
+print preview work after dismissing it. The input and copy hashes match
+the Sable checkpoint.
+
 ## Multiline text boxes in Sable (3 November 2026)
 
 I place a 200 by 60 point text box above two existing boxes. Two Enter
