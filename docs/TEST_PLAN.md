@@ -2,6 +2,24 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Multiline text boxes in Sable (3 November 2026)
+
+I place a 200 by 60 point text box above two existing boxes. Two Enter
+presses between the first and third lines leave a blank row on the page.
+Edit refuses a height of 30 points and keeps the draft. At 550 by 413,
+scrolling reveals the retained height and refusal, with both actions in
+reach. Escape cancels and opening Edit again shows the original height.
+
+I add a fourth row and grow the height to 72 points. The top-left anchor
+and both neighbors stay in place. The Windows picker saves a new copy.
+A fresh reader displays all three boxes and Edit restores the four rows,
+including the blank one. Unchanged Apply leaves Save disabled. The Comments
+list preview caps the contents at three lines. Page and Edit show all rows.
+
+Evidence is in `D:\NightPdf\verify-textbox-multiline-20261103-917d9bb`.
+The input hash matches the original fixture. The saved copy has SHA-256
+`019c2a2fcc1a7e8e4433de2d7518d525de454dc79b2ac2b36fb2d60060629b15`.
+
 ## Narrow text-box editor (3 November 2026)
 
 At 550 by 413 the dialog clipped the size inputs and wheel input did not
