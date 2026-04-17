@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
 
+#include "document.h"
+
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
 
@@ -48,11 +50,9 @@ struct MultilineBoxAppearance {
 inline std::optional<MultilineBoxAppearance>
 multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
                        std::u16string_view contents) {
-	if (contents.empty() || contents.size() > 128 ||
-	    contents.find(u'\n') == std::u16string_view::npos ||
-	    std::any_of(contents.begin(), contents.end(), [](char16_t c) {
-		    return c != u'\n' && (c < 32 || c > 126);
-	    })) {
+	if (contents.find(u'\n') == std::u16string_view::npos ||
+	    validateTextBoxText(contents, TextBoxLayout::ExplicitLines) !=
+	        TextBoxTextError::None) {
 		return {};
 	}
 	for (float edge : {rect.left, rect.bottom, rect.right, rect.top}) {
@@ -62,7 +62,7 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 	}
 	const int lines = 1 + static_cast<int>(std::count(contents.begin(),
 	                                                  contents.end(), u'\n'));
-	if (lines > 8 || rect.right - rect.left <= 4 ||
+	if (rect.right - rect.left <= 4 ||
 	    rect.top - rect.bottom < 17 + 15 * (lines - 1)) {
 		return {};
 	}

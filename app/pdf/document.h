@@ -52,6 +52,11 @@ enum class Error {
 using SaveResult = helpers::FileSaveResult;
 enum class TextMarkup { Highlight, Underline, StrikeOut };
 enum class TextBoxLayout { SingleLine, ExplicitLines };
+enum class TextBoxTextError { None, Blank, Length, Lines, Characters };
+inline constexpr unsigned textBoxMaxCharacters = 128;
+inline constexpr int textBoxMaxLines = 8;
+TextBoxTextError validateTextBoxText(std::u16string_view text,
+                                     TextBoxLayout layout);
 struct CommentContents {
 	std::u16string text;
 	bool present = false;

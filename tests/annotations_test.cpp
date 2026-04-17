@@ -2933,6 +2933,32 @@ TEST(Annotations, MultilineBoxPathsRefuseWrappingAndVerticalOverflow) {
 	    .get();
 }
 
+TEST(Annotations, ExplicitBoxRowLimitKeepsOriginalBytesOnRefusal) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    const pdf::AnnotationBounds bounds{40, 40, 240, 230};
+		    const auto revision = doc.annotationRevision();
+		    const auto original = doc.serialize(1024 * 1024);
+		    ASSERT_TRUE(original);
+		    for (const auto* text :
+		         {u" \n ", u"First\r\nSecond", u"First\ncaf\u00e9",
+		          u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
+			    EXPECT_FALSE(
+			        doc.addTextBox(0, bounds, text, {}, revision, {}, layout));
+			    EXPECT_EQ(doc.annotationRevision(), revision);
+			    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+		    }
+		    ASSERT_TRUE(doc.addTextBox(0, bounds, u"1\n2\n3\n4\n5\n6\n7\n8", {},
+		                               revision, {}, layout));
+	    })
+	    .get();
+}
+
 TEST(Annotations, ExplicitLineBoxesEditResizeAndReopenOnCroppedPage) {
 	pdf::Engine engine;
 	engine

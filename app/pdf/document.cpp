@@ -47,6 +47,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "engine.h"
 
 namespace pdf {
+
+TextBoxTextError validateTextBoxText(std::u16string_view text,
+                                     TextBoxLayout layout) {
+	if (text.empty()) {
+		return TextBoxTextError::Blank;
+	}
+	if (text.size() > textBoxMaxCharacters) {
+		return TextBoxTextError::Length;
+	}
+	int lines = 1;
+	bool painted = false;
+	for (const auto c : text) {
+		if (c == u'\n' && layout == TextBoxLayout::ExplicitLines) {
+			++lines;
+		} else if (c < 32 || c > 126) {
+			return TextBoxTextError::Characters;
+		} else if (c != u' ') {
+			painted = true;
+		}
+	}
+	if (lines > textBoxMaxLines) {
+		return TextBoxTextError::Lines;
+	}
+	// i keep the old single-line writer's space handling.
+	return lines > 1 && !painted ? TextBoxTextError::Blank
+	                             : TextBoxTextError::None;
+}
+
 namespace {
 // the biggest bitmap render() makes: 16384 on a side, 256 MB in all
 constexpr int MAX_SIDE = 16384;
@@ -70,14 +98,6 @@ struct AnnotationCloser {
 };
 using AnnotationPtr = std::unique_ptr<fpdf_annotation_t__, AnnotationCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
-
-bool boxText(std::u16string_view text, TextBoxLayout layout) {
-	return !text.empty() && text.size() <= 128 &&
-	       std::all_of(text.begin(), text.end(), [layout](char16_t c) {
-		       return (c >= 32 && c <= 126) ||
-		              (c == u'\n' && layout == TextBoxLayout::ExplicitLines);
-	       });
-}
 
 struct BoxProofRegion {
 	int pageWidth, pageHeight, left, top, width, height, objects;
@@ -1475,10 +1495,11 @@ std::optional<int> Document::addTextBox(
 	const auto stopped = [&] { return canceled && canceled(); };
 	if (offThread() || !revision || !currentRevision(revision) || index < 0 ||
 	    index >= pageCount() || !canAnnotate() || stopped() ||
-	    !boxText(contents, layout) || !validNoteText(author) ||
-	    !std::isfinite(bounds.left) || !std::isfinite(bounds.bottom) ||
-	    !std::isfinite(bounds.right) || !std::isfinite(bounds.top) ||
-	    bounds.right <= bounds.left || bounds.top <= bounds.bottom ||
+	    validateTextBoxText(contents, layout) != TextBoxTextError::None ||
+	    !validNoteText(author) || !std::isfinite(bounds.left) ||
+	    !std::isfinite(bounds.bottom) || !std::isfinite(bounds.right) ||
+	    !std::isfinite(bounds.top) || bounds.right <= bounds.left ||
+	    bounds.top <= bounds.bottom ||
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
 	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
@@ -1753,7 +1774,7 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
                        TextBoxLayout layout) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& target = expected.target;
-	if (expected.contents.size() > 128) {
+	if (expected.contents.size() > textBoxMaxCharacters) {
 		return {};
 	}
 	const std::u16string previous(expected.contents.begin(),
@@ -1764,7 +1785,8 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    !canAnnotate() || !expected.bounds || target.subtype != "FreeText" ||
 	    expected.subtype != target.subtype || expected.index != target.index ||
-	    !boxText(contents, layout) || !boxText(previous, layout) ||
+	    validateTextBoxText(contents, layout) != TextBoxTextError::None ||
+	    validateTextBoxText(previous, layout) != TextBoxTextError::None ||
 	    !matchesTarget(target) || !canSerializeEdits(canceled) ||
 	    !provenUnique(target.page, target.index)) {
 		return {};
