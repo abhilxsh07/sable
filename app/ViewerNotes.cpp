@@ -318,15 +318,13 @@ ViewerPage::editTextBox(NoteTarget target,
 			}
 			const auto value = field.Text();
 			std::u16string replacement;
-			replacement.reserve((std::min)(value.size(), 128u));
-			for (hstring::size_type i = 0; i < value.size(); ++i) {
-				if (replacement.size() == 128) {
-					if (const auto label = failure.get()) {
-						label.Text(L"Use up to 128 characters, including "
-						           L"line breaks. Your draft is still here.");
-					}
-					return;
-				}
+			constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+			replacement.reserve(
+			    (std::min)(value.size(), pdf::textBoxMaxCharacters + 1));
+			for (hstring::size_type i = 0;
+			     i < value.size() &&
+			     replacement.size() <= pdf::textBoxMaxCharacters;
+			     ++i) {
 				if (value[i] == L'\r') {
 					replacement.push_back(u'\n');
 					if (i + 1 < value.size() && value[i + 1] == L'\n') {
@@ -335,6 +333,31 @@ ViewerPage::editTextBox(NoteTarget target,
 				} else {
 					replacement.push_back(static_cast<char16_t>(value[i]));
 				}
+			}
+			const wchar_t* problem = nullptr;
+			switch (pdf::validateTextBoxText(replacement, layout)) {
+			case pdf::TextBoxTextError::None:
+				break;
+			case pdf::TextBoxTextError::Blank:
+				problem = L"Enter text on at least one line.";
+				break;
+			case pdf::TextBoxTextError::Length:
+				problem = L"Use up to 128 characters, including line breaks.";
+				break;
+			case pdf::TextBoxTextError::Lines:
+				problem = L"Use up to 8 lines, including blank lines.";
+				break;
+			case pdf::TextBoxTextError::Characters:
+				problem = L"Use English letters, numbers, spaces and standard "
+				          L"punctuation.";
+				break;
+			}
+			if (problem) {
+				if (const auto label = failure.get()) {
+					label.Text(hstring(problem) +
+					           L" Your draft is still here.");
+				}
+				return;
 			}
 			self->m_noteBusy = true;
 			view.IsPrimaryButtonEnabled(false);
@@ -394,7 +417,6 @@ ViewerPage::editTextBox(NoteTarget target,
 						    }
 					    });
 				    };
-				constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
 				const bool queued =
 				    existing ? session->updateTextBox(*existing,
 				                                      std::move(replacement),

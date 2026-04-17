@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Text-box draft limits (2026-11-03)
+
+I use the same text rules before queueing a draft and in the PDF writer.
+The dialog can point out an unsupported character, too many rows, too
+many characters or an empty multiline draft while keeping the input.
+A blank row counts toward the limit. The writer still checks the
+actual box and page geometry and proves the saved appearance.
+
 ## Multiline text boxes in Comments (2026-11-03)
 
 Enter adds a line in the shared text-box editor. I turn CR and CRLF into
