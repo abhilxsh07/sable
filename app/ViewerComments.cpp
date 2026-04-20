@@ -326,12 +326,15 @@ void ViewerPage::showComments() {
 		heading.FontSize(12);
 		heading.TextWrapping(TextWrapping::Wrap);
 		detail.Children().Append(heading);
+		const bool multilineBox = entry.subtype == "FreeText" &&
+		                          entry.text.find('\n') != std::string::npos;
+		const int bodyLines = multilineBox ? pdf::textBoxMaxLines : 3;
 		for (const auto* text : {&entry.author, &entry.text}) {
 			if (!text->empty()) {
 				TextBlock block;
 				block.Text(to_hstring(*text));
 				block.TextWrapping(TextWrapping::Wrap);
-				block.MaxLines(text == &entry.author ? 1 : 3);
+				block.MaxLines(text == &entry.author ? 1 : bodyLines);
 				block.TextTrimming(TextTrimming::CharacterEllipsis);
 				if (text == &entry.author) {
 					block.FontSize(12);

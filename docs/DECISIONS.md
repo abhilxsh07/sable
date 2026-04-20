@@ -2,6 +2,12 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Multiline text-box previews (2026-11-03)
+
+I use the same eight-line limit for text boxes with explicit breaks in
+Comments. A blank row still takes a line, and wrapping in a narrow
+panel can still trim the preview. Other entries keep three body lines.
+
 ## Text-box draft limits (2026-11-03)
 
 I use the same text rules before queueing a draft and in the PDF writer.

@@ -2,6 +2,17 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Text-box draft limits and preview (3 November 2026)
+
+I open a disposable copy of the saved four-row box below. In Edit I
+append an unsupported character. Apply explains the character rule
+and leaves the full draft available. I cancel and Save stays disabled.
+
+I reopen the copy and go straight to Comments. The preview keeps the
+blank second row and shows the fourth line without opening Edit. The
+two single-line boxes are still listed. Save stays disabled and the
+copy hash stays the same.
+
 ## Multiline text boxes in Acrobat (3 November 2026)
 
 I open the same Windows picker copy from the Sable check below. Acrobat
