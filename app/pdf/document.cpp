@@ -2775,7 +2775,8 @@ std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	    !canSerializeEdits({}) ||
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    (target.subtype != "Text" && target.subtype != "Highlight" &&
-	     target.subtype != "Underline" && target.subtype != "StrikeOut")) {
+	     target.subtype != "Underline" && target.subtype != "StrikeOut" &&
+	     target.subtype != "FreeText")) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, target.page));

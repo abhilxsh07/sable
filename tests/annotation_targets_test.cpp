@@ -113,23 +113,56 @@ TEST(AnnotationTargets, SharedProtectedAndLinkedTargetsRemainUntouched) {
 	pdf::Engine engine;
 	engine
 	    .run([] {
-		    for (const auto& source :
-		         {deletionBytes("/F 64"), deletionBytes("/F 128"),
-		          deletionBytes("/F 512"), deletionBytes("/Popup 8 0 R"),
-		          deletionBytes("/IRT 7 0 R"), deletionBytes("/Parent 7 0 R"),
-		          deletionBytes("/RT /R"), deletionBytes("", true),
-		          deletionBytes("", false, true),
-		          deletionBytes("", false, false, true)}) {
-			    const auto opened = pdf::openDocument(source);
-			    ASSERT_TRUE(opened.document);
-			    auto& doc = *opened.document;
-			    const auto before = doc.annotations(0);
-			    ASSERT_TRUE(before && before->entries.size() == 3);
-			    EXPECT_FALSE(doc.removeAnnotation(before->entries[0].target));
-			    EXPECT_EQ(doc.annotationRevision(), before->revision);
-			    EXPECT_FALSE(doc.modified());
-			    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+		    for (const auto subtype : {"Text", "FreeText"}) {
+			    const auto fixture =
+			        [subtype](std::string extra = {}, bool shared = false,
+			                  bool independent = false, bool inbound = false) {
+				        return deletionBytes(extra, shared, independent,
+				                             inbound, subtype);
+			        };
+			    for (const auto& source :
+			         {fixture("/F 64"), fixture("/F 128"), fixture("/F 512"),
+			          fixture("/Popup 8 0 R"), fixture("/IRT 7 0 R"),
+			          fixture("/Parent 7 0 R"), fixture("/RT /R"),
+			          fixture("", true), fixture("", false, true),
+			          fixture("", false, false, true)}) {
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    const auto before = doc.annotations(0);
+				    ASSERT_TRUE(before && before->entries.size() == 3);
+				    EXPECT_EQ(before->entries[0].subtype, subtype);
+				    EXPECT_FALSE(
+				        doc.removeAnnotation(before->entries[0].target));
+				    EXPECT_EQ(doc.annotationRevision(), before->revision);
+				    EXPECT_FALSE(doc.modified());
+				    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+			    }
 		    }
+	    })
+	    .get();
+}
+
+TEST(AnnotationTargets, RemovingAnIndependentTextBoxKeepsNoteAndPopup) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(
+		        deletionBytes("", false, false, false, "FreeText"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.annotations(0);
+		    ASSERT_TRUE(before && before->entries.size() == 3);
+		    ASSERT_EQ(before->entries[0].subtype, "FreeText");
+		    ASSERT_EQ(doc.removeAnnotation(before->entries[0].target), true);
+		    const auto after = doc.annotations(0);
+		    ASSERT_TRUE(after && after->entries.size() == 2);
+		    EXPECT_EQ(after->revision, before->revision + 1);
+		    EXPECT_EQ(after->entries[0].subtype, "Text");
+		    EXPECT_EQ(after->entries[0].contents, "Same");
+		    EXPECT_EQ(after->entries[1].subtype, "Popup");
+		    EXPECT_EQ(after->entries[1].contents, "Keep popup");
+		    EXPECT_FALSE(doc.removeAnnotation(before->entries[0].target));
 	    })
 	    .get();
 }

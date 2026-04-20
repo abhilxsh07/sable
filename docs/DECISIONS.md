@@ -2,6 +2,13 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Independent text-box removal (2026-11-03)
+
+I allow FreeText through the existing annotation removal checks. Deleting
+the page reference does not need the appearance proof used to edit a box.
+Protected, shared and threaded boxes still refuse, and the revision keeps
+older targets from acting on a neighbor after an index shift.
+
 ## Multiline text-box previews (2026-11-03)
 
 I use the same eight-line limit for text boxes with explicit breaks in
