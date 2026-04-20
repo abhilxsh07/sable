@@ -4271,7 +4271,8 @@ TEST_F(SessionTest, QueuedTextBoxDeletionRejectsShiftedTargets) {
 		Gate gate(engine);
 		ASSERT_TRUE(
 		    session.removeAnnotation(entries[0].target, removed.callback()));
-		ASSERT_TRUE(session.removeAnnotation(neighbor, stale.callback()));
+		ASSERT_TRUE(
+		    session.removeAnnotation(entries[0].target, stale.callback()));
 	}
 	const auto deleted = removed.wait(), refused = stale.wait();
 	ASSERT_TRUE(deleted && deleted->changed && !deleted->canceled);

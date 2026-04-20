@@ -9,6 +9,9 @@ the page reference does not need the appearance proof used to edit a box.
 Protected, shared and threaded boxes still refuse, and the revision keeps
 older targets from acting on a neighbor after an index shift.
 
+I use the existing Delete button, row menu and focused Delete key in
+Comments. Removing a box marks the document dirty for Save notes.
+
 ## Multiline text-box previews (2026-11-03)
 
 I use the same eight-line limit for text boxes with explicit breaks in

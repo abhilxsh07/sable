@@ -45,7 +45,8 @@ bool ViewerPage::canDeleteAnnotation() {
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable()) &&
 	       (target->subtype == "Text" || target->subtype == "Highlight" ||
-	        target->subtype == "Underline" || target->subtype == "StrikeOut");
+	        target->subtype == "Underline" || target->subtype == "StrikeOut" ||
+	        target->subtype == "FreeText");
 }
 void ViewerPage::clearAnnotationSelection() {
 	cancelFormRequest();
