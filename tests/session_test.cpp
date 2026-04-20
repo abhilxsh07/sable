@@ -4250,6 +4250,62 @@ TEST_F(SessionTest, ExplicitBoxLinesStayOwnedAndSurviveSave) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, QueuedTextBoxDeletionRejectsShiftedTargets) {
+	const auto source = textBoxSource();
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+
+	Reply<pdf::AnnotationsResult> initial;
+	ASSERT_TRUE(session.annotations(0, initial.callback()));
+	const auto before = initial.wait();
+	ASSERT_TRUE(before && before->annotations);
+	const auto& entries = before->annotations->entries;
+	ASSERT_EQ(entries.size(), 2u);
+	ASSERT_EQ(entries[0].subtype, "FreeText");
+	ASSERT_EQ(entries[1].contents, "Neighbor");
+	const auto neighbor = entries[1].target;
+
+	Reply<pdf::NoteResult> removed, stale;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(
+		    session.removeAnnotation(entries[0].target, removed.callback()));
+		ASSERT_TRUE(session.removeAnnotation(neighbor, stale.callback()));
+	}
+	const auto deleted = removed.wait(), refused = stale.wait();
+	ASSERT_TRUE(deleted && deleted->changed && !deleted->canceled);
+	ASSERT_TRUE(refused && !refused->changed && !refused->canceled);
+	Reply<pdf::NoteResult> late;
+	EXPECT_FALSE(session.removeAnnotation(neighbor, late.callback()));
+
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(session.annotations(0, inventory.callback()));
+	const auto current = inventory.wait();
+	ASSERT_TRUE(current && current->annotations);
+	ASSERT_EQ(current->annotations->entries.size(), 1u);
+	const auto& kept = current->annotations->entries.front();
+	EXPECT_EQ(kept.index, 0);
+	EXPECT_EQ(kept.contents, "Neighbor");
+	EXPECT_EQ(kept.target.revision, neighbor.revision + 1);
+
+	const auto destination = tempDir() / "one box removed.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> persisted;
+	ASSERT_TRUE(reopened.annotations(0, persisted.callback()));
+	const auto after = persisted.wait();
+	ASSERT_TRUE(after && after->annotations);
+	ASSERT_EQ(after->annotations->entries.size(), 1u);
+	EXPECT_EQ(after->annotations->entries[0].contents, "Neighbor");
+	EXPECT_EQ(after->annotations->entries[0].subtype, "FreeText");
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, QueuedBoxSizeRefusalsKeepCacheAndRevision) {
 	pdf::Session session(engine), cold(engine);
 	ASSERT_EQ(open(session, textBoxSource()).error, pdf::Error::None);
