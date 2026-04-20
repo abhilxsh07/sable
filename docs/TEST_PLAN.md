@@ -2,6 +2,18 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Text-box removal in Sable (3 November 2026)
+
+I open a disposable PDF with one multiline box and two single-line boxes.
+I select the multiline entry in Comments and click Delete. The box leaves
+the page and Comments, the two other boxes stay in place, and Save notes
+becomes available.
+
+I save to a new path through the Windows picker and open that copy in a
+fresh reader. The page and Comments show only the two surviving boxes.
+Save notes is disabled. The input hash matches before and after the edit,
+and reopening leaves the saved copy's hash intact.
+
 ## Text-box draft limits and preview (3 November 2026)
 
 I open a disposable copy of the saved four-row box below. In Edit I
