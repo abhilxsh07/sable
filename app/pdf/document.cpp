@@ -27,6 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cmath>
 #include <fstream>
 #include <memory>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <set>
 #include <system_error>
 #include <stdexcept>
@@ -1486,6 +1489,143 @@ std::optional<bool> Document::updateFormField(
 	++m_annotationRevision;
 	m_modified = true;
 	return true;
+}
+
+std::optional<int>
+Document::addRectangle(int index, const AnnotationBounds& bounds,
+                       std::uint64_t revision,
+                       const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || !revision || !currentRevision(revision) ||
+	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
+	    index >= pageCount() || stopped() || !canAnnotate() ||
+	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
+	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
+	    FPDF_GetSignatureCount(m_handle) != 0) {
+		return {};
+	}
+	for (float edge : {bounds.left, bounds.bottom, bounds.right, bounds.top}) {
+		if (!std::isfinite(edge) || std::abs(edge) > 1000000.f) {
+			return {};
+		}
+	}
+	// @todo: expose the rectangle border width and color with shape tools.
+	constexpr double border = 2;
+	const double width = double(bounds.right) - bounds.left;
+	const double height = double(bounds.top) - bounds.bottom;
+	if (width <= 2 * border || height <= 2 * border ||
+	    !canSerializeEdits(canceled)) {
+		return {};
+	}
+	const auto& [left, bottom, right, top] = bounds;
+	const FS_RECTF rect{left, top, right, bottom};
+	std::ostringstream stream;
+	stream.imbue(std::locale::classic());
+	stream << std::fixed << std::setprecision(5) << "0 g " << left << ' '
+	       << bottom << ' ' << width << ' ' << height << " re " << left + border
+	       << ' ' << bottom + border << ' ' << width - 2 * border << ' '
+	       << height - 2 * border << " re f*";
+	const auto raw = stream.str();
+	const std::u16string appearance(raw.begin(), raw.end());
+
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto scratch = reopenFormCopy(std::move(*bytes));
+	if (!scratch.document || stopped()) {
+		return {};
+	}
+	// i check expanded object streams for signature names before writing.
+	scratch.document->m_modified = true;
+	auto canonical = scratch.document->serialize(limit, canceled);
+	if (!canonical || stopped()) {
+		return {};
+	}
+	const std::string_view tokens(
+	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	if (tokens.find("/Sig") != std::string_view::npos ||
+	    tokens.find("/DocMDP") != std::string_view::npos) {
+		return {};
+	}
+	scratch = reopenFormCopy(std::move(*canonical));
+	if (!scratch.document || stopped()) {
+		return {};
+	}
+
+	auto expected = editCounts();
+	if (!expected) {
+		return {};
+	}
+	const int added = (*expected)[index];
+	++(*expected)[index];
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, index));
+		FS_RECTF box{};
+		if (!page || !FPDF_GetPageBoundingBox(page.get(), &box) ||
+		    !(left >= box.left && bottom >= box.bottom && right <= box.right &&
+		      top <= box.top) ||
+		    added >= 4096 || FPDFPage_GetAnnotCount(page.get()) != added) {
+			return {};
+		}
+		AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_SQUARE));
+		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
+		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) ||
+		    !FPDFAnnot_SetAP(
+		        note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+		        reinterpret_cast<FPDF_WIDESTRING>(appearance.c_str()))) {
+			return {};
+		}
+	}
+	if (stopped() || !scratch.document->checkEditCounts(*expected, {index})) {
+		return {};
+	}
+	scratch.document->m_modified = true;
+	auto saved = scratch.document->serialize(limit, canceled);
+	if (!saved || stopped()) {
+		return {};
+	}
+	auto next = reopenFormCopy(std::move(*saved));
+	if (!next.document || next.document->pageCount() != pageCount() ||
+	    !next.document->checkEditCounts(*expected, {index})) {
+		return {};
+	}
+	{
+		PagePtr page(FPDF_LoadPage(next.document->m_handle, index));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), added)
+		                        : nullptr);
+		FS_RECTF kept{};
+		const auto size = static_cast<unsigned long>((appearance.size() + 1) *
+		                                             sizeof(FPDF_WCHAR));
+		std::vector<FPDF_WCHAR> ap(appearance.size() + 1);
+		if (!note || FPDFAnnot_GetSubtype(note.get()) != FPDF_ANNOT_SQUARE ||
+		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
+		    !FPDFAnnot_GetRect(note.get(), &kept) || kept.left != left ||
+		    kept.bottom != bottom || kept.right != right || kept.top != top ||
+		    FPDFAnnot_GetAP(note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+		                    ap.data(), size) != size ||
+		    ap.back() ||
+		    !std::equal(appearance.begin(), appearance.end(), ap.begin())) {
+			return {};
+		}
+	}
+	if (!m_outlineBookmarks.empty() &&
+	    (!next.document->outline(canceled) ||
+	     next.document->m_outlineBookmarks.size() !=
+	         m_outlineBookmarks.size())) {
+		return {};
+	}
+	if (stopped()) {
+		return {};
+	}
+	m_data.swap(next.document->m_data);
+	std::swap(m_handle, next.document->m_handle);
+	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return added;
 }
 
 std::optional<int> Document::addTextBox(

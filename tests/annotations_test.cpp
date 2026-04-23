@@ -2142,6 +2142,70 @@ TEST(Annotations, PdfiumSquareAppearanceSurvivesSaveAndPrint) {
 	    .get();
 }
 
+TEST(Annotations, RectangleWritesKeepNeighborsAndRejectUnsafeTargets) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    constexpr pdf::AnnotationBounds bounds{300, 100, 360, 160};
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto seed = pdf::openDocument(original);
+		    ASSERT_TRUE(seed.document);
+		    const auto note =
+		        seed.document->addTextNote(0, 30, 40, u"Keep note");
+		    ASSERT_TRUE(note);
+		    const auto before = seed.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(before);
+		    const auto opened = pdf::openDocument(*before);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link);
+		    const auto revision = doc.annotationRevision();
+		    EXPECT_FALSE(doc.addRectangle(0, bounds, revision + 1));
+		    EXPECT_FALSE(
+		        doc.addRectangle(0, bounds, revision, [] { return true; }));
+		    EXPECT_FALSE(doc.addRectangle(0, {300, 100, 304, 160}, revision));
+		    EXPECT_FALSE(doc.addRectangle(0, {-1, 100, 360, 160}, revision));
+		    EXPECT_EQ(doc.serialize(1024 * 1024), before);
+		    EXPECT_EQ(doc.annotationRevision(), revision);
+		    const auto added = doc.addRectangle(0, bounds, revision);
+		    ASSERT_TRUE(added);
+		    EXPECT_EQ(doc.annotationRevision(), revision + 1);
+		    EXPECT_EQ(doc.textNote(0, *note, revision + 1), u"Keep note");
+		    const auto kept = doc.outlineLink(0);
+		    ASSERT_TRUE(kept);
+		    EXPECT_EQ(kept->uri, link->uri);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes &&
+		                *added < static_cast<int>(notes->entries.size()));
+		    const auto& rectangle = notes->entries[*added];
+		    ASSERT_TRUE(rectangle.bounds);
+		    EXPECT_EQ(rectangle.subtype, "Square");
+		    EXPECT_EQ(rectangle.flags, FPDF_ANNOT_FLAG_PRINT);
+		    EXPECT_FLOAT_EQ(rectangle.bounds->left, bounds.left);
+		    EXPECT_FLOAT_EQ(rectangle.bounds->top, bounds.top);
+		    EXPECT_EQ(saved.document->textNote(0, *note), u"Keep note");
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+
+		    for (const auto& source :
+		         {annotationBytes("notes_denied.pdf"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          sharedHighlightBytes(2)}) {
+			    const auto refused = pdf::openDocument(source);
+			    ASSERT_TRUE(refused.document);
+			    EXPECT_FALSE(refused.document->addRectangle(0, bounds, 1));
+			    EXPECT_EQ(refused.document->annotationRevision(), 1u);
+			    EXPECT_EQ(refused.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
 	pdf::Engine engine;
 	engine

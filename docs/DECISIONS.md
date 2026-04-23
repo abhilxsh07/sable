@@ -9,6 +9,11 @@ the outline. The coordinates are PDF page points. The pinned writer keeps
 the four edges and the empty interior after a save in both screen and
 print rasters.
 
+I add rectangles on an isolated copy. The live document changes only
+after a saved reopen confirms annotation counts, bounds, Print and the
+exact appearance stream. A thin or off-page rectangle refuses. I use a
+two-point black border until the shape tools expose their own settings.
+
 ## Independent text-box removal (2026-11-03)
 
 I allow FreeText through the existing annotation removal checks. Deleting

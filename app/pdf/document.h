@@ -218,6 +218,9 @@ class Document {
 	std::optional<int> addTextNote(int page, float x, float y,
 	                               std::u16string_view contents,
 	                               std::u16string_view author = {});
+	std::optional<int> addRectangle(int page, const AnnotationBounds& bounds,
+	                                std::uint64_t revision,
+	                                const std::function<bool()>& canceled = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,
