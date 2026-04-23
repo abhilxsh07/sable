@@ -2,6 +2,13 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Rectangle appearance (2026-11-03)
+
+I use a Square annotation with Print and an explicit even-odd fill for
+the outline. The coordinates are PDF page points. The pinned writer keeps
+the four edges and the empty interior after a save in both screen and
+print rasters.
+
 ## Independent text-box removal (2026-11-03)
 
 I allow FreeText through the existing annotation removal checks. Deleting

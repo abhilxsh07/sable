@@ -102,6 +102,25 @@ struct DocumentEditTest {
 		document.m_modified = true;
 		return result;
 	}
+	static bool square(Document& document, const FS_RECTF& rect,
+	                   const char16_t* appearance) {
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		if (!page) {
+			return false;
+		}
+		const auto note = FPDFPage_CreateAnnot(page, FPDF_ANNOT_SQUARE);
+		const bool result =
+		    note && FPDFAnnot_SetRect(note, &rect) &&
+		    FPDFAnnot_SetFlags(note, FPDF_ANNOT_FLAG_PRINT) &&
+		    FPDFAnnot_SetAP(note, FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+		                    reinterpret_cast<FPDF_WIDESTRING>(appearance));
+		if (note) {
+			FPDFPage_CloseAnnot(note);
+		}
+		FPDF_ClosePage(page);
+		document.m_modified = result;
+		return result;
+	}
 	static std::u16string appearance(const Document& document, bool& fits,
 	                                 int& count, int index = 0) {
 		const auto page = FPDF_LoadPage(document.m_handle, 0);
@@ -2081,6 +2100,43 @@ TEST(AnnotationTargets, DeletionProofsSurviveIndexShiftsWithoutBookScans) {
 			    ASSERT_TRUE(kept && kept->entries.size() == 2);
 			    EXPECT_EQ(kept->entries[0].contents, "Keep thread");
 			    EXPECT_EQ(kept->entries[1].contents, "Keep popup");
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, PdfiumSquareAppearanceSurvivesSaveAndPrint) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(pdf::DocumentEditTest::square(
+		        doc, {300, 160, 460, 100},
+		        u"0 g 300 100 160 60 re 302 102 156 56 re f*"));
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    EXPECT_EQ(notes->entries[0].subtype, "Square");
+		    EXPECT_EQ(notes->entries[0].flags, FPDF_ANNOT_FLAG_PRINT);
+		    const auto screen = saved.document->render(0, 595, 842);
+		    const auto print =
+		        saved.document->printRaster(0, 595, 842, 0, 0, 595, 842);
+		    ASSERT_TRUE(screen && print);
+		    for (const auto* image : {&*screen, &*print}) {
+			    const auto blue = [&](int x, int y) {
+				    return image->pixels[(841 - y) * image->stride + 4 * x];
+			    };
+			    EXPECT_EQ(blue(301, 130), 0);
+			    EXPECT_EQ(blue(380, 158), 0);
+			    EXPECT_EQ(blue(458, 130), 0);
+			    EXPECT_EQ(blue(380, 101), 0);
+			    EXPECT_EQ(blue(380, 130), 255);
+			    EXPECT_EQ(blue(298, 130), 255);
 		    }
 	    })
 	    .get();
