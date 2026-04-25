@@ -537,6 +537,44 @@ void Session::cancelForms() {
 	++m_state->m_formGeneration;
 }
 
+bool Session::addRectangleAt(int page, AnnotationPoint first,
+                             AnnotationPoint second, int rotation,
+                             std::uint64_t revision,
+                             std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !revision || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, first, second, rotation, revision,
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = page;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				result.index = state->m_document->addRectangleAt(
+				    page, first, second, rotation, revision, canceled);
+				result.changed = result.index.has_value();
+				if (result.changed) {
+					state->m_forms.reset();
+					std::lock_guard lock(state->m_mutex);
+					state->m_annotationRevision =
+					    state->m_document->annotationRevision();
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't add a PDF rectangle.");
+		}
+		result.canceled = !result.changed && canceled();
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::addTextBox(int page, AnnotationBounds bounds,
                          std::u16string contents, std::u16string author,
                          std::uint64_t revision,

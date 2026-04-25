@@ -221,6 +221,11 @@ class Document {
 	std::optional<int> addRectangle(int page, const AnnotationBounds& bounds,
 	                                std::uint64_t revision,
 	                                const std::function<bool()>& canceled = {});
+	// corners use the displayed page, including the viewer's rotation.
+	std::optional<int>
+	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
+	               int rotation, std::uint64_t revision,
+	               const std::function<bool()>& canceled = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,

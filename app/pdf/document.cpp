@@ -1628,6 +1628,42 @@ Document::addRectangle(int index, const AnnotationBounds& bounds,
 	return added;
 }
 
+std::optional<int> Document::addRectangleAt(
+    int index, AnnotationPoint first, AnnotationPoint second, int rotation,
+    std::uint64_t revision, const std::function<bool()>& canceled) {
+	const auto onPage = [](AnnotationPoint point) {
+		return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1;
+	};
+	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
+	    rotation > 3 || !onPage(first) || !onPage(second) || !revision ||
+	    !currentRevision(revision) || (canceled && canceled())) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	const auto pagePoint = [&](AnnotationPoint point, double& x, double& y) {
+		constexpr int grid = 1 << 20;
+		return FPDF_DeviceToPage(page.get(), 0, 0, grid, grid, rotation,
+		                         static_cast<int>(std::lround(point.x * grid)),
+		                         static_cast<int>(std::lround(point.y * grid)),
+		                         &x, &y) &&
+		       std::isfinite(x) && std::isfinite(y) &&
+		       std::abs(x) <= 1000000. && std::abs(y) <= 1000000.;
+	};
+	double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	if (!pagePoint(first, x0, y0) || !pagePoint(second, x1, y1)) {
+		return {};
+	}
+	const AnnotationBounds bounds{static_cast<float>((std::min)(x0, x1)),
+	                              static_cast<float>((std::min)(y0, y1)),
+	                              static_cast<float>((std::max)(x0, x1)),
+	                              static_cast<float>((std::max)(y0, y1))};
+	page.reset();
+	return addRectangle(index, bounds, revision, canceled);
+}
+
 std::optional<int> Document::addTextBox(
     int index, const AnnotationBounds& bounds, std::u16string_view contents,
     std::u16string_view author, std::uint64_t revision,

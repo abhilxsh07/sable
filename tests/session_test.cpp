@@ -3874,6 +3874,65 @@ TEST_F(SessionTest, TextBoxCallbacksCanReenterCloseAndThrowAfterCommit) {
 	}
 }
 
+TEST_F(SessionTest, RectangleQueueOwnsCornersAndKeepsItsSaveBoundary) {
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	pdf::Session session(engine), closing(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+
+	pdf::AnnotationPoint first{.75, .75}, second{.25, .5};
+	Reply<pdf::NoteResult> placed, stale, invalid, canceled;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(
+		    session.addRectangleAt(0, first, second, 0, 1, placed.callback()));
+		ASSERT_TRUE(
+		    session.addRectangleAt(0, first, second, 0, 1, stale.callback()));
+		ASSERT_TRUE(session.addRectangleAt(0, first, {1.5, .5}, 0, 2,
+		                                   invalid.callback()));
+		ASSERT_TRUE(closing.addRectangleAt(0, first, second, 0, 1,
+		                                   canceled.callback()));
+		first = second = {};
+		session.cancelAnnotations();
+		closing.close();
+	}
+	const auto added = placed.wait(), refused = stale.wait(),
+	           offPage = invalid.wait(), closed = canceled.wait();
+	ASSERT_TRUE(added && refused && offPage && closed);
+	EXPECT_EQ(added->index, 0);
+	EXPECT_TRUE(added->changed && !added->canceled);
+	EXPECT_FALSE(refused->index || refused->changed || refused->canceled);
+	EXPECT_FALSE(offPage->index || offPage->changed || offPage->canceled);
+	EXPECT_TRUE(closed->canceled && !closed->changed && !closed->index);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 2);
+	EXPECT_NE(fresh, cached);
+
+	const auto destination = tempDir() / "placed rectangle.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 1);
+	const auto& rectangle = notes->annotations->entries.front();
+	ASSERT_TRUE(rectangle.bounds);
+	EXPECT_EQ(rectangle.subtype, "Square");
+	EXPECT_FLOAT_EQ(rectangle.bounds->left, 148.75f);
+	EXPECT_FLOAT_EQ(rectangle.bounds->bottom, 210.5f);
+	EXPECT_FLOAT_EQ(rectangle.bounds->right, 446.25f);
+	EXPECT_FLOAT_EQ(rectangle.bounds->top, 421.f);
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
 	pdf::Session session(engine);
 	const auto source = fixturePath("pages.pdf");

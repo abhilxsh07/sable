@@ -2,6 +2,12 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued rectangle corners (2026-11-04)
+
+I queue the two displayed corners by value and convert them together on
+the engine thread. The crop and both rotations determine their PDF points.
+Either corner can come first. A stale revision or out-of-page point refuses.
+
 ## Rectangle appearance (2026-11-03)
 
 I use a Square annotation with Print and an explicit even-odd fill for

@@ -2483,6 +2483,44 @@ TEST(Annotations, TextBoxMalformedOrExhaustedFontResourcesKeepLiveBytes) {
 	    .get();
 }
 
+TEST(Annotations, DisplayedRectanglesFollowCropAndAllPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    constexpr pdf::AnnotationBounds expected[]{{65, 170, 245, 430},
+		                                               {110, 105, 290, 365},
+		                                               {155, 170, 335, 430},
+		                                               {110, 235, 290, 495}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto source = editableNoteBytes(
+			        "/Contents (Keep)", "Text", {},
+			        "/MediaBox [0 0 400 600] /CropBox [20 40 380 560] "
+			        "/Rotate " +
+			            std::to_string(intrinsic * 90));
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    SCOPED_TRACE(intrinsic * 4 + rotation);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    ASSERT_EQ(doc.addRectangleAt(0, {.625, .75}, {.125, .25},
+				                                 rotation, 1),
+				              1);
+				    const auto notes = doc.annotations(0);
+				    ASSERT_TRUE(notes && notes->entries.size() == 2);
+				    ASSERT_TRUE(notes->entries[1].bounds);
+				    const auto& actual = *notes->entries[1].bounds;
+				    const auto& box = expected[(intrinsic + rotation) % 4];
+				    EXPECT_FLOAT_EQ(actual.left, box.left);
+				    EXPECT_FLOAT_EQ(actual.bottom, box.bottom);
+				    EXPECT_FLOAT_EQ(actual.right, box.right);
+				    EXPECT_FLOAT_EQ(actual.top, box.top);
+				    EXPECT_EQ(notes->entries[0].contents, "Keep");
+			    }
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, DisplayedTextBoxesFollowCropAndAllPageRotations) {
 	pdf::Engine engine;
 	engine
