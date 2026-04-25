@@ -29,9 +29,9 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
-void ViewerPage::beginNotePlacement(bool textBox) {
+void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	clearAnnotationSelection();
-	if (m_notePlacing && m_textBoxPlacement == textBox) {
+	if (m_notePlacing && m_placementTool == tool) {
 		cancelNotePlacement();
 		return;
 	}
@@ -44,7 +44,7 @@ void ViewerPage::beginNotePlacement(bool textBox) {
 	leavePageBox();
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
-	m_textBoxPlacement = textBox;
+	m_placementTool = tool;
 	m_notePlacing = true;
 	showComments();
 	Scroller().Focus(FocusState::Programmatic);
@@ -82,7 +82,7 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 			showComments();
 			const NoteTarget target{static_cast<int>(page), x, y,
 			                        key(page).rotation};
-			if (m_textBoxPlacement) {
+			if (m_placementTool == PlacementTool::TextBox) {
 				editTextBox(target);
 			} else {
 				editNote(target);

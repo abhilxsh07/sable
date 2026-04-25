@@ -127,7 +127,7 @@ void ViewerPage::setupComments() {
 	});
 	PlaceTextBoxButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->beginNotePlacement(true);
+			self->beginNotePlacement(PlacementTool::TextBox);
 		}
 	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
@@ -210,12 +210,14 @@ void ViewerPage::showComments() {
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
-	PlaceNoteButton().Text(m_notePlacing && !m_textBoxPlacement
+	PlaceNoteButton().Text(m_notePlacing &&
+	                               m_placementTool == PlacementTool::Note
 	                           ? L"Cancel placement"
 	                           : L"Place note on page");
 	PlaceTextBoxButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
 	                               !m_noteSaving);
-	PlaceTextBoxButton().Text(m_notePlacing && m_textBoxPlacement
+	PlaceTextBoxButton().Text(m_notePlacing &&
+	                                  m_placementTool == PlacementTool::TextBox
 	                              ? L"Cancel text box placement"
 	                              : L"Place text box on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
@@ -257,7 +259,7 @@ void ViewerPage::showComments() {
 	Automation::AutomationProperties::SetName(
 	    CommentsCount(), to_hstring(notes.size()) + L" comments loaded");
 	NotesState().Text(
-	    m_notePlacing  ? (m_textBoxPlacement
+	    m_notePlacing  ? (m_placementTool == PlacementTool::TextBox
 	                          ? L"Click a page to place a text box. Esc cancels."
 	                          : L"Click a page to place a note. Esc cancels.")
 	    : m_noteBusy   ? L"Updating comments\u2026"

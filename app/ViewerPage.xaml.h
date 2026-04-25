@@ -235,11 +235,12 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	void beginNotePlacement(bool textBox = false);
+	enum class PlacementTool { Note, TextBox };
+	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	bool m_notePlacing = false;
-	bool m_textBoxPlacement = false;
+	PlacementTool m_placementTool = PlacementTool::Note;
 	winrt::fire_and_forget
 	editTextBox(NoteTarget target,
 	            std::optional<pdf::Annotation> existing = {});
