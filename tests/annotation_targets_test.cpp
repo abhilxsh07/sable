@@ -113,7 +113,7 @@ TEST(AnnotationTargets, SharedProtectedAndLinkedTargetsRemainUntouched) {
 	pdf::Engine engine;
 	engine
 	    .run([] {
-		    for (const auto subtype : {"Text", "FreeText"}) {
+		    for (const auto subtype : {"Text", "FreeText", "Square"}) {
 			    const auto fixture =
 			        [subtype](std::string extra = {}, bool shared = false,
 			                  bool independent = false, bool inbound = false) {
@@ -143,26 +143,30 @@ TEST(AnnotationTargets, SharedProtectedAndLinkedTargetsRemainUntouched) {
 	    .get();
 }
 
-TEST(AnnotationTargets, RemovingAnIndependentTextBoxKeepsNoteAndPopup) {
+TEST(AnnotationTargets,
+     RemovingIndependentShapesAndTextBoxesKeepsNoteAndPopup) {
 	pdf::Engine engine;
 	engine
 	    .run([] {
-		    const auto opened = pdf::openDocument(
-		        deletionBytes("", false, false, false, "FreeText"));
-		    ASSERT_TRUE(opened.document);
-		    auto& doc = *opened.document;
-		    const auto before = doc.annotations(0);
-		    ASSERT_TRUE(before && before->entries.size() == 3);
-		    ASSERT_EQ(before->entries[0].subtype, "FreeText");
-		    ASSERT_EQ(doc.removeAnnotation(before->entries[0].target), true);
-		    const auto after = doc.annotations(0);
-		    ASSERT_TRUE(after && after->entries.size() == 2);
-		    EXPECT_EQ(after->revision, before->revision + 1);
-		    EXPECT_EQ(after->entries[0].subtype, "Text");
-		    EXPECT_EQ(after->entries[0].contents, "Same");
-		    EXPECT_EQ(after->entries[1].subtype, "Popup");
-		    EXPECT_EQ(after->entries[1].contents, "Keep popup");
-		    EXPECT_FALSE(doc.removeAnnotation(before->entries[0].target));
+		    for (const auto subtype : {"FreeText", "Square"}) {
+			    const auto opened = pdf::openDocument(
+			        deletionBytes("", false, false, false, subtype));
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    const auto before = doc.annotations(0);
+			    ASSERT_TRUE(before && before->entries.size() == 3);
+			    ASSERT_EQ(before->entries[0].subtype, subtype);
+			    ASSERT_EQ(doc.removeAnnotation(before->entries[0].target),
+			              true);
+			    const auto after = doc.annotations(0);
+			    ASSERT_TRUE(after && after->entries.size() == 2);
+			    EXPECT_EQ(after->revision, before->revision + 1);
+			    EXPECT_EQ(after->entries[0].subtype, "Text");
+			    EXPECT_EQ(after->entries[0].contents, "Same");
+			    EXPECT_EQ(after->entries[1].subtype, "Popup");
+			    EXPECT_EQ(after->entries[1].contents, "Keep popup");
+			    EXPECT_FALSE(doc.removeAnnotation(before->entries[0].target));
+		    }
 	    })
 	    .get();
 }

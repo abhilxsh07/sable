@@ -10,6 +10,10 @@ the view clears it so the next click starts a new pair. Escape, changing
 tools or hiding Comments drops the placement. A committed rectangle uses
 the existing Save notes flow.
 
+Comments calls PDF Square entries rectangles. I reuse the guarded Delete
+action for independent rectangles, with the same sharing, thread and
+permission checks as notes. The shape has no text editor.
+
 ## Queued rectangle corners (2026-11-04)
 
 I queue the two displayed corners by value and convert them together on
