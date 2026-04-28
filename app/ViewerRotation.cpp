@@ -76,6 +76,8 @@ void ViewerPage::rotateView(int turns) {
 		m_zoom = zoom;
 		m_rotation = rotation;
 		++m_rotationVersion;
+		const bool resetRectangle = m_rectangleStart.has_value();
+		m_rectangleStart.reset();
 		++m_outlineLinkVersion;
 		m_outlineLinkPending = false;
 		m_device.filter->setInput(nullptr);
@@ -99,6 +101,9 @@ void ViewerPage::rotateView(int turns) {
 		goToPage(page);
 		updateThumbnails();
 		updateVisible();
+		if (resetRectangle) {
+			showComments();
+		}
 	} catch (...) {
 		m_holdCurrent = false;
 		showNotice(L"Couldn't rotate this view.");

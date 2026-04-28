@@ -183,6 +183,7 @@ class Session {
 	bool addTextNote(int page, float x, float y, std::u16string contents,
 	                 std::u16string author,
 	                 std::function<void(NoteResult)> callback);
+	std::uint64_t annotationRevision() const;
 	bool addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
 	                    int rotation, std::uint64_t revision,
 	                    std::function<void(NoteResult)> callback);

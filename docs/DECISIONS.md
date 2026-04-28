@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Placing rectangles from Comments (2026-11-04)
+
+I use two page clicks for an outline rectangle. The first click captures
+the page and revision. A click on another page keeps that corner. Rotating
+the view clears it so the next click starts a new pair. Escape, changing
+tools or hiding Comments drops the placement. A committed rectangle uses
+the existing Save notes flow.
+
 ## Queued rectangle corners (2026-11-04)
 
 I queue the two displayed corners by value and convert them together on

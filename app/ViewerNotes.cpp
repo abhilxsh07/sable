@@ -44,6 +44,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	leavePageBox();
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
+	m_rectangleStart.reset();
 	m_placementTool = tool;
 	m_notePlacing = true;
 	showComments();
@@ -51,6 +52,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 }
 
 bool ViewerPage::cancelNotePlacement() {
+	m_rectangleStart.reset();
 	const bool canceled = std::exchange(m_notePlacing, false);
 	if (canceled && !m_closed) {
 		showComments();
@@ -78,10 +80,14 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		const double y = (point.Y - rect.y) / rect.height;
 		if (std::isfinite(x) && std::isfinite(y) && x >= 0 && x <= 1 &&
 		    y >= 0 && y <= 1) {
-			m_notePlacing = false;
-			showComments();
 			const NoteTarget target{static_cast<int>(page), x, y,
 			                        key(page).rotation};
+			if (m_placementTool == PlacementTool::Rectangle) {
+				placeRectangle(target);
+				break;
+			}
+			m_notePlacing = false;
+			showComments();
 			if (m_placementTool == PlacementTool::TextBox) {
 				editTextBox(target);
 			} else {
@@ -91,6 +97,68 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		}
 	}
 	return true;
+}
+
+void ViewerPage::placeRectangle(NoteTarget target) {
+	const auto session = m_session.get();
+	const auto revision = session ? session->annotationRevision() : 0;
+	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
+	    m_noteDialog || m_passwordDialog) {
+		cancelNotePlacement();
+		return;
+	}
+	if (!m_rectangleStart) {
+		m_rectangleStart = RectangleStart{target, revision};
+		showComments();
+		return;
+	}
+	const auto [first, expected] = *m_rectangleStart;
+	if (revision != expected) {
+		m_rectangleStart.reset();
+		showComments();
+		showNotice(L"The PDF changed. Click the first corner again.");
+		return;
+	}
+	if (first.page != target.page) {
+		showNotice(L"Choose the opposite corner on the same page.");
+		return;
+	}
+	m_rectangleStart.reset();
+	m_notePlacing = false;
+	m_noteBusy = true;
+	try {
+		if (session->addRectangleAt(
+		        target.page, {first.x, first.y}, {target.x, target.y},
+		        first.rotation, expected,
+		        [weak = get_weak(), queue = DispatcherQueue(),
+		         session](pdf::NoteResult result) {
+			        queue.TryEnqueue([weak, session, result] {
+				        const auto self = weak.get();
+				        if (!self || self->m_closed ||
+				            self->m_session.get() != session) {
+					        return;
+				        }
+				        self->m_noteBusy = false;
+				        self->m_notesDirty =
+				            self->m_notesDirty || result.changed;
+				        if (result.changed) {
+					        self->refreshNotes();
+				        } else if (!result.canceled) {
+					        self->showNotice(
+					            L"Couldn't add this rectangle. Try a larger "
+					            L"area. This PDF may restrict comments.");
+				        }
+				        self->showComments();
+			        });
+		        })) {
+			showComments();
+			return;
+		}
+	} catch (...) {
+	}
+	m_noteBusy = false;
+	showComments();
+	showNotice(L"Couldn't queue this rectangle. Try again.");
 }
 
 fire_and_forget

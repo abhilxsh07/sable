@@ -3878,10 +3878,12 @@ TEST_F(SessionTest, RectangleQueueOwnsCornersAndKeepsItsSaveBoundary) {
 	const auto source = fixturePath("pages.pdf");
 	const auto original = readFile(source);
 	pdf::Session session(engine), closing(engine);
+	EXPECT_EQ(session.annotationRevision(), 0u);
 	ASSERT_EQ(open(session, source).error, pdf::Error::None);
 	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
 	const auto cached = readForms(session);
 	ASSERT_TRUE(cached && cached->revision == 1);
+	EXPECT_EQ(session.annotationRevision(), 1u);
 
 	pdf::AnnotationPoint first{.75, .75}, second{.25, .5};
 	Reply<pdf::NoteResult> placed, stale, invalid, canceled;
@@ -3910,6 +3912,8 @@ TEST_F(SessionTest, RectangleQueueOwnsCornersAndKeepsItsSaveBoundary) {
 	const auto fresh = readForms(session);
 	ASSERT_TRUE(fresh && fresh->revision == 2);
 	EXPECT_NE(fresh, cached);
+	EXPECT_EQ(session.annotationRevision(), 2u);
+	EXPECT_EQ(closing.annotationRevision(), 0u);
 
 	const auto destination = tempDir() / "placed rectangle.pdf";
 	Reply<pdf::SaveResult> saved;

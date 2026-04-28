@@ -130,6 +130,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::TextBox);
 		}
 	});
+	PlaceRectangleButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::Rectangle);
+		}
+	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -186,6 +191,7 @@ void ViewerPage::pauseComments() {
 	}
 }
 void ViewerPage::closeComments() {
+	m_rectangleStart.reset();
 	m_notePlacing = false;
 	setCommentsOpen(false);
 	if (m_commentVisibility) {
@@ -207,6 +213,7 @@ void ViewerPage::showComments() {
 	}
 	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
 	    Rail().Visibility() != XVisibility::Visible) {
+		m_rectangleStart.reset();
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
@@ -220,6 +227,12 @@ void ViewerPage::showComments() {
 	                                  m_placementTool == PlacementTool::TextBox
 	                              ? L"Cancel text box placement"
 	                              : L"Place text box on page");
+	PlaceRectangleButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
+	                                 !m_noteSaving && !m_noteDialog);
+	PlaceRectangleButton().Text(m_notePlacing && m_placementTool ==
+	                                                 PlacementTool::Rectangle
+	                                ? L"Cancel rectangle placement"
+	                                : L"Place rectangle on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().Content(
@@ -266,6 +279,13 @@ void ViewerPage::showComments() {
 	    : m_noteSaving ? L"Saving comments\u2026"
 	    : m_notesDirty ? L"Unsaved changes"
 	                   : L"");
+	if (m_notePlacing && m_placementTool == PlacementTool::Rectangle) {
+		NotesState().Text(m_rectangleStart
+		                      ? L"Click the opposite corner on the same page. "
+		                        L"Esc cancels."
+		                      : L"Click the first corner of the rectangle. "
+		                        L"Esc cancels.");
+	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);
 	const bool visible = commentsOpen() &&

@@ -235,10 +235,16 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	enum class PlacementTool { Note, TextBox };
+	enum class PlacementTool { Note, TextBox, Rectangle };
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
+	void placeRectangle(NoteTarget target);
+	struct RectangleStart {
+		NoteTarget corner;
+		std::uint64_t revision;
+	};
+	std::optional<RectangleStart> m_rectangleStart;
 	bool m_notePlacing = false;
 	PlacementTool m_placementTool = PlacementTool::Note;
 	winrt::fire_and_forget

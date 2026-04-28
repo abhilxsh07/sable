@@ -537,6 +537,13 @@ void Session::cancelForms() {
 	++m_state->m_formGeneration;
 }
 
+std::uint64_t Session::annotationRevision() const {
+	std::lock_guard lock(m_state->m_mutex);
+	return m_state->m_ready && !m_state->m_closed
+	           ? m_state->m_annotationRevision
+	           : 0;
+}
+
 bool Session::addRectangleAt(int page, AnnotationPoint first,
                              AnnotationPoint second, int rotation,
                              std::uint64_t revision,
