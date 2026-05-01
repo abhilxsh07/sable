@@ -2,6 +2,24 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Rectangle placement through Windows (4 November 2026)
+
+I open a disposable copy with three text boxes. More offers Place rectangle
+on page. A first click changes the prompt to the opposite corner, and
+Escape restores the clean view. A second attempt creates the outline beside
+the boxes and a Rectangle row appears as the fourth entry.
+
+The Windows picker saves a separate PDF. A fresh reader shows the outline,
+its empty interior and all three text boxes. Selecting its row enables
+Delete and keeps Edit disabled. Save stays disabled after reopen. The
+input and saved-copy hashes match their checkpoints.
+
+A later redraw can leave the page area blank after opening Comments or
+selecting a row. Returning to the first page restores the drawing. The
+draw trace still has the page range and cached bitmap. An explicit refresh
+and a flush before releasing the filter input do not resolve it. I leave
+the original drawing path in place. The cause remains open.
+
 ## Rectangle placement in the native reader (4 November 2026)
 
 I run the native placement check. Clicks on another page or in a gap keep
