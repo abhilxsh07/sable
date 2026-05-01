@@ -2,6 +2,18 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Rectangle placement in the native reader (4 November 2026)
+
+I run the native placement check. Clicks on another page or in a gap keep
+the first corner. Cancel and hidden Comments drop it. Rotation clears it
+and an empty rectangle refuses without dirtying the PDF. A larger retry
+clears the earlier notice and appears in Comments with Delete enabled.
+
+The test supplies a destination to Save notes. That copy reopens with the
+rectangle at its selected display bounds and the neighboring note intact.
+Delete removes the live rectangle and marks the view dirty. Closing drops
+pending placement. The input fixture hash matches its starting value.
+
 ## Text-box removal in Sable (3 November 2026)
 
 I open a disposable PDF with one multiline box and two single-line boxes.

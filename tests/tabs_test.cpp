@@ -4968,13 +4968,132 @@ struct TabsTest {
 			          .get(),
 			      "reopened note moved from chosen location");
 			std::filesystem::remove(notesPath);
-			v.beginNotePlacement();
+			invoke(v.PlaceRectangleButton());
+			check(v.placeNote(choosePoint()) && v.m_rectangleStart &&
+			          !v.m_notesDirty && !v.m_noteBusy,
+			      "first rectangle corner changed the PDF");
+			break;
+		case 8: {
+			const auto& other = v.m_layout->pages()[0];
+			check(
+			    v.placeNote({static_cast<float>(other.x + other.width / 2),
+			                 static_cast<float>(other.y + other.height / 2)}) &&
+			        v.m_rectangleStart && v.m_rectangleStart->corner.page == 1,
+			    "another page replaced the rectangle corner");
+			check(v.placeNote({-1, -1}) && v.m_rectangleStart,
+			      "gap lost the rectangle corner");
+			check(v.cancelNotePlacement() && !v.m_rectangleStart,
+			      "Cancel retained the rectangle corner");
+			invoke(v.PlaceRectangleButton());
+			v.placeNote(choosePoint());
+			v.setCommentsOpen(false);
+			check(!v.m_notePlacing && !v.m_rectangleStart,
+			      "hidden Comments retained rectangle placement");
+			v.setCommentsOpen(true);
+			invoke(v.PlaceRectangleButton());
+			v.placeNote(choosePoint());
+			const int previousRotation = v.m_rotation;
+			v.rotateView(1);
+			check(v.m_rotation != previousRotation && !v.m_rectangleStart &&
+			          v.m_notePlacing,
+			      "rotation retained the old rectangle corner");
+			v.rotateView(-1);
+			v.placeNote(choosePoint());
+			v.placeNote(choosePoint());
+			break;
+		}
+		case 9: {
+			check(!v.m_notesDirty && !v.m_notePlacing && !v.m_rectangleStart &&
+			          v.Message().IsOpen(),
+			      "empty rectangle changed the PDF or kept placement");
+			invoke(v.PlaceRectangleButton());
+			v.placeNote(choosePoint());
+			const auto& page = v.m_layout->pages()[1];
+			v.placeNote({static_cast<float>(page.x + .65 * page.width),
+			             static_cast<float>(page.y + .4 * page.height)});
+			break;
+		}
+		case 10: {
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			const auto& rows = v.m_commentScan.rows();
+			const auto rectangle =
+			    std::find_if(rows.begin(), rows.end(), [](const auto& row) {
+				    return row.page == 1 && row.subtype == "Square";
+			    });
+			check(rectangle != rows.end() && v.m_notesDirty &&
+			          !v.Message().IsOpen(),
+			      "rectangle missing from refreshed Comments");
+			v.CommentsList().SelectedIndex(
+			    static_cast<int>(rectangle - rows.begin()));
+			v.showComments();
+			check(v.DeleteNoteButton().IsEnabled() &&
+			          !v.EditNoteButton().IsEnabled(),
+			      "rectangle actions do not match their support");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_rectangle_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		}
+		case 11:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "rectangle save did not finish");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto notes = saved.document->annotations(1);
+				          if (!notes) {
+					          return false;
+				          }
+				          bool note = false, rectangle = false;
+				          for (const auto& item : notes->entries) {
+					          note = note ||
+					                 item.contents == "Placed native \u03a9";
+					          if (item.subtype == "Square" &&
+					              item.displayBounds) {
+						          const auto& box = *item.displayBounds;
+						          rectangle =
+						              std::abs(box.left - .25) < 2e-6 &&
+						              std::abs(box.top - .4) < 2e-6 &&
+						              std::abs(box.right - .65) < 2e-6 &&
+						              std::abs(box.bottom - .7) < 2e-6;
+					          }
+				          }
+				          return note && rectangle;
+			          })
+			          .get(),
+			      "reopened rectangle moved or lost its neighboring note");
+			invoke(v.DeleteNoteButton());
+			break;
+		case 12:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && std::none_of(v.m_commentScan.rows().begin(),
+			                                     v.m_commentScan.rows().end(),
+			                                     [](const auto& row) {
+				                                     return row.subtype ==
+				                                            "Square";
+			                                     }),
+			      "rectangle Delete kept the shape or a clean savepoint");
+			std::filesystem::remove(notesPath);
+			invoke(v.PlaceRectangleButton());
+			v.placeNote(choosePoint());
 			v.close();
-			check(!v.m_notePlacing && !v.m_noteDialog,
+			check(!v.m_notePlacing && !v.m_rectangleStart && !v.m_noteDialog,
 			      "forced close kept placement state");
-			status.Text(L"PASS: placement arm/cancel, gap, hidden, close, "
-			            L"editor draft, "
-			            L"immutable target and saved position");
+			status.Text(
+			    L"PASS: note and rectangle placement, cancel, rotation, "
+			    L"cross-page refusal, saved positions and rectangle Delete");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;

@@ -142,6 +142,7 @@ void ViewerPage::placeRectangle(NoteTarget target) {
 				        self->m_notesDirty =
 				            self->m_notesDirty || result.changed;
 				        if (result.changed) {
+					        self->Message().IsOpen(false);
 					        self->refreshNotes();
 				        } else if (!result.canceled) {
 					        self->showNotice(
