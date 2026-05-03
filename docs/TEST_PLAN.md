@@ -2,6 +2,35 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Comments redraw follow-up (4 November 2026)
+
+I read back filtered pixels after releasing the page input before EndDraw.
+Eight repeated uploads keep the expected colors and opaque alpha on WARP
+and the local hardware device. Both pass without an extra flush. This
+checks the effect chain, not XAML's virtual surface or the compositor.
+
+The rebuilt reader opens the rectangle input and saved copy in two tabs.
+Comments loads all four saved entries. Selecting a text box, zooming to
+140%, switching tabs and returning keeps the selected row and page pixels.
+I edit the box and delete the rectangle; the page and Comments show the
+new text and the three remaining boxes. Before rebuilding, a separate
+edit/removal run also kept the page visible after clockwise rotation at
+140%. I discard both runs' temporary edits. The saved source hash stays
+3E188687FA74AB66BAE8EB7E9C02C8F29DEA68FB62F4A19BF81DAB859A9E5F9D.
+
+The new Windows save-picker attempt is canceled: the desktop runner cannot
+target its filename control reliably. No new copy is produced. Automated
+save/reopen checks pass in the enabled suite; the earlier real-picker
+results below keep their original scope.
+
+All 703 enabled x64 tests and formatting pass. Debug x64 and ARM64 build
+without warnings with the temporary compiler workaround in DECISIONS.md.
+One existing printer test stays disabled; ARM64 execution needs another
+device. Failed virtual-surface updates now log their HRESULT with a fixed
+formatting buffer in the noexcept callback. I remove the experimental
+flush and keep the original drawing path. This run does not reproduce the blank
+Comments page, so that issue remains open.
+
 ## Rectangle placement through Windows (4 November 2026)
 
 I open a disposable copy with three text boxes. More offers Place rectangle

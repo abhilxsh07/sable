@@ -2609,3 +2609,22 @@ I replace Contents and its generated appearance on an isolated copy, keep the
 original annotation index, and check the saved copy before swapping documents.
 Unchanged Apply still proves the old appearance but leaves live bytes and
 revision alone. Cancellation and overflow discard the isolated work.
+
+## Local redraw verification (2026-11-04)
+
+The normal Debug build stalls at parallel worker startup here. A serial
+retry reaches the compiler but returns C1902, "Program database manager
+mismatch", on unchanged files too. I use a temporary wrapper outside the
+repo with one MSBuild worker and /Z7 debug information in the objects.
+ARM64 compiler work uses two processes. The project files keep their
+normal settings.
+
+Restore uses the cached packages with NuGetAudit=false after its network
+lookup fails. I do not change package versions. Both Debug targets build
+without warnings this way, and the enabled x64 suite passes. This records
+the local verification exception; the normal build invocation and ARM64
+execution remain separate checks.
+
+The format hook's Git shell also fails to create its local named object
+with access denied. I run scripts/format.ps1 -Check directly and use an
+empty hook path only for these commits. The saved hook setting stays as is.
