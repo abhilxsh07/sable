@@ -38,11 +38,19 @@ class PageFilterTest : public testing::Test {
 		// WARP runs the real effects without needing a GPU on the test runner
 		// see:
 		// https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-d3d11createdevice
+		createDevice(D3D_DRIVER_TYPE_WARP);
+	}
+
+	void createDevice(D3D_DRIVER_TYPE driver) {
 		winrt::com_ptr<ID3D11Device> d3d;
-		winrt::check_hresult(
-		    D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
-		                      D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
-		                      D3D11_SDK_VERSION, d3d.put(), nullptr, nullptr));
+		const auto result = D3D11CreateDevice(
+		    nullptr, driver, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr,
+		    0, D3D11_SDK_VERSION, d3d.put(), nullptr, nullptr);
+		if (driver == D3D_DRIVER_TYPE_HARDWARE &&
+		    result == DXGI_ERROR_UNSUPPORTED) {
+			GTEST_SKIP() << "hardware Direct3D is unavailable";
+		}
+		winrt::check_hresult(result);
 		winrt::com_ptr<ID2D1Factory1> factory;
 		winrt::check_hresult(D2D1CreateFactory(
 		    D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.put()));
@@ -72,7 +80,7 @@ class PageFilterTest : public testing::Test {
 		m_filter->setInput(bitmap.get());
 	}
 
-	std::vector<std::uint8_t> draw() {
+	std::vector<std::uint8_t> draw(bool detach = false) {
 		const auto format = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
 		                                      D2D1_ALPHA_MODE_PREMULTIPLIED);
 		const auto targetProperties =
@@ -85,6 +93,9 @@ class PageFilterTest : public testing::Test {
 		m_context->BeginDraw();
 		m_context->Clear(D2D1::ColorF(0, 0, 0, 0));
 		m_context->DrawImage(m_filter->output());
+		if (detach) {
+			m_filter->setInput(nullptr);
+		}
 		const HRESULT result = m_context->EndDraw();
 		m_context->SetTarget(nullptr);
 		winrt::check_hresult(result);
@@ -106,9 +117,35 @@ class PageFilterTest : public testing::Test {
 		return pixels;
 	}
 
+	void checkReleasedInput() {
+		const std::vector<helpers::Rgb8> colors = {
+		    {255, 255, 255}, {0, 0, 0}, {19, 117, 203}};
+		const helpers::SliderValues values{0, 0, 100, 0, 0, 0};
+		m_filter->setValues(values);
+		for (int pass = 0; pass < 8; ++pass) {
+			SCOPED_TRACE(pass);
+			upload(colors);
+			const auto pixels = draw(true);
+			for (std::size_t i = 0; i < colors.size(); ++i) {
+				const auto expected = helpers::applyFilter(values, colors[i]);
+				EXPECT_NEAR(pixels[i * 4], expected.b, 1);
+				EXPECT_NEAR(pixels[i * 4 + 1], expected.g, 1);
+				EXPECT_NEAR(pixels[i * 4 + 2], expected.r, 1);
+				EXPECT_EQ(pixels[i * 4 + 3], 255);
+			}
+		}
+	}
+
 	std::unique_ptr<pdf::PageFilter> m_filter;
 	winrt::com_ptr<ID2D1DeviceContext> m_context;
 	UINT32 m_width = 0;
+};
+
+class HardwarePageFilterTest : public PageFilterTest {
+  protected:
+	void SetUp() override {
+		createDevice(D3D_DRIVER_TYPE_HARDWARE);
+	}
 };
 } // namespace
 
@@ -136,6 +173,14 @@ TEST_F(PageFilterTest, CanReplaceThePageWithoutRebuildingTheChain) {
 	EXPECT_EQ(draw(), (std::vector<std::uint8_t>{0, 0, 0, 255}));
 	upload({{0, 0, 0}});
 	EXPECT_EQ(draw(), (std::vector<std::uint8_t>{255, 255, 255, 255}));
+}
+
+TEST_F(PageFilterTest, RedrawKeepsPixelsWhenThePageInputIsReleased) {
+	checkReleasedInput();
+}
+
+TEST_F(HardwarePageFilterTest, RedrawKeepsPixelsWhenThePageInputIsReleased) {
+	checkReleasedInput();
 }
 
 TEST_F(PageFilterTest, PresetChangesMatchChromiumWithoutUploadingAgain) {
