@@ -31,6 +31,24 @@ formatting buffer in the noexcept callback. I remove the experimental
 flush and keep the original drawing path. This run does not reproduce the blank
 Comments page, so that issue remains open.
 
+A later run on the same day got through the Windows save picker. I change
+the first text box to "Final redraw save check" and save a copy beside the
+earlier runs. Reopened in Sable, the copy shows that text, the rectangle
+and the other two boxes on a visible page. The source hash stays the same.
+
+Drawing through a second Direct2D context on the same device, as the
+reader does inside surface updates, keeps the expected pixels after the
+input is released, on WARP and the hardware device.
+
+I also toggle Comments open and closed four times and select rows in
+between, sixteen rounds in all, reading the page's bright pixels 0.12 s
+and 0.6 s after each click. The count never drops, so the page never goes
+blank. The blank Comments page stays open; a failed surface update now
+writes an Error line to the normal log, so a repeat leaves its HRESULT.
+
+Outside the earlier restricted session, the normal build script builds
+Debug x64 in parallel without warnings, and all 705 enabled tests pass.
+
 ## Rectangle placement through Windows (4 November 2026)
 
 I open a disposable copy with three text boxes. More offers Place rectangle

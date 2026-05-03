@@ -2628,3 +2628,8 @@ execution remain separate checks.
 The format hook's Git shell also fails to create its local named object
 with access denied. I run scripts/format.ps1 -Check directly and use an
 empty hook path only for these commits. The saved hook setting stays as is.
+
+The stall, C1902 and the hook failure only happen inside that restricted
+session. From a normal desktop shell the unchanged build script builds in
+parallel with PDB debug information and no warnings, and the format hook
+runs on commit. The wrapper isn't needed there.
