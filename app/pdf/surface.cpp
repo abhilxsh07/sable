@@ -19,8 +19,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "surface.h"
 
+#include <cstdio>
 #include <vector>
 
+#include "../helpers/logging.h"
 #include "surface_util.h"
 
 namespace pdf {
@@ -37,7 +39,13 @@ struct Surface::Updates
 			}
 			return S_OK;
 		} catch (...) {
-			return winrt::to_hresult();
+			const auto result = winrt::to_hresult();
+			char message[80]{};
+			std::snprintf(message, sizeof(message),
+			              "Couldn't update page surface (0x%08X)",
+			              static_cast<unsigned>(result));
+			diagnostics::write(diagnostics::Level::Error, message);
+			return result;
 		}
 	}
 	// XAML can keep the source after its owner has gone away
