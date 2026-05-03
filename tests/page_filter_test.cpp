@@ -60,6 +60,7 @@ class PageFilterTest : public testing::Test {
 		winrt::check_hresult(device->CreateDeviceContext(
 		    D2D1_DEVICE_CONTEXT_OPTIONS_NONE, m_context.put()));
 		m_context->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+		m_inputContext = m_context;
 		m_filter = std::make_unique<pdf::PageFilter>(*m_context);
 	}
 
@@ -74,9 +75,9 @@ class PageFilterTest : public testing::Test {
 		    D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
 		                      D2D1_ALPHA_MODE_PREMULTIPLIED));
 		winrt::com_ptr<ID2D1Bitmap1> bitmap;
-		winrt::check_hresult(m_context->CreateBitmap(D2D1::SizeU(m_width, 1),
-		                                             bgra.data(), m_width * 4,
-		                                             properties, bitmap.put()));
+		winrt::check_hresult(m_inputContext->CreateBitmap(
+		    D2D1::SizeU(m_width, 1), bgra.data(), m_width * 4, properties,
+		    bitmap.put()));
 		m_filter->setInput(bitmap.get());
 	}
 
@@ -136,8 +137,19 @@ class PageFilterTest : public testing::Test {
 		}
 	}
 
+	void useAnotherDrawContext() {
+		winrt::com_ptr<ID2D1Device> device;
+		m_context->GetDevice(device.put());
+		winrt::com_ptr<ID2D1DeviceContext> context;
+		winrt::check_hresult(device->CreateDeviceContext(
+		    D2D1_DEVICE_CONTEXT_OPTIONS_NONE, context.put()));
+		context->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+		m_context = std::move(context);
+	}
+
 	std::unique_ptr<pdf::PageFilter> m_filter;
 	winrt::com_ptr<ID2D1DeviceContext> m_context;
+	winrt::com_ptr<ID2D1DeviceContext> m_inputContext;
 	UINT32 m_width = 0;
 };
 
@@ -180,6 +192,17 @@ TEST_F(PageFilterTest, RedrawKeepsPixelsWhenThePageInputIsReleased) {
 }
 
 TEST_F(HardwarePageFilterTest, RedrawKeepsPixelsWhenThePageInputIsReleased) {
+	checkReleasedInput();
+}
+
+TEST_F(PageFilterTest, AnotherContextKeepsPixelsAfterReleasingTheInput) {
+	useAnotherDrawContext();
+	checkReleasedInput();
+}
+
+TEST_F(HardwarePageFilterTest,
+       AnotherContextKeepsPixelsAfterReleasingTheInput) {
+	useAnotherDrawContext();
 	checkReleasedInput();
 }
 
