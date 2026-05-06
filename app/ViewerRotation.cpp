@@ -76,8 +76,8 @@ void ViewerPage::rotateView(int turns) {
 		m_zoom = zoom;
 		m_rotation = rotation;
 		++m_rotationVersion;
-		const bool resetRectangle = m_rectangleStart.has_value();
-		m_rectangleStart.reset();
+		const bool resetShape = m_shapeStart.has_value();
+		m_shapeStart.reset();
 		++m_outlineLinkVersion;
 		m_outlineLinkPending = false;
 		m_device.filter->setInput(nullptr);
@@ -101,7 +101,7 @@ void ViewerPage::rotateView(int turns) {
 		goToPage(page);
 		updateThumbnails();
 		updateVisible();
-		if (resetRectangle) {
+		if (resetShape) {
 			showComments();
 		}
 	} catch (...) {

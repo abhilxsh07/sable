@@ -135,6 +135,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::Rectangle);
 		}
 	});
+	PlaceEllipseButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::Ellipse);
+		}
+	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -191,7 +196,7 @@ void ViewerPage::pauseComments() {
 	}
 }
 void ViewerPage::closeComments() {
-	m_rectangleStart.reset();
+	m_shapeStart.reset();
 	m_notePlacing = false;
 	setCommentsOpen(false);
 	if (m_commentVisibility) {
@@ -213,7 +218,7 @@ void ViewerPage::showComments() {
 	}
 	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
 	    Rail().Visibility() != XVisibility::Visible) {
-		m_rectangleStart.reset();
+		m_shapeStart.reset();
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
@@ -233,6 +238,12 @@ void ViewerPage::showComments() {
 	                                                 PlacementTool::Rectangle
 	                                ? L"Cancel rectangle placement"
 	                                : L"Place rectangle on page");
+	PlaceEllipseButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
+	                               !m_noteSaving && !m_noteDialog);
+	PlaceEllipseButton().Text(m_notePlacing &&
+	                                  m_placementTool == PlacementTool::Ellipse
+	                              ? L"Cancel ellipse placement"
+	                              : L"Place ellipse on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().Content(
@@ -279,9 +290,13 @@ void ViewerPage::showComments() {
 	    : m_noteSaving ? L"Saving comments\u2026"
 	    : m_notesDirty ? L"Unsaved changes"
 	                   : L"");
-	if (m_notePlacing && m_placementTool == PlacementTool::Rectangle) {
-		NotesState().Text(m_rectangleStart
+	if (m_notePlacing && (m_placementTool == PlacementTool::Rectangle ||
+	                      m_placementTool == PlacementTool::Ellipse)) {
+		NotesState().Text(m_shapeStart
 		                      ? L"Click the opposite corner on the same page. "
+		                        L"Esc cancels."
+		                  : m_placementTool == PlacementTool::Ellipse
+		                      ? L"Click the first corner of the ellipse. "
 		                        L"Esc cancels."
 		                      : L"Click the first corner of the rectangle. "
 		                        L"Esc cancels.");

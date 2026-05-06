@@ -19,6 +19,12 @@ The first full queue check had two file-replacement failures in existing
 tests. Each passed three isolated reruns and the full 710-test recheck
 passed. I have not established a cause or changed the file writer.
 
+Comments offers two-corner ellipse placement and labels Circle entries as
+Ellipse. The same cancellation state serves rectangles and ellipses.
+Removal keeps neighboring notes and rectangles; protected flags, shared
+objects and stale targets leave bytes and revision unchanged. All 711
+enabled x64 tests pass, with warning-free Debug x64/ARM64 wrapper builds.
+
 ## Comments redraw follow-up (4 November 2026)
 
 I read back filtered pixels after releasing the page input before EndDraw.

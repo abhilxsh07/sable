@@ -46,7 +46,8 @@ bool ViewerPage::canDeleteAnnotation() {
 	       (!m_notesAvailable || m_notesAvailable()) &&
 	       (target->subtype == "Text" || target->subtype == "Highlight" ||
 	        target->subtype == "Underline" || target->subtype == "StrikeOut" ||
-	        target->subtype == "FreeText" || target->subtype == "Square");
+	        target->subtype == "FreeText" || target->subtype == "Square" ||
+	        target->subtype == "Circle");
 }
 void ViewerPage::clearAnnotationSelection() {
 	cancelFormRequest();

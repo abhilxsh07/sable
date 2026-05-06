@@ -3007,7 +3007,8 @@ std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    (target.subtype != "Text" && target.subtype != "Highlight" &&
 	     target.subtype != "Underline" && target.subtype != "StrikeOut" &&
-	     target.subtype != "FreeText" && target.subtype != "Square")) {
+	     target.subtype != "FreeText" && target.subtype != "Square" &&
+	     target.subtype != "Circle")) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, target.page));

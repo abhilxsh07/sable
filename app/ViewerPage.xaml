@@ -195,6 +195,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place text box on page" />
 									<MenuFlyoutItem x:Name="PlaceRectangleButton"
 										Text="Place rectangle on page" />
+									<MenuFlyoutItem x:Name="PlaceEllipseButton"
+										Text="Place ellipse on page" />
 								</MenuFlyout>
 							</Button.Flyout>
 						</Button>

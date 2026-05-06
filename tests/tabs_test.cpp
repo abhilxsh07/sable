@@ -4969,7 +4969,7 @@ struct TabsTest {
 			      "reopened note moved from chosen location");
 			std::filesystem::remove(notesPath);
 			invoke(v.PlaceRectangleButton());
-			check(v.placeNote(choosePoint()) && v.m_rectangleStart &&
+			check(v.placeNote(choosePoint()) && v.m_shapeStart &&
 			          !v.m_notesDirty && !v.m_noteBusy,
 			      "first rectangle corner changed the PDF");
 			break;
@@ -4978,23 +4978,23 @@ struct TabsTest {
 			check(
 			    v.placeNote({static_cast<float>(other.x + other.width / 2),
 			                 static_cast<float>(other.y + other.height / 2)}) &&
-			        v.m_rectangleStart && v.m_rectangleStart->corner.page == 1,
+			        v.m_shapeStart && v.m_shapeStart->corner.page == 1,
 			    "another page replaced the rectangle corner");
-			check(v.placeNote({-1, -1}) && v.m_rectangleStart,
+			check(v.placeNote({-1, -1}) && v.m_shapeStart,
 			      "gap lost the rectangle corner");
-			check(v.cancelNotePlacement() && !v.m_rectangleStart,
+			check(v.cancelNotePlacement() && !v.m_shapeStart,
 			      "Cancel retained the rectangle corner");
 			invoke(v.PlaceRectangleButton());
 			v.placeNote(choosePoint());
 			v.setCommentsOpen(false);
-			check(!v.m_notePlacing && !v.m_rectangleStart,
+			check(!v.m_notePlacing && !v.m_shapeStart,
 			      "hidden Comments retained rectangle placement");
 			v.setCommentsOpen(true);
 			invoke(v.PlaceRectangleButton());
 			v.placeNote(choosePoint());
 			const int previousRotation = v.m_rotation;
 			v.rotateView(1);
-			check(v.m_rotation != previousRotation && !v.m_rectangleStart &&
+			check(v.m_rotation != previousRotation && !v.m_shapeStart &&
 			          v.m_notePlacing,
 			      "rotation retained the old rectangle corner");
 			v.rotateView(-1);
@@ -5003,7 +5003,7 @@ struct TabsTest {
 			break;
 		}
 		case 9: {
-			check(!v.m_notesDirty && !v.m_notePlacing && !v.m_rectangleStart &&
+			check(!v.m_notesDirty && !v.m_notePlacing && !v.m_shapeStart &&
 			          v.Message().IsOpen(),
 			      "empty rectangle changed the PDF or kept placement");
 			invoke(v.PlaceRectangleButton());
@@ -5089,7 +5089,7 @@ struct TabsTest {
 			invoke(v.PlaceRectangleButton());
 			v.placeNote(choosePoint());
 			v.close();
-			check(!v.m_notePlacing && !v.m_rectangleStart && !v.m_noteDialog,
+			check(!v.m_notePlacing && !v.m_shapeStart && !v.m_noteDialog,
 			      "forced close kept placement state");
 			status.Text(
 			    L"PASS: note and rectangle placement, cancel, rotation, "

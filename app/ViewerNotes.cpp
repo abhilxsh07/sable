@@ -44,7 +44,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	leavePageBox();
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
-	m_rectangleStart.reset();
+	m_shapeStart.reset();
 	m_placementTool = tool;
 	m_notePlacing = true;
 	showComments();
@@ -52,7 +52,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 }
 
 bool ViewerPage::cancelNotePlacement() {
-	m_rectangleStart.reset();
+	m_shapeStart.reset();
 	const bool canceled = std::exchange(m_notePlacing, false);
 	if (canceled && !m_closed) {
 		showComments();
@@ -82,8 +82,9 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		    y >= 0 && y <= 1) {
 			const NoteTarget target{static_cast<int>(page), x, y,
 			                        key(page).rotation};
-			if (m_placementTool == PlacementTool::Rectangle) {
-				placeRectangle(target);
+			if (m_placementTool == PlacementTool::Rectangle ||
+			    m_placementTool == PlacementTool::Ellipse) {
+				placeShape(target);
 				break;
 			}
 			m_notePlacing = false;
@@ -99,7 +100,8 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 	return true;
 }
 
-void ViewerPage::placeRectangle(NoteTarget target) {
+void ViewerPage::placeShape(NoteTarget target) {
+	const bool ellipse = m_placementTool == PlacementTool::Ellipse;
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
 	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
@@ -107,14 +109,14 @@ void ViewerPage::placeRectangle(NoteTarget target) {
 		cancelNotePlacement();
 		return;
 	}
-	if (!m_rectangleStart) {
-		m_rectangleStart = RectangleStart{target, revision};
+	if (!m_shapeStart) {
+		m_shapeStart = ShapeStart{target, revision};
 		showComments();
 		return;
 	}
-	const auto [first, expected] = *m_rectangleStart;
+	const auto [first, expected] = *m_shapeStart;
 	if (revision != expected) {
-		m_rectangleStart.reset();
+		m_shapeStart.reset();
 		showComments();
 		showNotice(L"The PDF changed. Click the first corner again.");
 		return;
@@ -123,16 +125,18 @@ void ViewerPage::placeRectangle(NoteTarget target) {
 		showNotice(L"Choose the opposite corner on the same page.");
 		return;
 	}
-	m_rectangleStart.reset();
+	m_shapeStart.reset();
 	m_notePlacing = false;
 	m_noteBusy = true;
 	try {
-		if (session->addRectangleAt(
+		const auto write = ellipse ? &pdf::Session::addEllipseAt
+		                           : &pdf::Session::addRectangleAt;
+		if ((session->*write)(
 		        target.page, {first.x, first.y}, {target.x, target.y},
 		        first.rotation, expected,
-		        [weak = get_weak(), queue = DispatcherQueue(),
-		         session](pdf::NoteResult result) {
-			        queue.TryEnqueue([weak, session, result] {
+		        [weak = get_weak(), queue = DispatcherQueue(), session,
+		         ellipse](pdf::NoteResult result) {
+			        queue.TryEnqueue([weak, session, result, ellipse] {
 				        const auto self = weak.get();
 				        if (!self || self->m_closed ||
 				            self->m_session.get() != session) {
@@ -146,8 +150,13 @@ void ViewerPage::placeRectangle(NoteTarget target) {
 					        self->refreshNotes();
 				        } else if (!result.canceled) {
 					        self->showNotice(
-					            L"Couldn't add this rectangle. Try a larger "
-					            L"area. This PDF may restrict comments.");
+					            ellipse
+					                ? L"Couldn't add this ellipse. Try a "
+					                  L"larger area. "
+					                  L"This PDF may restrict comments."
+					                : L"Couldn't add this rectangle. Try a "
+					                  L"larger "
+					                  L"area. This PDF may restrict comments.");
 				        }
 				        self->showComments();
 			        });
@@ -159,7 +168,8 @@ void ViewerPage::placeRectangle(NoteTarget target) {
 	}
 	m_noteBusy = false;
 	showComments();
-	showNotice(L"Couldn't queue this rectangle. Try again.");
+	showNotice(ellipse ? L"Couldn't queue this ellipse. Try again."
+	                   : L"Couldn't queue this rectangle. Try again.");
 }
 
 fire_and_forget

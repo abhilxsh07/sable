@@ -2326,6 +2326,63 @@ TEST(Annotations, EllipseRefusalsAndCancellationKeepLiveBytesAndRevision) {
 	    .get();
 }
 
+TEST(Annotations,
+     EllipseRemovalKeepsNeighborsAndRefusesProtectedOrSharedShapes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    ASSERT_EQ(doc.addRectangle(0, {40, 100, 120, 160}, 1), 1);
+		    ASSERT_EQ(doc.addEllipse(0, {300, 100, 460, 160}, 2), 2);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    const auto target = notes->entries[2].target;
+		    const auto before = pdf::DocumentEditTest::rawBytes(doc);
+		    auto stale = target;
+		    --stale.revision;
+		    EXPECT_FALSE(doc.removeAnnotation(stale));
+		    auto wrong = target;
+		    wrong.subtype = "Square";
+		    EXPECT_FALSE(doc.removeAnnotation(wrong));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), before);
+		    EXPECT_EQ(doc.annotationRevision(), target.revision);
+		    ASSERT_EQ(doc.removeAnnotation(target), true);
+		    EXPECT_EQ(doc.annotationRevision(), target.revision + 1);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 2);
+		    EXPECT_EQ(kept->entries[0].contents, "Keep note");
+		    EXPECT_EQ(kept->entries[1].subtype, "Square");
+		    EXPECT_EQ(annotationBytes("pages.pdf"), original);
+		    std::vector<std::vector<std::uint8_t>> protectedShapes{
+		        sharedHighlightBytes(1, "0 0 200 300", true, "Circle")};
+		    for (int flags :
+		         {FPDF_ANNOT_FLAG_READONLY, FPDF_ANNOT_FLAG_LOCKED, 512}) {
+			    protectedShapes.push_back(editableNoteBytes(
+			        "/Contents (Keep) /F " + std::to_string(flags), "Circle"));
+		    }
+		    for (const auto& source : protectedShapes) {
+			    const auto candidate = pdf::openDocument(source);
+			    ASSERT_TRUE(candidate.document);
+			    const auto entries = candidate.document->annotations(0);
+			    ASSERT_TRUE(entries && entries->entries.size() == 1);
+			    EXPECT_FALSE(candidate.document->removeAnnotation(
+			        entries->entries[0].target));
+			    EXPECT_EQ(candidate.document->annotationRevision(), 1u);
+			    EXPECT_FALSE(candidate.document->modified());
+			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
 	pdf::Engine engine;
 	engine
