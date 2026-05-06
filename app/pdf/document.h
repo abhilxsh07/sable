@@ -229,6 +229,10 @@ class Document {
 	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
 	               int rotation, std::uint64_t revision,
 	               const std::function<bool()>& canceled = {});
+	std::optional<int> addEllipseAt(int page, AnnotationPoint first,
+	                                AnnotationPoint second, int rotation,
+	                                std::uint64_t revision,
+	                                const std::function<bool()>& canceled = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,
@@ -348,6 +352,11 @@ class Document {
   private:
 	friend struct DocumentEditTest;
 	friend struct DocumentFormTest;
+	std::optional<int> addOutlineShapeAt(int page, AnnotationPoint first,
+	                                     AnnotationPoint second, int rotation,
+	                                     OutlineShape shape,
+	                                     std::uint64_t revision,
+	                                     const std::function<bool()>& canceled);
 	std::optional<int> addOutlineShape(int page, const AnnotationBounds& bounds,
 	                                   OutlineShape shape,
 	                                   std::uint64_t revision,

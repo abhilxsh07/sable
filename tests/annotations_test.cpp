@@ -2641,6 +2641,82 @@ TEST(Annotations, DisplayedRectanglesFollowCropAndAllPageRotations) {
 	    .get();
 }
 
+TEST(Annotations, DisplayedEllipsesFollowCropAndAllPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    constexpr pdf::AnnotationBounds expected[]{{65, 170, 245, 430},
+		                                               {110, 105, 290, 365},
+		                                               {155, 170, 335, 430},
+		                                               {110, 235, 290, 495}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto source = editableNoteBytes(
+			        "/Contents (Keep)", "Text", {},
+			        "/MediaBox [0 0 400 600] /CropBox [20 40 380 560] "
+			        "/Rotate " +
+			            std::to_string(intrinsic * 90));
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    SCOPED_TRACE(intrinsic * 4 + rotation);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    ASSERT_EQ(doc.addEllipseAt(0, {.625, .75}, {.125, .25},
+				                               rotation, 1),
+				              1);
+				    const auto bytes = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(bytes);
+				    const auto saved = pdf::openDocument(*bytes);
+				    ASSERT_TRUE(saved.document);
+				    const auto notes = saved.document->annotations(0);
+				    ASSERT_TRUE(notes && notes->entries.size() == 2);
+				    ASSERT_TRUE(notes->entries[1].bounds);
+				    EXPECT_EQ(notes->entries[1].subtype, "Circle");
+				    const auto& actual = *notes->entries[1].bounds;
+				    const auto& box = expected[(intrinsic + rotation) % 4];
+				    EXPECT_FLOAT_EQ(actual.left, box.left);
+				    EXPECT_FLOAT_EQ(actual.bottom, box.bottom);
+				    EXPECT_FLOAT_EQ(actual.right, box.right);
+				    EXPECT_FLOAT_EQ(actual.top, box.top);
+				    EXPECT_EQ(notes->entries[0].contents, "Keep");
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, DisplayedEllipsesRefuseInvalidCornersAndStaleRevisions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    for (const auto& point :
+		         {pdf::AnnotationPoint{-.001, .5},
+		          pdf::AnnotationPoint{1.001, .5},
+		          pdf::AnnotationPoint{.5, -.001},
+		          pdf::AnnotationPoint{.5, 1.001},
+		          pdf::AnnotationPoint{std::numeric_limits<double>::quiet_NaN(),
+		                               .5},
+		          pdf::AnnotationPoint{
+		              .5, std::numeric_limits<double>::infinity()}}) {
+			    EXPECT_FALSE(doc.addEllipseAt(0, point, {.5, .5}, 0, 1));
+			    EXPECT_FALSE(doc.addEllipseAt(0, {.5, .5}, point, 0, 1));
+		    }
+		    EXPECT_FALSE(doc.addEllipseAt(0, {.2, .2}, {.7, .7}, -1, 1));
+		    EXPECT_FALSE(doc.addEllipseAt(0, {.2, .2}, {.7, .7}, 4, 1));
+		    EXPECT_FALSE(doc.addEllipseAt(0, {.2, .2}, {.2, .2}, 0, 1));
+		    EXPECT_FALSE(doc.addEllipseAt(0, {.2, .2}, {.7, .7}, 0, 2));
+		    EXPECT_FALSE(doc.addEllipseAt(0, {.2, .2}, {.7, .7}, 0, 1,
+		                                  [] { return true; }));
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+	    })
+	    .get();
+}
+
 TEST(Annotations, DisplayedTextBoxesFollowCropAndAllPageRotations) {
 	pdf::Engine engine;
 	engine

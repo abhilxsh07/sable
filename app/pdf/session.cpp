@@ -548,6 +548,24 @@ bool Session::addRectangleAt(int page, AnnotationPoint first,
                              AnnotationPoint second, int rotation,
                              std::uint64_t revision,
                              std::function<void(NoteResult)> callback) {
+	return writeOutlineShape(page, first, second, rotation,
+	                         OutlineShape::Rectangle, revision,
+	                         std::move(callback));
+}
+
+bool Session::addEllipseAt(int page, AnnotationPoint first,
+                           AnnotationPoint second, int rotation,
+                           std::uint64_t revision,
+                           std::function<void(NoteResult)> callback) {
+	return writeOutlineShape(page, first, second, rotation,
+	                         OutlineShape::Ellipse, revision,
+	                         std::move(callback));
+}
+
+bool Session::writeOutlineShape(int page, AnnotationPoint first,
+                                AnnotationPoint second, int rotation,
+                                OutlineShape shape, std::uint64_t revision,
+                                std::function<void(NoteResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -555,14 +573,17 @@ bool Session::addRectangleAt(int page, AnnotationPoint first,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, first, second, rotation, revision,
+	state->m_engine.post([state, page, first, second, rotation, shape, revision,
 	                      callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
 		try {
 			if (!canceled()) {
-				result.index = state->m_document->addRectangleAt(
+				const auto write = shape == OutlineShape::Rectangle
+				                       ? &Document::addRectangleAt
+				                       : &Document::addEllipseAt;
+				result.index = (state->m_document.get()->*write)(
 				    page, first, second, rotation, revision, canceled);
 				result.changed = result.index.has_value();
 				if (result.changed) {
@@ -574,7 +595,9 @@ bool Session::addRectangleAt(int page, AnnotationPoint first,
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't add a PDF rectangle.");
+			                   shape == OutlineShape::Rectangle
+			                       ? "Couldn't add a PDF rectangle."
+			                       : "Couldn't add a PDF ellipse.");
 		}
 		result.canceled = !result.changed && canceled();
 		callback(std::move(result));

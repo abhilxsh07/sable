@@ -1669,6 +1669,23 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 std::optional<int> Document::addRectangleAt(
     int index, AnnotationPoint first, AnnotationPoint second, int rotation,
     std::uint64_t revision, const std::function<bool()>& canceled) {
+	return addOutlineShapeAt(index, first, second, rotation,
+	                         OutlineShape::Rectangle, revision, canceled);
+}
+
+std::optional<int>
+Document::addEllipseAt(int index, AnnotationPoint first, AnnotationPoint second,
+                       int rotation, std::uint64_t revision,
+                       const std::function<bool()>& canceled) {
+	return addOutlineShapeAt(index, first, second, rotation,
+	                         OutlineShape::Ellipse, revision, canceled);
+}
+
+std::optional<int>
+Document::addOutlineShapeAt(int index, AnnotationPoint first,
+                            AnnotationPoint second, int rotation,
+                            OutlineShape shape, std::uint64_t revision,
+                            const std::function<bool()>& canceled) {
 	const auto onPage = [](AnnotationPoint point) {
 		return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1;
 	};
@@ -1699,7 +1716,7 @@ std::optional<int> Document::addRectangleAt(
 	                              static_cast<float>((std::max)(x0, x1)),
 	                              static_cast<float>((std::max)(y0, y1))};
 	page.reset();
-	return addRectangle(index, bounds, revision, canceled);
+	return addOutlineShape(index, bounds, shape, revision, canceled);
 }
 
 std::optional<int> Document::addTextBox(

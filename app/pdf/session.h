@@ -187,6 +187,9 @@ class Session {
 	bool addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
 	                    int rotation, std::uint64_t revision,
 	                    std::function<void(NoteResult)> callback);
+	bool addEllipseAt(int page, AnnotationPoint first, AnnotationPoint second,
+	                  int rotation, std::uint64_t revision,
+	                  std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,
 	                std::u16string author, std::uint64_t revision,
 	                std::function<void(NoteResult)> callback,
@@ -274,6 +277,10 @@ class Session {
 	void close();
 
   private:
+	bool writeOutlineShape(int page, AnnotationPoint first,
+	                       AnnotationPoint second, int rotation,
+	                       OutlineShape shape, std::uint64_t revision,
+	                       std::function<void(NoteResult)> callback);
 	bool changeTextBox(Annotation expected, std::u16string contents,
 	                   std::optional<TextBoxSize> size,
 	                   std::function<void(NoteResult)> callback,

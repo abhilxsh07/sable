@@ -2,6 +2,23 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Ellipse writes and queued placement (5 November 2026)
+
+I save an ellipse beside a rectangle and a note. Screen and print rasters
+keep the oval border, empty middle and empty bounding-box corners. The
+note and bookmark survive. Cancellation at each writer checkpoint and
+unsafe targets leave the live bytes and revision unchanged.
+
+Displayed corners retain their PDF bounds across every combination of
+page and viewer rotation on a cropped page. Queued writes own the corner
+values, retain the neighboring rectangle and refresh the form cache.
+Stale and off-page requests refuse; closing cancels a pending request.
+The saved copy reopens with both shapes and the source bytes stay intact.
+
+The first full queue check had two file-replacement failures in existing
+tests. Each passed three isolated reruns and the full 710-test recheck
+passed. I have not established a cause or changed the file writer.
+
 ## Comments redraw follow-up (4 November 2026)
 
 I read back filtered pixels after releasing the page input before EndDraw.

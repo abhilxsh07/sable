@@ -3937,6 +3937,72 @@ TEST_F(SessionTest, RectangleQueueOwnsCornersAndKeepsItsSaveBoundary) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, EllipseQueueOwnsCornersAndPreservesTheRectangleBesideIt) {
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	pdf::Session session(engine), closing(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+	pdf::AnnotationPoint first{.75, .75}, second{.25, .5};
+	Reply<pdf::NoteResult> rectangle, placed, stale, invalid, canceled;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.addRectangleAt(0, {.1, .1}, {.2, .2}, 0, 1,
+		                                   rectangle.callback()));
+		ASSERT_TRUE(
+		    session.addEllipseAt(0, first, second, 0, 2, placed.callback()));
+		ASSERT_TRUE(
+		    session.addEllipseAt(0, first, second, 0, 2, stale.callback()));
+		ASSERT_TRUE(session.addEllipseAt(0, first, {1.5, .5}, 0, 3,
+		                                 invalid.callback()));
+		ASSERT_TRUE(
+		    closing.addEllipseAt(0, first, second, 0, 1, canceled.callback()));
+		first = second = {};
+		session.cancelForms();
+		session.cancelAnnotations();
+		closing.close();
+	}
+	const auto neighbor = rectangle.wait(), ellipse = placed.wait(),
+	           old = stale.wait(), bad = invalid.wait(),
+	           closed = canceled.wait();
+	ASSERT_TRUE(neighbor && ellipse && old && bad && closed);
+	EXPECT_EQ(neighbor->index, 0);
+	EXPECT_TRUE(neighbor->changed && !neighbor->canceled);
+	EXPECT_EQ(ellipse->index, 1);
+	EXPECT_TRUE(ellipse->changed && !ellipse->canceled);
+	EXPECT_FALSE(old->changed || old->index || old->canceled);
+	EXPECT_FALSE(bad->changed || bad->index || bad->canceled);
+	EXPECT_TRUE(closed->canceled && !closed->changed && !closed->index);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 3);
+	EXPECT_NE(fresh, cached);
+	EXPECT_EQ(session.annotationRevision(), 3u);
+	EXPECT_EQ(closing.annotationRevision(), 0u);
+	const auto destination = tempDir() / "placed ellipse.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 2);
+	EXPECT_EQ(notes->annotations->entries[0].subtype, "Square");
+	const auto& kept = notes->annotations->entries[1];
+	ASSERT_TRUE(kept.bounds);
+	EXPECT_EQ(kept.subtype, "Circle");
+	EXPECT_FLOAT_EQ(kept.bounds->left, 148.75f);
+	EXPECT_FLOAT_EQ(kept.bounds->bottom, 210.5f);
+	EXPECT_FLOAT_EQ(kept.bounds->right, 446.25f);
+	EXPECT_FLOAT_EQ(kept.bounds->top, 421.f);
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
 	pdf::Session session(engine);
 	const auto source = fixturePath("pages.pdf");
