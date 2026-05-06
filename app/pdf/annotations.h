@@ -56,6 +56,7 @@ struct AnnotationColor {
 	bool operator==(const AnnotationColor&) const = default;
 };
 enum class HighlightColor { Yellow, Green, LightBlue, Pink, Red };
+enum class OutlineShape { Rectangle, Ellipse };
 
 // These snapshots own their text and can outlive the document and engine.
 struct Annotation {

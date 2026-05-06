@@ -2633,3 +2633,17 @@ The stall, C1902 and the hook failure only happen inside that restricted
 session. From a normal desktop shell the unchanged build script builds in
 parallel with PDB debug information and no warnings, and the format hook
 runs on commit. The wrapper isn't needed there.
+
+## Ellipse outline creation (2026-11-05)
+
+I store ellipses as Circle annotations, which also allow unequal radii.
+The normal appearance has two closed cubic contours with an even-odd
+fill: a black outer oval and an empty inset oval. I keep the rectangle's
+2-point inset and the same printable flag. Color and width controls stay
+marked for later work.
+
+The writer shares the rectangle transaction, bounds and revision guards.
+It checks the appearance and annotation count on a reopened copy before
+replacing the live document. Cancellation, protected documents and unsafe
+relationships keep their earlier refusals. Existing rectangle appearance
+commands stay the same.

@@ -221,6 +221,9 @@ class Document {
 	std::optional<int> addRectangle(int page, const AnnotationBounds& bounds,
 	                                std::uint64_t revision,
 	                                const std::function<bool()>& canceled = {});
+	std::optional<int> addEllipse(int page, const AnnotationBounds& bounds,
+	                              std::uint64_t revision,
+	                              const std::function<bool()>& canceled = {});
 	// corners use the displayed page, including the viewer's rotation.
 	std::optional<int>
 	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
@@ -345,6 +348,10 @@ class Document {
   private:
 	friend struct DocumentEditTest;
 	friend struct DocumentFormTest;
+	std::optional<int> addOutlineShape(int page, const AnnotationBounds& bounds,
+	                                   OutlineShape shape,
+	                                   std::uint64_t revision,
+	                                   const std::function<bool()>& canceled);
 	std::optional<std::vector<std::uint8_t>>
 	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
 	                bool hideNotes) const;

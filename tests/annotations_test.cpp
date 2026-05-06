@@ -2206,6 +2206,126 @@ TEST(Annotations, RectangleWritesKeepNeighborsAndRejectUnsafeTargets) {
 	    .get();
 }
 
+TEST(Annotations, EllipseWritesKeepNeighborsAndSavedScreenAndPrintPixels) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link);
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    const auto revision = doc.annotationRevision();
+		    ASSERT_EQ(doc.addRectangle(0, {40, 100, 120, 160}, revision), 1);
+		    ASSERT_EQ(doc.addEllipse(0, {200, 100, 360, 160}, revision + 1), 2);
+		    EXPECT_EQ(doc.annotationRevision(), revision + 2);
+		    EXPECT_EQ(doc.textNote(0, 0, doc.annotationRevision()),
+		              u"Keep note");
+		    const auto kept = doc.outlineLink(0);
+		    ASSERT_TRUE(kept);
+		    EXPECT_EQ(kept->uri, link->uri);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[1].subtype, "Square");
+		    const auto& ellipse = notes->entries[2];
+		    ASSERT_TRUE(ellipse.bounds);
+		    EXPECT_EQ(ellipse.subtype, "Circle");
+		    EXPECT_EQ(ellipse.flags, FPDF_ANNOT_FLAG_PRINT);
+		    EXPECT_FLOAT_EQ(ellipse.bounds->left, 200);
+		    EXPECT_FLOAT_EQ(ellipse.bounds->bottom, 100);
+		    EXPECT_FLOAT_EQ(ellipse.bounds->right, 360);
+		    EXPECT_FLOAT_EQ(ellipse.bounds->top, 160);
+		    const auto screen = saved.document->render(0, 360, 240);
+		    const auto print =
+		        saved.document->printRaster(0, 360, 240, 0, 0, 360, 240);
+		    ASSERT_TRUE(screen && print);
+		    for (const auto* image : {&*screen, &*print}) {
+			    const auto blue = [&](int x, int y) {
+				    return image
+				        ->pixels[(269 - y) * image->stride + 4 * (x - 20)];
+			    };
+			    EXPECT_EQ(blue(201, 130), 0);
+			    EXPECT_EQ(blue(280, 158), 0);
+			    EXPECT_EQ(blue(358, 130), 0);
+			    EXPECT_EQ(blue(280, 101), 0);
+			    EXPECT_EQ(blue(280, 130), 255);
+			    EXPECT_EQ(blue(201, 158), 255);
+			    EXPECT_EQ(blue(358, 101), 255);
+			    EXPECT_EQ(blue(198, 130), 255);
+			    EXPECT_EQ(blue(41, 130), 0);
+		    }
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, EllipseRefusalsAndCancellationKeepLiveBytesAndRevision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    constexpr pdf::AnnotationBounds bounds{300, 100, 460, 160};
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    EXPECT_FALSE(doc.addEllipse(-1, bounds, 1));
+		    EXPECT_FALSE(doc.addEllipse(doc.pageCount(), bounds, 1));
+		    EXPECT_FALSE(doc.addEllipse(0, bounds, 0));
+		    EXPECT_FALSE(doc.addEllipse(0, bounds, 2));
+		    for (const auto& bad :
+		         {pdf::AnnotationBounds{300, 100, 304, 160},
+		          pdf::AnnotationBounds{460, 100, 300, 160},
+		          pdf::AnnotationBounds{-1, 100, 460, 160},
+		          pdf::AnnotationBounds{300, 100, 600, 160},
+		          pdf::AnnotationBounds{300, 100, 460,
+		                                std::numeric_limits<float>::infinity()},
+		          pdf::AnnotationBounds{300, 100,
+		                                std::numeric_limits<float>::quiet_NaN(),
+		                                160}}) {
+			    EXPECT_FALSE(doc.addEllipse(0, bad, 1));
+		    }
+		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    int checkpoints = 0;
+		    const auto baseline = pdf::openDocument(original);
+		    ASSERT_TRUE(baseline.document);
+		    ASSERT_TRUE(baseline.document->addEllipse(0, bounds, 1, [&] {
+			    ++checkpoints;
+			    return false;
+		    }));
+		    EXPECT_GT(checkpoints, 5);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto candidate = pdf::openDocument(original);
+			    ASSERT_TRUE(candidate.document);
+			    int calls = 0;
+			    EXPECT_FALSE(candidate.document->addEllipse(
+			        0, bounds, 1, [&] { return ++calls == stop; }));
+			    EXPECT_EQ(candidate.document->annotationRevision(), 1u);
+			    EXPECT_FALSE(candidate.document->modified());
+			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), original);
+		    }
+		    for (const auto& source :
+		         {annotationBytes("notes_denied.pdf"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          sharedHighlightBytes(2)}) {
+			    const auto refused = pdf::openDocument(source);
+			    ASSERT_TRUE(refused.document);
+			    EXPECT_FALSE(refused.document->addEllipse(0, bounds, 1));
+			    EXPECT_EQ(refused.document->annotationRevision(), 1u);
+			    EXPECT_EQ(refused.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
 	pdf::Engine engine;
 	engine

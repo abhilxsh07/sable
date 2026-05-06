@@ -1495,6 +1495,22 @@ std::optional<int>
 Document::addRectangle(int index, const AnnotationBounds& bounds,
                        std::uint64_t revision,
                        const std::function<bool()>& canceled) {
+	return addOutlineShape(index, bounds, OutlineShape::Rectangle, revision,
+	                       canceled);
+}
+
+std::optional<int> Document::addEllipse(int index,
+                                        const AnnotationBounds& bounds,
+                                        std::uint64_t revision,
+                                        const std::function<bool()>& canceled) {
+	return addOutlineShape(index, bounds, OutlineShape::Ellipse, revision,
+	                       canceled);
+}
+
+std::optional<int>
+Document::addOutlineShape(int index, const AnnotationBounds& bounds,
+                          OutlineShape shape, std::uint64_t revision,
+                          const std::function<bool()>& canceled) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	if (offThread() || !revision || !currentRevision(revision) ||
 	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
@@ -1509,7 +1525,7 @@ Document::addRectangle(int index, const AnnotationBounds& bounds,
 			return {};
 		}
 	}
-	// @todo: expose the rectangle border width and color with shape tools.
+	// @todo: expose the outline border width and color with shape tools.
 	constexpr double border = 2;
 	const double width = double(bounds.right) - bounds.left;
 	const double height = double(bounds.top) - bounds.bottom;
@@ -1521,10 +1537,32 @@ Document::addRectangle(int index, const AnnotationBounds& bounds,
 	const FS_RECTF rect{left, top, right, bottom};
 	std::ostringstream stream;
 	stream.imbue(std::locale::classic());
-	stream << std::fixed << std::setprecision(5) << "0 g " << left << ' '
-	       << bottom << ' ' << width << ' ' << height << " re " << left + border
-	       << ' ' << bottom + border << ' ' << width - 2 * border << ' '
-	       << height - 2 * border << " re f*";
+	stream << std::fixed << std::setprecision(5) << "0 g ";
+	if (shape == OutlineShape::Rectangle) {
+		stream << left << ' ' << bottom << ' ' << width << ' ' << height
+		       << " re " << left + border << ' ' << bottom + border << ' '
+		       << width - 2 * border << ' ' << height - 2 * border << " re f*";
+	} else {
+		const double cx = left + width / 2, cy = bottom + height / 2;
+		const auto contour = [&](double rx, double ry) {
+			// four cubics meet each axis with the ellipse's tangent.
+			constexpr double k = 0.5522847498307936;
+			const double dx = rx * k, dy = ry * k;
+			stream << cx + rx << ' ' << cy << " m " << cx + rx << ' ' << cy + dy
+			       << ' ' << cx + dx << ' ' << cy + ry << ' ' << cx << ' '
+			       << cy + ry << " c " << cx - dx << ' ' << cy + ry << ' '
+			       << cx - rx << ' ' << cy + dy << ' ' << cx - rx << ' ' << cy
+			       << " c " << cx - rx << ' ' << cy - dy << ' ' << cx - dx
+			       << ' ' << cy - ry << ' ' << cx << ' ' << cy - ry << " c "
+			       << cx + dx << ' ' << cy - ry << ' ' << cx + rx << ' '
+			       << cy - dy << ' ' << cx + rx << ' ' << cy << " c h ";
+		};
+		contour(width / 2, height / 2);
+		contour(width / 2 - border, height / 2 - border);
+		stream << "f*";
+	}
+	const auto subtype = shape == OutlineShape::Rectangle ? FPDF_ANNOT_SQUARE
+	                                                      : FPDF_ANNOT_CIRCLE;
 	const auto raw = stream.str();
 	const std::u16string appearance(raw.begin(), raw.end());
 
@@ -1569,7 +1607,7 @@ Document::addRectangle(int index, const AnnotationBounds& bounds,
 		    added >= 4096 || FPDFPage_GetAnnotCount(page.get()) != added) {
 			return {};
 		}
-		AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), FPDF_ANNOT_SQUARE));
+		AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), subtype));
 		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) ||
 		    !FPDFAnnot_SetAP(
@@ -1599,7 +1637,7 @@ Document::addRectangle(int index, const AnnotationBounds& bounds,
 		const auto size = static_cast<unsigned long>((appearance.size() + 1) *
 		                                             sizeof(FPDF_WCHAR));
 		std::vector<FPDF_WCHAR> ap(appearance.size() + 1);
-		if (!note || FPDFAnnot_GetSubtype(note.get()) != FPDF_ANNOT_SQUARE ||
+		if (!note || FPDFAnnot_GetSubtype(note.get()) != subtype ||
 		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
 		    !FPDFAnnot_GetRect(note.get(), &kept) || kept.left != left ||
 		    kept.bottom != bottom || kept.right != right || kept.top != top ||
