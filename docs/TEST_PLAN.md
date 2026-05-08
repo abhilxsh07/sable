@@ -36,6 +36,40 @@ placement state. The original `SableNotePlacementTest=true` mode also
 passes with rectangles. These native modes use an injected destination;
 the separate desktop run exercises the Windows picker.
 
+## Desktop ellipse round trip (5 November 2026)
+
+I open `verify-ellipse-20261105/ellipse-input.pdf`, which has three text
+boxes and a rectangle. Escape after the first ellipse corner leaves four
+comments and Save disabled. A new pair of page clicks adds the empty
+outline in the chosen area. Comments lists five entries, labels the new
+one Ellipse and enables Delete while leaving Edit disabled.
+
+The Windows picker saves `ellipse-saved.pdf`. Reopening it in a new tab
+shows the oval, rectangle and three text boxes, with five comments and
+Save disabled. Deleting the ellipse leaves four comments and an unsaved
+change. I save `ellipse-removed.pdf` through the picker and reopen it;
+the page keeps the rectangle and all three text boxes, without the oval.
+The reopened copy is clean. All three tabs close without an unsaved prompt.
+
+The source SHA-256 remains:
+`3E188687FA74AB66BAE8EB7E9C02C8F29DEA68FB62F4A19BF81DAB859A9E5F9D`.
+The saved ellipse copy remains:
+`CE6AD0D1A7335D49E24C211B1D722D087C0C9BC882A4FDCC3907E556DBE5E1A6`.
+The removal copy is:
+`1207A985313F7A14DE5E207EDE174C825986ACA9B0F9B7104DF8B4BCB7F54A81`.
+
+After canceling and rearming placement, one desktop capture has no page
+pixels. A later capture shows the page again without a recovery action.
+The subsequent placement, saved copies and reopened pages stay visible.
+This transient blank observation does not establish a cause or a fix;
+the existing Comments redraw issue stays open.
+
+The normal reader is rebuilt after the native modes. Debug x64 and ARM64
+build with zero warnings using the local workaround in DECISIONS.md, all
+711 enabled x64 tests pass, and formatting passes. One printer test stays
+disabled. ARM64 is compiled, not run; no physical printer or trackpad
+check is added by this ellipse pass.
+
 ## Comments redraw follow-up (4 November 2026)
 
 I read back filtered pixels after releasing the page input before EndDraw.
