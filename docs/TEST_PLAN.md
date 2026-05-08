@@ -25,6 +25,17 @@ Removal keeps neighboring notes and rectangles; protected flags, shared
 objects and stale targets leave bytes and revision unchanged. All 711
 enabled x64 tests pass, with warning-free Debug x64/ARM64 wrapper builds.
 
+With the Debug reader built using `SableSurfaceTest=true`, I run
+`SableTabsTest=true`, `SableEllipsePlacementTest=true` and
+`SableProbeAutoClose=true`. The ellipse mode exits successfully after
+checking tool changes, first-corner cancellation, hidden Comments,
+rotation, another page, a page gap and an empty shape. A valid retry saves
+the chosen bounds beside a Unicode note. Reopening keeps both; Delete
+removes the shape and marks the savepoint dirty. Forced close clears the
+placement state. The original `SableNotePlacementTest=true` mode also
+passes with rectangles. These native modes use an injected destination;
+the separate desktop run exercises the Windows picker.
+
 ## Comments redraw follow-up (4 November 2026)
 
 I read back filtered pixels after releasing the page input before EndDraw.

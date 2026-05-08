@@ -128,6 +128,7 @@ struct TabsTest {
 	std::filesystem::path buttonFieldPath;
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
+	bool ellipsePlacementOnly = false;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
 	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
@@ -4848,6 +4849,14 @@ struct TabsTest {
 			    static_cast<float>(rect.x + .25 * rect.width),
 			    static_cast<float>(rect.y + .7 * rect.height)};
 		};
+		const auto shapeType = ellipsePlacementOnly ? "Circle" : "Square";
+		const auto placeShape = [&] {
+			if (ellipsePlacementOnly) {
+				invoke(v.PlaceEllipseButton());
+			} else {
+				invoke(v.PlaceRectangleButton());
+			}
+		};
 		switch (step) {
 		case 0:
 			v.setCommentsOpen(true);
@@ -4950,7 +4959,7 @@ struct TabsTest {
 			check(notesSave.GetResults() && !v.m_notesDirty,
 			      "placed note save failed");
 			check(engine
-			          .run([path = notesPath] {
+			          .run([path = notesPath, shapeType] {
 				          const auto saved = pdf::openFile(path);
 				          if (!saved.document) {
 					          return false;
@@ -4968,10 +4977,24 @@ struct TabsTest {
 			          .get(),
 			      "reopened note moved from chosen location");
 			std::filesystem::remove(notesPath);
-			invoke(v.PlaceRectangleButton());
+			placeShape();
+			if (ellipsePlacementOnly) {
+				v.placeNote(choosePoint());
+				invoke(v.PlaceRectangleButton());
+				check(v.m_notePlacing && !v.m_shapeStart &&
+				          v.m_placementTool ==
+				              ViewerPage::PlacementTool::Rectangle,
+				      "tool switch retained the ellipse corner");
+				v.placeNote(choosePoint());
+				invoke(v.PlaceEllipseButton());
+				check(v.m_notePlacing && !v.m_shapeStart &&
+				          v.m_placementTool ==
+				              ViewerPage::PlacementTool::Ellipse,
+				      "tool switch retained the rectangle corner");
+			}
 			check(v.placeNote(choosePoint()) && v.m_shapeStart &&
 			          !v.m_notesDirty && !v.m_noteBusy,
-			      "first rectangle corner changed the PDF");
+			      "first shape corner changed the PDF");
 			break;
 		case 8: {
 			const auto& other = v.m_layout->pages()[0];
@@ -4979,24 +5002,24 @@ struct TabsTest {
 			    v.placeNote({static_cast<float>(other.x + other.width / 2),
 			                 static_cast<float>(other.y + other.height / 2)}) &&
 			        v.m_shapeStart && v.m_shapeStart->corner.page == 1,
-			    "another page replaced the rectangle corner");
+			    "another page replaced the shape corner");
 			check(v.placeNote({-1, -1}) && v.m_shapeStart,
-			      "gap lost the rectangle corner");
+			      "gap lost the shape corner");
 			check(v.cancelNotePlacement() && !v.m_shapeStart,
-			      "Cancel retained the rectangle corner");
-			invoke(v.PlaceRectangleButton());
+			      "Cancel retained the shape corner");
+			placeShape();
 			v.placeNote(choosePoint());
 			v.setCommentsOpen(false);
 			check(!v.m_notePlacing && !v.m_shapeStart,
-			      "hidden Comments retained rectangle placement");
+			      "hidden Comments retained shape placement");
 			v.setCommentsOpen(true);
-			invoke(v.PlaceRectangleButton());
+			placeShape();
 			v.placeNote(choosePoint());
 			const int previousRotation = v.m_rotation;
 			v.rotateView(1);
 			check(v.m_rotation != previousRotation && !v.m_shapeStart &&
 			          v.m_notePlacing,
-			      "rotation retained the old rectangle corner");
+			      "rotation retained the old shape corner");
 			v.rotateView(-1);
 			v.placeNote(choosePoint());
 			v.placeNote(choosePoint());
@@ -5005,8 +5028,8 @@ struct TabsTest {
 		case 9: {
 			check(!v.m_notesDirty && !v.m_notePlacing && !v.m_shapeStart &&
 			          v.Message().IsOpen(),
-			      "empty rectangle changed the PDF or kept placement");
-			invoke(v.PlaceRectangleButton());
+			      "empty shape changed the PDF or kept placement");
+			placeShape();
 			v.placeNote(choosePoint());
 			const auto& page = v.m_layout->pages()[1];
 			v.placeNote({static_cast<float>(page.x + .65 * page.width),
@@ -5018,21 +5041,21 @@ struct TabsTest {
 				return;
 			}
 			const auto& rows = v.m_commentScan.rows();
-			const auto rectangle =
-			    std::find_if(rows.begin(), rows.end(), [](const auto& row) {
-				    return row.page == 1 && row.subtype == "Square";
+			const auto shape = std::find_if(
+			    rows.begin(), rows.end(), [shapeType](const auto& row) {
+				    return row.page == 1 && row.subtype == shapeType;
 			    });
-			check(rectangle != rows.end() && v.m_notesDirty &&
+			check(shape != rows.end() && v.m_notesDirty &&
 			          !v.Message().IsOpen(),
-			      "rectangle missing from refreshed Comments");
+			      "shape missing from refreshed Comments");
 			v.CommentsList().SelectedIndex(
-			    static_cast<int>(rectangle - rows.begin()));
+			    static_cast<int>(shape - rows.begin()));
 			v.showComments();
 			check(v.DeleteNoteButton().IsEnabled() &&
 			          !v.EditNoteButton().IsEnabled(),
-			      "rectangle actions do not match their support");
+			      "shape actions do not match their support");
 			notesPath = std::filesystem::temp_directory_path() /
-			            (L"sable_rectangle_" +
+			            (L"sable_shape_" +
 			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
 			owner.m_notesPicker = [path =
 			                           hstring(notesPath.wstring())](hstring) {
@@ -5043,9 +5066,9 @@ struct TabsTest {
 		}
 		case 11:
 			check(notesSave.GetResults() && !v.m_notesDirty,
-			      "rectangle save did not finish");
+			      "shape save did not finish");
 			check(engine
-			          .run([path = notesPath] {
+			          .run([path = notesPath, shapeType] {
 				          const auto saved = pdf::openFile(path);
 				          if (!saved.document) {
 					          return false;
@@ -5054,24 +5077,23 @@ struct TabsTest {
 				          if (!notes) {
 					          return false;
 				          }
-				          bool note = false, rectangle = false;
+				          bool note = false, shape = false;
 				          for (const auto& item : notes->entries) {
 					          note = note ||
 					                 item.contents == "Placed native \u03a9";
-					          if (item.subtype == "Square" &&
+					          if (item.subtype == shapeType &&
 					              item.displayBounds) {
 						          const auto& box = *item.displayBounds;
-						          rectangle =
-						              std::abs(box.left - .25) < 2e-6 &&
-						              std::abs(box.top - .4) < 2e-6 &&
-						              std::abs(box.right - .65) < 2e-6 &&
-						              std::abs(box.bottom - .7) < 2e-6;
+						          shape = std::abs(box.left - .25) < 2e-6 &&
+						                  std::abs(box.top - .4) < 2e-6 &&
+						                  std::abs(box.right - .65) < 2e-6 &&
+						                  std::abs(box.bottom - .7) < 2e-6;
 					          }
 				          }
-				          return note && rectangle;
+				          return note && shape;
 			          })
 			          .get(),
-			      "reopened rectangle moved or lost its neighboring note");
+			      "reopened shape moved or lost its neighboring note");
 			invoke(v.DeleteNoteButton());
 			break;
 		case 12:
@@ -5080,20 +5102,21 @@ struct TabsTest {
 			}
 			check(v.m_notesDirty && std::none_of(v.m_commentScan.rows().begin(),
 			                                     v.m_commentScan.rows().end(),
-			                                     [](const auto& row) {
+			                                     [shapeType](const auto& row) {
 				                                     return row.subtype ==
-				                                            "Square";
+				                                            shapeType;
 			                                     }),
-			      "rectangle Delete kept the shape or a clean savepoint");
+			      "shape Delete kept the shape or a clean savepoint");
 			std::filesystem::remove(notesPath);
-			invoke(v.PlaceRectangleButton());
+			placeShape();
 			v.placeNote(choosePoint());
 			v.close();
 			check(!v.m_notePlacing && !v.m_shapeStart && !v.m_noteDialog,
 			      "forced close kept placement state");
 			status.Text(
-			    L"PASS: note and rectangle placement, cancel, rotation, "
-			    L"cross-page refusal, saved positions and rectangle Delete");
+			    L"PASS: note and shape placement, tool changes, cancel, "
+			    L"rotation, "
+			    L"cross-page refusal, saved positions and shape Delete");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
@@ -8072,6 +8095,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->notePlacementOnly =
 	    GetEnvironmentVariableW(L"SableNotePlacementTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->ellipsePlacementOnly =
+	    GetEnvironmentVariableW(L"SableEllipsePlacementTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
+	state->notePlacementOnly =
+	    state->notePlacementOnly || state->ellipsePlacementOnly;
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly =
