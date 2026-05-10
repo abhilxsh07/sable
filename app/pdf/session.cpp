@@ -605,6 +605,48 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 	return true;
 }
 
+bool Session::resizeShape(Annotation expected, ShapeSize size,
+                          std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !expected.target.revision ||
+		    (expected.target.subtype != "Square" &&
+		     expected.target.subtype != "Circle") ||
+		    !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, size, expected = std::move(expected),
+	                      callback = std::move(callback)] {
+		NoteResult result;
+		result.page = expected.target.page;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				const auto changed =
+				    state->m_document->resizeShape(expected, size, canceled);
+				if (changed) {
+					result.index = expected.target.index;
+					result.changed = *changed;
+					if (*changed) {
+						state->m_forms.reset();
+						std::lock_guard lock(state->m_mutex);
+						state->m_annotationRevision =
+						    state->m_document->annotationRevision();
+					}
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't resize a PDF shape.");
+		}
+		result.canceled = !result.index && canceled();
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::addTextBox(int page, AnnotationBounds bounds,
                          std::u16string contents, std::u16string author,
                          std::uint64_t revision,

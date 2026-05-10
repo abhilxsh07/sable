@@ -267,6 +267,38 @@ class SessionTest : public ::testing::Test {
 		return result ? result->box : std::nullopt;
 	}
 
+	fs::path shapeSource() {
+		const auto bytes =
+		    engine
+		        .run([] {
+			        auto opened = pdf::openFile(fixturePath("outline.pdf"));
+			        if (!opened.document ||
+			            !opened.document->addRectangle(0, {40, 100, 240, 160},
+			                                           1) ||
+			            !opened.document->addEllipse(0, {260, 100, 380, 160},
+			                                         2) ||
+			            !opened.document->addTextNote(0, 40, 250,
+			                                          u"Neighbor")) {
+				        return std::optional<std::vector<std::uint8_t>>{};
+			        }
+			        return opened.document->serialize(1024 * 1024);
+		        })
+		        .get();
+		EXPECT_TRUE(bytes);
+		return bytes ? writeTemp("existing shapes.pdf",
+		                         std::string(bytes->begin(), bytes->end()))
+		             : fs::path{};
+	}
+	std::optional<pdf::Annotations> readAnnotations(pdf::Session& session) {
+		Reply<pdf::AnnotationsResult> reply;
+		if (!session.annotations(0, reply.callback())) {
+			ADD_FAILURE() << "annotation read wasn't accepted";
+			return {};
+		}
+		const auto result = reply.wait();
+		return result ? result->annotations : std::nullopt;
+	}
+
 	pdf::Engine engine;
 
   private:
@@ -4300,6 +4332,191 @@ TEST_F(SessionTest, BoxSizesOwnQueuedDimensionsAndPreserveSavedNeighbors) {
 	            notes->annotations->entries.size() == 2);
 	EXPECT_EQ(notes->annotations->entries[1].contents, "Neighbor");
 	EXPECT_FLOAT_EQ(notes->annotations->entries[1].bounds->top, 260);
+	EXPECT_EQ(readFile(source), original);
+}
+
+TEST_F(SessionTest, ShapeSizesOwnSnapshotsAndPreserveSavedNeighbors) {
+	const auto source = shapeSource();
+	const auto original = readFile(source);
+	for (int index : {0, 1}) {
+		pdf::Session session(engine);
+		ASSERT_EQ(open(session, source).error, pdf::Error::None);
+		const auto initial = readAnnotations(session);
+		ASSERT_TRUE(initial && initial->entries.size() == 3);
+		auto shape = initial->entries[index];
+		ASSERT_TRUE(shape.bounds);
+		const auto bounds = *shape.bounds;
+		const auto cached = readForms(session);
+		ASSERT_TRUE(cached && cached->revision == 1);
+		Reply<pdf::NoteResult> noop;
+		ASSERT_TRUE(session.resizeShape(
+		    shape, {bounds.right - bounds.left, bounds.top - bounds.bottom},
+		    noop.callback()));
+		const auto same = noop.wait();
+		ASSERT_TRUE(same && same->index == index && !same->changed &&
+		            !same->canceled);
+		EXPECT_EQ(readForms(session), cached);
+		pdf::ShapeSize size{110, 90};
+		Reply<pdf::NoteResult> write, stale;
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session.resizeShape(shape, size, write.callback()));
+			ASSERT_TRUE(session.resizeShape(shape, size, stale.callback()));
+			size = {1, 1};
+			shape.bounds.reset();
+			shape.subtype.clear();
+			shape.target = {};
+			session.cancelAnnotations();
+			session.cancelForms();
+		}
+		const auto changed = write.wait(), old = stale.wait();
+		ASSERT_TRUE(changed && old);
+		EXPECT_TRUE(changed->index == index && changed->changed &&
+		            !changed->canceled);
+		EXPECT_FALSE(old->index || old->changed || old->canceled);
+		const auto fresh = readForms(session);
+		ASSERT_TRUE(fresh && fresh->revision == 2);
+		EXPECT_NE(fresh, cached);
+		EXPECT_EQ(session.annotationRevision(), 2u);
+		const auto destination = tempDir() / "resized shapes.pdf";
+		Reply<pdf::SaveResult> saved;
+		ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+		                              saved.callback()));
+		ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+		pdf::Session reopened(engine);
+		ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+		const auto kept = readAnnotations(reopened);
+		ASSERT_TRUE(kept && kept->entries.size() == 3);
+		const auto& resized = kept->entries[index];
+		ASSERT_TRUE(resized.bounds);
+		EXPECT_EQ(resized.subtype, initial->entries[index].subtype);
+		EXPECT_EQ(resized.index, index);
+		EXPECT_FLOAT_EQ(resized.bounds->left, bounds.left);
+		EXPECT_FLOAT_EQ(resized.bounds->top, bounds.top);
+		EXPECT_FLOAT_EQ(resized.bounds->right, bounds.left + 110);
+		EXPECT_FLOAT_EQ(resized.bounds->bottom, bounds.top - 90);
+		const auto& neighbor = kept->entries[1 - index];
+		ASSERT_TRUE(neighbor.bounds);
+		EXPECT_EQ(neighbor.subtype, initial->entries[1 - index].subtype);
+		EXPECT_FLOAT_EQ(neighbor.bounds->left,
+		                initial->entries[1 - index].bounds->left);
+		EXPECT_FLOAT_EQ(neighbor.bounds->right,
+		                initial->entries[1 - index].bounds->right);
+		EXPECT_EQ(kept->entries[2].contents, "Neighbor");
+		EXPECT_EQ(readFile(source), original);
+	}
+}
+
+TEST_F(SessionTest, ShapeSizeRefusalsKeepCacheAndAllowRetry) {
+	pdf::Session session(engine), cold(engine);
+	ASSERT_EQ(open(session, shapeSource()).error, pdf::Error::None);
+	const auto initial = readAnnotations(session);
+	ASSERT_TRUE(initial && initial->entries.size() == 3);
+	const auto& shape = initial->entries[0];
+	const auto cached = readForms(session);
+	for (const auto size : {pdf::ShapeSize{1, 60},
+	                        {200, 1},
+	                        {0, 60},
+	                        {200, -1},
+	                        {1000, 90},
+	                        {200, 1000}}) {
+		Reply<pdf::NoteResult> write;
+		ASSERT_TRUE(session.resizeShape(shape, size, write.callback()));
+		const auto refused = write.wait();
+		ASSERT_TRUE(refused);
+		EXPECT_FALSE(refused->index || refused->changed || refused->canceled);
+		EXPECT_EQ(readForms(session), cached);
+		EXPECT_EQ(session.annotationRevision(), 1u);
+	}
+	Reply<pdf::NoteResult> unused;
+	EXPECT_FALSE(cold.resizeShape(shape, {250, 60}, unused.callback()));
+	EXPECT_FALSE(session.resizeShape(shape, {250, 60}, {}));
+	auto invalid = shape;
+	invalid.target.revision = 0;
+	EXPECT_FALSE(session.resizeShape(invalid, {250, 60}, unused.callback()));
+	EXPECT_FALSE(
+	    session.resizeShape(initial->entries[2], {250, 60}, unused.callback()));
+	invalid = shape;
+	invalid.bounds->right += 1;
+	Reply<pdf::NoteResult> forged;
+	ASSERT_TRUE(session.resizeShape(invalid, {250, 60}, forged.callback()));
+	const auto refused = forged.wait();
+	ASSERT_TRUE(refused && !refused->index && !refused->changed &&
+	            !refused->canceled);
+	EXPECT_EQ(readForms(session), cached);
+	Reply<pdf::NoteResult> retry;
+	ASSERT_TRUE(session.resizeShape(shape, {250, 60}, retry.callback()));
+	const auto accepted = retry.wait();
+	ASSERT_TRUE(accepted && accepted->index == 0 && accepted->changed &&
+	            !accepted->canceled);
+}
+
+TEST_F(SessionTest, ShapeSizeRequestsKeepCloseAndCallbackBoundaries) {
+	const auto source = shapeSource();
+	const auto original = readFile(source);
+	for (bool destroy : {false, true}) {
+		auto session = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+		const auto notes = readAnnotations(*session);
+		ASSERT_TRUE(notes && notes->entries.size() == 3);
+		Reply<pdf::NoteResult> write;
+		const auto calls = std::make_shared<std::atomic<int>>(0);
+		{
+			Gate gate(engine);
+			ASSERT_TRUE(session->resizeShape(
+			    notes->entries[0], {270, 90},
+			    [calls, cb = write.callback()](auto result) {
+				    ++*calls;
+				    cb(std::move(result));
+			    }));
+			if (destroy) {
+				session.reset();
+			} else {
+				session->close();
+			}
+		}
+		const auto stopped = write.wait();
+		ASSERT_TRUE(stopped && stopped->canceled && !stopped->index &&
+		            !stopped->changed);
+		engine.run([] {}).get();
+		EXPECT_EQ(*calls, 1);
+	}
+	for (bool throws : {false, true}) {
+		pdf::Session session(engine);
+		ASSERT_EQ(open(session, source).error, pdf::Error::None);
+		const auto notes = readAnnotations(session);
+		ASSERT_TRUE(notes && notes->entries.size() == 3);
+		Reply<pdf::NoteResult> write;
+		Reply<pdf::AnnotationsResult> read;
+		const auto queued = std::make_shared<std::atomic<bool>>(false);
+		ASSERT_TRUE(session.resizeShape(
+		    notes->entries[1], {100, 90},
+		    [&session, throws, queued, cb = write.callback(),
+		     next = read.callback()](auto result) {
+			    EXPECT_TRUE(pdf::Engine::onThread());
+			    *queued = session.annotations(0, next);
+			    cb(std::move(result));
+			    if (throws) {
+				    throw std::runtime_error("callback failed");
+			    }
+			    session.close();
+		    }));
+		const auto changed = write.wait();
+		const auto after = read.wait();
+		ASSERT_TRUE(changed && after);
+		EXPECT_TRUE(*queued && changed->index == 1 && changed->changed &&
+		            !changed->canceled);
+		if (throws) {
+			ASSERT_TRUE(after->annotations && !after->canceled);
+			ASSERT_EQ(after->annotations->entries.size(), 3u);
+			const auto& ellipse = after->annotations->entries[1];
+			ASSERT_TRUE(ellipse.bounds);
+			EXPECT_FLOAT_EQ(ellipse.bounds->right, 360);
+			EXPECT_EQ(ellipse.target.revision, 2u);
+		} else {
+			EXPECT_TRUE(after->canceled && !after->annotations);
+		}
+	}
 	EXPECT_EQ(readFile(source), original);
 }
 
