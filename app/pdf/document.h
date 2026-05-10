@@ -224,6 +224,9 @@ class Document {
 	std::optional<int> addEllipse(int page, const AnnotationBounds& bounds,
 	                              std::uint64_t revision,
 	                              const std::function<bool()>& canceled = {});
+	// Resizing keeps the PDF top-left anchor of a proven plain outline.
+	std::optional<bool> resizeShape(const Annotation& expected, ShapeSize size,
+	                                const std::function<bool()>& canceled = {});
 	// corners use the displayed page, including the viewer's rotation.
 	std::optional<int>
 	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,

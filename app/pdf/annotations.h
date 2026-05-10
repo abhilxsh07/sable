@@ -31,6 +31,9 @@ struct AnnotationBounds {
 struct TextBoxSize {
 	float width = 0, height = 0;
 };
+struct ShapeSize {
+	float width = 0, height = 0;
+};
 // Fractions from the top left of the cropped, intrinsically rotated page.
 struct AnnotationPoint {
 	double x = 0, y = 0;

@@ -137,7 +137,7 @@ std::optional<BoxProofRegion> boxProofRegion(FPDF_PAGE page,
 // i compare the old stream's actual drawing on a throwaway page. its
 // appearance dictionary can affect placement even when the bytes match.
 bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
-                         const MultilineBoxAppearance& model,
+                         const std::u16string& stream,
                          const std::function<bool()>& stopped) {
 	const auto region = boxProofRegion(page, rect);
 	const int annotations = FPDFPage_GetAnnotCount(page);
@@ -169,9 +169,8 @@ bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
 	const auto before = render();
 	AnnotationPtr note(FPDFPage_GetAnnot(page, 0));
 	if (!before || stopped() ||
-	    !FPDFAnnot_SetAP(
-	        note.get(), 0,
-	        reinterpret_cast<FPDF_WIDESTRING>(model.stream.c_str()))) {
+	    !FPDFAnnot_SetAP(note.get(), 0,
+	                     reinterpret_cast<FPDF_WIDESTRING>(stream.c_str()))) {
 		return false;
 	}
 	note.reset();
@@ -1666,6 +1665,269 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 	return added;
 }
 
+std::optional<bool>
+Document::resizeShape(const Annotation& expected, ShapeSize size,
+                      const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	const auto& target = expected.target;
+	if (offThread() || stopped() || !expected.bounds ||
+	    (target.subtype != "Square" && target.subtype != "Circle") ||
+	    expected.subtype != target.subtype || expected.index != target.index ||
+	    !expected.contents.empty() || !expected.author.empty() ||
+	    expected.flags != FPDF_ANNOT_FLAG_PRINT || !std::isfinite(size.width) ||
+	    !std::isfinite(size.height) || size.width <= 4 || size.height <= 4 ||
+	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
+	    !matchesTarget(target) || !canAnnotate() ||
+	    !canSerializeEdits(canceled) ||
+	    !provenUnique(target.page, target.index)) {
+		return {};
+	}
+	const auto bounds = *expected.bounds;
+	auto destination = bounds;
+	if (size.width != bounds.right - bounds.left) {
+		destination.right = bounds.left + size.width;
+	}
+	if (size.height != bounds.top - bounds.bottom) {
+		destination.bottom = bounds.top - size.height;
+	}
+	const auto sameBounds = [](const auto& a, const auto& b) {
+		return a.left == b.left && a.bottom == b.bottom && a.right == b.right &&
+		       a.top == b.top;
+	};
+	const auto notes = annotations(target.page, canceled);
+	if (!notes || notes->limited) {
+		return {};
+	}
+	const auto found =
+	    std::find_if(notes->entries.begin(), notes->entries.end(),
+	                 [&](const auto& note) { return note.target == target; });
+	if (found == notes->entries.end() || !found->bounds ||
+	    !sameBounds(*found->bounds, bounds) || found->flags != expected.flags ||
+	    found->contents != expected.contents ||
+	    found->author != expected.author) {
+		return {};
+	}
+	const auto read = [](FPDF_ANNOTATION note,
+	                     int mode) -> std::optional<std::u16string> {
+		const auto bytes = FPDFAnnot_GetAP(note, mode, nullptr, 0);
+		if (bytes < 2 || bytes > 65536 || bytes % 2) {
+			return {};
+		}
+		std::vector<FPDF_WCHAR> text(bytes / 2);
+		if (FPDFAnnot_GetAP(note, mode, text.data(), bytes) != bytes ||
+		    text.back()) {
+			return {};
+		}
+		return std::u16string(text.begin(), text.end() - 1);
+	};
+	{
+		PagePtr page(FPDF_LoadPage(m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		if (!note || !m_linkedPages ||
+		    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get(),
+		                        *m_linkedPages, m_editPageLoads)) {
+			return {};
+		}
+		for (const auto* key :
+		     {"Contents",     "T",       "Subj",   "NM", "M",
+		      "CreationDate", "RC",      "DS",     "C",  "IC",
+		      "BS",           "Border",  "BE",     "CA", "BM",
+		      "RD",           "Rotate",  "OC",     "A",  "AA",
+		      "IT",           "Measure", "ExData", "AS", "StructParent"}) {
+			if (FPDFAnnot_HasKey(note.get(), key)) {
+				return {};
+			}
+		}
+		if (!FPDFAnnot_HasKey(note.get(), "AP") ||
+		    read(note.get(), 1) != std::optional<std::u16string>{u""} ||
+		    read(note.get(), 2) != std::optional<std::u16string>{u""}) {
+			return {};
+		}
+	}
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto scratch = reopenFormCopy(*bytes);
+	const auto shape = target.subtype == "Square" ? OutlineShape::Rectangle
+	                                              : OutlineShape::Ellipse;
+	if (!scratch.document) {
+		return {};
+	}
+	const auto reference = scratch.document->addOutlineShape(
+	    target.page, bounds, shape, 1, canceled);
+	if (!reference || stopped()) {
+		return {};
+	}
+	std::u16string oldAppearance;
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index)),
+		    model(FPDFPage_GetAnnot(page.get(), *reference));
+		const auto old = read(note.get(), 0), standard = read(model.get(), 0);
+		if (!old || old->empty() || old != standard) {
+			return {};
+		}
+		oldAppearance = *old;
+	}
+	{
+		// i also prove BBox/Matrix placement on an isolated empty page.
+		auto proof = reopenFormCopy(*bytes);
+		PagePtr page(proof.document
+		                 ? FPDF_LoadPage(proof.document->m_handle, target.page)
+		                 : nullptr);
+		const FS_RECTF rect{bounds.left, bounds.top, bounds.right,
+		                    bounds.bottom};
+		if (!page || !matchesBoxRendering(page.get(), target.index, rect,
+		                                  oldAppearance, stopped)) {
+			return {};
+		}
+	}
+	if (sameBounds(bounds, destination)) {
+		return false;
+	}
+	const auto created = scratch.document->addOutlineShape(
+	    target.page, destination, shape, scratch.document->annotationRevision(),
+	    canceled);
+	if (!created || stopped()) {
+		return {};
+	}
+	std::u16string appearance;
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr model(FPDFPage_GetAnnot(page.get(), *created));
+		const auto text = read(model.get(), 0);
+		if (!text) {
+			return {};
+		}
+		appearance = *text;
+		model.reset();
+		if (!FPDFPage_RemoveAnnot(page.get(), *created) ||
+		    !FPDFPage_RemoveAnnot(page.get(), *reference)) {
+			return {};
+		}
+	}
+	const auto counts = editCounts();
+	if (!counts) {
+		return {};
+	}
+	struct Neighbor {
+		std::string subtype, contents, author;
+		int flags;
+		std::vector<float> bounds;
+		std::vector<std::u16string> appearances;
+		bool operator==(const Neighbor&) const = default;
+	};
+	// a shared appearance or rectangle must not change another annotation.
+	const auto neighbors =
+	    [&](const Document& doc) -> std::optional<std::vector<Neighbor>> {
+		std::vector<Neighbor> result;
+		std::size_t total = 0;
+		for (int p = 0; p < pageCount(); ++p) {
+			PagePtr page(FPDF_LoadPage(doc.m_handle, p));
+			if (!page || FPDFPage_GetAnnotCount(page.get()) != (*counts)[p]) {
+				return {};
+			}
+			const auto snapshot = doc.annotations(p, canceled);
+			if (!snapshot || snapshot->limited ||
+			    snapshot->entries.size() !=
+			        static_cast<std::size_t>((*counts)[p])) {
+				return {};
+			}
+			for (int i = 0; i < (*counts)[p]; ++i) {
+				if (p == target.page && i == target.index) {
+					continue;
+				}
+				const auto& entry = snapshot->entries[i];
+				Neighbor neighbor{entry.subtype,
+				                  entry.contents,
+				                  entry.author,
+				                  entry.flags,
+				                  {},
+				                  {}};
+				if (entry.bounds) {
+					const auto& r = *entry.bounds;
+					neighbor.bounds = {r.left, r.bottom, r.right, r.top};
+				}
+				AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
+				for (int mode = 0; mode < 3; ++mode) {
+					const auto text =
+					    note ? read(note.get(), mode) : std::nullopt;
+					if (!text || stopped() ||
+					    text->size() > limit / 2 - total) {
+						return {};
+					}
+					total += text->size();
+					neighbor.appearances.push_back(*text);
+				}
+				result.push_back(std::move(neighbor));
+			}
+		}
+		return result;
+	};
+	const auto before = neighbors(*scratch.document);
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		const FS_RECTF rect{destination.left, destination.top,
+		                    destination.right, destination.bottom};
+		if (!before || !note || !FPDFAnnot_SetRect(note.get(), &rect) ||
+		    !FPDFAnnot_SetAP(
+		        note.get(), 0,
+		        reinterpret_cast<FPDF_WIDESTRING>(appearance.c_str()))) {
+			return {};
+		}
+	}
+	scratch.document->invalidateEdits();
+	scratch.document->m_modified = true;
+	auto saved = scratch.document->serialize(limit, canceled);
+	if (!saved || stopped()) {
+		return {};
+	}
+	auto next = reopenFormCopy(std::move(*saved));
+	if (!next.document || next.document->pageCount() != pageCount() ||
+	    !next.document->checkEditCounts(*counts, {target.page}) ||
+	    neighbors(*next.document) != before) {
+		return {};
+	}
+	{
+		PagePtr page(FPDF_LoadPage(next.document->m_handle, target.page));
+		AnnotationPtr note(FPDFPage_GetAnnot(page.get(), target.index));
+		FS_RECTF rect{};
+		if (!note ||
+		    FPDFAnnot_GetSubtype(note.get()) !=
+		        (shape == OutlineShape::Rectangle ? FPDF_ANNOT_SQUARE
+		                                          : FPDF_ANNOT_CIRCLE) ||
+		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
+		    !FPDFAnnot_GetRect(note.get(), &rect) ||
+		    rect.left != destination.left ||
+		    rect.bottom != destination.bottom ||
+		    rect.right != destination.right || rect.top != destination.top ||
+		    read(note.get(), 0) != std::optional{appearance}) {
+			return {};
+		}
+	}
+	if (!m_outlineBookmarks.empty() &&
+	    (!next.document->outline(canceled) ||
+	     next.document->m_outlineBookmarks.size() !=
+	         m_outlineBookmarks.size())) {
+		return {};
+	}
+	if (stopped()) {
+		return {};
+	}
+	m_data.swap(next.document->m_data);
+	std::swap(m_handle, next.document->m_handle);
+	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
+	invalidateEdits();
+	++m_annotationRevision;
+	m_modified = true;
+	return true;
+}
+
 std::optional<int> Document::addRectangleAt(
     int index, AnnotationPoint first, AnnotationPoint second, int rotation,
     std::uint64_t revision, const std::function<bool()>& canceled) {
@@ -2135,7 +2397,7 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 			return {};
 		}
 		note.reset();
-		if (!matchesBoxRendering(page.get(), target.index, rect, *model,
+		if (!matchesBoxRendering(page.get(), target.index, rect, model->stream,
 		                         stopped)) {
 			return {};
 		}

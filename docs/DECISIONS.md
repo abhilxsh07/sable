@@ -2,6 +2,23 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Resizing outline shapes (2026-11-05)
+
+I resize plain Square and Circle outlines around their original PDF top-left
+corner. The old shape must match the existing black two-point model, both
+in its appearance commands and in a rendered comparison on an isolated
+page. Matching dimensions keep the exact old coordinates and revision.
+A form's transformed BBox is fitted to the Rect, so a plain translation
+/Matrix draws the same pixels; it passes and gets the standard stream.
+A rotated matrix or a stretched BBox moves the outline and refuses.
+
+The transaction checks the snapshot, permissions, unique ownership and
+annotation relationships before writing. Custom styles, metadata, alternate
+appearances and protected or shared targets refuse. I reopen the saved copy
+and check the new bounds, appearance, annotation counts and neighboring
+annotations before replacing the live document. Color, border width and
+moving the anchor remain separate work.
+
 ## Placing rectangles from Comments (2026-11-04)
 
 I use two page clicks for an outline rectangle. The first click captures

@@ -304,6 +304,39 @@ sharedHighlightBytes(int count, std::string_view secondBox = "0 0 200 300",
 	        std::to_string(xref) + "\n%%EOF\n";
 	return {data.begin(), data.end()};
 }
+std::vector<std::uint8_t>
+sharedShapeAppearanceBytes(const std::string& stream) {
+	std::string data = "%PDF-1.7\n";
+	std::vector<std::size_t> offsets;
+	for (const auto& body : std::vector<std::string>{
+	         "<< /Type /Catalog /Pages 2 0 R >>",
+	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] "
+	         "/Annots [4 0 R 6 0 R] >>",
+	         "<< /Type /Annot /Subtype /Square /Rect [40 100 120 160] "
+	         "/F 4 /AP 7 0 R >>",
+	         "<< /Type /XObject /Subtype /Form /BBox [40 100 120 160] "
+	         "/Length " +
+	             std::to_string(stream.size()) + " >>\nstream\n" + stream +
+	             "\nendstream",
+	         "<< /Type /Annot /Subtype /Square /Rect [40 100 120 160] "
+	         "/F 4 /AP 7 0 R >>",
+	         "<< /N 5 0 R >>"}) {
+		offsets.push_back(data.size());
+		data +=
+		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
+	}
+	const auto xref = data.size();
+	data += "xref\n0 8\n0000000000 65535 f \n";
+	for (const auto offset : offsets) {
+		char line[21];
+		std::snprintf(line, sizeof(line), "%010zu 00000 n \n", offset);
+		data += line;
+	}
+	data += "trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n" +
+	        std::to_string(xref) + "\n%%EOF\n";
+	return {data.begin(), data.end()};
+}
 } // namespace
 
 TEST(Annotations, SnapshotsOutliveTheDocumentAndEngine) {
@@ -2378,6 +2411,284 @@ TEST(Annotations,
 			    EXPECT_EQ(candidate.document->annotationRevision(), 1u);
 			    EXPECT_FALSE(candidate.document->modified());
 			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ResizedShapesKeepAnchorsNeighborsAndSavedPixels) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link);
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    ASSERT_EQ(doc.addRectangle(0, {40, 100, 120, 160}, 1), 1);
+		    ASSERT_EQ(doc.addEllipse(0, {200, 100, 360, 160}, 2), 2);
+		    for (int index : {1, 2}) {
+			    const auto notes = doc.annotations(0);
+			    ASSERT_TRUE(notes && notes->entries.size() == 3);
+			    const auto shape = notes->entries[index];
+			    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+			    const auto& rect = *shape.bounds;
+			    EXPECT_EQ(doc.resizeShape(shape, {rect.right - rect.left,
+			                                      rect.top - rect.bottom}),
+			              false);
+			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+			    EXPECT_EQ(doc.annotationRevision(), shape.target.revision);
+			    EXPECT_EQ(doc.resizeShape(shape, {170, 90}), true);
+			    EXPECT_FALSE(doc.resizeShape(shape, {180, 100}));
+			    const auto changed = doc.annotations(0);
+			    ASSERT_TRUE(changed && changed->entries.size() == 3);
+			    const auto& grown = changed->entries[index];
+			    EXPECT_EQ(grown.index, shape.index);
+			    EXPECT_EQ(grown.subtype, shape.subtype);
+			    EXPECT_FLOAT_EQ(grown.bounds->left, rect.left);
+			    EXPECT_FLOAT_EQ(grown.bounds->top, rect.top);
+			    EXPECT_FLOAT_EQ(grown.bounds->right, rect.left + 170);
+			    EXPECT_FLOAT_EQ(grown.bounds->bottom, rect.top - 90);
+			    EXPECT_EQ(doc.resizeShape(grown, {70, 50}), true);
+		    }
+		    EXPECT_EQ(doc.textNote(0, 0, doc.annotationRevision()),
+		              u"Keep note");
+		    const auto keptLink = doc.outlineLink(0);
+		    ASSERT_TRUE(keptLink);
+		    EXPECT_EQ(keptLink->uri, link->uri);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[0].contents, "Keep note");
+		    for (int i : {1, 2}) {
+			    EXPECT_FLOAT_EQ(notes->entries[i].bounds->right -
+			                        notes->entries[i].bounds->left,
+			                    70);
+			    EXPECT_FLOAT_EQ(notes->entries[i].bounds->top -
+			                        notes->entries[i].bounds->bottom,
+			                    50);
+		    }
+		    for (bool printing : {false, true}) {
+			    const auto a =
+			        printing ? doc.printRaster(0, 360, 240, 0, 0, 360, 240)
+			                 : doc.render(0, 360, 240);
+			    const auto b = printing ? saved.document->printRaster(
+			                                  0, 360, 240, 0, 0, 360, 240)
+			                            : saved.document->render(0, 360, 240);
+			    ASSERT_TRUE(a && b);
+			    EXPECT_EQ(a->pixels, b->pixels);
+		    }
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations,
+     ShapeResizeRefusesForgedSnapshotsStylesAndAppearanceMatrices) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(annotationBytes("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addRectangle(0, {40, 100, 120, 160}, 1), 0);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    const auto shape = notes->entries[0];
+		    const auto bytes = pdf::DocumentEditTest::rawBytes(doc);
+		    for (int change = 0; change < 5; ++change) {
+			    auto forged = shape;
+			    if (change == 0) {
+				    forged.bounds->left += 1;
+			    }
+			    if (change == 1) {
+				    forged.contents = "forged";
+			    }
+			    if (change == 2) {
+				    forged.author = "forged";
+			    }
+			    if (change == 3) {
+				    forged.flags = 0;
+			    }
+			    if (change == 4) {
+				    forged.target.subtype = "Circle";
+			    }
+			    EXPECT_FALSE(doc.resizeShape(forged, {100, 50}));
+		    }
+		    for (auto size :
+		         {pdf::ShapeSize{4, 50}, pdf::ShapeSize{100, 0},
+		          pdf::ShapeSize{1000, 50}, pdf::ShapeSize{100, 1000},
+		          pdf::ShapeSize{std::numeric_limits<float>::infinity(), 50},
+		          pdf::ShapeSize{100,
+		                         std::numeric_limits<float>::quiet_NaN()}}) {
+			    EXPECT_FALSE(doc.resizeShape(shape, size));
+		    }
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), bytes);
+		    EXPECT_EQ(doc.annotationRevision(), shape.target.revision);
+		    bool fits = false;
+		    int count = 0;
+		    const auto ap = pdf::DocumentEditTest::appearance(doc, fits, count);
+		    std::string stream;
+		    std::transform(ap.begin(), ap.end(), std::back_inserter(stream),
+		                   [](char16_t c) { return static_cast<char>(c); });
+		    const auto appearance = "<< /Type /XObject /Subtype /Form /BBox "
+		                            "[40 100 120 160] /Length " +
+		                            std::to_string(stream.size()) +
+		                            " >>\nstream\n" + stream + "\nendstream";
+		    for (const auto* fields :
+		         {"", "/C [1 0 0]", "/IC [0 1 0]", "/BS << /W 4 >>",
+		          "/Border [0 0 4]", "/BE << /S /C >>", "/CA 0.5",
+		          "/BM /Multiply", "/RD [1 1 1 1]", "/Rotate 90", "/OC << >>",
+		          "/A << >>", "/AA << >>", "/Contents ()", "/T ()",
+		          "/NM (custom)"}) {
+			    const auto source = editableNoteBytes(
+			        std::string("/F 4 /AP << /N 5 0 R >> ") + fields, "Square",
+			        {}, "/MediaBox [0 0 600 800]", "[40 100 120 160]",
+			        appearance);
+			    const auto candidate = pdf::openDocument(source);
+			    ASSERT_TRUE(candidate.document);
+			    const auto entries = candidate.document->annotations(0);
+			    ASSERT_TRUE(entries && entries->entries.size() == 1);
+			    const auto result = candidate.document->resizeShape(
+			        entries->entries[0], {100, 50});
+			    if (std::string_view(fields).empty()) {
+				    EXPECT_EQ(result, true);
+			    } else {
+				    EXPECT_FALSE(result) << fields;
+				    EXPECT_EQ(candidate.document->serialize(1024 * 1024),
+				              source);
+			    }
+		    }
+		    // the transformed BBox is fitted to Rect, so a translation alone
+		    // draws the same pixels and is replaced by the standard stream.
+		    // rotation or a stretched box moves the outline and must refuse.
+		    for (const auto& [extra, accepted] :
+		         {std::pair{std::string("/Matrix [1 0 0 1 10 0]"), true},
+		          std::pair{std::string("/Matrix [0 1 -1 0 0 0]"), false},
+		          std::pair{std::string("/BBox [40 100 200 200]"), false}}) {
+			    const auto source = editableNoteBytes(
+			        "/F 4 /AP << /N 5 0 R >>", "Square", {},
+			        "/MediaBox [0 0 600 800]", "[40 100 120 160]",
+			        "<< /Type /XObject /Subtype /Form /BBox [40 100 120 160] " +
+			            extra + " /Length " + std::to_string(stream.size()) +
+			            " >>\nstream\n" + stream + "\nendstream");
+			    const auto candidate = pdf::openDocument(source);
+			    ASSERT_TRUE(candidate.document);
+			    const auto entries = candidate.document->annotations(0);
+			    ASSERT_TRUE(entries && entries->entries.size() == 1);
+			    const auto result = candidate.document->resizeShape(
+			        entries->entries[0], {100, 50});
+			    if (accepted) {
+				    EXPECT_EQ(result, true) << extra;
+			    } else {
+				    EXPECT_FALSE(result) << extra;
+				    EXPECT_EQ(candidate.document->serialize(1024 * 1024),
+				              source);
+			    }
+		    }
+		    for (const auto& source :
+		         {sharedHighlightBytes(1, "0 0 200 300", true, "Square"),
+		          sharedShapeAppearanceBytes(stream),
+		          editableNoteBytes("/F 132", "Square"),
+		          editableNoteBytes("/F 4 /C [1 0 0]", "Square"),
+		          editableNoteBytes("/F 4 /Border [0 0 4]", "Square"),
+		          editableNoteBytes("/F 4 /Popup 5 0 R", "Square"),
+		          editableNoteBytes("/F 4 /A << /S /JavaScript >>",
+		                            "Square")}) {
+			    const auto candidate = pdf::openDocument(source);
+			    ASSERT_TRUE(candidate.document);
+			    const auto entries = candidate.document->annotations(0);
+			    ASSERT_TRUE(entries && !entries->entries.empty());
+			    EXPECT_FALSE(candidate.document->resizeShape(
+			        entries->entries[0], {100, 50}));
+			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), source);
+		    }
+		    pdf::DocumentEditTest::replaceAppearance(doc, 0);
+		    EXPECT_FALSE(doc.resizeShape(shape, {100, 50}));
+	    })
+	    .get();
+}
+
+TEST(Annotations, ShapeResizeCancellationLeavesEverySavepointIntact) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(annotationBytes("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    ASSERT_EQ(opened.document->addEllipse(0, {40, 100, 120, 160}, 1),
+		              0);
+		    const auto source = opened.document->serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(source);
+		    int checkpoints = 0;
+		    const auto baseline = pdf::openDocument(*source);
+		    ASSERT_TRUE(baseline.document);
+		    const auto notes = baseline.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    ASSERT_EQ(baseline.document->resizeShape(notes->entries[0],
+		                                             {100, 50},
+		                                             [&] {
+			                                             ++checkpoints;
+			                                             return false;
+		                                             }),
+		              true);
+		    EXPECT_GT(checkpoints, 10);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto candidate = pdf::openDocument(*source);
+			    ASSERT_TRUE(candidate.document);
+			    int calls = 0;
+			    EXPECT_FALSE(candidate.document->resizeShape(
+			        notes->entries[0], {100, 50},
+			        [&] { return ++calls == stop; }));
+			    EXPECT_EQ(candidate.document->annotationRevision(), 1u);
+			    EXPECT_FALSE(candidate.document->modified());
+			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(*candidate.document),
+			              *source);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, ShapeResizeKeepsFractionalNoOpsAndCroppedRotationBounds) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (int turn = 0; turn < 4; ++turn) {
+			    const auto source =
+			        editableNoteBytes("/Contents (Keep)", "Text", {},
+			                          "/MediaBox [0 0 400 600] /CropBox [20 40 "
+			                          "380 560] /Rotate " +
+			                              std::to_string(turn * 90));
+			    const auto opened = pdf::openDocument(source);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    ASSERT_EQ(
+			        doc.addEllipse(0, {40.25f, 100.125f, 120.375f, 160.5f}, 1),
+			        1);
+			    const auto notes = doc.annotations(0);
+			    ASSERT_TRUE(notes && notes->entries.size() == 2);
+			    const auto shape = notes->entries[1];
+			    const auto bytes = pdf::DocumentEditTest::rawBytes(doc);
+			    EXPECT_EQ(doc.resizeShape(shape, {80.125f, 60.375f}), false);
+			    EXPECT_FALSE(doc.resizeShape(shape, {340, 60}));
+			    EXPECT_FALSE(doc.resizeShape(shape, {100, 121}));
+			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), bytes);
+			    ASSERT_EQ(doc.resizeShape(shape, {339.75f, 120.5f}), true);
+			    const auto saved = doc.serializeForCopy(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    const auto kept = reopened.document->annotations(0);
+			    ASSERT_TRUE(kept && kept->entries.size() == 2);
+			    EXPECT_EQ(kept->entries[0].contents, "Keep");
+			    EXPECT_FLOAT_EQ(kept->entries[1].bounds->right, 380);
+			    EXPECT_FLOAT_EQ(kept->entries[1].bounds->bottom, 40);
 		    }
 	    })
 	    .get();
