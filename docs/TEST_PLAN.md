@@ -2,6 +2,27 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Desktop resize round trip (7 November 2026)
+
+I open `verify-resize-20261107/resize input.pdf`, a copy of the 5 November
+saved ellipse file with a rectangle, an ellipse and three text boxes. The
+first try refused every size, even a height-only change: the neighbor check
+capped each appearance at 64 KiB and the explicit-line box is 76 KB. After
+the fix, an ellipse width that runs off the page is refused with the draft
+kept. 85 x 40 pt and a 40 x 100 pt rectangle apply with their top-left
+corners fixed and mark the comments unsaved.
+
+The Windows picker saves `resize saved.pdf`. Its Rects are exactly
+85 x 40 and 40 x 100 with the original left and top edges, and all five
+annotations remain. Reopening it shows both shapes beside the three boxes;
+the ellipse editor reads 85 and 40 and Cancel leaves it clean. Both windows
+close without an unsaved prompt. The source SHA-256 stays
+`CE6AD0D1A7335D49E24C211B1D722D087C0C9BC882A4FDCC3907E556DBE5E1A6`.
+The saved copy is
+`1C70A78A9825EB9D50B33C22683C1EB6E23ED7E095C93C03C0F5E937B42C511A`.
+
+All 719 enabled x64 tests pass with the large-neighbor regression.
+
 ## Resizing outline shapes (7 November 2026)
 
 Comments opens a Resize editor for a selected rectangle or ellipse, even

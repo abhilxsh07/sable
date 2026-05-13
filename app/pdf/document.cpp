@@ -1707,10 +1707,13 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 	    found->author != expected.author) {
 		return {};
 	}
-	const auto read = [](FPDF_ANNOTATION note,
-	                     int mode) -> std::optional<std::u16string> {
+	// the target's plain outline is small; neighbors only share the copy
+	// budget, since explicit-line boxes draw glyph outlines past 64 KiB.
+	const auto read = [](FPDF_ANNOTATION note, int mode,
+	                     unsigned long most =
+	                         65536) -> std::optional<std::u16string> {
 		const auto bytes = FPDFAnnot_GetAP(note, mode, nullptr, 0);
-		if (bytes < 2 || bytes > 65536 || bytes % 2) {
+		if (bytes < 2 || bytes > most || bytes % 2) {
 			return {};
 		}
 		std::vector<FPDF_WCHAR> text(bytes / 2);
@@ -1853,8 +1856,11 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 				}
 				AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
 				for (int mode = 0; mode < 3; ++mode) {
+					const auto room = limit / 2 - total;
 					const auto text =
-					    note ? read(note.get(), mode) : std::nullopt;
+					    note ? read(note.get(), mode,
+					                static_cast<unsigned long>(2 * room + 2))
+					         : std::nullopt;
 					if (!text || stopped() ||
 					    text->size() > limit / 2 - total) {
 						return {};

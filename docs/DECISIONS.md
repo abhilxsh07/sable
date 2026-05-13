@@ -12,6 +12,10 @@ A form's transformed BBox is fitted to the Rect, so a plain translation
 /Matrix draws the same pixels; it passes and gets the standard stream.
 A rotated matrix or a stretched BBox moves the outline and refuses.
 
+Only the target's stream is held to 64 KiB. Neighbor snapshots share the
+128 MiB copy budget instead, since explicit-line text boxes draw glyph
+outlines and passed that limit on the first desktop page I tried (7 Nov).
+
 The transaction checks the snapshot, permissions, unique ownership and
 annotation relationships before writing. Custom styles, metadata, alternate
 appearances and protected or shared targets refuse. I reopen the saved copy

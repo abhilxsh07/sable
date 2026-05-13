@@ -2615,6 +2615,48 @@ TEST(Annotations,
 	    .get();
 }
 
+TEST(Annotations, ShapeResizeKeepsLargeNeighborAppearances) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addRectangle(0, {40, 100, 120, 160}, 1), 0);
+		    // explicit-line boxes draw glyph outlines, so their stream can
+		    // pass the 64 KiB a plain outline needs.
+		    ASSERT_EQ(doc.addTextBox(0, {130, 120, 370, 260},
+		                             u"First explicit line\n\nThird line "
+		                             u"after blank\nFourth glyph row",
+		                             {}, 2, {},
+		                             pdf::TextBoxLayout::ExplicitLines),
+		              1);
+		    bool fits = false;
+		    int count = 0;
+		    const auto box =
+		        pdf::DocumentEditTest::appearance(doc, fits, count, 1);
+		    ASSERT_GT(box.size(), 32768u);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    EXPECT_EQ(doc.resizeShape(notes->entries[0], {100, 40}), true);
+		    const auto bytes = doc.serializeForCopy(4 * 1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto kept = saved.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 2);
+		    ASSERT_TRUE(kept->entries[0].bounds);
+		    EXPECT_FLOAT_EQ(kept->entries[0].bounds->right, 140);
+		    EXPECT_FLOAT_EQ(kept->entries[0].bounds->bottom, 120);
+		    EXPECT_EQ(pdf::DocumentEditTest::appearance(*saved.document, fits,
+		                                                count, 1),
+		              box);
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
 TEST(Annotations, ShapeResizeCancellationLeavesEverySavepointIntact) {
 	pdf::Engine engine;
 	engine
