@@ -2,6 +2,25 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Resizing outline shapes (7 November 2026)
+
+Comments opens a Resize editor for a selected rectangle or ellipse, even
+while later Comments pages are still loading. Width and height are in
+PDF points and the top-left corner stays fixed. Cancel and an unchanged
+Apply leave the savepoint clean. A negative width keeps the draft with an
+error; a 1 pt width queues, locks the fields, survives closing another tab
+and comes back editable after the refusal. 120 x 80 saves and reopens
+with those dimensions beside the Unicode note, and Delete still works.
+
+With the Debug reader built using `SableSurfaceTest=true`, I run
+`SableTabsTest=true` and `SableProbeAutoClose=true` from the repo root
+with `SableNotePlacementTest=true`, then `SableEllipsePlacementTest=true`.
+Both exit successfully. The saved-size check allows 0.001 pt because the
+placed corner is fractional. The normal reader is rebuilt afterwards.
+The engine and queue tests cover refusals, translated matrices and close
+boundaries. All 718 enabled x64 tests pass; Debug x64/ARM64 build without
+warnings. The real Windows picker round trip is still a desktop check.
+
 ## Ellipse writes and queued placement (5 November 2026)
 
 I save an ellipse beside a rectangle and a note. Screen and print rasters

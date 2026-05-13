@@ -5052,7 +5052,7 @@ struct TabsTest {
 			    static_cast<int>(shape - rows.begin()));
 			v.showComments();
 			check(v.DeleteNoteButton().IsEnabled() &&
-			          !v.EditNoteButton().IsEnabled(),
+			          v.EditNoteButton().IsEnabled(),
 			      "shape actions do not match their support");
 			notesPath = std::filesystem::temp_directory_path() /
 			            (L"sable_shape_" +
@@ -5094,9 +5094,160 @@ struct TabsTest {
 			          })
 			          .get(),
 			      "reopened shape moved or lost its neighboring note");
-			invoke(v.DeleteNoteButton());
+			// i open the editor while later Comments pages are still loading.
+			v.m_commentScan.reset(static_cast<int>(v.m_sizes.size()));
+			for (int p = 0; p <= 1; ++p) {
+				auto notes =
+				    engine
+				        .run([path = notesPath, p] {
+					        return pdf::openFile(path).document->annotations(p);
+				        })
+				        .get();
+				check(notes.has_value(),
+				      "couldn't read the staged Comments page");
+				notes->revision = v.m_session->annotationRevision();
+				for (auto& note : notes->entries) {
+					note.target.revision = notes->revision;
+				}
+				check(notes && v.m_commentScan.append(std::move(*notes)),
+				      "couldn't stage the unfinished Comments scan");
+			}
+			{
+				const auto& rows = v.m_commentScan.rows();
+				const auto shape = std::find_if(
+				    rows.begin(), rows.end(), [shapeType](const auto& row) {
+					    return row.subtype == shapeType;
+				    });
+				check(shape != rows.end(), "missing shape before scan overlap");
+				v.CommentsList().SelectedIndex(
+				    static_cast<int>(shape - rows.begin()));
+				v.showComments();
+			}
+			invoke(v.EditNoteButton());
 			break;
 		case 12:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			dialogButton(L"CloseButton");
+			break;
+		case 13:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty && !v.m_commentScan.failed(),
+			      "Cancel resized the shape or failed the Comments scan");
+			invoke(v.EditNoteButton());
+			break;
+		case 14:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			dialogButton(L"PrimaryButton");
+			break;
+		case 15:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty, "unchanged shape Apply dirtied the PDF");
+			invoke(v.EditNoteButton());
+			break;
+		case 16: {
+			if (!v.m_noteDialog) {
+				return;
+			}
+			const auto fields = v.m_noteDialog.Content()
+			                        .as<ScrollViewer>()
+			                        .Content()
+			                        .as<StackPanel>();
+			const auto width = fields.Children().GetAt(1).as<TextBox>();
+			width.Text(L"-1");
+			dialogButton(L"PrimaryButton");
+			check(
+			    !v.m_noteBusy && !v.m_notesDirty &&
+			        !fields.Children().GetAt(3).as<TextBlock>().Text().empty(),
+			    "invalid dimension lost its draft or changed the PDF");
+			width.Text(L"1");
+			dialogButton(L"PrimaryButton");
+			check(v.m_noteBusy && width.IsReadOnly() &&
+			          !v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "queued shape resize left controls enabled");
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1 && v.m_noteDialog,
+			      "tab close lost the shape draft");
+			break;
+		}
+		case 17: {
+			check(v.m_noteDialog && !v.m_notesDirty,
+			      "refused shape size changed the PDF or closed its editor");
+			const auto fields = v.m_noteDialog.Content()
+			                        .as<ScrollViewer>()
+			                        .Content()
+			                        .as<StackPanel>();
+			const auto width = fields.Children().GetAt(1).as<TextBox>();
+			const auto height = fields.Children().GetAt(2).as<TextBox>();
+			check(
+			    width.Text() == L"1" && !width.IsReadOnly() &&
+			        v.m_noteDialog.IsPrimaryButtonEnabled() &&
+			        !fields.Children().GetAt(3).as<TextBlock>().Text().empty(),
+			    "refused resize lost its editable dimensions or error");
+			width.Text(L"120");
+			height.Text(L"80");
+			dialogButton(L"PrimaryButton");
+			break;
+		}
+		case 18:
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty, "changed shape Apply kept a clean savepoint");
+			notesSave = owner.saveNotes(current);
+			break;
+		case 19:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "resized shape save failed");
+			check(engine
+			          .run([path = notesPath, shapeType] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto notes = saved.document->annotations(1);
+				          if (!notes) {
+					          return false;
+				          }
+				          bool note = false, shape = false;
+				          for (const auto& item : notes->entries) {
+					          note = note ||
+					                 item.contents == "Placed native \u03a9";
+					          if (item.subtype == shapeType && item.bounds) {
+						          const auto& b = *item.bounds;
+						          // the placed corner is fractional, so the
+						          // float edges can miss by an ulp.
+						          shape =
+						              std::abs(b.right - b.left - 120) < 1e-3 &&
+						              std::abs(b.top - b.bottom - 80) < 1e-3;
+					          }
+				          }
+				          return note && shape;
+			          })
+			          .get(),
+			      "saved resize lost dimensions or its neighboring note");
+			{
+				const auto& rows = v.m_commentScan.rows();
+				const auto shape = std::find_if(
+				    rows.begin(), rows.end(), [shapeType](const auto& row) {
+					    return row.subtype == shapeType;
+				    });
+				check(shape != rows.end(),
+				      "resized shape missing from Comments");
+				v.CommentsList().SelectedIndex(
+				    static_cast<int>(shape - rows.begin()));
+				v.showComments();
+			}
+			invoke(v.DeleteNoteButton());
+			break;
+		case 20:
 			if (!v.m_commentScan.done()) {
 				return;
 			}
@@ -5116,7 +5267,8 @@ struct TabsTest {
 			status.Text(
 			    L"PASS: note and shape placement, tool changes, cancel, "
 			    L"rotation, "
-			    L"cross-page refusal, saved positions and shape Delete");
+			    L"cross-page refusal, resize drafts, saved positions and shape "
+			    L"Delete");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;

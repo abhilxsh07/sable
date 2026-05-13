@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include "helpers/logging.h"
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -39,7 +40,9 @@ void ViewerPage::beginNoteEdit() {
 	     rows[selected].subtype != "Text" &&
 	     rows[selected].subtype != "Highlight" &&
 	     rows[selected].subtype != "Underline" &&
-	     rows[selected].subtype != "StrikeOut")) {
+	     rows[selected].subtype != "StrikeOut" &&
+	     rows[selected].subtype != "Square" &&
+	     rows[selected].subtype != "Circle")) {
 		return;
 	}
 	const auto page = rows[selected].page, index = rows[selected].index;
@@ -54,6 +57,45 @@ void ViewerPage::beginNoteEdit() {
 	m_noteBusy = true;
 	try {
 		const auto session = m_session.get();
+		if (rows[selected].subtype == "Square" ||
+		    rows[selected].subtype == "Circle") {
+			const auto target = rows[selected].target;
+			pauseComments();
+			const bool queued = session->annotations(
+			    page, [weak = get_weak(), queue = DispatcherQueue(), session,
+			           target](pdf::AnnotationsResult result) {
+				    queue.TryEnqueue([weak, session, target,
+				                      result = std::move(result)] {
+					    const auto self = weak.get();
+					    if (!self || self->m_closed ||
+					        self->m_session.get() != session) {
+						    return;
+					    }
+					    self->m_noteBusy = false;
+					    self->showComments();
+					    if (result.annotations && !result.canceled &&
+					        !result.annotations->limited) {
+						    for (const auto& note :
+						         result.annotations->entries) {
+							    if (note.target == target && note.bounds) {
+								    self->editShape(note);
+								    return;
+							    }
+						    }
+					    }
+					    if (!result.canceled && self->commentsOpen()) {
+						    self->showNotice(L"Couldn't read this shape. Try "
+						                     L"selecting it again.");
+					    }
+				    });
+			    });
+			if (!queued) {
+				m_noteBusy = false;
+				showNotice(L"Couldn't queue the shape editor. Try again.");
+			}
+			showComments();
+			return;
+		}
 		if (rows[selected].subtype == "FreeText") {
 			const bool queued = session->textBox(
 			    rows[selected].target,
@@ -127,6 +169,202 @@ void ViewerPage::beginNoteEdit() {
 	m_noteBusy = false;
 	showComments();
 	showNotice(L"Couldn't queue the note editor. Try again.");
+}
+
+fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
+	const auto lifetime = get_strong();
+	try {
+		if (!existing.bounds || m_closed || !m_session || !m_noteAllowed ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_passwordDialog || !XamlRoot() || !commentsOpen() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+		    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+		    (m_notesAvailable && !m_notesAvailable())) {
+			co_return;
+		}
+		leavePageBox();
+		const auto session = m_session.get();
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Title(box_value(existing.subtype == "Circle"
+		                           ? L"Resize ellipse"
+		                           : L"Resize rectangle"));
+		dialog.PrimaryButtonText(L"Apply");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::None);
+		StackPanel fields;
+		fields.Spacing(12);
+		TextBlock location;
+		location.Text(L"Page " + to_hstring(existing.target.page + 1) +
+		              L" \u00b7 Size uses the PDF's original orientation. "
+		              L"72 pt = 1 inch. The top-left corner stays fixed.");
+		location.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(location);
+		TextBox width, height;
+		width.Header(box_value(L"Width (pt)"));
+		height.Header(box_value(L"Height (pt)"));
+		width.MaxLength(64);
+		height.MaxLength(64);
+		const auto& bounds = *existing.bounds;
+		width.Text(
+		    to_hstring(helpers::textBoxDimension(bounds.right - bounds.left)));
+		height.Text(
+		    to_hstring(helpers::textBoxDimension(bounds.top - bounds.bottom)));
+		Automation::AutomationProperties::SetName(width,
+		                                          L"Shape width in PDF points");
+		Automation::AutomationProperties::SetName(
+		    height, L"Shape height in PDF points");
+		fields.Children().Append(width);
+		fields.Children().Append(height);
+		TextBlock error;
+		error.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(error);
+		ScrollViewer scroll;
+		scroll.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
+		scroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+		scroll.Padding({0, 0, 12, 0});
+		scroll.Content(fields);
+		const auto fit = [body = make_weak(scroll),
+		                  root = make_weak(XamlRoot())] {
+			if (const auto content = body.get()) {
+				if (const auto host = root.get()) {
+					content.MaxHeight(
+					    (std::max)(80., host.Size().Height - 210.));
+				}
+			}
+		};
+		fit();
+		const auto sizeChanged =
+		    XamlRoot().Changed(auto_revoke, [fit](auto&&, auto&&) { fit(); });
+		dialog.Content(scroll);
+		dialog.Opened([width](auto&&, auto&&) {
+			width.Focus(FocusState::Programmatic);
+			width.SelectAll();
+		});
+		dialog.Closing(
+		    [weak = get_weak()](const ContentDialog& sender,
+		                        const ContentDialogClosingEventArgs& args) {
+			    if (const auto self = weak.get();
+			        self && self->m_noteBusy && self->m_noteDialog == sender) {
+				    args.Cancel(true);
+			    }
+		    });
+		const auto recover = [weak = get_weak(), session,
+		                      prompt = make_weak(dialog),
+		                      wide = make_weak(width), tall = make_weak(height),
+		                      failure = make_weak(error)](hstring message) {
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			if (!self || self->m_closed || self->m_session.get() != session ||
+			    !view || self->m_noteDialog != view) {
+				return;
+			}
+			self->m_noteBusy = false;
+			if (const auto w = wide.get()) {
+				w.IsReadOnly(false);
+			}
+			if (const auto h = tall.get()) {
+				h.IsReadOnly(false);
+			}
+			view.IsPrimaryButtonEnabled(true);
+			if (const auto label = failure.get()) {
+				label.Text(message);
+			}
+			self->showComments();
+		};
+		dialog.PrimaryButtonClick(
+		    [weak = get_weak(), session, existing, prompt = make_weak(dialog),
+		     wide = make_weak(width), tall = make_weak(height),
+		     failure = make_weak(error),
+		     recover](auto&&, const ContentDialogButtonClickEventArgs& args) {
+			    args.Cancel(true);
+			    const auto self = weak.get();
+			    const auto view = prompt.get();
+			    const auto w = wide.get(), h = tall.get();
+			    if (!self || self->m_closed || self->m_noteBusy || !view ||
+			        !w || !h || self->m_session.get() != session ||
+			        self->m_noteDialog != view) {
+				    return;
+			    }
+			    const auto& bounds = *existing.bounds;
+			    const auto width = helpers::parseTextBoxDimension(
+			        to_string(w.Text()), bounds.right - bounds.left);
+			    const auto height = helpers::parseTextBoxDimension(
+			        to_string(h.Text()), bounds.top - bounds.bottom);
+			    if (!width || !height) {
+				    recover(L"Enter positive width and height in PDF points. "
+				            L"Use a decimal point for fractional sizes. Your "
+				            L"draft is still here.");
+				    return;
+			    }
+			    self->m_noteBusy = true;
+			    view.IsPrimaryButtonEnabled(false);
+			    w.IsReadOnly(true);
+			    h.IsReadOnly(true);
+			    if (const auto label = failure.get()) {
+				    label.Text(L"Resizing shape\u2026");
+			    }
+			    try {
+				    const bool queued = session->resizeShape(
+				        existing, {*width, *height},
+				        [weak, session, prompt, recover,
+				         queue = self->DispatcherQueue()](auto result) {
+					        queue.TryEnqueue(
+					            [weak, session, prompt, recover, result] {
+						            const auto owner = weak.get();
+						            if (!owner || owner->m_closed ||
+						                owner->m_session.get() != session) {
+							            return;
+						            }
+						            if (!result.index) {
+							            recover(L"Couldn't resize this shape. "
+							                    L"It may use an unsupported "
+							                    L"style, be protected, or "
+							                    L"extend outside the page. "
+							                    L"Check its size. Your draft "
+							                    L"is still here.");
+							            return;
+						            }
+						            owner->m_noteBusy = false;
+						            owner->m_notesDirty =
+						                owner->m_notesDirty || result.changed;
+						            if (const auto dialog = prompt.get()) {
+							            dialog.Hide();
+						            }
+						            if (result.changed) {
+							            owner->refreshNotes();
+						            }
+						            owner->showComments();
+					            });
+				        });
+				    if (queued) {
+					    self->showComments();
+					    return;
+				    }
+			    } catch (...) {
+			    }
+			    recover(
+			        L"Couldn't queue this resize. Your draft is still here.");
+		    });
+		m_noteDialog = dialog;
+		co_await dialog.ShowAsync();
+		if (m_noteDialog == dialog) {
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showComments();
+		}
+	} catch (...) {
+		m_noteBusy = false;
+		if (m_noteDialog) {
+			m_noteDialog.Hide();
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showNotice(L"Couldn't open the shape editor. Try again.");
+			showComments();
+		}
+	}
 }
 
 fire_and_forget

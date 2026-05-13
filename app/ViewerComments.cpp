@@ -266,14 +266,19 @@ void ViewerPage::showComments() {
 	const bool selectedBox =
 	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	    notes[selected].subtype == "FreeText";
+	const bool selectedShape =
+	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	    (notes[selected].subtype == "Square" ||
+	     notes[selected].subtype == "Circle");
 	Automation::AutomationProperties::SetName(
-	    EditNoteButton(), selectedBox      ? L"Edit selected text box"
+	    EditNoteButton(), selectedShape    ? L"Resize selected shape"
+	                      : selectedBox    ? L"Edit selected text box"
 	                      : selectedMarkup ? L"Edit selected comment"
 	                                       : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !m_notePlacing &&
-	    (selectedBox || selectedMarkup ||
+	    (selectedShape || selectedBox || selectedMarkup ||
 	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	      notes[selected].subtype == "Text")));
 	DeleteNoteButton().IsEnabled(canDeleteAnnotation());
@@ -464,7 +469,7 @@ void ViewerPage::showComments() {
 	                                ? XVisibility::Collapsed
 	                                : XVisibility::Visible);
 	if (!m_commentScan.done() && !m_commentScan.failed() &&
-	    !m_commentsPending) {
+	    !m_commentsPending && !m_noteBusy) {
 		requestComments();
 	}
 }

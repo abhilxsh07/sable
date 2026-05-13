@@ -251,6 +251,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	editTextBox(NoteTarget target,
 	            std::optional<pdf::Annotation> existing = {});
 	winrt::hstring m_textBoxDraft, m_textBoxAuthor;
+	winrt::fire_and_forget editShape(pdf::Annotation existing);
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});
