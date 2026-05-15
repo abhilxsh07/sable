@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 // PDFium's handle type, declared here so this header doesn't need fpdfview.h
 struct fpdf_document_t__;
+struct fpdf_annotation_t__;
 
 namespace pdf {
 enum class Error {
@@ -224,6 +225,10 @@ class Document {
 	std::optional<int> addEllipse(int page, const AnnotationBounds& bounds,
 	                              std::uint64_t revision,
 	                              const std::function<bool()>& canceled = {});
+	// Black 2 pt strokes in PDF points, written as one Ink annotation.
+	std::optional<int> addInk(int page, const std::vector<InkStroke>& strokes,
+	                          std::uint64_t revision,
+	                          const std::function<bool()>& canceled = {});
 	// Resizing keeps the PDF top-left anchor of a proven plain outline.
 	std::optional<bool> resizeShape(const Annotation& expected, ShapeSize size,
 	                                const std::function<bool()>& canceled = {});
@@ -364,6 +369,12 @@ class Document {
 	                                   OutlineShape shape,
 	                                   std::uint64_t revision,
 	                                   const std::function<bool()>& canceled);
+	std::optional<int>
+	appendAnnotation(int page, int subtype, const AnnotationBounds& bounds,
+	                 const std::u16string& appearance,
+	                 const std::function<bool(fpdf_annotation_t__*)>& decorate,
+	                 const std::function<bool(fpdf_annotation_t__*)>& verify,
+	                 const std::function<bool()>& canceled);
 	std::optional<std::vector<std::uint8_t>>
 	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
 	                bool hideNotes) const;

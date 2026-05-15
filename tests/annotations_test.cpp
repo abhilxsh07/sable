@@ -152,6 +152,29 @@ struct DocumentEditTest {
 		FPDF_ClosePage(page);
 		return result;
 	}
+	static std::vector<InkStroke> inkList(const Document& document, int index) {
+		std::vector<InkStroke> result;
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto note = page ? FPDFPage_GetAnnot(page, index) : nullptr;
+		const auto paths = note ? FPDFAnnot_GetInkListCount(note) : 0;
+		for (unsigned long i = 0; i < paths; ++i) {
+			std::vector<FS_POINTF> points(
+			    FPDFAnnot_GetInkListPath(note, i, nullptr, 0));
+			FPDFAnnot_GetInkListPath(note, i, points.data(),
+			                         static_cast<unsigned long>(points.size()));
+			auto& stroke = result.emplace_back();
+			for (const auto& point : points) {
+				stroke.push_back({point.x, point.y});
+			}
+		}
+		if (note) {
+			FPDFPage_CloseAnnot(note);
+		}
+		if (page) {
+			FPDF_ClosePage(page);
+		}
+		return result;
+	}
 	static std::size_t pageLoads(const Document& document) {
 		return document.m_editPageLoads;
 	}
@@ -2352,6 +2375,139 @@ TEST(Annotations, EllipseRefusalsAndCancellationKeepLiveBytesAndRevision) {
 			    const auto refused = pdf::openDocument(source);
 			    ASSERT_TRUE(refused.document);
 			    EXPECT_FALSE(refused.document->addEllipse(0, bounds, 1));
+			    EXPECT_EQ(refused.document->annotationRevision(), 1u);
+			    EXPECT_EQ(refused.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, InkStrokesKeepNeighborsAndSavedScreenAndPrintPixels) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    const auto link = doc.outlineLink(0);
+		    ASSERT_TRUE(link);
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    const auto revision = doc.annotationRevision();
+		    const std::vector<pdf::InkStroke> strokes{
+		        {{60, 100}, {110, 100}, {160, 100}},
+		        {{200, 80}, {200, 180}},
+		        {{300.25f, 200.5f}}};
+		    ASSERT_EQ(doc.addInk(0, strokes, revision), 1);
+		    EXPECT_EQ(doc.annotationRevision(), revision + 1);
+		    EXPECT_EQ(doc.textNote(0, 0, doc.annotationRevision()),
+		              u"Keep note");
+		    const auto kept = doc.outlineLink(0);
+		    ASSERT_TRUE(kept);
+		    EXPECT_EQ(kept->uri, link->uri);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    const auto& ink = notes->entries[1];
+		    ASSERT_TRUE(ink.bounds);
+		    EXPECT_EQ(ink.subtype, "Ink");
+		    EXPECT_EQ(ink.flags, FPDF_ANNOT_FLAG_PRINT);
+		    EXPECT_TRUE(ink.contents.empty() && ink.author.empty());
+		    EXPECT_FLOAT_EQ(ink.bounds->left, 59);
+		    EXPECT_FLOAT_EQ(ink.bounds->bottom, 79);
+		    EXPECT_FLOAT_EQ(ink.bounds->right, 301.25f);
+		    EXPECT_FLOAT_EQ(ink.bounds->top, 201.5f);
+		    EXPECT_EQ(pdf::DocumentEditTest::inkList(*saved.document, 1),
+		              strokes);
+		    const auto screen = saved.document->render(0, 360, 240);
+		    const auto print =
+		        saved.document->printRaster(0, 360, 240, 0, 0, 360, 240);
+		    ASSERT_TRUE(screen && print);
+		    for (const auto* image : {&*screen, &*print}) {
+			    const auto blue = [&](int x, int y) {
+				    return image
+				        ->pixels[(269 - y) * image->stride + 4 * (x - 20)];
+			    };
+			    // each pixel covers [x, x + 1] by [y, y + 1] in page points.
+			    EXPECT_EQ(blue(100, 100), 0);
+			    EXPECT_EQ(blue(159, 100), 0);
+			    EXPECT_EQ(blue(200, 130), 0);
+			    EXPECT_LT(blue(300, 200), 128);
+			    EXPECT_EQ(blue(130, 140), 255);
+			    EXPECT_EQ(blue(163, 100), 255);
+			    EXPECT_EQ(blue(100, 104), 255);
+			    EXPECT_EQ(blue(304, 204), 255);
+		    }
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, InkRefusalsAndCancellationKeepLiveBytesAndRevision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::vector<pdf::InkStroke> strokes{
+		        {{100, 100}, {150, 140}, {180, 120}}, {{220, 160}}};
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    EXPECT_FALSE(doc.addInk(-1, strokes, 1));
+		    EXPECT_FALSE(doc.addInk(doc.pageCount(), strokes, 1));
+		    EXPECT_FALSE(doc.addInk(0, strokes, 0));
+		    EXPECT_FALSE(doc.addInk(0, strokes, 2));
+		    const auto nan = std::numeric_limits<float>::quiet_NaN();
+		    const auto inf = std::numeric_limits<float>::infinity();
+		    std::vector<std::vector<pdf::InkStroke>> bad;
+		    bad.push_back({});
+		    bad.push_back({pdf::InkStroke{}});
+		    bad.push_back({pdf::InkStroke{{100, 100}}, pdf::InkStroke{}});
+		    bad.push_back({pdf::InkStroke{{nan, 100}}});
+		    bad.push_back({pdf::InkStroke{{100, inf}}});
+		    // half the line width would cross the page's left edge.
+		    bad.push_back({pdf::InkStroke{{0.5f, 100}}});
+		    bad.push_back({pdf::InkStroke{{100, 100}, {100, 5000}}});
+		    bad.push_back({pdf::InkStroke(4097, pdf::InkPoint{100, 100})});
+		    bad.push_back(
+		        std::vector<pdf::InkStroke>(257, pdf::InkStroke{{100, 100}}));
+		    bad.push_back(std::vector<pdf::InkStroke>(
+		        5, pdf::InkStroke(4000, pdf::InkPoint{100, 100})));
+		    for (const auto& refused : bad) {
+			    EXPECT_FALSE(doc.addInk(0, refused, 1));
+		    }
+		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    int checkpoints = 0;
+		    const auto baseline = pdf::openDocument(original);
+		    ASSERT_TRUE(baseline.document);
+		    ASSERT_TRUE(baseline.document->addInk(0, strokes, 1, [&] {
+			    ++checkpoints;
+			    return false;
+		    }));
+		    EXPECT_GT(checkpoints, 5);
+		    for (int stop = 1; stop <= checkpoints; ++stop) {
+			    SCOPED_TRACE(stop);
+			    const auto candidate = pdf::openDocument(original);
+			    ASSERT_TRUE(candidate.document);
+			    int calls = 0;
+			    EXPECT_FALSE(candidate.document->addInk(
+			        0, strokes, 1, [&] { return ++calls == stop; }));
+			    EXPECT_EQ(candidate.document->annotationRevision(), 1u);
+			    EXPECT_FALSE(candidate.document->modified());
+			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), original);
+		    }
+		    for (const auto& source :
+		         {annotationBytes("notes_denied.pdf"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          sharedHighlightBytes(2)}) {
+			    const auto refused = pdf::openDocument(source);
+			    ASSERT_TRUE(refused.document);
+			    EXPECT_FALSE(refused.document->addInk(0, strokes, 1));
 			    EXPECT_EQ(refused.document->annotationRevision(), 1u);
 			    EXPECT_EQ(refused.document->serialize(1024 * 1024), source);
 		    }

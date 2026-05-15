@@ -34,6 +34,12 @@ struct TextBoxSize {
 struct ShapeSize {
 	float width = 0, height = 0;
 };
+// Unrotated PDF coordinates, in points.
+struct InkPoint {
+	float x = 0, y = 0;
+	bool operator==(const InkPoint&) const = default;
+};
+using InkStroke = std::vector<InkPoint>;
 // Fractions from the top left of the cropped, intrinsically rotated page.
 struct AnnotationPoint {
 	double x = 0, y = 0;

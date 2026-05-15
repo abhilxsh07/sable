@@ -2,6 +2,21 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Freehand ink strokes (2026-11-07)
+
+A drawing is one Ink annotation holding all its strokes in PDF points.
+The appearance is a black 2 pt stroke with round caps and joins, so a
+single tap still draws a dot. The Rect covers half the line width around
+every point, and the InkList keeps the same points so other editors can
+rebuild the stroke. Like the outline shapes there is no /C or /BS yet;
+color and width come with the drawing tool.
+
+The writer shares the outline shapes' path: a canonical scratch copy,
+the signature scan, a saved and reopened check of the subtype, flags,
+Rect, appearance and every InkList point, then the swap. I cap a drawing
+at 256 strokes, 4096 points a stroke and 16384 points in all; empty
+strokes, non-finite points and anything past the page box refuse.
+
 ## Resizing outline shapes (2026-11-05)
 
 I resize plain Square and Circle outlines around their original PDF top-left

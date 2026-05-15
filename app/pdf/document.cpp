@@ -1533,7 +1533,6 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 		return {};
 	}
 	const auto& [left, bottom, right, top] = bounds;
-	const FS_RECTF rect{left, top, right, bottom};
 	std::ostringstream stream;
 	stream.imbue(std::locale::classic());
 	stream << std::fixed << std::setprecision(5) << "0 g ";
@@ -1563,8 +1562,23 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 	const auto subtype = shape == OutlineShape::Rectangle ? FPDF_ANNOT_SQUARE
 	                                                      : FPDF_ANNOT_CIRCLE;
 	const auto raw = stream.str();
-	const std::u16string appearance(raw.begin(), raw.end());
+	return appendAnnotation(index, subtype, bounds,
+	                        std::u16string(raw.begin(), raw.end()), {}, {},
+	                        canceled);
+}
 
+// i write into a canonical scratch copy, then reopen the saved bytes and
+// check the new annotation before replacing the live document.
+std::optional<int>
+Document::appendAnnotation(int index, int subtype,
+                           const AnnotationBounds& bounds,
+                           const std::u16string& appearance,
+                           const std::function<bool(FPDF_ANNOTATION)>& decorate,
+                           const std::function<bool(FPDF_ANNOTATION)>& verify,
+                           const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	const auto& [left, bottom, right, top] = bounds;
+	const FS_RECTF rect{left, top, right, bottom};
 	constexpr std::size_t limit = 128 * 1024 * 1024;
 	auto bytes = serialize(limit, canceled);
 	if (!bytes || stopped()) {
@@ -1609,6 +1623,7 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 		AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), subtype));
 		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) ||
+		    (decorate && !decorate(note.get())) ||
 		    !FPDFAnnot_SetAP(
 		        note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
 		        reinterpret_cast<FPDF_WIDESTRING>(appearance.c_str()))) {
@@ -1638,6 +1653,7 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 		std::vector<FPDF_WCHAR> ap(appearance.size() + 1);
 		if (!note || FPDFAnnot_GetSubtype(note.get()) != subtype ||
 		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
+		    (verify && !verify(note.get())) ||
 		    !FPDFAnnot_GetRect(note.get(), &kept) || kept.left != left ||
 		    kept.bottom != bottom || kept.right != right || kept.top != top ||
 		    FPDFAnnot_GetAP(note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
@@ -1663,6 +1679,101 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 	++m_annotationRevision;
 	m_modified = true;
 	return added;
+}
+
+std::optional<int> Document::addInk(int index,
+                                    const std::vector<InkStroke>& strokes,
+                                    std::uint64_t revision,
+                                    const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	if (offThread() || !revision || !currentRevision(revision) ||
+	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
+	    index >= pageCount() || stopped() || !canAnnotate() ||
+	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
+	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
+	    FPDF_GetSignatureCount(m_handle) != 0 || strokes.empty() ||
+	    strokes.size() > 256) {
+		return {};
+	}
+	// @todo: expose the ink width and color with the drawing tool.
+	constexpr double width = 2;
+	std::size_t points = 0;
+	double left = std::numeric_limits<double>::infinity(), bottom = left;
+	double right = -left, top = -left;
+	for (const auto& stroke : strokes) {
+		points += stroke.size();
+		if (stroke.empty() || stroke.size() > 4096 || points > 16384) {
+			return {};
+		}
+		for (const auto& [x, y] : stroke) {
+			if (!std::isfinite(x) || !std::isfinite(y) ||
+			    std::abs(x) > 1000000.f || std::abs(y) > 1000000.f) {
+				return {};
+			}
+			left = (std::min)(left, double(x));
+			bottom = (std::min)(bottom, double(y));
+			right = (std::max)(right, double(x));
+			top = (std::max)(top, double(y));
+		}
+	}
+	if (!canSerializeEdits(canceled)) {
+		return {};
+	}
+	// the rectangle covers half the line width around every point.
+	const AnnotationBounds bounds{static_cast<float>(left - width / 2),
+	                              static_cast<float>(bottom - width / 2),
+	                              static_cast<float>(right + width / 2),
+	                              static_cast<float>(top + width / 2)};
+	std::ostringstream stream;
+	stream.imbue(std::locale::classic());
+	// round caps and joins also draw a single tap as a dot.
+	stream << std::fixed << std::setprecision(5) << "0 G " << width
+	       << " w 1 J 1 j";
+	for (const auto& stroke : strokes) {
+		stream << ' ' << stroke.front().x << ' ' << stroke.front().y << " m";
+		for (std::size_t i = stroke.size() == 1 ? 0 : 1; i < stroke.size();
+		     ++i) {
+			stream << ' ' << stroke[i].x << ' ' << stroke[i].y << " l";
+		}
+	}
+	stream << " S";
+	const auto raw = stream.str();
+	const auto decorate = [&](FPDF_ANNOTATION note) {
+		for (std::size_t i = 0; i < strokes.size(); ++i) {
+			std::vector<FS_POINTF> path;
+			path.reserve(strokes[i].size());
+			for (const auto& [x, y] : strokes[i]) {
+				path.push_back({x, y});
+			}
+			if (FPDFAnnot_AddInkStroke(note, path.data(), path.size()) !=
+			    static_cast<int>(i)) {
+				return false;
+			}
+		}
+		return true;
+	};
+	// InkList keeps the strokes editable after the appearance is replaced.
+	const auto verify = [&](FPDF_ANNOTATION note) {
+		if (FPDFAnnot_GetInkListCount(note) != strokes.size()) {
+			return false;
+		}
+		for (std::size_t i = 0; i < strokes.size(); ++i) {
+			const auto size = static_cast<unsigned long>(strokes[i].size());
+			std::vector<FS_POINTF> path(size);
+			if (FPDFAnnot_GetInkListPath(note, static_cast<unsigned long>(i),
+			                             path.data(), size) != size ||
+			    !std::equal(path.begin(), path.end(), strokes[i].begin(),
+			                [](const FS_POINTF& a, const InkPoint& b) {
+				                return a.x == b.x && a.y == b.y;
+			                })) {
+				return false;
+			}
+		}
+		return true;
+	};
+	return appendAnnotation(index, FPDF_ANNOT_INK, bounds,
+	                        std::u16string(raw.begin(), raw.end()), decorate,
+	                        verify, canceled);
 }
 
 std::optional<bool>
