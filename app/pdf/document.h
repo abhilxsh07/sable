@@ -241,6 +241,11 @@ class Document {
 	                                AnnotationPoint second, int rotation,
 	                                std::uint64_t revision,
 	                                const std::function<bool()>& canceled = {});
+	// strokes use the displayed page, including the viewer's rotation.
+	std::optional<int> addInkAt(int page,
+	                            const std::vector<DisplayedStroke>& strokes,
+	                            int rotation, std::uint64_t revision,
+	                            const std::function<bool()>& canceled = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,

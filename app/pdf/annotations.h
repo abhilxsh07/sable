@@ -44,6 +44,8 @@ using InkStroke = std::vector<InkPoint>;
 struct AnnotationPoint {
 	double x = 0, y = 0;
 };
+// One drawn stroke, as points on the displayed page.
+using DisplayedStroke = std::vector<AnnotationPoint>;
 
 // Fractions from the top left of the cropped, intrinsically rotated page.
 struct AnnotationRect {

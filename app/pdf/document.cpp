@@ -2098,6 +2098,50 @@ Document::addOutlineShapeAt(int index, AnnotationPoint first,
 	return addOutlineShape(index, bounds, shape, revision, canceled);
 }
 
+std::optional<int>
+Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
+                   int rotation, std::uint64_t revision,
+                   const std::function<bool()>& canceled) {
+	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
+	    rotation > 3 || strokes.empty() || strokes.size() > 256 || !revision ||
+	    !currentRevision(revision) || (canceled && canceled())) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	std::vector<InkStroke> converted;
+	converted.reserve(strokes.size());
+	std::size_t points = 0;
+	for (const auto& stroke : strokes) {
+		points += stroke.size();
+		if (stroke.empty() || stroke.size() > 4096 || points > 16384) {
+			return {};
+		}
+		auto& ink = converted.emplace_back();
+		ink.reserve(stroke.size());
+		for (const auto point : stroke) {
+			// the same fine device grid as the shape corners.
+			constexpr int grid = 1 << 20;
+			double x = 0, y = 0;
+			if (!(point.x >= 0 && point.x <= 1 && point.y >= 0 &&
+			      point.y <= 1) ||
+			    !FPDF_DeviceToPage(
+			        page.get(), 0, 0, grid, grid, rotation,
+			        static_cast<int>(std::lround(point.x * grid)),
+			        static_cast<int>(std::lround(point.y * grid)), &x, &y) ||
+			    !std::isfinite(x) || !std::isfinite(y) ||
+			    std::abs(x) > 1000000. || std::abs(y) > 1000000.) {
+				return {};
+			}
+			ink.push_back({static_cast<float>(x), static_cast<float>(y)});
+		}
+	}
+	page.reset();
+	return addInk(index, converted, revision, canceled);
+}
+
 std::optional<int> Document::addTextBox(
     int index, const AnnotationBounds& bounds, std::u16string_view contents,
     std::u16string_view author, std::uint64_t revision,

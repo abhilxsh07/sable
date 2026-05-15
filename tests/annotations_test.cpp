@@ -3283,6 +3283,95 @@ TEST(Annotations, DisplayedEllipsesRefuseInvalidCornersAndStaleRevisions) {
 	    .get();
 }
 
+TEST(Annotations, DisplayedInkFollowsCropAndAllPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const std::vector<pdf::DisplayedStroke> displayed{
+		        {{.125, .25}, {.625, .75}}, {{.5, .5}}};
+		    // both stroke ends for each total rotation; the tap stays centered.
+		    constexpr pdf::InkPoint expected[4][2]{{{65, 430}, {245, 170}},
+		                                           {{110, 105}, {290, 365}},
+		                                           {{335, 170}, {155, 430}},
+		                                           {{290, 495}, {110, 235}}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto source = editableNoteBytes(
+			        "/Contents (Keep)", "Text", {},
+			        "/MediaBox [0 0 400 600] /CropBox [20 40 380 560] "
+			        "/Rotate " +
+			            std::to_string(intrinsic * 90));
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    SCOPED_TRACE(intrinsic * 4 + rotation);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    ASSERT_EQ(doc.addInkAt(0, displayed, rotation, 1), 1);
+				    const auto bytes = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(bytes);
+				    const auto saved = pdf::openDocument(*bytes);
+				    ASSERT_TRUE(saved.document);
+				    const auto strokes =
+				        pdf::DocumentEditTest::inkList(*saved.document, 1);
+				    ASSERT_EQ(strokes.size(), 2u);
+				    ASSERT_EQ(strokes[0].size(), 2u);
+				    ASSERT_EQ(strokes[1].size(), 1u);
+				    const auto& ends = expected[(intrinsic + rotation) % 4];
+				    for (int i = 0; i < 2; ++i) {
+					    EXPECT_NEAR(strokes[0][i].x, ends[i].x, 1e-3);
+					    EXPECT_NEAR(strokes[0][i].y, ends[i].y, 1e-3);
+				    }
+				    EXPECT_NEAR(strokes[1][0].x, 200, 1e-3);
+				    EXPECT_NEAR(strokes[1][0].y, 300, 1e-3);
+				    const auto notes = saved.document->annotations(0);
+				    ASSERT_TRUE(notes && notes->entries.size() == 2);
+				    EXPECT_EQ(notes->entries[1].subtype, "Ink");
+				    EXPECT_EQ(notes->entries[0].contents, "Keep");
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, DisplayedInkRefusesInvalidPointsAndStaleRevisions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const pdf::DisplayedStroke good{{.2, .2}, {.7, .7}};
+		    for (const auto& point :
+		         {pdf::AnnotationPoint{-.001, .5},
+		          pdf::AnnotationPoint{1.001, .5},
+		          pdf::AnnotationPoint{.5, -.001},
+		          pdf::AnnotationPoint{.5, 1.001},
+		          pdf::AnnotationPoint{std::numeric_limits<double>::quiet_NaN(),
+		                               .5},
+		          pdf::AnnotationPoint{
+		              .5, std::numeric_limits<double>::infinity()}}) {
+			    EXPECT_FALSE(
+			        doc.addInkAt(0, {pdf::DisplayedStroke{point}}, 0, 1));
+			    EXPECT_FALSE(doc.addInkAt(
+			        0, {good, pdf::DisplayedStroke{{.5, .5}, point}}, 0, 1));
+		    }
+		    // half the line width past the page edge refuses too.
+		    EXPECT_FALSE(
+		        doc.addInkAt(0, {pdf::DisplayedStroke{{0, .5}}}, 0, 1));
+		    EXPECT_FALSE(doc.addInkAt(0, {good}, -1, 1));
+		    EXPECT_FALSE(doc.addInkAt(0, {good}, 4, 1));
+		    EXPECT_FALSE(doc.addInkAt(-1, {good}, 0, 1));
+		    EXPECT_FALSE(doc.addInkAt(0, {}, 0, 1));
+		    EXPECT_FALSE(doc.addInkAt(0, {good, pdf::DisplayedStroke{}}, 0, 1));
+		    EXPECT_FALSE(doc.addInkAt(0, {good}, 0, 2));
+		    EXPECT_FALSE(doc.addInkAt(0, {good}, 0, 1, [] { return true; }));
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+	    })
+	    .get();
+}
+
 TEST(Annotations, DisplayedTextBoxesFollowCropAndAllPageRotations) {
 	pdf::Engine engine;
 	engine

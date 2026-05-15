@@ -4035,6 +4035,78 @@ TEST_F(SessionTest, EllipseQueueOwnsCornersAndPreservesTheRectangleBesideIt) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, InkQueueOwnsStrokesAndPreservesTheEllipseBesideIt) {
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	pdf::Session session(engine), closing(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
+	const auto cached = readForms(session);
+	ASSERT_TRUE(cached && cached->revision == 1);
+	EXPECT_FALSE(session.addInkAt(0, {pdf::DisplayedStroke{{.5, .5}}}, 0, 0,
+	                              [](pdf::NoteResult) {}));
+	EXPECT_FALSE(
+	    session.addInkAt(0, {pdf::DisplayedStroke{{.5, .5}}}, 0, 1, {}));
+	std::vector<pdf::DisplayedStroke> strokes{{{.25, .5}, {.5, .75}, {.75, .5}},
+	                                          {{.5, .25}}};
+	Reply<pdf::NoteResult> ellipse, placed, stale, invalid, canceled;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.addEllipseAt(0, {.1, .1}, {.2, .2}, 0, 1,
+		                                 ellipse.callback()));
+		ASSERT_TRUE(session.addInkAt(0, strokes, 0, 2, placed.callback()));
+		ASSERT_TRUE(session.addInkAt(0, strokes, 0, 2, stale.callback()));
+		ASSERT_TRUE(
+		    session.addInkAt(0,
+		                     std::vector<pdf::DisplayedStroke>{
+		                         pdf::DisplayedStroke{{.5, .5}, {1.5, .5}}},
+		                     0, 3, invalid.callback()));
+		ASSERT_TRUE(closing.addInkAt(0, strokes, 0, 1, canceled.callback()));
+		strokes.clear();
+		session.cancelForms();
+		session.cancelAnnotations();
+		closing.close();
+	}
+	const auto neighbor = ellipse.wait(), ink = placed.wait(),
+	           old = stale.wait(), bad = invalid.wait(),
+	           closed = canceled.wait();
+	ASSERT_TRUE(neighbor && ink && old && bad && closed);
+	EXPECT_EQ(neighbor->index, 0);
+	EXPECT_TRUE(neighbor->changed && !neighbor->canceled);
+	EXPECT_EQ(ink->index, 1);
+	EXPECT_TRUE(ink->changed && !ink->canceled);
+	EXPECT_FALSE(old->changed || old->index || old->canceled);
+	EXPECT_FALSE(bad->changed || bad->index || bad->canceled);
+	EXPECT_TRUE(closed->canceled && !closed->changed && !closed->index);
+	const auto fresh = readForms(session);
+	ASSERT_TRUE(fresh && fresh->revision == 3);
+	EXPECT_NE(fresh, cached);
+	EXPECT_EQ(session.annotationRevision(), 3u);
+	EXPECT_EQ(closing.annotationRevision(), 0u);
+	const auto destination = tempDir() / "drawn ink.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 2);
+	EXPECT_EQ(notes->annotations->entries[0].subtype, "Circle");
+	const auto& kept = notes->annotations->entries[1];
+	ASSERT_TRUE(kept.bounds);
+	EXPECT_EQ(kept.subtype, "Ink");
+	// the 595 x 842 page, widened by half the 2 pt line.
+	EXPECT_FLOAT_EQ(kept.bounds->left, 147.75f);
+	EXPECT_FLOAT_EQ(kept.bounds->bottom, 209.5f);
+	EXPECT_FLOAT_EQ(kept.bounds->right, 447.25f);
+	EXPECT_FLOAT_EQ(kept.bounds->top, 632.5f);
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
 	pdf::Session session(engine);
 	const auto source = fixturePath("pages.pdf");

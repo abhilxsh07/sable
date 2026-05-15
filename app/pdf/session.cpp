@@ -605,6 +605,43 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 	return true;
 }
 
+bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
+                       int rotation, std::uint64_t revision,
+                       std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !revision || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, strokes = std::move(strokes), rotation,
+	                      revision, callback = std::move(callback)] {
+		NoteResult result;
+		result.page = page;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				result.index = state->m_document->addInkAt(
+				    page, strokes, rotation, revision, canceled);
+				result.changed = result.index.has_value();
+				if (result.changed) {
+					state->m_forms.reset();
+					std::lock_guard lock(state->m_mutex);
+					state->m_annotationRevision =
+					    state->m_document->annotationRevision();
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't add a PDF ink drawing.");
+		}
+		result.canceled = !result.changed && canceled();
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::resizeShape(Annotation expected, ShapeSize size,
                           std::function<void(NoteResult)> callback) {
 	const auto state = m_state;
