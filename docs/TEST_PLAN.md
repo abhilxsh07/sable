@@ -2,6 +2,31 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Desktop drawing round trip (7 November 2026)
+
+I open `verify-ink-20261107/ink input.pdf`, the resized copy with a
+rectangle, an ellipse and three text boxes. Draw on page shows "Drag on
+a page to draw. Esc stops drawing." With absolute `mouse_event` moves, a
+wave across the page bottom draws as a smooth curve, and a stroke dragged
+past the right edge follows its path and then runs down the edge. A
+click without moving leaves a dot. Each lists as a Drawing.
+
+My first two strokes moved the cursor with `SetCursorPos`, which raises no
+pointer moves, so only their press and release points were drawn. I
+deleted both from Comments (Edit stays disabled for drawings) and kept
+the strokes made with real input. Esc stops drawing and enables Save.
+
+The Windows picker saves `ink saved.pdf` with all eight annotations: the
+three boxes, both shapes, a one-point dot with an exact 2 x 2 pt Rect, a
+94-point wave and a 51-point edge stroke whose furthest point is 398 pt
+on the 400 pt page. Reopening it shows all three drawings and a clean
+savepoint; both windows close without an unsaved prompt. The source
+SHA-256 stays
+`1C70A78A9825EB9D50B33C22683C1EB6E23ED7E095C93C03C0F5E937B42C511A`.
+The saved copy is
+`7E82532580B526417908DA214093D5748044090F44A64DF14681E3824D59D318`.
+Pen and touch input weren't available on this machine.
+
 ## Drawing in the native reader (7 November 2026)
 
 With the Debug reader built using `SableSurfaceTest=true`, I run
