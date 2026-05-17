@@ -34,34 +34,47 @@ using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::setupSelection() {
 	const auto weak = get_weak();
-	Pages().PointerPressed([weak](auto&&,
-	                              const Input::PointerRoutedEventArgs& args) {
-		if (auto self = weak.get()) {
-			if (self->m_notePlacing) {
-				args.Handled(args.Pointer().PointerDeviceType() !=
-				             Microsoft::UI::Input::PointerDeviceType::Touch);
-				return;
-			}
-			if (self->m_cursorTool == CursorTool::Hand) {
-				return;
-			}
-			self->m_ignorePanTap = false;
-			const auto point = args.GetCurrentPoint(self->Pages());
-			if (args.Pointer().PointerDeviceType() ==
-			        Microsoft::UI::Input::PointerDeviceType::Touch ||
-			    !point.Properties().IsLeftButtonPressed()) {
-				return;
-			}
-			self->Scroller().Focus(FocusState::Programmatic);
-			self->beginSelection(point.Position());
-			if (self->m_textStart) {
-				self->Pages().CapturePointer(args.Pointer());
-			}
-		}
-	});
+	Pages().PointerPressed(
+	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
+		    if (auto self = weak.get()) {
+			    if (self->m_notePlacing) {
+				    const bool touch =
+				        args.Pointer().PointerDeviceType() ==
+				        Microsoft::UI::Input::PointerDeviceType::Touch;
+				    const auto point = args.GetCurrentPoint(self->Pages());
+				    if (!touch && self->m_placementTool == PlacementTool::Ink &&
+				        point.Properties().IsLeftButtonPressed() &&
+				        self->beginInkStroke(point.Position())) {
+					    self->Scroller().Focus(FocusState::Programmatic);
+					    self->Pages().CapturePointer(args.Pointer());
+				    }
+				    args.Handled(!touch);
+				    return;
+			    }
+			    if (self->m_cursorTool == CursorTool::Hand) {
+				    return;
+			    }
+			    self->m_ignorePanTap = false;
+			    const auto point = args.GetCurrentPoint(self->Pages());
+			    if (args.Pointer().PointerDeviceType() ==
+			            Microsoft::UI::Input::PointerDeviceType::Touch ||
+			        !point.Properties().IsLeftButtonPressed()) {
+				    return;
+			    }
+			    self->Scroller().Focus(FocusState::Programmatic);
+			    self->beginSelection(point.Position());
+			    if (self->m_textStart) {
+				    self->Pages().CapturePointer(args.Pointer());
+			    }
+		    }
+	    });
 	Pages().PointerMoved(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
-		    if (auto self = weak.get(); self && self->m_textPointerDown) {
+		    if (auto self = weak.get(); self && self->m_inkStroke) {
+			    self->extendInkStroke(
+			        args.GetCurrentPoint(self->Pages()).Position());
+			    args.Handled(true);
+		    } else if (self && self->m_textPointerDown) {
 			    self->extendSelection(
 			        args.GetCurrentPoint(self->Pages()).Position());
 			    args.Handled(self->m_textMoved);
@@ -69,7 +82,13 @@ void ViewerPage::setupSelection() {
 	    });
 	Pages().PointerReleased(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
-		    if (auto self = weak.get(); self && self->m_textPointerDown) {
+		    if (auto self = weak.get(); self && self->m_inkStroke) {
+			    self->extendInkStroke(
+			        args.GetCurrentPoint(self->Pages()).Position());
+			    self->finishInkStroke();
+			    self->Pages().ReleasePointerCaptures();
+			    args.Handled(true);
+		    } else if (self && self->m_textPointerDown) {
 			    self->extendSelection(
 			        args.GetCurrentPoint(self->Pages()).Position());
 			    self->endSelection();
@@ -78,12 +97,17 @@ void ViewerPage::setupSelection() {
 		    }
 	    });
 	Pages().PointerCaptureLost([weak](auto&&, auto&&) {
-		if (auto self = weak.get(); self && self->m_textPointerDown) {
+		if (auto self = weak.get(); self && self->m_inkStroke) {
+			self->dropInkStroke();
+		} else if (self && self->m_textPointerDown) {
 			self->cancelSelectionDrag();
 		}
 	});
 	Pages().PointerCanceled([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
+			if (self->m_inkStroke) {
+				self->dropInkStroke();
+			}
 			self->cancelSelectionDrag();
 		}
 	});

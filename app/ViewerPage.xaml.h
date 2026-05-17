@@ -235,7 +235,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	enum class PlacementTool { Note, TextBox, Rectangle, Ellipse };
+	enum class PlacementTool { Note, TextBox, Rectangle, Ellipse, Ink };
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
@@ -247,6 +247,18 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::optional<ShapeStart> m_shapeStart;
 	bool m_notePlacing = false;
 	PlacementTool m_placementTool = PlacementTool::Note;
+	// the stroke under the pointer, in displayed page fractions
+	struct InkDrawing {
+		int page;
+		int rotation;
+		std::uint64_t revision;
+		pdf::DisplayedStroke points;
+	};
+	std::optional<InkDrawing> m_inkStroke;
+	bool beginInkStroke(winrt::Windows::Foundation::Point point);
+	void extendInkStroke(winrt::Windows::Foundation::Point point);
+	void finishInkStroke();
+	void dropInkStroke();
 	winrt::fire_and_forget
 	editTextBox(NoteTarget target,
 	            std::optional<pdf::Annotation> existing = {});

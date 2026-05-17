@@ -2572,6 +2572,50 @@ TEST(Annotations,
 	    .get();
 }
 
+TEST(Annotations, InkRemovalKeepsNeighborsAndRefusesProtectedDrawings) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("pages.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    ASSERT_EQ(
+		        doc.addInk(0, {{{100, 100}, {150, 140}}, {{220, 160}}}, 1), 1);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    const auto target = notes->entries[1].target;
+		    ASSERT_EQ(target.subtype, "Ink");
+		    auto stale = target;
+		    --stale.revision;
+		    EXPECT_FALSE(doc.removeAnnotation(stale));
+		    ASSERT_EQ(doc.removeAnnotation(target), true);
+		    EXPECT_EQ(doc.annotationRevision(), target.revision + 1);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 1);
+		    EXPECT_EQ(kept->entries[0].contents, "Keep note");
+		    EXPECT_EQ(annotationBytes("pages.pdf"), original);
+		    for (int flags :
+		         {FPDF_ANNOT_FLAG_READONLY, FPDF_ANNOT_FLAG_LOCKED, 512}) {
+			    const auto source = editableNoteBytes(
+			        "/Contents (Keep) /F " + std::to_string(flags), "Ink");
+			    const auto candidate = pdf::openDocument(source);
+			    ASSERT_TRUE(candidate.document);
+			    const auto entries = candidate.document->annotations(0);
+			    ASSERT_TRUE(entries && entries->entries.size() == 1);
+			    EXPECT_FALSE(candidate.document->removeAnnotation(
+			        entries->entries[0].target));
+			    EXPECT_EQ(candidate.document->serialize(1024 * 1024), source);
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, ResizedShapesKeepAnchorsNeighborsAndSavedPixels) {
 	pdf::Engine engine;
 	engine

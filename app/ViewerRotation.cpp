@@ -85,6 +85,7 @@ void ViewerPage::rotateView(int turns) {
 		m_failed.clear();
 		settle();
 		cancelSelectionDrag();
+		dropInkStroke();
 		// a square or a half turn needs new pixels too
 		Scroller().Focus(FocusState::Programmatic);
 		Thumbnails().Children().Clear();

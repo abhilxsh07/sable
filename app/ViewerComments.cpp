@@ -140,6 +140,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::Ellipse);
 		}
 	});
+	DrawInkButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::Ink);
+		}
+	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -197,6 +202,7 @@ void ViewerPage::pauseComments() {
 }
 void ViewerPage::closeComments() {
 	m_shapeStart.reset();
+	dropInkStroke();
 	m_notePlacing = false;
 	setCommentsOpen(false);
 	if (m_commentVisibility) {
@@ -219,6 +225,7 @@ void ViewerPage::showComments() {
 	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
 	    Rail().Visibility() != XVisibility::Visible) {
 		m_shapeStart.reset();
+		dropInkStroke();
 		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
@@ -244,6 +251,11 @@ void ViewerPage::showComments() {
 	                                  m_placementTool == PlacementTool::Ellipse
 	                              ? L"Cancel ellipse placement"
 	                              : L"Place ellipse on page");
+	DrawInkButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
+	                          !m_noteDialog);
+	DrawInkButton().Text(m_notePlacing && m_placementTool == PlacementTool::Ink
+	                         ? L"Stop drawing"
+	                         : L"Draw on page");
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().Content(
@@ -290,6 +302,8 @@ void ViewerPage::showComments() {
 	NotesState().Text(
 	    m_notePlacing  ? (m_placementTool == PlacementTool::TextBox
 	                          ? L"Click a page to place a text box. Esc cancels."
+	                      : m_placementTool == PlacementTool::Ink
+	                          ? L"Drag on a page to draw. Esc stops drawing."
 	                          : L"Click a page to place a note. Esc cancels.")
 	    : m_noteBusy   ? L"Updating comments\u2026"
 	    : m_noteSaving ? L"Saving comments\u2026"

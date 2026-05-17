@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/session.h"
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
+#include <algorithm>
 #include <cmath>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 
@@ -45,6 +46,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
 	m_shapeStart.reset();
+	dropInkStroke();
 	m_placementTool = tool;
 	m_notePlacing = true;
 	showComments();
@@ -53,6 +55,7 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 
 bool ViewerPage::cancelNotePlacement() {
 	m_shapeStart.reset();
+	dropInkStroke();
 	const bool canceled = std::exchange(m_notePlacing, false);
 	if (canceled && !m_closed) {
 		showComments();
@@ -70,7 +73,9 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		cancelNotePlacement();
 		return true;
 	}
-	if (!std::isfinite(point.X) || !std::isfinite(point.Y)) {
+	if (!std::isfinite(point.X) || !std::isfinite(point.Y) ||
+	    m_placementTool == PlacementTool::Ink) {
+		// strokes come from the pointer handlers; a click ends its own.
 		return true;
 	}
 	const auto& pages = m_layout->pages();
@@ -170,6 +175,148 @@ void ViewerPage::placeShape(NoteTarget target) {
 	showComments();
 	showNotice(ellipse ? L"Couldn't queue this ellipse. Try again."
 	                   : L"Couldn't queue this rectangle. Try again.");
+}
+
+// mouse and pen strokes each become one Ink annotation. touch keeps
+// scrolling the pages, as it does for text selection.
+bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
+	// a queued stroke keeps its preview until its write finishes
+	if (m_inkStroke) {
+		dropInkStroke();
+	}
+	const auto session = m_session.get();
+	const auto revision = session ? session->annotationRevision() : 0;
+	if (!m_notePlacing || m_placementTool != PlacementTool::Ink || m_closed ||
+	    !m_layout || !revision || !m_noteAllowed || m_noteBusy ||
+	    m_noteSaving || m_noteDialog || m_passwordDialog || !commentsOpen() ||
+	    !std::isfinite(point.X) || !std::isfinite(point.Y)) {
+		return false;
+	}
+	const auto& pages = m_layout->pages();
+	for (std::size_t page = 0; page < pages.size(); ++page) {
+		const auto& rect = pages[page];
+		if (point.X >= rect.x && point.X <= rect.x + rect.width &&
+		    point.Y >= rect.y && point.Y <= rect.y + rect.height) {
+			m_inkStroke = InkDrawing{
+			    static_cast<int>(page), key(page).rotation, revision, {}};
+			extendInkStroke(point);
+			InkPreview().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+			return true;
+		}
+	}
+	return false;
+}
+
+void ViewerPage::extendInkStroke(Windows::Foundation::Point point) {
+	if (!m_inkStroke || !m_layout || !std::isfinite(point.X) ||
+	    !std::isfinite(point.Y)) {
+		return;
+	}
+	auto& stroke = *m_inkStroke;
+	const auto page = static_cast<std::size_t>(stroke.page);
+	const auto& pages = m_layout->pages();
+	if (page >= pages.size() || page >= m_sizes.size() ||
+	    stroke.points.size() >= 4096) {
+		return;
+	}
+	const auto& rect = pages[page];
+	const auto& size = m_sizes[page];
+	const double shortest = (std::min)(size.width, size.height);
+	if (!(rect.width > 0 && rect.height > 0 && shortest > 4)) {
+		return;
+	}
+	// the saved line is 2 pt wide and has to stay on the page, so its
+	// centre keeps 1.5 pt from every edge.
+	const double inset = 1.5 / shortest;
+	const pdf::AnnotationPoint at{
+	    std::clamp((point.X - rect.x) / rect.width, inset, 1 - inset),
+	    std::clamp((point.Y - rect.y) / rect.height, inset, 1 - inset)};
+	if (!stroke.points.empty()) {
+		const auto& last = stroke.points.back();
+		if (std::abs(at.x - last.x) * rect.width < .5 &&
+		    std::abs(at.y - last.y) * rect.height < .5) {
+			return;
+		}
+	}
+	stroke.points.push_back(at);
+	const double scale =
+	    Scroller().ZoomFactor() *
+	    std::sqrt(rect.width * rect.height / (size.width * size.height));
+	InkPreviewLine().StrokeThickness(2 * scale);
+	const auto shown =
+	    Pages()
+	        .TransformToVisual(InkPreview())
+	        .TransformPoint({static_cast<float>(rect.x + at.x * rect.width),
+	                         static_cast<float>(rect.y + at.y * rect.height)});
+	auto points = InkPreviewLine().Points();
+	points.Append(shown);
+	if (stroke.points.size() == 1) {
+		// a polyline needs two points before its round caps draw a dot
+		points.Append({shown.X + .01f, shown.Y});
+	}
+}
+
+void ViewerPage::finishInkStroke() {
+	if (!m_inkStroke) {
+		return;
+	}
+	auto stroke = std::move(*m_inkStroke);
+	m_inkStroke.reset();
+	const auto session = m_session.get();
+	if (m_closed || !session || !m_notePlacing ||
+	    m_placementTool != PlacementTool::Ink || stroke.points.empty() ||
+	    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog) {
+		dropInkStroke();
+		return;
+	}
+	if (session->annotationRevision() != stroke.revision) {
+		dropInkStroke();
+		showNotice(L"The PDF changed. Draw the stroke again.");
+		return;
+	}
+	m_noteBusy = true;
+	try {
+		if (session->addInkAt(stroke.page, {std::move(stroke.points)},
+		                      stroke.rotation, stroke.revision,
+		                      [weak = get_weak(), queue = DispatcherQueue(),
+		                       session](pdf::NoteResult result) {
+			                      queue.TryEnqueue([weak, session, result] {
+				                      const auto self = weak.get();
+				                      if (!self || self->m_closed ||
+				                          self->m_session.get() != session) {
+					                      return;
+				                      }
+				                      self->m_noteBusy = false;
+				                      self->dropInkStroke();
+				                      self->m_notesDirty =
+				                          self->m_notesDirty || result.changed;
+				                      if (result.changed) {
+					                      self->Message().IsOpen(false);
+					                      self->refreshNotes();
+				                      } else if (!result.canceled) {
+					                      self->showNotice(
+					                          L"Couldn't add this drawing. "
+					                          L"This PDF may restrict "
+					                          L"comments.");
+				                      }
+				                      self->showComments();
+			                      });
+		                      })) {
+			showComments();
+			return;
+		}
+	} catch (...) {
+	}
+	m_noteBusy = false;
+	dropInkStroke();
+	showComments();
+	showNotice(L"Couldn't queue this drawing. Try again.");
+}
+
+void ViewerPage::dropInkStroke() {
+	m_inkStroke.reset();
+	InkPreviewLine().Points().Clear();
+	InkPreview().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
 }
 
 fire_and_forget

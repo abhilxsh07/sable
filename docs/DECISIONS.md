@@ -2,6 +2,23 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Drawing from Comments (2026-11-07)
+
+"Draw on page" arms a drawing tool that stays on until Stop drawing, Esc,
+another placement tool, hidden Comments or closing. Each mouse or pen
+stroke, from press to release, is written as its own Ink annotation; a
+click without moving leaves a dot. Touch keeps scrolling the pages, as it
+does for selection, so drawing needs a mouse or pen for now.
+
+Points are kept as fractions of the page the stroke started on. I clamp
+them 1.5 pt inside that page so the 2 pt line never crosses an edge and
+the guarded writer doesn't refuse the whole stroke. Points closer than
+half a DIP are skipped, and a stroke stops collecting at 4096 points.
+The live preview is a XAML polyline over the scroller, drawn in the theme
+text color, and stays until the write finishes. Presses while a stroke is
+being written are ignored rather than queued. Drawings list as "Drawing"
+and use the guarded Delete; editing their strokes isn't offered yet.
+
 ## Freehand ink strokes (2026-11-07)
 
 A drawing is one Ink annotation holding all its strokes in PDF points.

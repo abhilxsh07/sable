@@ -78,6 +78,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			HorizontalAlignment="Left" VerticalAlignment="Top"
 			IsHitTestVisible="False" Visibility="Collapsed"
 			AutomationProperties.AccessibilityView="Raw" />
+		<!-- the stroke being drawn, until the page draws the saved ink -->
+		<Canvas Grid.Row="1" x:Name="InkPreview" IsHitTestVisible="False"
+			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
+			<Polyline x:Name="InkPreviewLine" StrokeLineJoin="Round"
+				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
+		</Canvas>
 		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
 			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"
 			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480" />
@@ -197,6 +204,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place rectangle on page" />
 									<MenuFlyoutItem x:Name="PlaceEllipseButton"
 										Text="Place ellipse on page" />
+									<MenuFlyoutItem x:Name="DrawInkButton"
+										Text="Draw on page" />
 								</MenuFlyout>
 							</Button.Flyout>
 						</Button>

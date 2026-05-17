@@ -134,6 +134,9 @@ std::string_view commentLabel(std::string_view subtype) {
 	if (subtype == "Circle") {
 		return "Ellipse";
 	}
+	if (subtype == "Ink") {
+		return "Drawing";
+	}
 	if (subtype == "PolyLine") {
 		return "Polyline";
 	}

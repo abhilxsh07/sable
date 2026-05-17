@@ -65,6 +65,7 @@ TEST(CommentScan, ReadableLabelsKeepUnknownTypes) {
 	EXPECT_EQ(helpers::commentLabel("FreeText"), "Text box");
 	EXPECT_EQ(helpers::commentLabel("Square"), "Rectangle");
 	EXPECT_EQ(helpers::commentLabel("Circle"), "Ellipse");
+	EXPECT_EQ(helpers::commentLabel("Ink"), "Drawing");
 	EXPECT_EQ(helpers::commentLabel("FileAttachment"), "Attachment");
 	EXPECT_EQ(helpers::commentLabel("PolyLine"), "Polyline");
 	EXPECT_EQ(helpers::commentLabel("Highlight"), "Highlight");
