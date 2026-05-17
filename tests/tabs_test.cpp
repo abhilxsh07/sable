@@ -129,6 +129,7 @@ struct TabsTest {
 	bool markupCommentOnly = false;
 	bool notePlacementOnly = false;
 	bool ellipsePlacementOnly = false;
+	bool inkDrawingOnly = false;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
 	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
@@ -4801,6 +4802,210 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void inkDrawingTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [&](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			const auto action =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        element)
+			        .GetPattern(Peers::PatternInterface::Invoke)
+			        .as<Provider::IInvokeProvider>();
+			action.Invoke();
+		};
+		// displayed fractions of the second page, in Pages coordinates
+		const auto at = [&](double x, double y) {
+			const auto& rect = v.m_layout->pages()[1];
+			return Windows::Foundation::Point{
+			    static_cast<float>(rect.x + x * rect.width),
+			    static_cast<float>(rect.y + y * rect.height)};
+		};
+		const auto inkRows = [&] {
+			const auto& rows = v.m_commentScan.rows();
+			return std::count_if(rows.begin(), rows.end(), [](const auto& row) {
+				return row.page == 1 && row.subtype == "Ink";
+			});
+		};
+		const auto previewShown = [&] {
+			return v.InkPreview().Visibility() == Visibility::Visible;
+		};
+		switch (step) {
+		case 0:
+			v.setCommentsOpen(true);
+			v.zoomTo(1.5, {0, 0});
+			v.goToPage(1);
+			invoke(v.DrawInkButton());
+			check(v.m_notePlacing &&
+			          v.m_placementTool == ViewerPage::PlacementTool::Ink &&
+			          v.DrawInkButton().Text() == L"Stop drawing" &&
+			          !v.m_notesDirty,
+			      "drawing did not arm");
+			invoke(v.DrawInkButton());
+			check(!v.m_notePlacing &&
+			          v.DrawInkButton().Text() == L"Draw on page",
+			      "Stop drawing kept the tool armed");
+			break;
+		case 1:
+			invoke(v.DrawInkButton());
+			check(!v.beginInkStroke({-1, -1}) && !v.m_inkStroke,
+			      "a page gap started a stroke");
+			check(v.placeNote(at(.3, .3)) && !v.m_inkStroke &&
+			          !v.m_noteDialog && v.m_notePlacing,
+			      "a click opened an editor while drawing");
+			check(v.beginInkStroke(at(.2, .3)) && v.m_inkStroke &&
+			          previewShown(),
+			      "stroke did not start on the page");
+			v.extendInkStroke(at(.3, .4));
+			check(v.cancelNotePlacement() && !v.m_inkStroke &&
+			          !previewShown() && !v.m_notesDirty,
+			      "Esc kept the stroke or wrote it");
+			invoke(v.DrawInkButton());
+			check(v.beginInkStroke(at(.2, .3)), "second stroke did not start");
+			invoke(v.PlaceRectangleButton());
+			check(!v.m_inkStroke && !previewShown() &&
+			          v.m_placementTool == ViewerPage::PlacementTool::Rectangle,
+			      "tool switch kept the stroke");
+			invoke(v.DrawInkButton());
+			check(v.beginInkStroke(at(.2, .3)), "third stroke did not start");
+			v.setCommentsOpen(false);
+			check(!v.m_inkStroke && !v.m_notePlacing && !previewShown(),
+			      "hidden Comments kept the stroke");
+			v.setCommentsOpen(true);
+			invoke(v.DrawInkButton());
+			check(v.beginInkStroke(at(.2, .3)), "fourth stroke did not start");
+			v.rotateView(1);
+			check(!v.m_inkStroke && v.m_notePlacing && !previewShown(),
+			      "rotation kept the stroke");
+			v.rotateView(-1);
+			check(!v.m_notesDirty, "canceled strokes changed the PDF");
+			break;
+		case 2:
+			check(v.m_notePlacing && v.beginInkStroke(at(.2, .3)),
+			      "stroke did not start after rotation");
+			// the last point runs off the page and has to stay on it
+			for (const auto& [x, y] :
+			     {std::pair{.3, .4}, std::pair{.4, .35}, std::pair{.5, .45},
+			      std::pair{1.3, .5}}) {
+				v.extendInkStroke(at(x, y));
+			}
+			check(v.m_inkStroke && v.m_inkStroke->points.size() == 5 &&
+			          v.InkPreviewLine().Points().Size() == 6,
+			      "stroke lost points or its preview");
+			check(v.m_inkStroke->points.back().x > .99 &&
+			          v.m_inkStroke->points.back().x < 1,
+			      "off-page point was not kept inside the page");
+			v.finishInkStroke();
+			check(v.m_noteBusy && !v.m_inkStroke && previewShown() &&
+			          !v.beginInkStroke(at(.6, .6)) && previewShown(),
+			      "queued stroke left input open or lost its preview");
+			break;
+		case 3:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && v.m_notePlacing && !previewShown() &&
+			          inkRows() == 1,
+			      "drawn stroke missing from Comments or ended drawing");
+			check(v.beginInkStroke(at(.7, .8)), "dot did not start");
+			v.finishInkStroke();
+			check(v.m_noteBusy, "dot was not queued");
+			break;
+		case 4:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(inkRows() == 2, "single tap did not add a drawing");
+			invoke(v.DrawInkButton());
+			check(!v.m_notePlacing && v.SaveNotesButton().IsEnabled(),
+			      "Stop drawing did not allow saving");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_ink_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 5: {
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "drawing save failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto notes = saved.document->annotations(1);
+				          if (!notes) {
+					          return false;
+				          }
+				          std::vector<pdf::AnnotationBounds> ink;
+				          for (const auto& item : notes->entries) {
+					          if (item.subtype == "Ink" && item.bounds) {
+						          ink.push_back(*item.bounds);
+					          }
+				          }
+				          // the page turns 90 degrees, so the long stroke can
+				          // run along either PDF axis. the dot is exactly one
+				          // line width across.
+				          return ink.size() == 2 &&
+				                 (std::max)(ink[0].right - ink[0].left,
+				                            ink[0].top - ink[0].bottom) > 50 &&
+				                 std::abs(ink[1].right - ink[1].left - 2) <
+				                     1e-3 &&
+				                 std::abs(ink[1].top - ink[1].bottom - 2) <
+				                     1e-3;
+			          })
+			          .get(),
+			      "saved drawings lost their strokes");
+			std::filesystem::remove(notesPath);
+			const auto& rows = v.m_commentScan.rows();
+			const auto dot =
+			    std::find_if(rows.rbegin(), rows.rend(), [](const auto& row) {
+				    return row.subtype == "Ink";
+			    });
+			check(dot != rows.rend(), "drawing row missing after save");
+			v.CommentsList().SelectedIndex(
+			    static_cast<int>(rows.rend() - dot - 1));
+			v.showComments();
+			check(v.DeleteNoteButton().IsEnabled() &&
+			          !v.EditNoteButton().IsEnabled(),
+			      "drawing row did not offer Delete only");
+			invoke(v.DeleteNoteButton());
+			break;
+		}
+		case 6:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && inkRows() == 1,
+			      "Delete kept the drawing or a clean savepoint");
+			invoke(v.DrawInkButton());
+			check(v.beginInkStroke(at(.2, .6)),
+			      "stroke before close did not start");
+			v.close();
+			check(!v.m_inkStroke && !v.m_notePlacing,
+			      "forced close kept the stroke");
+			status.Text(L"PASS: drawing arms and stops, cancels on Esc, tool "
+			            L"switch, hidden Comments and rotation, keeps strokes "
+			            L"on the page, saves and deletes drawings");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void notePlacementTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -7551,6 +7756,8 @@ struct TabsTest {
 			if (notesOnly) {
 				if (noteEditOnly) {
 					noteEditTick(*self);
+				} else if (inkDrawingOnly) {
+					inkDrawingTick(*self);
 				} else if (notePlacementOnly) {
 					notePlacementTick(*self);
 				} else {
@@ -8252,10 +8459,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->notePlacementOnly =
 	    state->notePlacementOnly || state->ellipsePlacementOnly;
+	state->inkDrawingOnly = GetEnvironmentVariableW(L"SableInkTest", mode, 8) &&
+	                        std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	state->notesOnly =
-	    state->notesOnly || state->notePlacementOnly || state->noteEditOnly;
+	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
+	                   state->noteEditOnly || state->inkDrawingOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";

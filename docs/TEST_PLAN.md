@@ -2,6 +2,31 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Drawing in the native reader (7 November 2026)
+
+With the Debug reader built using `SableSurfaceTest=true`, I run
+`SableTabsTest=true`, `SableInkTest=true` and `SableProbeAutoClose=true`
+from the repo root. It opens `comment_locations.pdf` at 150% on its
+second page, which turns 90 degrees. Draw on page arms and Stop drawing
+disarms. A page gap starts nothing and a click opens no editor. Esc,
+switching to rectangles, hiding Comments and rotating each drop a
+half-drawn stroke and its preview without touching the PDF.
+
+A four-segment stroke whose last point runs past the right edge keeps
+that point just inside the page, and the preview has every point. After
+release the write is queued, the preview stays and another press is
+ignored. Comments then lists one Drawing and the tool stays armed; a
+click adds a second, single-point Drawing. Stop drawing enables saving.
+The injected picker saves a copy whose two Ink annotations reopen: the
+line spans more than 50 pt and the dot is exactly 2 x 2 pt. Delete
+removes the dot and marks the comments unsaved, and closing with a
+stroke in progress clears it. The mode exits successfully.
+
+The first run failed only its saved-size check, which assumed the stroke
+ran along the PDF's x axis; on this rotated page it runs along y. The
+check now compares the longer side. The normal reader is rebuilt
+afterwards; Debug x64 builds without warnings and 725 tests pass.
+
 ## Desktop resize round trip (7 November 2026)
 
 I open `verify-resize-20261107/resize input.pdf`, a copy of the 5 November
