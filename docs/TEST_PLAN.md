@@ -2,6 +2,36 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Drawing styles, native and desktop (7 November 2026)
+
+`SableInkTest=true` now also checks the Drawing style submenu: six colors,
+a separator and three widths. Choosing red at 4 pt keeps drawing armed,
+the hint reads "Drag on a page to draw (Red, 4 pt). Esc stops drawing.",
+the new stroke carries that style, and the preview brush equals the red
+run through `helpers::applyFilter` with the current slider values. The
+saved red dot is exactly 4 x 4 pt. After Stop drawing, choosing Thin
+arms drawing again with the width changed and the color kept. The mode
+exits successfully and the normal reader is rebuilt afterwards.
+
+On the desktop I open `verify-ink-20261107/style input.pdf`, the saved
+drawing copy. Drawing style lists the colors with dots and the widths,
+with Black and Medium checked; Black's dot barely shows on the dark menu.
+Light blue arms drawing and the hint names it. Instant automated clicks
+on the lower items only highlighted them; Enter and slow real clicks
+with a short hover choose them, so I treat that as the click tool. A
+light blue 1 pt loop and a red 4 pt click follow. Under the Default
+preset both show as grey, since it desaturates the page.
+
+The Windows picker saves `style saved.pdf` with ten annotations. The
+69-point loop has /C 0.5608 0.8706 0.9765, Border [0 0 1] and a Rect
+padded by 0.5 pt; the dot has /C 0.9216 0.2863 0.2863, Border [0 0 4]
+and an exact 4 x 4 pt Rect. The three earlier drawings keep no /C or
+Border. Reopening shows all ten comments with a clean savepoint, and
+both windows close without a prompt. The source SHA-256 stays
+`7E82532580B526417908DA214093D5748044090F44A64DF14681E3824D59D318`.
+The saved copy is
+`E2A26F1324F7F8E9F634E3257FD9C17442B12708749922E1070D4757942EF01F`.
+
 ## Desktop drawing round trip (7 November 2026)
 
 I open `verify-ink-20261107/ink input.pdf`, the resized copy with a

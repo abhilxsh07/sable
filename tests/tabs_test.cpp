@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/MusicPane.h"
 #include "../app/helpers/version.h"
 #include "../app/helpers/logging.h"
+#include "../app/helpers/filter.h"
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
 #include "../app/pdf/printing.h"
@@ -4915,7 +4916,35 @@ struct TabsTest {
 			check(v.m_notesDirty && v.m_notePlacing && !previewShown() &&
 			          inkRows() == 1,
 			      "drawn stroke missing from Comments or ended drawing");
-			check(v.beginInkStroke(at(.7, .8)), "dot did not start");
+			{
+				// six colors, a separator and three widths
+				const auto items = v.InkStyleMenu().Items();
+				check(items.Size() == 10 &&
+				          items.GetAt(5).as<RadioMenuFlyoutItem>().Text() ==
+				              L"Red" &&
+				          items.GetAt(9).as<RadioMenuFlyoutItem>().Text() ==
+				              L"Thick (4 pt)",
+				      "drawing style menu is incomplete");
+				const pdf::InkStyle red{{235, 73, 73, 255}, 4};
+				v.chooseInkStyle(red.color, red.width);
+				check(v.m_notePlacing && v.m_inkStyle == red &&
+				          v.NotesState().Text() ==
+				              L"Drag on a page to draw (Red, 4 pt). Esc "
+				              L"stops drawing.",
+				      "choosing a style lost drawing or its hint");
+				check(v.beginInkStroke(at(.7, .8)) && v.m_inkStroke &&
+				          v.m_inkStroke->style == red,
+				      "dot did not start with the chosen style");
+				const auto shown =
+				    helpers::applyFilter(v.m_values, {235, 73, 73});
+				const auto brush = v.InkPreviewLine()
+				                       .Stroke()
+				                       .as<Media::SolidColorBrush>()
+				                       .Color();
+				check(brush.R == shown.r && brush.G == shown.g &&
+				          brush.B == shown.b,
+				      "preview color skipped the reading filter");
+			}
 			v.finishInkStroke();
 			check(v.m_noteBusy, "dot was not queued");
 			break;
@@ -4924,6 +4953,12 @@ struct TabsTest {
 				return;
 			}
 			check(inkRows() == 2, "single tap did not add a drawing");
+			invoke(v.DrawInkButton());
+			check(!v.m_notePlacing, "Stop drawing kept the tool armed");
+			v.chooseInkStyle(std::nullopt, 1.f);
+			check(v.m_notePlacing && v.m_inkStyle.width == 1 &&
+			          v.m_inkStyle.color.red == 235,
+			      "a style choice did not arm drawing or kept the old width");
 			invoke(v.DrawInkButton());
 			check(!v.m_notePlacing && v.SaveNotesButton().IsEnabled(),
 			      "Stop drawing did not allow saving");
@@ -4956,14 +4991,14 @@ struct TabsTest {
 					          }
 				          }
 				          // the page turns 90 degrees, so the long stroke can
-				          // run along either PDF axis. the dot is exactly one
-				          // line width across.
+				          // run along either PDF axis. the red dot is exactly
+				          // its 4 pt line width across.
 				          return ink.size() == 2 &&
 				                 (std::max)(ink[0].right - ink[0].left,
 				                            ink[0].top - ink[0].bottom) > 50 &&
-				                 std::abs(ink[1].right - ink[1].left - 2) <
+				                 std::abs(ink[1].right - ink[1].left - 4) <
 				                     1e-3 &&
-				                 std::abs(ink[1].top - ink[1].bottom - 2) <
+				                 std::abs(ink[1].top - ink[1].bottom - 4) <
 				                     1e-3;
 			          })
 			          .get(),
@@ -4998,7 +5033,8 @@ struct TabsTest {
 			      "forced close kept the stroke");
 			status.Text(L"PASS: drawing arms and stops, cancels on Esc, tool "
 			            L"switch, hidden Comments and rotation, keeps strokes "
-			            L"on the page, saves and deletes drawings");
+			            L"on the page, styles the preview and the saved dot, "
+			            L"saves and deletes drawings");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
