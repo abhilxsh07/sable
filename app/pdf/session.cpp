@@ -607,7 +607,8 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 
 bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
                        int rotation, std::uint64_t revision,
-                       std::function<void(NoteResult)> callback) {
+                       std::function<void(NoteResult)> callback,
+                       InkStyle style) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -616,14 +617,14 @@ bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
 		}
 	}
 	state->m_engine.post([state, page, strokes = std::move(strokes), rotation,
-	                      revision, callback = std::move(callback)] {
+	                      revision, style, callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
 		try {
 			if (!canceled()) {
 				result.index = state->m_document->addInkAt(
-				    page, strokes, rotation, revision, canceled);
+				    page, strokes, rotation, revision, canceled, style);
 				result.changed = result.index.has_value();
 				if (result.changed) {
 					state->m_forms.reset();

@@ -228,7 +228,8 @@ class Document {
 	// Black 2 pt strokes in PDF points, written as one Ink annotation.
 	std::optional<int> addInk(int page, const std::vector<InkStroke>& strokes,
 	                          std::uint64_t revision,
-	                          const std::function<bool()>& canceled = {});
+	                          const std::function<bool()>& canceled = {},
+	                          InkStyle style = {});
 	// Resizing keeps the PDF top-left anchor of a proven plain outline.
 	std::optional<bool> resizeShape(const Annotation& expected, ShapeSize size,
 	                                const std::function<bool()>& canceled = {});
@@ -245,7 +246,8 @@ class Document {
 	std::optional<int> addInkAt(int page,
 	                            const std::vector<DisplayedStroke>& strokes,
 	                            int rotation, std::uint64_t revision,
-	                            const std::function<bool()>& canceled = {});
+	                            const std::function<bool()>& canceled = {},
+	                            InkStyle style = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,

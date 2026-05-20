@@ -192,7 +192,8 @@ class Session {
 	                  std::function<void(NoteResult)> callback);
 	bool addInkAt(int page, std::vector<DisplayedStroke> strokes, int rotation,
 	              std::uint64_t revision,
-	              std::function<void(NoteResult)> callback);
+	              std::function<void(NoteResult)> callback,
+	              InkStyle style = {});
 	bool resizeShape(Annotation expected, ShapeSize size,
 	                 std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,

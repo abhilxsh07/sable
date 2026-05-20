@@ -1684,7 +1684,8 @@ Document::appendAnnotation(int index, int subtype,
 std::optional<int> Document::addInk(int index,
                                     const std::vector<InkStroke>& strokes,
                                     std::uint64_t revision,
-                                    const std::function<bool()>& canceled) {
+                                    const std::function<bool()>& canceled,
+                                    InkStyle style) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	if (offThread() || !revision || !currentRevision(revision) ||
 	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
@@ -1692,11 +1693,13 @@ std::optional<int> Document::addInk(int index,
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
 	    FPDF_GetSignatureCount(m_handle) != 0 || strokes.empty() ||
-	    strokes.size() > 256) {
+	    strokes.size() > 256 || !std::isfinite(style.width) ||
+	    style.width < .5f || style.width > 12 || style.color.red > 255 ||
+	    style.color.green > 255 || style.color.blue > 255 ||
+	    style.color.alpha != 255) {
 		return {};
 	}
-	// @todo: expose the ink width and color with the drawing tool.
-	constexpr double width = 2;
+	const double width = style.width;
 	std::size_t points = 0;
 	double left = std::numeric_limits<double>::infinity(), bottom = left;
 	double right = -left, top = -left;
@@ -1727,8 +1730,9 @@ std::optional<int> Document::addInk(int index,
 	std::ostringstream stream;
 	stream.imbue(std::locale::classic());
 	// round caps and joins also draw a single tap as a dot.
-	stream << std::fixed << std::setprecision(5) << "0 G " << width
-	       << " w 1 J 1 j";
+	stream << std::fixed << std::setprecision(5) << style.color.red / 255.
+	       << ' ' << style.color.green / 255. << ' ' << style.color.blue / 255.
+	       << " RG " << width << " w 1 J 1 j";
 	for (const auto& stroke : strokes) {
 		stream << ' ' << stroke.front().x << ' ' << stroke.front().y << " m";
 		for (std::size_t i = stroke.size() == 1 ? 0 : 1; i < stroke.size();
@@ -1738,7 +1742,16 @@ std::optional<int> Document::addInk(int index,
 	}
 	stream << " S";
 	const auto raw = stream.str();
+	// C and Border let other editors rebuild the same line. both have to go
+	// in before the appearance: PDFium refuses colors once one exists and
+	// drops it when the border changes.
 	const auto decorate = [&](FPDF_ANNOTATION note) {
+		if (!FPDFAnnot_SetColor(note, FPDFANNOT_COLORTYPE_Color,
+		                        style.color.red, style.color.green,
+		                        style.color.blue, 255) ||
+		    !FPDFAnnot_SetBorder(note, 0, 0, style.width)) {
+			return false;
+		}
 		for (std::size_t i = 0; i < strokes.size(); ++i) {
 			std::vector<FS_POINTF> path;
 			path.reserve(strokes[i].size());
@@ -1754,7 +1767,10 @@ std::optional<int> Document::addInk(int index,
 	};
 	// InkList keeps the strokes editable after the appearance is replaced.
 	const auto verify = [&](FPDF_ANNOTATION note) {
-		if (FPDFAnnot_GetInkListCount(note) != strokes.size()) {
+		float horizontal = -1, vertical = -1, border = -1;
+		if (FPDFAnnot_GetInkListCount(note) != strokes.size() ||
+		    !FPDFAnnot_GetBorder(note, &horizontal, &vertical, &border) ||
+		    horizontal != 0 || vertical != 0 || border != style.width) {
 			return false;
 		}
 		for (std::size_t i = 0; i < strokes.size(); ++i) {
@@ -2101,7 +2117,7 @@ Document::addOutlineShapeAt(int index, AnnotationPoint first,
 std::optional<int>
 Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
                    int rotation, std::uint64_t revision,
-                   const std::function<bool()>& canceled) {
+                   const std::function<bool()>& canceled, InkStyle style) {
 	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
 	    rotation > 3 || strokes.empty() || strokes.size() > 256 || !revision ||
 	    !currentRevision(revision) || (canceled && canceled())) {
@@ -2139,7 +2155,7 @@ Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
 		}
 	}
 	page.reset();
-	return addInk(index, converted, revision, canceled);
+	return addInk(index, converted, revision, canceled, style);
 }
 
 std::optional<int> Document::addTextBox(

@@ -4107,6 +4107,47 @@ TEST_F(SessionTest, InkQueueOwnsStrokesAndPreservesTheEllipseBesideIt) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, InkQueueCarriesItsStyle) {
+	const auto source = fixturePath("pages.pdf");
+	const auto original = readFile(source);
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	const std::vector<pdf::DisplayedStroke> strokes{
+	    pdf::DisplayedStroke{{.25, .5}, {.75, .5}}};
+	Reply<pdf::NoteResult> refused, placed;
+	ASSERT_TRUE(session.addInkAt(0, strokes, 0, 1, refused.callback(),
+	                             pdf::InkStyle{{0, 0, 0, 255}, 0}));
+	const auto bad = refused.wait();
+	ASSERT_TRUE(bad);
+	EXPECT_FALSE(bad->changed || bad->index || bad->canceled);
+	EXPECT_EQ(session.annotationRevision(), 1u);
+	ASSERT_TRUE(session.addInkAt(0, strokes, 0, 1, placed.callback(),
+	                             pdf::InkStyle{{143, 222, 249, 255}, 4}));
+	const auto ink = placed.wait();
+	ASSERT_TRUE(ink && ink->changed && ink->index == 0);
+	const auto destination = tempDir() / "styled ink.pdf";
+	Reply<pdf::SaveResult> saved;
+	ASSERT_TRUE(session.saveEdits(destination, source, 1024 * 1024, {},
+	                              saved.callback()));
+	ASSERT_EQ(saved.wait(), pdf::SaveResult::Saved);
+	pdf::Session reopened(engine);
+	ASSERT_EQ(open(reopened, destination).error, pdf::Error::None);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(reopened.annotations(0, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 1);
+	const auto& kept = notes->annotations->entries[0];
+	ASSERT_TRUE(kept.bounds);
+	EXPECT_EQ(kept.subtype, "Ink");
+	// a 4 pt line on the 595 x 842 page
+	EXPECT_FLOAT_EQ(kept.bounds->left, 146.75f);
+	EXPECT_FLOAT_EQ(kept.bounds->bottom, 419.f);
+	EXPECT_FLOAT_EQ(kept.bounds->right, 448.25f);
+	EXPECT_FLOAT_EQ(kept.bounds->top, 423.f);
+	EXPECT_EQ(readFile(source), original);
+}
+
 TEST_F(SessionTest, DisplayedTextBoxQueueKeepsOwnedPlacementAndSavedNeighbors) {
 	pdf::Session session(engine);
 	const auto source = fixturePath("pages.pdf");

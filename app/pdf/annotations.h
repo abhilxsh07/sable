@@ -66,6 +66,12 @@ struct AnnotationColor {
 	unsigned int red = 0, green = 0, blue = 0, alpha = 255;
 	bool operator==(const AnnotationColor&) const = default;
 };
+// An opaque stroke color and its width in points.
+struct InkStyle {
+	AnnotationColor color{0, 0, 0, 255};
+	float width = 2;
+	bool operator==(const InkStyle&) const = default;
+};
 enum class HighlightColor { Yellow, Green, LightBlue, Pink, Red };
 enum class OutlineShape { Rectangle, Ellipse };
 

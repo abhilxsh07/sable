@@ -22,11 +22,18 @@ and use the guarded Delete; editing their strokes isn't offered yet.
 ## Freehand ink strokes (2026-11-07)
 
 A drawing is one Ink annotation holding all its strokes in PDF points.
-The appearance is a black 2 pt stroke with round caps and joins, so a
-single tap still draws a dot. The Rect covers half the line width around
-every point, and the InkList keeps the same points so other editors can
-rebuild the stroke. Like the outline shapes there is no /C or /BS yet;
-color and width come with the drawing tool.
+The appearance is a stroke with round caps and joins, so a single tap
+still draws a dot; it defaults to black at 2 pt. The Rect covers half the
+line width around every point, and the InkList keeps the same points so
+other editors can rebuild the stroke.
+
+Since 7 November a drawing also takes an opaque color and a width from
+0.5 to 12 pt. I write /C and a Border of [0 0 width] before the
+appearance, because PDFium refuses to set a color once an appearance
+exists and drops the appearance when the border changes. The saved-copy
+check reads the border back; PDFium won't read /C while an appearance is
+present, so the tests read it from a copy with the appearance stripped.
+Translucent colors and other widths refuse.
 
 The writer shares the outline shapes' path: a canonical scratch copy,
 the signature scan, a saved and reopened check of the subtype, flags,

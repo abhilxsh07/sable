@@ -175,6 +175,31 @@ struct DocumentEditTest {
 		}
 		return result;
 	}
+	// PDFium only reads C once the appearance is gone, so this strips it.
+	// use it on a throwaway copy.
+	static std::optional<InkStyle> strippedInkStyle(Document& document,
+	                                                int index) {
+		std::optional<InkStyle> result;
+		const auto page = FPDF_LoadPage(document.m_handle, 0);
+		const auto note = page ? FPDFPage_GetAnnot(page, index) : nullptr;
+		InkStyle style;
+		float horizontal = 0, vertical = 0;
+		if (note &&
+		    FPDFAnnot_GetBorder(note, &horizontal, &vertical, &style.width) &&
+		    FPDFAnnot_SetAP(note, FPDF_ANNOT_APPEARANCEMODE_NORMAL, nullptr) &&
+		    FPDFAnnot_GetColor(note, FPDFANNOT_COLORTYPE_Color,
+		                       &style.color.red, &style.color.green,
+		                       &style.color.blue, &style.color.alpha)) {
+			result = style;
+		}
+		if (note) {
+			FPDFPage_CloseAnnot(note);
+		}
+		if (page) {
+			FPDF_ClosePage(page);
+		}
+		return result;
+	}
 	static std::size_t pageLoads(const Document& document) {
 		return document.m_editPageLoads;
 	}
@@ -2442,6 +2467,76 @@ TEST(Annotations, InkStrokesKeepNeighborsAndSavedScreenAndPrintPixels) {
 			    EXPECT_EQ(blue(100, 104), 255);
 			    EXPECT_EQ(blue(304, 204), 255);
 		    }
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, InkStylesKeepColorWidthAndBorder) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const std::vector<pdf::InkStroke> line{{{60, 100}, {160, 100}}};
+		    const pdf::InkStyle red{{235, 73, 73, 255}, 4};
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    for (const auto& bad :
+		         {pdf::InkStyle{{0, 0, 0, 255}, .4f},
+		          pdf::InkStyle{{0, 0, 0, 255}, 12.5f},
+		          pdf::InkStyle{{0, 0, 0, 255},
+		                        std::numeric_limits<float>::quiet_NaN()},
+		          pdf::InkStyle{{235, 73, 73, 128}, 2},
+		          pdf::InkStyle{{256, 0, 0, 255}, 2}}) {
+			    EXPECT_FALSE(doc.addInk(0, line, 1, {}, bad));
+		    }
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    ASSERT_EQ(doc.addInk(0, line, 1, {}, red), 0);
+		    ASSERT_EQ(doc.addInk(0, {{{60, 140}, {160, 140}}}, 2), 1);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    ASSERT_TRUE(notes->entries[0].bounds && notes->entries[1].bounds);
+		    // half of each line width around the points
+		    EXPECT_FLOAT_EQ(notes->entries[0].bounds->left, 58);
+		    EXPECT_FLOAT_EQ(notes->entries[0].bounds->bottom, 98);
+		    EXPECT_FLOAT_EQ(notes->entries[0].bounds->right, 162);
+		    EXPECT_FLOAT_EQ(notes->entries[0].bounds->top, 102);
+		    EXPECT_FLOAT_EQ(notes->entries[1].bounds->left, 59);
+		    EXPECT_FLOAT_EQ(notes->entries[1].bounds->top, 141);
+		    const auto screen = saved.document->render(0, 360, 240);
+		    const auto print =
+		        saved.document->printRaster(0, 360, 240, 0, 0, 360, 240);
+		    ASSERT_TRUE(screen && print);
+		    const auto pixel = [](const auto& image, int x, int y,
+		                          int channel) {
+			    return image
+			        .pixels[(269 - y) * image.stride + 4 * (x - 20) + channel];
+		    };
+		    // BGRA; each pixel covers [x, x + 1] by [y, y + 1] in points.
+		    EXPECT_NEAR(pixel(*screen, 100, 100, 0), 73, 1);
+		    EXPECT_NEAR(pixel(*screen, 100, 101, 1), 73, 1);
+		    EXPECT_NEAR(pixel(*screen, 100, 98, 2), 235, 1);
+		    EXPECT_EQ(pixel(*screen, 100, 103, 0), 255);
+		    EXPECT_EQ(pixel(*screen, 100, 140, 2), 0);
+		    EXPECT_EQ(pixel(*screen, 100, 142, 2), 255);
+		    EXPECT_LT(pixel(*print, 100, 100, 0), 128);
+		    EXPECT_LT(pixel(*print, 100, 140, 0), 128);
+		    EXPECT_EQ(pixel(*print, 100, 120, 0), 255);
+		    const auto copy = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(copy.document);
+		    EXPECT_EQ(
+		        pdf::DocumentEditTest::strippedInkStyle(*copy.document, 0),
+		        red);
+		    EXPECT_EQ(
+		        pdf::DocumentEditTest::strippedInkStyle(*copy.document, 1),
+		        pdf::InkStyle{});
 		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
 	    })
 	    .get();
