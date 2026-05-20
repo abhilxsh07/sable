@@ -25,12 +25,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Text.h>
 #include <string_view>
+#include <cmath>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace winrt::Sable::implementation {
+namespace {
+// black for writing, then the approved highlight palette
+struct InkColor {
+	const wchar_t* label;
+	pdf::AnnotationColor color;
+};
+constexpr InkColor INK_COLORS[]{
+    {L"Black", {0, 0, 0, 255}},       {L"Yellow", {255, 240, 102, 255}},
+    {L"Green", {125, 240, 102, 255}}, {L"Light blue", {143, 222, 249, 255}},
+    {L"Pink", {247, 153, 209, 255}},  {L"Red", {235, 73, 73, 255}}};
+struct InkWidth {
+	const wchar_t* label;
+	float width;
+};
+constexpr InkWidth INK_WIDTHS[]{
+    {L"Thin (1 pt)", 1}, {L"Medium (2 pt)", 2}, {L"Thick (4 pt)", 4}};
+} // namespace
+
 namespace {
 Symbol commentSymbol(std::string_view subtype) {
 	if (subtype == "Text") {
@@ -145,6 +164,39 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::Ink);
 		}
 	});
+	for (const auto& [label, color] : INK_COLORS) {
+		RadioMenuFlyoutItem item;
+		item.Text(label);
+		item.GroupName(L"InkColor");
+		item.IsChecked(color == m_inkStyle.color);
+		FontIcon dot;
+		dot.Glyph(L"\x25cf");
+		dot.FontFamily(Media::FontFamily(L"Segoe UI"));
+		dot.Foreground(Media::SolidColorBrush(
+		    Windows::UI::Color{255, static_cast<std::uint8_t>(color.red),
+		                       static_cast<std::uint8_t>(color.green),
+		                       static_cast<std::uint8_t>(color.blue)}));
+		item.Icon(dot);
+		item.Click([weak, color = color](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->chooseInkStyle(color, std::nullopt);
+			}
+		});
+		InkStyleMenu().Items().Append(item);
+	}
+	InkStyleMenu().Items().Append(MenuFlyoutSeparator());
+	for (const auto& [label, width] : INK_WIDTHS) {
+		RadioMenuFlyoutItem item;
+		item.Text(label);
+		item.GroupName(L"InkWidth");
+		item.IsChecked(width == m_inkStyle.width);
+		item.Click([weak, width = width](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->chooseInkStyle(std::nullopt, width);
+			}
+		});
+		InkStyleMenu().Items().Append(item);
+	}
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -198,6 +250,33 @@ void ViewerPage::pauseComments() {
 	m_commentsPending = false;
 	if (m_session) {
 		m_session->cancelAnnotations();
+	}
+}
+// the color's menu name and the rounded width, for the drawing hint
+static hstring inkStyleName(const pdf::InkStyle& style) {
+	const wchar_t* name = L"Custom color";
+	for (const auto& [label, color] : INK_COLORS) {
+		if (color == style.color) {
+			name = label;
+		}
+	}
+	return hstring(name) + L", " +
+	       to_hstring(static_cast<int>(std::lround(style.width))) + L" pt";
+}
+
+// picking a style also starts drawing with it
+void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
+                                std::optional<float> width) {
+	if (color) {
+		m_inkStyle.color = *color;
+	}
+	if (width) {
+		m_inkStyle.width = *width;
+	}
+	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
+		showComments();
+	} else {
+		beginNotePlacement(PlacementTool::Ink);
 	}
 }
 void ViewerPage::closeComments() {
@@ -319,6 +398,10 @@ void ViewerPage::showComments() {
 		                        L"Esc cancels."
 		                      : L"Click the first corner of the rectangle. "
 		                        L"Esc cancels.");
+	}
+	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
+		NotesState().Text(L"Drag on a page to draw (" +
+		                  inkStyleName(m_inkStyle) + L"). Esc stops drawing.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);

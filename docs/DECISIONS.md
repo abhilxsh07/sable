@@ -19,6 +19,21 @@ text color, and stays until the write finishes. Presses while a stroke is
 being written are ignored rather than queued. Drawings list as "Drawing"
 and use the guarded Delete; editing their strokes isn't offered yet.
 
+## Drawing style (2026-11-07)
+
+Comments has a Drawing style submenu next to Draw on page. The colors are
+black for writing, then the approved highlight palette: yellow, green,
+light blue, pink and red. Widths are Thin (1 pt), Medium (2 pt) and
+Thick (4 pt); black at Medium is the default. Picking either starts
+drawing, and the hint names the current style.
+
+The style lives with the tab, not in settings, so NightPDF's settings
+keys stay as they were; a new tab starts at black 2 pt. Each stroke keeps
+the style it started with. Points keep half the width plus 0.5 pt from
+the page edges. The preview runs the chosen color through the same CSS
+filter math as the page, so it matches what the saved line will look
+like under the current preset.
+
 ## Freehand ink strokes (2026-11-07)
 
 A drawing is one Ink annotation holding all its strokes in PDF points.

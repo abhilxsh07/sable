@@ -253,7 +253,12 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		int rotation;
 		std::uint64_t revision;
 		pdf::DisplayedStroke points;
+		pdf::InkStyle style;
 	};
+	// kept per tab; a stroke copies it when it starts
+	pdf::InkStyle m_inkStyle;
+	void chooseInkStyle(std::optional<pdf::AnnotationColor> color,
+	                    std::optional<float> width);
 	std::optional<InkDrawing> m_inkStroke;
 	bool beginInkStroke(winrt::Windows::Foundation::Point point);
 	void extendInkStroke(winrt::Windows::Foundation::Point point);

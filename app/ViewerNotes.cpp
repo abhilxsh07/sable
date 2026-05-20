@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/session.h"
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
+#include "helpers/filter.h"
 #include <algorithm>
 #include <cmath>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
@@ -197,8 +198,20 @@ bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
 		const auto& rect = pages[page];
 		if (point.X >= rect.x && point.X <= rect.x + rect.width &&
 		    point.Y >= rect.y && point.Y <= rect.y + rect.height) {
-			m_inkStroke = InkDrawing{
-			    static_cast<int>(page), key(page).rotation, revision, {}};
+			m_inkStroke = InkDrawing{static_cast<int>(page),
+			                         key(page).rotation,
+			                         revision,
+			                         {},
+			                         m_inkStyle};
+			// the preview shows the color through the reading filter, the
+			// way the page will draw the saved line
+			const auto& color = m_inkStyle.color;
+			const auto shown = helpers::applyFilter(
+			    m_values, {static_cast<std::uint8_t>(color.red),
+			               static_cast<std::uint8_t>(color.green),
+			               static_cast<std::uint8_t>(color.blue)});
+			InkPreviewLine().Stroke(Media::SolidColorBrush(
+			    Windows::UI::Color{255, shown.r, shown.g, shown.b}));
 			extendInkStroke(point);
 			InkPreview().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 			return true;
@@ -225,9 +238,9 @@ void ViewerPage::extendInkStroke(Windows::Foundation::Point point) {
 	if (!(rect.width > 0 && rect.height > 0 && shortest > 4)) {
 		return;
 	}
-	// the saved line is 2 pt wide and has to stay on the page, so its
-	// centre keeps 1.5 pt from every edge.
-	const double inset = 1.5 / shortest;
+	// the saved line has to stay on the page, so its centre keeps half its
+	// width and a little more from every edge.
+	const double inset = (stroke.style.width / 2 + .5) / shortest;
 	const pdf::AnnotationPoint at{
 	    std::clamp((point.X - rect.x) / rect.width, inset, 1 - inset),
 	    std::clamp((point.Y - rect.y) / rect.height, inset, 1 - inset)};
@@ -242,7 +255,7 @@ void ViewerPage::extendInkStroke(Windows::Foundation::Point point) {
 	const double scale =
 	    Scroller().ZoomFactor() *
 	    std::sqrt(rect.width * rect.height / (size.width * size.height));
-	InkPreviewLine().StrokeThickness(2 * scale);
+	InkPreviewLine().StrokeThickness(stroke.style.width * scale);
 	const auto shown =
 	    Pages()
 	        .TransformToVisual(InkPreview())
@@ -276,32 +289,33 @@ void ViewerPage::finishInkStroke() {
 	}
 	m_noteBusy = true;
 	try {
-		if (session->addInkAt(stroke.page, {std::move(stroke.points)},
-		                      stroke.rotation, stroke.revision,
-		                      [weak = get_weak(), queue = DispatcherQueue(),
-		                       session](pdf::NoteResult result) {
-			                      queue.TryEnqueue([weak, session, result] {
-				                      const auto self = weak.get();
-				                      if (!self || self->m_closed ||
-				                          self->m_session.get() != session) {
-					                      return;
-				                      }
-				                      self->m_noteBusy = false;
-				                      self->dropInkStroke();
-				                      self->m_notesDirty =
-				                          self->m_notesDirty || result.changed;
-				                      if (result.changed) {
-					                      self->Message().IsOpen(false);
-					                      self->refreshNotes();
-				                      } else if (!result.canceled) {
-					                      self->showNotice(
-					                          L"Couldn't add this drawing. "
-					                          L"This PDF may restrict "
-					                          L"comments.");
-				                      }
-				                      self->showComments();
-			                      });
-		                      })) {
+		if (session->addInkAt(
+		        stroke.page, {std::move(stroke.points)}, stroke.rotation,
+		        stroke.revision,
+		        [weak = get_weak(), queue = DispatcherQueue(),
+		         session](pdf::NoteResult result) {
+			        queue.TryEnqueue([weak, session, result] {
+				        const auto self = weak.get();
+				        if (!self || self->m_closed ||
+				            self->m_session.get() != session) {
+					        return;
+				        }
+				        self->m_noteBusy = false;
+				        self->dropInkStroke();
+				        self->m_notesDirty =
+				            self->m_notesDirty || result.changed;
+				        if (result.changed) {
+					        self->Message().IsOpen(false);
+					        self->refreshNotes();
+				        } else if (!result.canceled) {
+					        self->showNotice(L"Couldn't add this drawing. "
+					                         L"This PDF may restrict "
+					                         L"comments.");
+				        }
+				        self->showComments();
+			        });
+		        },
+		        stroke.style)) {
 			showComments();
 			return;
 		}
