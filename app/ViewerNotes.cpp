@@ -202,10 +202,10 @@ bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
 			                         key(page).rotation,
 			                         revision,
 			                         {},
-			                         m_inkStyle};
+			                         s_inkStyle};
 			// the preview shows the color through the reading filter, the
 			// way the page will draw the saved line
-			const auto& color = m_inkStyle.color;
+			const auto& color = s_inkStyle.color;
 			const auto shown = helpers::applyFilter(
 			    m_values, {static_cast<std::uint8_t>(color.red),
 			               static_cast<std::uint8_t>(color.green),

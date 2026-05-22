@@ -255,8 +255,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		pdf::DisplayedStroke points;
 		pdf::InkStyle style;
 	};
-	// kept per tab; a stroke copies it when it starts
-	pdf::InkStyle m_inkStyle;
+	// shared by every tab and window while Sable runs, and copied by each
+	// stroke when it starts. it isn't saved, so the settings stay NightPDF's.
+	static inline pdf::InkStyle s_inkStyle;
 	void chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	                    std::optional<float> width);
 	// a menu color swatch that stays visible on light and dark menus

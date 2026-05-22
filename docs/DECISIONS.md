@@ -22,17 +22,25 @@ and use the guarded Delete; editing their strokes isn't offered yet.
 ## Drawing style (2026-11-07)
 
 Comments has a Drawing style submenu next to Draw on page. The colors are
-black for writing, then the approved highlight palette: yellow, green,
-light blue, pink and red. Widths are Thin (1 pt), Medium (2 pt) and
-Thick (4 pt); black at Medium is the default. Picking either starts
-drawing, and the hint names the current style.
+pen colors that read on white paper: black, blue (#2563EB), red, green
+(#1F9D55) and yellow. Red (#EB4949) and yellow (#FFF066) keep the
+approved highlight values; the pale highlight green, light blue and pink
+were tried first but fade as thin lines, so they stay highlight-only.
+Widths are Thin (1 pt), Medium (2 pt) and Thick (4 pt); black at Medium
+is the default. Picking either starts drawing, and the hint names the
+current style.
 
-The style lives with the tab, not in settings, so NightPDF's settings
-keys stay as they were; a new tab starts at black 2 pt. Each stroke keeps
-the style it started with. Points keep half the width plus 0.5 pt from
-the page edges. The preview runs the chosen color through the same CSS
-filter math as the page, so it matches what the saved line will look
-like under the current preset.
+Each color shows as a filled dot inside a grey ring, drawn into a small
+bitmap. The ring keeps black visible on the dark menu and pale colors on
+the light one; the highlight menu uses the same swatch.
+
+The style is shared by every tab and window while Sable runs, and each
+menu shows the current choice when Comments refreshes. It isn't saved,
+so NightPDF's settings keys stay as they were and a restart begins at
+black 2 pt. Each stroke keeps the style it started with. Points keep half
+the width plus 0.5 pt from the page edges. The preview runs the chosen
+color through the same CSS filter math as the page, so it matches what
+the saved line will look like under the current preset.
 
 ## Freehand ink strokes (2026-11-07)
 

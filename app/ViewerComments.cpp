@@ -173,7 +173,7 @@ void ViewerPage::setupComments() {
 		RadioMenuFlyoutItem item;
 		item.Text(label);
 		item.GroupName(L"InkColor");
-		item.IsChecked(color == m_inkStyle.color);
+		item.IsChecked(color == s_inkStyle.color);
 		item.Icon(colorDot({255, static_cast<std::uint8_t>(color.red),
 		                    static_cast<std::uint8_t>(color.green),
 		                    static_cast<std::uint8_t>(color.blue)}));
@@ -189,7 +189,7 @@ void ViewerPage::setupComments() {
 		RadioMenuFlyoutItem item;
 		item.Text(label);
 		item.GroupName(L"InkWidth");
-		item.IsChecked(width == m_inkStyle.width);
+		item.IsChecked(width == s_inkStyle.width);
 		item.Click([weak, width = width](auto&&, auto&&) {
 			if (const auto self = weak.get()) {
 				self->chooseInkStyle(std::nullopt, width);
@@ -299,10 +299,10 @@ static hstring inkStyleName(const pdf::InkStyle& style) {
 void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
                                 std::optional<float> width) {
 	if (color) {
-		m_inkStyle.color = *color;
+		s_inkStyle.color = *color;
 	}
 	if (width) {
-		m_inkStyle.width = *width;
+		s_inkStyle.width = *width;
 	}
 	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
 		showComments();
@@ -366,6 +366,21 @@ void ViewerPage::showComments() {
 	DrawInkButton().Text(m_notePlacing && m_placementTool == PlacementTool::Ink
 	                         ? L"Stop drawing"
 	                         : L"Draw on page");
+	// another tab or window may have changed the shared style
+	const auto styles = InkStyleMenu().Items();
+	constexpr auto colors = static_cast<std::uint32_t>(std::size(INK_COLORS));
+	constexpr auto widths = static_cast<std::uint32_t>(std::size(INK_WIDTHS));
+	if (styles.Size() == colors + 1 + widths) {
+		for (std::uint32_t i = 0; i < colors; ++i) {
+			styles.GetAt(i).as<RadioMenuFlyoutItem>().IsChecked(
+			    INK_COLORS[i].color == s_inkStyle.color);
+		}
+		for (std::uint32_t i = 0; i < widths; ++i) {
+			styles.GetAt(colors + 1 + i)
+			    .as<RadioMenuFlyoutItem>()
+			    .IsChecked(INK_WIDTHS[i].width == s_inkStyle.width);
+		}
+	}
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
 	SaveNotesButton().Content(
@@ -432,7 +447,7 @@ void ViewerPage::showComments() {
 	}
 	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
 		NotesState().Text(L"Drag on a page to draw (" +
-		                  inkStyleName(m_inkStyle) + L"). Esc stops drawing.");
+		                  inkStyleName(s_inkStyle) + L"). Esc stops drawing.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);

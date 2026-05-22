@@ -4931,11 +4931,17 @@ struct TabsTest {
 				      "drawing style menu is incomplete");
 				const pdf::InkStyle red{{235, 73, 73, 255}, 4};
 				v.chooseInkStyle(red.color, red.width);
-				check(v.m_notePlacing && v.m_inkStyle == red &&
+				check(v.m_notePlacing && v.s_inkStyle == red &&
 				          v.NotesState().Text() ==
 				              L"Drag on a page to draw (Red, 4 pt). Esc "
 				              L"stops drawing.",
 				      "choosing a style lost drawing or its hint");
+				check(
+				    items.GetAt(2).as<RadioMenuFlyoutItem>().IsChecked() &&
+				        items.GetAt(8).as<RadioMenuFlyoutItem>().IsChecked() &&
+				        !items.GetAt(0).as<RadioMenuFlyoutItem>().IsChecked() &&
+				        !items.GetAt(7).as<RadioMenuFlyoutItem>().IsChecked(),
+				    "the style menu did not follow the shared style");
 				check(v.beginInkStroke(at(.7, .8)) && v.m_inkStroke &&
 				          v.m_inkStroke->style == red,
 				      "dot did not start with the chosen style");
@@ -4960,8 +4966,8 @@ struct TabsTest {
 			invoke(v.DrawInkButton());
 			check(!v.m_notePlacing, "Stop drawing kept the tool armed");
 			v.chooseInkStyle(std::nullopt, 1.f);
-			check(v.m_notePlacing && v.m_inkStyle.width == 1 &&
-			          v.m_inkStyle.color.red == 235,
+			check(v.m_notePlacing && v.s_inkStyle.width == 1 &&
+			          v.s_inkStyle.color.red == 235,
 			      "a style choice did not arm drawing or kept the old width");
 			invoke(v.DrawInkButton());
 			check(!v.m_notePlacing && v.SaveNotesButton().IsEnabled(),
