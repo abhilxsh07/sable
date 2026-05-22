@@ -4917,12 +4917,16 @@ struct TabsTest {
 			          inkRows() == 1,
 			      "drawn stroke missing from Comments or ended drawing");
 			{
-				// six colors, a separator and three widths
+				// five pen colors, a separator and three widths
 				const auto items = v.InkStyleMenu().Items();
-				check(items.Size() == 10 &&
-				          items.GetAt(5).as<RadioMenuFlyoutItem>().Text() ==
+				check(items.Size() == 9 &&
+				          items.GetAt(2).as<RadioMenuFlyoutItem>().Text() ==
 				              L"Red" &&
-				          items.GetAt(9).as<RadioMenuFlyoutItem>().Text() ==
+				          items.GetAt(2)
+				              .as<RadioMenuFlyoutItem>()
+				              .Icon()
+				              .try_as<ImageIcon>() &&
+				          items.GetAt(8).as<RadioMenuFlyoutItem>().Text() ==
 				              L"Thick (4 pt)",
 				      "drawing style menu is incomplete");
 				const pdf::InkStyle red{{235, 73, 73, 255}, 4};

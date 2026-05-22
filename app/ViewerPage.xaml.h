@@ -259,6 +259,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	pdf::InkStyle m_inkStyle;
 	void chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	                    std::optional<float> width);
+	// a menu color swatch that stays visible on light and dark menus
+	static winrt::Microsoft::UI::Xaml::Controls::IconElement
+	colorDot(winrt::Windows::UI::Color color);
 	std::optional<InkDrawing> m_inkStroke;
 	bool beginInkStroke(winrt::Windows::Foundation::Point point);
 	void extendInkStroke(winrt::Windows::Foundation::Point point);

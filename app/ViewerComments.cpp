@@ -23,8 +23,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.UI.Text.h>
 #include <string_view>
+#include <algorithm>
 #include <cmath>
 
 using namespace winrt;
@@ -33,15 +36,17 @@ using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace winrt::Sable::implementation {
 namespace {
-// black for writing, then the approved highlight palette
+// pen colors that read on white paper. red and yellow are the approved
+// highlight values; the pale highlight green, blue and pink fade as lines.
 struct InkColor {
 	const wchar_t* label;
 	pdf::AnnotationColor color;
 };
-constexpr InkColor INK_COLORS[]{
-    {L"Black", {0, 0, 0, 255}},       {L"Yellow", {255, 240, 102, 255}},
-    {L"Green", {125, 240, 102, 255}}, {L"Light blue", {143, 222, 249, 255}},
-    {L"Pink", {247, 153, 209, 255}},  {L"Red", {235, 73, 73, 255}}};
+constexpr InkColor INK_COLORS[]{{L"Black", {0, 0, 0, 255}},
+                                {L"Blue", {37, 99, 235, 255}},
+                                {L"Red", {235, 73, 73, 255}},
+                                {L"Green", {31, 157, 85, 255}},
+                                {L"Yellow", {255, 240, 102, 255}}};
 struct InkWidth {
 	const wchar_t* label;
 	float width;
@@ -169,14 +174,9 @@ void ViewerPage::setupComments() {
 		item.Text(label);
 		item.GroupName(L"InkColor");
 		item.IsChecked(color == m_inkStyle.color);
-		FontIcon dot;
-		dot.Glyph(L"\x25cf");
-		dot.FontFamily(Media::FontFamily(L"Segoe UI"));
-		dot.Foreground(Media::SolidColorBrush(
-		    Windows::UI::Color{255, static_cast<std::uint8_t>(color.red),
-		                       static_cast<std::uint8_t>(color.green),
-		                       static_cast<std::uint8_t>(color.blue)}));
-		item.Icon(dot);
+		item.Icon(colorDot({255, static_cast<std::uint8_t>(color.red),
+		                    static_cast<std::uint8_t>(color.green),
+		                    static_cast<std::uint8_t>(color.blue)}));
 		item.Click([weak, color = color](auto&&, auto&&) {
 			if (const auto self = weak.get()) {
 				self->chooseInkStyle(color, std::nullopt);
@@ -252,6 +252,37 @@ void ViewerPage::pauseComments() {
 		m_session->cancelAnnotations();
 	}
 }
+// a filled dot inside a grey ring, drawn at 32 px for a 16 DIP icon. the
+// ring keeps black visible on dark menus and yellow on light ones.
+IconElement ViewerPage::colorDot(Windows::UI::Color color) {
+	constexpr int size = 32;
+	constexpr double centre = size / 2., fill = 7.5, outer = 9.5;
+	constexpr double grey = 0x8a;
+	Media::Imaging::WriteableBitmap bitmap(size, size);
+	auto* pixel = bitmap.PixelBuffer().data();
+	for (int y = 0; y < size; ++y) {
+		for (int x = 0; x < size; ++x, pixel += 4) {
+			const double distance =
+			    std::hypot(x + .5 - centre, y + .5 - centre);
+			const double inside = std::clamp(fill + .5 - distance, 0., 1.);
+			const double alpha = std::clamp(outer + .5 - distance, 0., 1.);
+			// premultiplied BGRA
+			const auto channel = [&](std::uint8_t value) {
+				return static_cast<std::uint8_t>(std::lround(
+				    (value * inside + grey * (1 - inside)) * alpha));
+			};
+			pixel[0] = channel(color.B);
+			pixel[1] = channel(color.G);
+			pixel[2] = channel(color.R);
+			pixel[3] = static_cast<std::uint8_t>(std::lround(255 * alpha));
+		}
+	}
+	bitmap.Invalidate();
+	ImageIcon icon;
+	icon.Source(bitmap);
+	return icon;
+}
+
 // the color's menu name and the rounded width, for the drawing hint
 static hstring inkStyleName(const pdf::InkStyle& style) {
 	const wchar_t* name = L"Custom color";

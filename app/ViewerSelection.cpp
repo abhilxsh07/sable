@@ -170,11 +170,7 @@ void ViewerPage::setupSelection() {
 	                       Windows::UI::Color value) {
 		MenuFlyoutItem item;
 		item.Text(label);
-		FontIcon dot;
-		dot.Glyph(L"\x25cf");
-		dot.FontFamily(Media::FontFamily(L"Segoe UI"));
-		dot.Foreground(Media::SolidColorBrush(value));
-		item.Icon(dot);
+		item.Icon(colorDot(value));
 		item.Click([weak, shade](auto&&, auto&&) {
 			if (const auto self = weak.get()) {
 				self->markSelection(pdf::TextMarkup::Highlight, shade);
