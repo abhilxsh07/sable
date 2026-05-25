@@ -2,6 +2,31 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Pen palette and shared drawing style (7 November 2026)
+
+`SableInkTest=true` passes with the new menu: five pen colors, a
+separator and three widths, with Red third and its swatch an ImageIcon.
+After choosing red at 4 pt the Red and Thick radios are checked and Black
+and Medium are not, so the menu follows the shared style. The saved red
+dot is still exactly 4 x 4 pt. The normal reader is rebuilt afterwards.
+
+On the desktop, Drawing style lists Black, Blue, Red, Green and Yellow.
+Every swatch has a grey ring, and black now shows as a ring on the dark
+menu. Choosing Blue and Thick sets the hint to "(Blue, 4 pt)". A second
+document opened with the tab bar's + button shows Blue and Thick already
+checked; re-picking Blue arms drawing there. A thick blue wave reads
+clearly on the page, where the old light blue was faint.
+
+The Windows picker saves `palette saved.pdf` with six annotations; the
+87-point stroke has /C 0.1451 0.3882 0.9216 (#2563EB) and Border
+[0 0 4]. Both tabs close without a prompt and neither source changes:
+`palette input.pdf` stays
+`E2A26F1324F7F8E9F634E3257FD9C17442B12708749922E1070D4757942EF01F`
+and `second tab.pdf` stays
+`1C70A78A9825EB9D50B33C22683C1EB6E23ED7E095C93C03C0F5E937B42C511A`.
+Launching Sable.exe again starts a separate process, which keeps its own
+style; sharing covers the tabs and windows of one process.
+
 ## Drawing styles, native and desktop (7 November 2026)
 
 `SableInkTest=true` now also checks the Drawing style submenu: six colors,
