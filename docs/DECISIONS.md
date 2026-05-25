@@ -2730,3 +2730,17 @@ It checks the appearance and annotation count on a reopened copy before
 replacing the live document. Cancellation, protected documents and unsafe
 relationships keep their earlier refusals. Existing rectangle appearance
 commands stay the same.
+
+## New easter eggs (2026-11-08)
+
+I dropped NightPDF's easter egg: the EASTER_EGG variable, its Shift+Alt+T
+notification and the "trans rights" marker comments. This is a deliberate
+change from the original, which the earlier notification entry ported
+exactly.
+
+Shift+Alt+R now sends a "MORTY!" notification, with no variable needed.
+Shift+R on its own still rotates the page counter-clockwise like pdf.js, so
+the chord needs Alt. Repeat keydown is ignored and it works while a text box
+has focus, like the old chord. The notification service, registration and
+click activation are unchanged. Shift+Alt+T is kept for a small game tab
+that comes in a later commit.

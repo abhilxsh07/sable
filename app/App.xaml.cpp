@@ -220,13 +220,11 @@ App::createWindow(const std::vector<std::filesystem::path>& files,
 	auto main = make_self<MainWindow>(m_settings->get());
 	main->setEngine(*m_pdf);
 	main->setSettingsStore(*m_settings);
-	if (diagnostics::environmentEnabled(L"EASTER_EGG")) {
-		main->setEasterEgg([weak = get_weak()] {
-			if (auto self = weak.get()) {
-				self->showEasterEgg();
-			}
-		});
-	}
+	main->setMorty([weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->showMorty();
+		}
+	});
 	trackWindow(main.as<Window>());
 	diagnostics::write(diagnostics::Level::Info, "Reader window opened");
 	try {

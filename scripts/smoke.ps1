@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
 	throw 'smoke: extracted Sable.exe is missing'
 }
 New-Item -ItemType Directory -Path $workPath -Force | Out-Null
-$variables = @('DEBUG', 'EASTER_EGG', 'SableTabsTest',
+$variables = @('DEBUG', 'SableTabsTest',
 	'SableSurfaceTest', 'SableProbeAutoClose')
 $saved = @{}
 foreach ($name in $variables) {

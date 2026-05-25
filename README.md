@@ -108,9 +108,7 @@ backups. Old process logs are retained. Set `DEBUG` to a nonempty value for
 debug-level entries; even `DEBUG=0` enables them, matching NightPDF.
 An unavailable log folder does not stop the reader.
 
-Set `EASTER_EGG` to a nonempty value before launching to enable
-Shift+Alt+T and NightPDF's original notification. The shortcut is disabled by
-default. Windows controls whether the notification is displayed.
+Shift+Alt+R sends a notification. Windows controls whether it's displayed.
 
 ## Licenses
 

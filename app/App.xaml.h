@@ -40,7 +40,7 @@ struct App : AppT<App> {
 	winrt::com_ptr<MainWindow>
 	createWindow(const std::vector<std::filesystem::path>& files = {},
 	             std::optional<int> page = {});
-	void showEasterEgg() noexcept {
+	void showMorty() noexcept {
 		m_notifications.show();
 	}
 

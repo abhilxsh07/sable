@@ -23,9 +23,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <functional>
 
 namespace notices {
-inline constexpr auto TITLE = L"Trans rights";
-inline constexpr auto BODY =
-    L"Trans rights are human rights \U0001f3f3\ufe0f\u200d\u26a7\ufe0f";
+inline constexpr auto MORTY_TITLE = L"MORTY!";
+inline constexpr auto MORTY_BODY =
+    L"I'm a PDF reader Morty! I'm PDF reader Rick!!!";
 // Register before reading activation arguments so a notification click can
 // activate a reader instead of being interpreted as a document path.
 struct Service {

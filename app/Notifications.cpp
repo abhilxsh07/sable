@@ -32,8 +32,8 @@ winrt::Microsoft::Windows::AppNotifications::AppNotification
 Service::notification() {
 	return winrt::Microsoft::Windows::AppNotifications::Builder::
 	    AppNotificationBuilder()
-	        .AddText(TITLE)
-	        .AddText(BODY)
+	        .AddText(MORTY_TITLE)
+	        .AddText(MORTY_BODY)
 	        .BuildNotification();
 }
 

@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
-// trans rights
 #include "pch.h"
 #include "MainWindow.xaml.h"
 #if __has_include("MainWindow.g.cpp")
@@ -966,17 +965,17 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 	}
 }
 
-void MainWindow::setEasterEgg(std::function<void()> notify) {
-	m_easterEgg = std::move(notify);
+void MainWindow::setMorty(std::function<void()> notify) {
+	m_morty = std::move(notify);
 }
 
-void MainWindow::showEasterEgg() {
-	if (m_closing || !m_easterEgg) {
+void MainWindow::showMorty() {
+	if (m_closing || !m_morty) {
 		return;
 	}
 	diagnostics::write(diagnostics::Level::Info,
-	                   winrt::to_string(notices::BODY));
-	m_easterEgg();
+	                   winrt::to_string(notices::MORTY_BODY));
+	m_morty();
 }
 
 void MainWindow::onPrint(const Windows::Foundation::IInspectable&,

@@ -1202,38 +1202,29 @@ struct TabsTest {
 		      "reader did not force dark theme");
 		const auto xml = notices::Service::notification().Payload();
 		const std::wstring_view payload(xml.c_str(), xml.size());
-		check(payload.find(notices::TITLE) != std::wstring_view::npos &&
-		          payload.find(notices::BODY) != std::wstring_view::npos,
+		// the payload is XML, so the body's apostrophes come back escaped
+		check(payload.find(notices::MORTY_TITLE) != std::wstring_view::npos &&
+		          payload.find(L"m a PDF reader Morty! I") !=
+		              std::wstring_view::npos &&
+		          payload.find(L"m PDF reader Rick!!!") !=
+		              std::wstring_view::npos,
 		      "notification payload changed");
-		check(!owner.m_easterEgg, "notification enabled without opt-in");
-		owner.showEasterEgg();
 		int calls = 0;
-		owner.setEasterEgg([&calls] { ++calls; });
-		owner.setEasterEgg([&calls] { ++calls; });
+		owner.setMorty([&calls] { ++calls; });
+		owner.setMorty([&calls] { ++calls; });
 		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
-		check(owner.routeKey('T', modifiers) && calls == 1,
+		check(owner.routeKey('R', modifiers) && calls == 1,
 		      "notification shortcut missing or duplicated");
-		check(owner.routeKey('T', modifiers, true) && calls == 1,
+		check(owner.routeKey('R', modifiers, true) && calls == 1,
 		      "held notification shortcut repeated");
-		owner.setEasterEgg({});
-		check(!owner.routeKey('T', modifiers) && calls == 1,
+		owner.routeKey('R', helpers::SHORTCUT_SHIFT);
+		check(calls == 1, "Shift+R sent the notification instead of rotating");
+		owner.setMorty({});
+		check(!owner.routeKey('R', modifiers) && calls == 1,
 		      "disabled notification shortcut dispatched");
-		check(!diagnostics::environmentEnabled(L"EASTER_EGG"),
-		      "finish test requires EASTER_EGG unset");
 		peerWindow = app.createWindow();
-		check(!peerWindow->m_easterEgg,
-		      "app enabled notification without environment flag");
-		peerWindow->Close();
-		SetEnvironmentVariableW(L"EASTER_EGG", L"0");
-		try {
-			peerWindow = app.createWindow();
-		} catch (...) {
-			SetEnvironmentVariableW(L"EASTER_EGG", nullptr);
-			throw;
-		}
-		SetEnvironmentVariableW(L"EASTER_EGG", nullptr);
-		check(static_cast<bool>(peerWindow->m_easterEgg),
-		      "app ignored nonempty notification environment flag");
+		check(static_cast<bool>(peerWindow->m_morty),
+		      "new window has no notification shortcut");
 		peerWindow->Close();
 		diagnostics::write(diagnostics::Level::Info, "native logging marker");
 		const auto file =
@@ -1243,9 +1234,9 @@ struct TabsTest {
 		const std::string log{std::istreambuf_iterator<char>(input), {}};
 		check(log.find("native logging marker") != std::string::npos &&
 		          log.find("Verbose logging enabled") != std::string::npos &&
-		          log.find(to_string(notices::BODY)) != std::string::npos,
+		          log.find(to_string(notices::MORTY_BODY)) != std::string::npos,
 		      "startup/debug/notification file logging");
-		status.Text(L"PASS: opt-in notification shortcut/payload and "
+		status.Text(L"PASS: notification shortcut/payload and "
 		            L"startup/debug/file logging");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
