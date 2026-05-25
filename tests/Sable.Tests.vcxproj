@@ -129,7 +129,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="sliders_test.cpp" />
 		<ClCompile Include="settings_test.cpp" />
 		<ClCompile Include="properties_test.cpp" />
-		<ClCompile Include="annotations_test.cpp" />
+		<ClCompile Include="annotations_test.cpp">
+			<!-- the annotation writer tests exceed the normal object section limit -->
+			<AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+		</ClCompile>
 		<ClCompile Include="forms_test.cpp" />
 		<ClCompile Include="annotation_targets_test.cpp" />
 		<ClCompile Include="note_visibility_test.cpp" />
