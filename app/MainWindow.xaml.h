@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <memory>
 #include <optional>
 #include <string>
+#include <chrono>
 #include <vector>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
@@ -183,9 +184,17 @@ struct MainWindow : MainWindowT<MainWindow> {
 	bool m_closing = false;
 	bool m_picking = false;
 	bool m_printing = false;
-	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_mortyTimer{
-	    nullptr};
+	// the Shift+Alt+M alerts on screen, oldest first
+	struct Morty {
+		winrt::Microsoft::UI::Xaml::Controls::InfoBar alert{nullptr};
+		std::chrono::steady_clock::time_point fadeAt;
+		winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
+		bool fading = false;
+	};
+	std::vector<Morty> m_morties;
 	void showMorty();
+	void onMortyTick(winrt::Microsoft::UI::Xaml::Controls::InfoBar alert);
+	void removeMorty(winrt::Microsoft::UI::Xaml::Controls::InfoBar alert);
 	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();

@@ -2763,3 +2763,10 @@ the same line, portal green #97CE4C with black text in every theme. It
 closes after four seconds, and pressing again restarts that. Nothing else
 used Windows notifications, so I removed the notification service, its
 startup registration and the notification activation path.
+
+Each press now adds its own alert on top of the pile instead of restarting
+one. An alert stays at least four seconds, and they leave oldest first, at
+least 0.7 s apart, so a burst of presses still fades one at a time. Each
+fade takes 0.8 s, and the rest slide up to fill the gap. A full pile of
+eight lets its oldest go straight away, and the close button removes just
+that alert.

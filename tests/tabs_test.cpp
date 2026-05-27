@@ -1200,26 +1200,55 @@ struct TabsTest {
 		              ApplicationTheme::Dark &&
 		          owner.RootGrid().ActualTheme() == ElementTheme::Dark,
 		      "reader did not force dark theme");
-		const auto alert = owner.MortyAlert();
-		check(alert.Title() == L"MORTY!" &&
-		          alert.Message() ==
-		              L"I'm a PDF reader Morty! I'm PDF reader Rick!!!" &&
-		          !alert.IsOpen(),
-		      "Morty alert text changed or open at start");
+		const auto stack = owner.MortyStack();
 		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
+		check(stack.Children().Size() == 0 && owner.m_morties.empty(),
+		      "Morty alert showing at start");
 		owner.routeKey('R', helpers::SHORTCUT_SHIFT);
 		owner.routeKey('M', helpers::SHORTCUT_ALT);
-		check(!alert.IsOpen(), "Shift+R or Alt+M opened the Morty alert");
-		check(owner.routeKey('M', modifiers) && alert.IsOpen() &&
-		          owner.m_mortyTimer && owner.m_mortyTimer.IsRunning(),
-		      "Shift+Alt+M didn't open the Morty alert");
-		check(owner.routeKey('M', modifiers, true) && alert.IsOpen(),
-		      "held Morty shortcut fell through");
-		alert.IsOpen(false);
+		check(stack.Children().Size() == 0,
+		      "Shift+R or Alt+M added a Morty alert");
+		for (int press = 0; press < 3; ++press) {
+			check(owner.routeKey('M', modifiers), "Shift+Alt+M wasn't handled");
+		}
+		check(owner.routeKey('M', modifiers, true) &&
+		          stack.Children().Size() == 3 && owner.m_morties.size() == 3,
+		      "Morty alerts didn't pile up, or a held key added one");
+		const auto top = stack.Children().GetAt(0).as<Controls::InfoBar>();
+		check(top == owner.m_morties.back().alert && top.IsOpen() &&
+		          top.Title() == L"MORTY!" &&
+		          top.Message() ==
+		              L"I'm a PDF reader Morty! I'm PDF reader Rick!!!",
+		      "newest Morty alert isn't on top or its text changed");
+		const auto now = std::chrono::steady_clock::now();
+		check(owner.m_morties.front().fadeAt > now + std::chrono::seconds(3),
+		      "Morty alert fades too soon");
+		for (std::size_t i = 1; i < owner.m_morties.size(); ++i) {
+			check(owner.m_morties[i].fadeAt - owner.m_morties[i - 1].fadeAt >=
+			          std::chrono::milliseconds(700),
+			      "Morty alerts don't fade one by one");
+		}
+		const auto kept = owner.m_morties.front().alert;
+		owner.removeMorty(owner.m_morties[1].alert);
+		check(stack.Children().Size() == 2 &&
+		          owner.m_morties.front().alert == kept,
+		      "closing one Morty alert touched the others");
+		for (int press = 0; press < 10; ++press) {
+			owner.routeKey('M', modifiers);
+		}
+		std::size_t showing = 0;
+		for (const auto& morty : owner.m_morties) {
+			showing += morty.fading ? 0 : 1;
+		}
+		check(showing == 8, "Morty pile isn't capped at eight");
+		while (!owner.m_morties.empty()) {
+			owner.removeMorty(owner.m_morties.front().alert);
+		}
+		check(stack.Children().Size() == 0, "Morty alerts left behind");
 		peerWindow = app.createWindow();
 		// the new window has no XamlRoot yet, so it can't route keys
 		peerWindow->showMorty();
-		check(peerWindow->MortyAlert().IsOpen(),
+		check(peerWindow->MortyStack().Children().Size() == 1,
 		      "new window has no Morty alert");
 		peerWindow->Close();
 		diagnostics::write(diagnostics::Level::Info, "native logging marker");

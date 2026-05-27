@@ -62,6 +62,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- the Morty alert is portal green in every theme -->
 	<SolidColorBrush x:Key="SableMortyBrush" Color="#97CE4C" />
 	<SolidColorBrush x:Key="SableMortyTextBrush" Color="#000000" />
+	<Style x:Key="SableMortyAlertStyle" TargetType="InfoBar">
+		<Setter Property="Title" Value="MORTY!" />
+		<Setter Property="Message" Value="I'm a PDF reader Morty! I'm PDF reader Rick!!!" />
+		<Setter Property="IsClosable" Value="True" />
+		<Setter Property="IsIconVisible" Value="False" />
+		<Setter Property="Background" Value="{StaticResource SableMortyBrush}" />
+		<Setter Property="BorderBrush" Value="{StaticResource SableMortyBrush}" />
+		<Setter Property="Foreground" Value="{StaticResource SableMortyTextBrush}" />
+		<Setter Property="RequestedTheme" Value="Light" />
+	</Style>
 
 	<Color x:Key="SableCyan">#29c0ea</Color>
 	<Color x:Key="SableViolet">#d773e9</Color>

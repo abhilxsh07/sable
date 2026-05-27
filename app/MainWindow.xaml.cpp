@@ -56,6 +56,12 @@ constexpr int WIDTH = 550;
 constexpr int HEIGHT = 420;
 constexpr int MIN_WIDTH = 565;
 constexpr int MIN_HEIGHT = 200;
+// each Morty alert stays this long, and they leave at least MORTY_GAP apart
+// so a burst of presses still fades one at a time
+constexpr auto MORTY_LIFE = std::chrono::seconds(4);
+constexpr auto MORTY_GAP = std::chrono::milliseconds(700);
+constexpr auto MORTY_FADE = std::chrono::milliseconds(800);
+constexpr std::size_t MORTY_MAX = 8;
 
 struct SliderToolTip : implements<SliderToolTip, Data::IValueConverter> {
 	explicit SliderToolTip(helpers::SliderSpec spec) : m_spec(spec) {}
@@ -250,8 +256,8 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
-		if (m_mortyTimer) {
-			m_mortyTimer.Stop();
+		for (const auto& morty : m_morties) {
+			morty.timer.Stop();
 		}
 		if (m_saveCopyCancel) {
 			m_saveCopyCancel->store(true);
@@ -971,22 +977,90 @@ void MainWindow::showMorty() {
 	if (m_closing) {
 		return;
 	}
+	Controls::InfoBar alert;
+	alert.Style(Application::Current()
+	                .Resources()
+	                .Lookup(box_value(L"SableMortyAlertStyle"))
+	                .as<Style>());
 	diagnostics::write(diagnostics::Level::Info,
-	                   winrt::to_string(MortyAlert().Message()));
-	if (!m_mortyTimer) {
-		m_mortyTimer = DispatcherQueue().CreateTimer();
-		m_mortyTimer.IsRepeating(false);
-		m_mortyTimer.Interval(std::chrono::seconds(4));
-		m_mortyTimer.Tick([weak = get_weak()](auto&&, auto&&) {
-			if (const auto self = weak.get()) {
-				self->MortyAlert().IsOpen(false);
-			}
-		});
+	                   winrt::to_string(alert.Message()));
+	ScalarTransition fade;
+	fade.Duration(MORTY_FADE);
+	alert.OpacityTransition(fade);
+	alert.IsOpen(true);
+	// the close button takes just that one away
+	alert.Closed([weak = get_weak()](const Controls::InfoBar& sender, auto&&) {
+		if (const auto self = weak.get()) {
+			self->removeMorty(sender);
+		}
+	});
+	// a full pile lets its oldest go straight away
+	std::size_t showing = 0;
+	for (const auto& morty : m_morties) {
+		showing += morty.fading ? 0 : 1;
 	}
-	// pressing it again keeps the alert up for another full four seconds
-	m_mortyTimer.Stop();
-	MortyAlert().IsOpen(true);
-	m_mortyTimer.Start();
+	if (showing >= MORTY_MAX) {
+		for (const auto& morty : m_morties) {
+			if (!morty.fading) {
+				morty.timer.Stop();
+				onMortyTick(morty.alert);
+				break;
+			}
+		}
+	}
+	const auto now = std::chrono::steady_clock::now();
+	auto fadeAt = now + MORTY_LIFE;
+	if (!m_morties.empty()) {
+		// parenthesised because windows.h defines a max macro
+		fadeAt = (std::max)(fadeAt, m_morties.back().fadeAt + MORTY_GAP);
+	}
+	auto timer = DispatcherQueue().CreateTimer();
+	timer.IsRepeating(false);
+	timer.Interval(std::chrono::duration_cast<Windows::Foundation::TimeSpan>(
+	    fadeAt - now));
+	timer.Tick([weak = get_weak(), alert](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->onMortyTick(alert);
+		}
+	});
+	MortyStack().Children().InsertAt(0, alert);
+	m_morties.push_back({alert, fadeAt, timer});
+	timer.Start();
+}
+
+// the first tick starts the fade, the second one removes the faded alert
+void MainWindow::onMortyTick(Controls::InfoBar alert) {
+	const auto found = std::find_if(
+	    m_morties.begin(), m_morties.end(),
+	    [&alert](const auto& morty) { return morty.alert == alert; });
+	if (found == m_morties.end()) {
+		return;
+	}
+	if (found->fading) {
+		removeMorty(alert);
+		return;
+	}
+	found->fading = true;
+	alert.IsHitTestVisible(false);
+	alert.Opacity(0);
+	found->timer.Stop();
+	found->timer.Interval(MORTY_FADE);
+	found->timer.Start();
+}
+
+void MainWindow::removeMorty(Controls::InfoBar alert) {
+	const auto found = std::find_if(
+	    m_morties.begin(), m_morties.end(),
+	    [&alert](const auto& morty) { return morty.alert == alert; });
+	if (found == m_morties.end()) {
+		return;
+	}
+	found->timer.Stop();
+	m_morties.erase(found);
+	uint32_t index = 0;
+	if (MortyStack().Children().IndexOf(alert, index)) {
+		MortyStack().Children().RemoveAt(index);
+	}
 }
 
 void MainWindow::onPrint(const Windows::Foundation::IInspectable&,

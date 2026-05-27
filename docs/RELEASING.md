@@ -118,8 +118,8 @@ Follow READER_CHECKS.md and record results with the package hash:
    and stale artwork/text do not return. Test bright, dark and missing art.
 6. Move the window between monitors with different scaling and return it.
    Check fit, clarity, selection alignment and pointer hit testing.
-7. Press Shift+Alt+M on home and in a document. The green MORTY! alert
-   shows at the top and closes itself after about four seconds.
+7. Press Shift+Alt+M a few times on home and in a document. Green MORTY!
+   alerts pile up at the top, newest first, and fade out one by one.
 
 If a device/player is unavailable, record that check as unverified and keep
 it in the release notes. Do not count simulated checks as physical passes.

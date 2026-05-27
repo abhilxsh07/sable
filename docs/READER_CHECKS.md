@@ -415,8 +415,8 @@ music button.
 
 Move a reading window between monitors with different scaling. Check page
 fit, text clarity, pointer/selection alignment and return to the first screen.
-Press Shift+Alt+M on home and in a document to check the green MORTY!
-alert shows and closes itself.
+Press Shift+Alt+M a few times on home and in a document: the green MORTY!
+alerts pile up and fade out one by one.
 
 ## Automated input check
 
