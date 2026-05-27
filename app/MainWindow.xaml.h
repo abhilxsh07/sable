@@ -60,7 +60,6 @@ struct MainWindow : MainWindowT<MainWindow> {
 	             const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onSaveCopy(const winrt::Windows::Foundation::IInspectable&,
 	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
-	void setMorty(std::function<void()> notify);
 	void onEditCommand(const winrt::Windows::Foundation::IInspectable& sender,
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
@@ -184,7 +183,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	bool m_closing = false;
 	bool m_picking = false;
 	bool m_printing = false;
-	std::function<void()> m_morty;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_mortyTimer{
+	    nullptr};
 	void showMorty();
 	bool m_movingTab = false;
 	void setupWindow();

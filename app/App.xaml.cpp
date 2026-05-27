@@ -23,7 +23,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "MainWindow.xaml.h"
 
 #include <shellapi.h>
-#include <winrt/Microsoft.Windows.AppLifecycle.h>
 
 #include <algorithm>
 #include <string>
@@ -156,29 +155,6 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 	}
 	std::vector<std::filesystem::path> files;
 	startLogging();
-	const auto queue =
-	    Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
-	const bool registered =
-	    m_notifications.initialize([weak = get_weak(), queue] {
-		    queue.TryEnqueue([weak] {
-			    if (auto self = weak.get()) {
-				    self->activateReader();
-			    }
-		    });
-	    });
-	try {
-		if (registered &&
-		    Microsoft::Windows::AppLifecycle::AppInstance::GetCurrent()
-		            .GetActivatedEventArgs()
-		            .Kind() == Microsoft::Windows::AppLifecycle::
-		                           ExtendedActivationKind::AppNotification) {
-			activateReader();
-			return;
-		}
-	} catch (...) {
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't read app activation arguments");
-	}
 	for (const auto& file : cli.files) {
 		files.emplace_back(to_hstring(file).c_str());
 	}
@@ -188,14 +164,6 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 
 // port of app/main/app.ts createWindow() and closed handler (L127-184).
 // i remove only the closed window, rather than clearing all of them (Q5).
-void App::activateReader() {
-	if (m_windows.empty()) {
-		createWindow();
-	} else {
-		m_windows.back().Activate();
-	}
-}
-
 void App::trackWindow(const Window& window) {
 	window.Closed([weak = get_weak()](const auto& sender, auto&&) {
 		if (auto self = weak.get()) {
@@ -220,11 +188,6 @@ App::createWindow(const std::vector<std::filesystem::path>& files,
 	auto main = make_self<MainWindow>(m_settings->get());
 	main->setEngine(*m_pdf);
 	main->setSettingsStore(*m_settings);
-	main->setMorty([weak = get_weak()] {
-		if (auto self = weak.get()) {
-			self->showMorty();
-		}
-	});
 	trackWindow(main.as<Window>());
 	diagnostics::write(diagnostics::Level::Info, "Reader window opened");
 	try {

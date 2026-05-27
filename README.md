@@ -31,8 +31,8 @@ are refused; the draft stays available to correct.
 
 Spotify and Apple Music sessions add a music button with playback controls,
 track information, artwork and a seek bar when the player supports it. Real
-players, print-dialog input, physical printers, monitor moves and notification
-activation still need review. The Windows PDF driver passes the opt-in
+players, print-dialog input, physical printers and monitor moves still need
+review. The Windows PDF driver passes the opt-in
 output check. PDF layers are deferred because the pinned
 PDFium API lacks visibility controls. See the [test record](docs/TEST_PLAN.md)
 for current results, [reader checks](docs/READER_CHECKS.md) for the remaining
@@ -100,15 +100,13 @@ Run `uv run update_pdfium.py` without `--pinned` to move to the latest
 The pre-commit hook checks formatting. Turn it on with
 `git config core.hooksPath .githooks`.
 
-## Diagnostics and optional notification
+## Diagnostics
 
 Logs are written under `%LOCALAPPDATA%\Sable\logs`, with one
 `Sable-<process-id>.log` per process. Each file rotates at 2 MiB with three
 backups. Old process logs are retained. Set `DEBUG` to a nonempty value for
 debug-level entries; even `DEBUG=0` enables them, matching NightPDF.
 An unavailable log folder does not stop the reader.
-
-Shift+Alt+R sends a notification. Windows controls whether it's displayed.
 
 ## Licenses
 

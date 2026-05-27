@@ -166,7 +166,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="pch.h" />
 		<ClInclude Include="SettingsWindow.h" />
 		<ClInclude Include="Appearance.h" />
-		<ClInclude Include="Notifications.h" />
 		<ClInclude Include="MusicSession.h" />
 		<ClInclude Include="MusicPane.h" />
 		<ClInclude Include="App.xaml.h">
@@ -199,7 +198,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="SettingsWindow.cpp" />
 		<ClCompile Include="SettingsLayout.cpp" />
 		<ClCompile Include="Appearance.cpp" />
-		<ClCompile Include="Notifications.cpp" />
 		<ClCompile Include="MusicSession.cpp" />
 		<ClCompile Include="MusicMetadata.cpp" />
 		<ClCompile Include="MusicCommands.cpp" />

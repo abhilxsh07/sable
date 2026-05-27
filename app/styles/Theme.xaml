@@ -59,6 +59,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ResourceDictionary>
 	</ResourceDictionary.ThemeDictionaries>
 
+	<!-- the Morty alert is portal green in every theme -->
+	<SolidColorBrush x:Key="SableMortyBrush" Color="#97CE4C" />
+	<SolidColorBrush x:Key="SableMortyTextBrush" Color="#000000" />
+
 	<Color x:Key="SableCyan">#29c0ea</Color>
 	<Color x:Key="SableViolet">#d773e9</Color>
 	<Color x:Key="SableCoral">#fc515d</Color>

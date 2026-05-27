@@ -1200,31 +1200,27 @@ struct TabsTest {
 		              ApplicationTheme::Dark &&
 		          owner.RootGrid().ActualTheme() == ElementTheme::Dark,
 		      "reader did not force dark theme");
-		const auto xml = notices::Service::notification().Payload();
-		const std::wstring_view payload(xml.c_str(), xml.size());
-		// the payload is XML, so the body's apostrophes come back escaped
-		check(payload.find(notices::MORTY_TITLE) != std::wstring_view::npos &&
-		          payload.find(L"m a PDF reader Morty! I") !=
-		              std::wstring_view::npos &&
-		          payload.find(L"m PDF reader Rick!!!") !=
-		              std::wstring_view::npos,
-		      "notification payload changed");
-		int calls = 0;
-		owner.setMorty([&calls] { ++calls; });
-		owner.setMorty([&calls] { ++calls; });
+		const auto alert = owner.MortyAlert();
+		check(alert.Title() == L"MORTY!" &&
+		          alert.Message() ==
+		              L"I'm a PDF reader Morty! I'm PDF reader Rick!!!" &&
+		          !alert.IsOpen(),
+		      "Morty alert text changed or open at start");
 		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
-		check(owner.routeKey('R', modifiers) && calls == 1,
-		      "notification shortcut missing or duplicated");
-		check(owner.routeKey('R', modifiers, true) && calls == 1,
-		      "held notification shortcut repeated");
 		owner.routeKey('R', helpers::SHORTCUT_SHIFT);
-		check(calls == 1, "Shift+R sent the notification instead of rotating");
-		owner.setMorty({});
-		check(!owner.routeKey('R', modifiers) && calls == 1,
-		      "disabled notification shortcut dispatched");
+		owner.routeKey('M', helpers::SHORTCUT_ALT);
+		check(!alert.IsOpen(), "Shift+R or Alt+M opened the Morty alert");
+		check(owner.routeKey('M', modifiers) && alert.IsOpen() &&
+		          owner.m_mortyTimer && owner.m_mortyTimer.IsRunning(),
+		      "Shift+Alt+M didn't open the Morty alert");
+		check(owner.routeKey('M', modifiers, true) && alert.IsOpen(),
+		      "held Morty shortcut fell through");
+		alert.IsOpen(false);
 		peerWindow = app.createWindow();
-		check(static_cast<bool>(peerWindow->m_morty),
-		      "new window has no notification shortcut");
+		// the new window has no XamlRoot yet, so it can't route keys
+		peerWindow->showMorty();
+		check(peerWindow->MortyAlert().IsOpen(),
+		      "new window has no Morty alert");
 		peerWindow->Close();
 		diagnostics::write(diagnostics::Level::Info, "native logging marker");
 		const auto file =
@@ -1234,9 +1230,9 @@ struct TabsTest {
 		const std::string log{std::istreambuf_iterator<char>(input), {}};
 		check(log.find("native logging marker") != std::string::npos &&
 		          log.find("Verbose logging enabled") != std::string::npos &&
-		          log.find(to_string(notices::MORTY_BODY)) != std::string::npos,
+		          log.find("I'm a PDF reader Morty!") != std::string::npos,
 		      "startup/debug/notification file logging");
-		status.Text(L"PASS: notification shortcut/payload and "
+		status.Text(L"PASS: Morty alert shortcut and "
 		            L"startup/debug/file logging");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();

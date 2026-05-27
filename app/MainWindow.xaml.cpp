@@ -43,7 +43,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/logging.h"
 #include "SettingsWindow.h"
 #include "Appearance.h"
-#include "Notifications.h"
 #include "MusicPane.h"
 
 using namespace winrt;
@@ -251,6 +250,9 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
+		if (m_mortyTimer) {
+			m_mortyTimer.Stop();
+		}
 		if (m_saveCopyCancel) {
 			m_saveCopyCancel->store(true);
 		}
@@ -965,17 +967,26 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 	}
 }
 
-void MainWindow::setMorty(std::function<void()> notify) {
-	m_morty = std::move(notify);
-}
-
 void MainWindow::showMorty() {
-	if (m_closing || !m_morty) {
+	if (m_closing) {
 		return;
 	}
 	diagnostics::write(diagnostics::Level::Info,
-	                   winrt::to_string(notices::MORTY_BODY));
-	m_morty();
+	                   winrt::to_string(MortyAlert().Message()));
+	if (!m_mortyTimer) {
+		m_mortyTimer = DispatcherQueue().CreateTimer();
+		m_mortyTimer.IsRepeating(false);
+		m_mortyTimer.Interval(std::chrono::seconds(4));
+		m_mortyTimer.Tick([weak = get_weak()](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->MortyAlert().IsOpen(false);
+			}
+		});
+	}
+	// pressing it again keeps the alert up for another full four seconds
+	m_mortyTimer.Stop();
+	MortyAlert().IsOpen(true);
+	m_mortyTimer.Start();
 }
 
 void MainWindow::onPrint(const Windows::Foundation::IInspectable&,

@@ -81,8 +81,7 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 		// The text field's native edit keys take priority while editing.
 		return false;
 	}
-	// Shift+R alone rotates the page, so the notification needs Alt too
-	if (self->m_morty && key == 'R' &&
+	if (key == 'M' &&
 	    modifiers == (helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT)) {
 		if (!repeated) {
 			self->showMorty();

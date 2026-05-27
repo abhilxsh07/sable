@@ -118,9 +118,8 @@ Follow READER_CHECKS.md and record results with the package hash:
    and stale artwork/text do not return. Test bright, dark and missing art.
 6. Move the window between monitors with different scaling and return it.
    Check fit, clarity, selection alignment and pointer hit testing.
-7. Press Shift+Alt+R and check the notification's display and click
-   activation. Windows notification settings and Focus/Do not disturb may
-   affect delivery; record those conditions.
+7. Press Shift+Alt+M on home and in a document. The green MORTY! alert
+   shows at the top and closes itself after about four seconds.
 
 If a device/player is unavailable, record that check as unverified and keep
 it in the release notes. Do not count simulated checks as physical passes.

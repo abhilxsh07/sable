@@ -208,6 +208,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<InfoBar x:Name="PickerError" Grid.Row="1" VerticalAlignment="Top"
 			Severity="Error" IsOpen="False" IsClosable="True"
 			Title="Couldn't open the file dialog" />
+		<!-- Shift+Alt+M. It closes itself after a few seconds. -->
+		<InfoBar x:Name="MortyAlert" Grid.Row="1" VerticalAlignment="Top"
+			HorizontalAlignment="Center" MaxWidth="420" Margin="0,12,0,0"
+			IsOpen="False" IsClosable="True" IsIconVisible="False"
+			Title="MORTY!" Message="I'm a PDF reader Morty! I'm PDF reader Rick!!!"
+			Background="{StaticResource SableMortyBrush}"
+			BorderBrush="{StaticResource SableMortyBrush}"
+			Foreground="{StaticResource SableMortyTextBrush}"
+			RequestedTheme="Light" />
 		<!-- #darkConfigurator in index.sass: 200 wide, at most 550 tall,
 			rgb(45,45,45) with a #666 border, 16px 24px padding, 4px corners and
 			a small shadow. Lined up under the preset buttons when it opens. -->

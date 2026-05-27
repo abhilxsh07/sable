@@ -415,8 +415,8 @@ music button.
 
 Move a reading window between monitors with different scaling. Check page
 fit, text clarity, pointer/selection alignment and return to the first screen.
-Notification display and click activation need a separate Windows check:
-press Shift+Alt+R in a reader window.
+Press Shift+Alt+M on home and in a document to check the green MORTY!
+alert shows and closes itself.
 
 ## Automated input check
 

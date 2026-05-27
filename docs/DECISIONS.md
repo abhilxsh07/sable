@@ -2744,3 +2744,22 @@ the chord needs Alt. Repeat keydown is ignored and it works while a text box
 has focus, like the old chord. The notification service, registration and
 click activation are unchanged. Shift+Alt+T is kept for a small game tab
 that comes in a later commit.
+
+## Morty as an in-app alert (2026-11-08)
+
+Shift+Alt+R never reached Sable on my PC. Another program registers Alt+R
+and Shift+Alt+R system-wide (NVIDIA Overlay owns Alt+R), so Windows eats
+the key. The shortcut is Shift+Alt+M now; Shift+Alt+T is still free for the
+game.
+
+The Windows notification didn't show either. AppNotificationManager's
+Register() fails in self-contained unpackaged apps on Windows App SDK 2.5.1
+with 0x8007007E, and my logs show it failing on every launch since at least
+2026-11-02.
+see: https://github.com/microsoft/WindowsAppSDK/issues/6774
+
+So the egg is a green InfoBar inside the window instead: title "MORTY!",
+the same line, portal green #97CE4C with black text in every theme. It
+closes after four seconds, and pressing again restarts that. Nothing else
+used Windows notifications, so I removed the notification service, its
+startup registration and the notification activation path.
