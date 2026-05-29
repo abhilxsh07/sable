@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "NightRunPane.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Text.h>
@@ -59,32 +60,51 @@ Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 	layout.Spacing(12);
 
 	TextBlock title;
-	title.Text(L"Night Run");
+	title.Text(L"Night Run · Paper Tide");
 	title.FontSize(30);
 	title.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
 	layout.Children().Append(title);
+	TextBlock tips;
+	tips.Text(L"Left / Right or A / D to steer · Space / Up to hop");
+	tips.TextWrapping(TextWrapping::Wrap);
+	layout.Children().Append(tips);
 
 	Canvas track;
 	track.Width(FIELD_WIDTH);
 	track.Height(FIELD_HEIGHT);
-	track.Background(brush(13, 20, 36));
+	track.Background(brush(12, 44, 63));
 	Media::RectangleGeometry clip;
 	clip.Rect(Windows::Foundation::Rect{0, 0, FIELD_WIDTH, FIELD_HEIGHT});
 	track.Clip(clip);
-	Shapes::Rectangle floor;
-	floor.Fill(brush(34, 47, 67));
-	place(floor, FIELD_WIDTH, FIELD_HEIGHT - GROUND, 0, GROUND);
-	track.Children().Append(floor);
-	for (int i = 0; i < 15; ++i) {
-		Shapes::Rectangle star;
-		star.Fill(brush(116, 134, 165));
-		place(star, 2, 2, 17 + (i * 83) % 610, 13 + (i * 41) % 120);
-		track.Children().Append(star);
+	for (int i = 0; i < 18; ++i) {
+		Shapes::Rectangle wave;
+		wave.Fill(brush(36, 91, 112));
+		wave.RadiusX(2);
+		wave.RadiusY(2);
+		track.Children().Append(wave);
+		m_waves.push_back(wave);
 	}
+	m_runner.RadiusX(12);
+	m_runner.RadiusY(12);
+	m_obstacle.RadiusX(12);
+	m_obstacle.RadiusY(12);
+	m_page.Fill(brush(255, 244, 201));
+	m_page.Stroke(brush(215, 177, 86));
+	m_page.StrokeThickness(2);
+	m_head.Fill(brush(244, 204, 167));
+	m_head.Width(14);
+	m_head.Height(14);
+	m_shield.Width(58);
+	m_shield.Height(68);
+	m_shield.Stroke(brush(255, 224, 135));
+	m_shield.StrokeThickness(3);
 	m_runner.Fill(brush(123, 225, 186));
-	m_obstacle.Fill(brush(248, 165, 112));
+	m_obstacle.Fill(brush(119, 137, 151));
 	track.Children().Append(m_runner);
 	track.Children().Append(m_obstacle);
+	track.Children().Append(m_page);
+	track.Children().Append(m_head);
+	track.Children().Append(m_shield);
 
 	Viewbox view;
 	view.Child(track);
@@ -123,6 +143,12 @@ std::shared_ptr<Pane>
 Pane::create(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 	auto pane = std::shared_ptr<Pane>(new Pane(queue));
 	const std::weak_ptr<Pane> weak = pane;
+	pane->m_field.Loaded([weak](auto&&, auto&&) {
+		if (const auto self = weak.lock();
+		    self && self->m_root.Visibility() == Visibility::Visible) {
+			self->focus();
+		}
+	});
 	pane->m_timer.Tick([weak](auto&&, auto&&) {
 		if (const auto self = weak.lock()) {
 			self->tick();
@@ -163,6 +189,11 @@ Pane::~Pane() {
 
 bool Pane::focus() {
 	return m_field.Focus(FocusState::Programmatic);
+}
+
+void Pane::steer(int direction) {
+	m_run.steer(direction);
+	render();
 }
 
 void Pane::key() {
@@ -216,14 +247,31 @@ void Pane::tick() {
 }
 
 void Pane::render() {
-	place(m_runner, RUNNER_WIDTH, RUNNER_HEIGHT, RUNNER_X,
-	      GROUND - RUNNER_HEIGHT - m_run.lift());
-	const double height = m_run.obstacleHeight();
-	place(m_obstacle, OBSTACLE_WIDTH, height, m_run.obstacleX(),
-	      GROUND - height);
-	if (m_shownScore != m_run.score()) {
-		m_shownScore = m_run.score();
-		m_score.Text(L"Score " + std::to_wstring(m_shownScore));
+	const double x = 160.0 * (m_run.lane() + 1);
+	const double y = GROUND - m_run.lift() / 4;
+	place(m_runner, 24, 48, x - 12, y - 24);
+	Canvas::SetLeft(m_head, x - 7);
+	Canvas::SetTop(m_head, y - 15);
+	Canvas::SetLeft(m_shield, x - 29);
+	Canvas::SetTop(m_shield, y - 34);
+	m_shield.Visibility(m_run.shield() ? Visibility::Visible
+	                                   : Visibility::Collapsed);
+	const double approach = GROUND - (m_run.obstacleX() - RUNNER_X);
+	place(m_obstacle, 38, 38, 160.0 * (m_run.obstacleLane() + 1) - 19,
+	      approach - 19);
+	place(m_page, 22, 28, 160.0 * (m_run.pageLane() + 1) - 11, approach - 14);
+	m_page.Visibility(m_run.pageTaken() ? Visibility::Collapsed
+	                                    : Visibility::Visible);
+	for (std::size_t i = 0; i < m_waves.size(); ++i) {
+		place(m_waves[i], 28, 3, 38 + static_cast<double>((i * 97) % 560),
+		      std::fmod(static_cast<double>(i * 47 + m_run.score() * 10),
+		                FIELD_HEIGHT));
+	}
+	m_score.Text(L"Distance " + std::to_wstring(m_run.score()));
+	if (m_run.phase() == Phase::Running) {
+		m_status.Text(L"Pages " + std::to_wstring(m_run.pages()) +
+		              (m_run.shield() ? L" · Shield ready"
+		                              : L" · Collect 3 for a shield"));
 	}
 }
 
@@ -231,11 +279,13 @@ void Pane::updateControls() {
 	switch (m_run.phase()) {
 	case Phase::Ready:
 		m_play.Content(box_value(L"Play"));
-		m_status.Text(L"Press Play or Space to start. Jump with Space or Up.");
+		m_status.Text(L"Space to sail. Left / Right or A / D to steer. Space / "
+		              L"Up to hop.");
 		break;
 	case Phase::Running:
 		m_play.Content(box_value(L"Pause"));
-		m_status.Text(L"Jump with Space or Up.");
+		m_status.Text(
+		    L"Collect pages for a shield. Dodge rocks or hop with Space.");
 		break;
 	case Phase::Paused:
 		m_play.Content(box_value(L"Resume"));

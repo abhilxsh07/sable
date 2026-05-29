@@ -43,6 +43,10 @@ namespace music {
 class Pane;
 }
 
+namespace night_run {
+class Pane;
+}
+
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
@@ -195,6 +199,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void showMorty();
 	void onMortyTick(winrt::Microsoft::UI::Xaml::Controls::InfoBar alert);
 	void removeMorty(winrt::Microsoft::UI::Xaml::Controls::InfoBar alert);
+	std::shared_ptr<night_run::Pane> m_nightRun;
+	winrt::Microsoft::UI::Xaml::Controls::TabViewItem m_nightRunTab{nullptr};
+	void openNightRun();
+	bool nightRunSelected();
 	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();

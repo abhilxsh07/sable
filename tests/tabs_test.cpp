@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/App.xaml.h"
 #include "../app/SettingsWindow.h"
 #include "../app/MusicPane.h"
+#include "../app/NightRunPane.h"
 #include "../app/helpers/version.h"
 #include "../app/helpers/logging.h"
 #include "../app/helpers/filter.h"
@@ -1195,6 +1196,58 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void checkNightRun(MainWindow& owner) {
+		using night_run::Phase;
+		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
+		check(!owner.m_nightRun && owner.Tabs().TabItems().Size() == 0,
+		      "Night Run showed at startup");
+		check(owner.routeKey('T', modifiers, true) && !owner.m_nightRun,
+		      "a held shortcut opened Night Run");
+		check(owner.routeKey('T', modifiers) && owner.nightRunSelected() &&
+		          owner.Documents().Visibility() == Visibility::Visible &&
+		          owner.Tabs().Visibility() == Visibility::Visible &&
+		          owner.Nav().Visibility() == Visibility::Collapsed &&
+		          !owner.PrintItem().IsEnabled(),
+		      "the shortcut did not open the game from Home");
+		const auto game = owner.m_nightRun;
+		check(game->m_run.phase() == Phase::Ready && owner.routeKey(VK_UP, 0) &&
+		          game->m_run.phase() == Phase::Running,
+		      "the game did not start with the keyboard");
+		game->m_next = std::chrono::steady_clock::now();
+		check(owner.routeKey(VK_UP, 0, true), "held jump was not handled");
+		game->tick();
+		check(game->m_run.lift() == 0, "held jump made the runner jump");
+		check(owner.routeKey(VK_UP, 0), "jump was not handled");
+		game->m_next = std::chrono::steady_clock::now();
+		game->tick();
+		check(game->m_run.lift() > 0, "jump did not lift the runner");
+		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+		const auto viewer = owner.Viewer();
+		const auto lift = game->m_run.lift();
+		check(viewer && !owner.nightRunSelected() &&
+		          game->element().Visibility() == Visibility::Collapsed &&
+		          game->m_run.phase() == Phase::Paused,
+		      "opening a PDF did not pause and hide the game");
+		check(owner.routeKey('T', modifiers) && owner.nightRunSelected() &&
+		          owner.Tabs().TabItems().Size() == 2 &&
+		          game->m_run.phase() == Phase::Paused &&
+		          game->m_run.lift() == lift,
+		      "reselecting the game did not keep the paused run");
+		check(owner.routeKey(VK_UP, 0) && game->m_run.phase() == Phase::Running,
+		      "the game did not resume");
+		check(owner.routeKey('W', helpers::SHORTCUT_CTRL),
+		      "the close-tab shortcut was not handled");
+		check(!owner.m_nightRun, "the close-tab shortcut left the game open");
+		check(owner.Viewer() == viewer,
+		      "closing Night Run did not select the PDF");
+		check(owner.m_closedTabs.empty() &&
+		          game->m_run.phase() == Phase::Paused,
+		      "closing the game changed the reopen history or left it running");
+		owner.closeTab(owner.m_tabs.front().tab);
+		check(owner.Tabs().TabItems().Size() == 0 &&
+		          owner.Nav().Visibility() == Visibility::Visible,
+		      "closing the last tab did not return Home");
+	}
 	void finishTick(MainWindow& owner) {
 		check(Application::Current().RequestedTheme() ==
 		              ApplicationTheme::Dark &&
@@ -1245,6 +1298,7 @@ struct TabsTest {
 			owner.removeMorty(owner.m_morties.front().alert);
 		}
 		check(stack.Children().Size() == 0, "Morty alerts left behind");
+		checkNightRun(owner);
 		peerWindow = app.createWindow();
 		// the new window has no XamlRoot yet, so it can't route keys
 		peerWindow->showMorty();
@@ -1261,8 +1315,8 @@ struct TabsTest {
 		          log.find("Verbose logging enabled") != std::string::npos &&
 		          log.find("I'm a PDF reader Morty!") != std::string::npos,
 		      "startup/debug/notification file logging");
-		status.Text(L"PASS: Morty alert shortcut and "
-		            L"startup/debug/file logging");
+		status.Text(
+		    L"PASS: Night Run, Morty alerts and startup/debug/file logging");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 	}

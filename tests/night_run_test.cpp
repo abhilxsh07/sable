@@ -106,3 +106,45 @@ TEST(NightRun, PausesInMidairAndResumesFromTheSamePoint) {
 	EXPECT_GT(run.lift(), lift);
 	EXPECT_LT(run.obstacleX(), obstacle);
 }
+
+TEST(NightRun, SteeringStaysInTheChannelAndPauses) {
+	night_run::Run run(7);
+	run.steer(-1);
+	EXPECT_EQ(run.lane(), 1);
+	run.start();
+	run.steer(-1);
+	run.steer(-1);
+	EXPECT_EQ(run.lane(), 0);
+	run.steer(1);
+	run.steer(1);
+	run.steer(1);
+	EXPECT_EQ(run.lane(), 2);
+	run.pause();
+	run.steer(-1);
+	EXPECT_EQ(run.lane(), 2);
+}
+
+TEST(NightRun, ThreePagesShieldOneRockAndRestartClearsIt) {
+	night_run::Run run(7);
+	run.start();
+	for (int tick = 0; tick < 1000 && run.pages() < 3; ++tick) {
+		run.steer(run.pageLane() - run.lane());
+		ASSERT_FALSE(run.tick());
+	}
+	ASSERT_EQ(run.pages(), 3u);
+	ASSERT_TRUE(run.shield());
+	for (int tick = 0; tick < 300 && run.shield(); ++tick) {
+		run.steer(run.obstacleLane() - run.lane());
+		ASSERT_FALSE(run.tick());
+	}
+	ASSERT_FALSE(run.shield());
+	EXPECT_EQ(run.phase(), Phase::Running);
+	// staying beside the same rock must not spend the shield twice
+	for (int tick = 0; tick < 5; ++tick) {
+		EXPECT_FALSE(run.tick());
+	}
+	run.start();
+	EXPECT_EQ(run.pages(), 0u);
+	EXPECT_FALSE(run.shield());
+	EXPECT_EQ(run.lane(), 1);
+}

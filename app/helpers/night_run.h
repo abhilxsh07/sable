@@ -24,8 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace night_run {
 inline constexpr double FIELD_WIDTH = 640;
-inline constexpr double FIELD_HEIGHT = 260;
-inline constexpr double GROUND = 210;
+inline constexpr double FIELD_HEIGHT = 400;
+inline constexpr double GROUND = 310;
 inline constexpr double RUNNER_X = 92;
 inline constexpr double RUNNER_WIDTH = 24;
 inline constexpr double RUNNER_HEIGHT = 34;
@@ -41,6 +41,25 @@ class Run {
 	void pause();
 	void resume();
 	bool jump();
+	void steer(int direction);
+	int lane() const {
+		return m_lane;
+	}
+	int obstacleLane() const {
+		return m_obstacleLane;
+	}
+	int pageLane() const {
+		return m_pageLane;
+	}
+	unsigned pages() const {
+		return m_pages;
+	}
+	bool shield() const {
+		return m_shield;
+	}
+	bool pageTaken() const {
+		return m_pageTaken;
+	}
 	bool tick();
 
 	Phase phase() const {
@@ -60,6 +79,9 @@ class Run {
 	}
 
   private:
+	int m_lane = 1, m_obstacleLane = 1, m_pageLane = 0;
+	unsigned m_pages = 0;
+	bool m_shield = false, m_pageTaken = false, m_hit = false;
 	std::minstd_rand m_random;
 	Phase m_phase = Phase::Ready;
 	double m_lift = 0;

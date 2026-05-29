@@ -2787,3 +2787,22 @@ starts the run, Pause holds it and Restart resets the score. Space and Up
 jump. Mute stops the cue and stays in effect for that open game. A
 stalled dispatcher catches up only a few steps so a stall can't run the
 whole game in the background.
+
+Shift+Alt+T opens one game tab in the current window and selects it again
+on later presses. I pause the run when its tab is hidden or the window
+loses activation. Closing the game discards the run. I select the next
+PDF tab by item before removing the game, since it can take the game's
+old numeric index.
+
+## Paper Tide (2026-11-10)
+
+I changed the track into a three-lane surf game after the Edge-style game
+request. Left / Right or A / D move one lane per press; Space / Up still
+hop. Rocks and pages approach together in different lanes. Every three
+pages earn a shield that absorbs one rock, once for that pass. Restart
+clears the pages and shield as well as the distance.
+
+The sea, board, rocks and pages are WinUI shapes, with no copied assets
+or new packages. The playfield takes focus when it loads and again after
+the tab selection settles, so the opening chord can hand over to the
+game's keys.

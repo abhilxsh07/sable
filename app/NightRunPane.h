@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/night_run.h"
 #include <chrono>
 #include <memory>
+#include <vector>
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
@@ -43,6 +44,7 @@ class Pane {
 	}
 	bool focus();
 	void key();
+	void steer(int direction);
 	void pause();
 
   private:
@@ -68,6 +70,8 @@ class Pane {
 	winrt::Microsoft::UI::Xaml::Controls::Button m_play, m_restart, m_mute;
 	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_score, m_status;
 	winrt::Microsoft::UI::Xaml::Shapes::Rectangle m_runner, m_obstacle;
-	std::uint64_t m_shownScore = 0;
+	winrt::Microsoft::UI::Xaml::Shapes::Rectangle m_page;
+	winrt::Microsoft::UI::Xaml::Shapes::Ellipse m_head, m_shield;
+	std::vector<winrt::Microsoft::UI::Xaml::Shapes::Rectangle> m_waves;
 };
 } // namespace night_run

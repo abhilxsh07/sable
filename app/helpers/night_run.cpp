@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace night_run {
 void Run::start() {
 	m_phase = Phase::Running;
+	m_lane = m_obstacleLane = 1;
+	m_pageLane = 0;
+	m_pages = 0;
+	m_shield = m_pageTaken = m_hit = false;
 	m_lift = 0;
 	m_velocity = 0;
 	m_distance = 0;
@@ -40,6 +44,12 @@ void Run::pause() {
 void Run::resume() {
 	if (m_phase == Phase::Paused) {
 		m_phase = Phase::Running;
+	}
+}
+
+void Run::steer(int direction) {
+	if (m_phase == Phase::Running) {
+		m_lane = std::clamp(m_lane + std::clamp(direction, -1, 1), 0, 2);
 	}
 }
 
@@ -67,14 +77,32 @@ bool Run::tick() {
 	const double travel = std::min(520.0, 260 + m_distance / 48) * step;
 	m_distance += travel;
 	m_obstacleX -= travel;
-	if (m_obstacleX < RUNNER_X + RUNNER_WIDTH &&
-	    m_obstacleX + OBSTACLE_WIDTH > RUNNER_X && m_lift < m_obstacleHeight) {
-		m_phase = Phase::Crashed;
-		return true;
+	const bool passing = m_obstacleX < RUNNER_X + RUNNER_WIDTH &&
+	                     m_obstacleX + OBSTACLE_WIDTH > RUNNER_X;
+	if (passing && !m_pageTaken && m_lane == m_pageLane) {
+		m_pageTaken = true;
+		++m_pages;
+		if (m_pages % 3 == 0) {
+			m_shield = true;
+		}
+	}
+	if (passing && !m_hit && m_lane == m_obstacleLane &&
+	    m_lift < m_obstacleHeight) {
+		m_hit = true;
+		if (m_shield) {
+			m_shield = false;
+		} else {
+			m_phase = Phase::Crashed;
+			return true;
+		}
 	}
 	if (m_obstacleX + OBSTACLE_WIDTH <= 0) {
 		m_obstacleX = FIELD_WIDTH + static_cast<double>(m_random() % 80);
 		m_obstacleHeight = 26 + static_cast<double>(m_random() % 17);
+		m_obstacleLane = static_cast<int>(m_random() % 3);
+		m_pageLane =
+		    (m_obstacleLane + 1 + static_cast<int>(m_random() % 2)) % 3;
+		m_pageTaken = m_hit = false;
 	}
 	return false;
 }

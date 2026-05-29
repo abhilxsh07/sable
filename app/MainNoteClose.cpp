@@ -87,14 +87,18 @@ fire_and_forget MainWindow::closeTab(TabViewItem tab) {
 	}
 	m_closePending = true;
 	try {
-		const auto found = std::find_if(
-		    m_tabs.begin(), m_tabs.end(),
-		    [&tab](const auto& entry) { return entry.tab == tab; });
-		if (found != m_tabs.end()) {
-			const auto document = found->viewer;
-			Tabs().SelectedItem(tab);
-			if (co_await confirmNotes(document)) {
-				removeTab(tab);
+		if (m_nightRunTab && tab == m_nightRunTab) {
+			removeTab(tab);
+		} else {
+			const auto found = std::find_if(
+			    m_tabs.begin(), m_tabs.end(),
+			    [&tab](const auto& entry) { return entry.tab == tab; });
+			if (found != m_tabs.end()) {
+				const auto document = found->viewer;
+				Tabs().SelectedItem(tab);
+				if (co_await confirmNotes(document)) {
+					removeTab(tab);
+				}
 			}
 		}
 	} catch (...) {

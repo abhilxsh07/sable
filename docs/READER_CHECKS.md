@@ -418,6 +418,13 @@ fit, text clarity, pointer/selection alignment and return to the first screen.
 Press Shift+Alt+M a few times on home and in a document: the green MORTY!
 alerts pile up and fade out one by one.
 
+Press Shift+Alt+T to open Night Run. Space or Up starts the run and hops.
+Steer with Left / Right or A / D. Collect three pages for a shield, then
+hit a rock: the shield goes away and the run continues. A second rock
+ends it. Check Restart clears distance, pages and shield; Mute silences
+jump and crash. Switch to a PDF or another window and return to the paused
+run. Press Shift+Alt+T to select the same tab, then Ctrl+W to close it.
+
 ## Automated input check
 
 The native diagnostic build has SableKeyboardInputTest=true together with

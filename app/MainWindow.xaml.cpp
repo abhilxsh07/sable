@@ -44,6 +44,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "SettingsWindow.h"
 #include "Appearance.h"
 #include "MusicPane.h"
+#include "NightRunPane.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Windowing;
@@ -189,6 +190,9 @@ void MainWindow::InitializeComponent() {
 			return;
 		}
 		if (e.WindowActivationState() == WindowActivationState::Deactivated) {
+			if (self->m_nightRun) {
+				self->m_nightRun->pause();
+			}
 			for (const auto& entry : self->m_tabs) {
 				get_self<ViewerPage>(entry.viewer)->stopPan(true);
 			}
@@ -256,6 +260,8 @@ void MainWindow::InitializeComponent() {
 	// the document goes before App's PDFium engine does
 	Closed([this](auto&&, auto&&) {
 		m_closing = true;
+		m_nightRun.reset();
+		m_nightRunTab = nullptr;
 		for (const auto& morty : m_morties) {
 			morty.timer.Stop();
 		}
@@ -508,6 +514,31 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	selectTab();
 }
 
+void MainWindow::openNightRun() {
+	if (!m_nightRun) {
+		m_nightRun = night_run::Pane::create(DispatcherQueue());
+		m_nightRunTab = Controls::TabViewItem{};
+		m_nightRunTab.Header(box_value(L"Night Run"));
+		Automation::AutomationProperties::SetName(m_nightRunTab, L"Night Run");
+		Documents().Children().Append(m_nightRun->element());
+		Tabs().TabItems().Append(m_nightRunTab);
+	}
+	Tabs().SelectedItem(m_nightRunTab);
+	selectTab();
+	DispatcherQueue().TryEnqueue(
+	    Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+	    [weak = get_weak()] {
+		    if (const auto self = weak.get();
+		        self && self->nightRunSelected()) {
+			    self->m_nightRun->focus();
+		    }
+	    });
+}
+
+bool MainWindow::nightRunSelected() {
+	return m_nightRun && Tabs().SelectedItem() == m_nightRunTab;
+}
+
 winrt::Sable::ViewerPage MainWindow::Viewer() {
 	for (const auto& entry : m_tabs) {
 		if (entry.tab == Tabs().SelectedItem()) {
@@ -572,7 +603,7 @@ void MainWindow::dispatchShortcut(const helpers::Shortcut& shortcut) {
 		pickDocuments();
 	} else if (action == "reopen-tab") {
 		reopenTab();
-	} else if (Viewer()) {
+	} else if (Viewer() || nightRunSelected()) {
 		const int current = Tabs().SelectedIndex();
 		if (action == "close-tab") {
 			closeTab(Tabs().SelectedItem().as<Controls::TabViewItem>());
@@ -597,17 +628,25 @@ void MainWindow::selectTab() {
 	}
 	const auto viewer = Viewer();
 	const bool hasDocument = viewer != nullptr;
+	const bool gameSelected = nightRunSelected();
+	const bool hasContent = hasDocument || gameSelected;
 	if (m_saveCopyCancel && m_saveCopyViewer.get() != viewer) {
 		m_saveCopyCancel->store(true);
 	}
 	if (m_presentationViewer && m_presentationViewer != viewer) {
 		endPresentation();
 	}
-	Nav().Visibility(hasDocument ? Visibility::Collapsed : Visibility::Visible);
-	Documents().Visibility(hasDocument ? Visibility::Visible
-	                                   : Visibility::Collapsed);
-	Tabs().Visibility(hasDocument ? Visibility::Visible
-	                              : Visibility::Collapsed);
+	Nav().Visibility(hasContent ? Visibility::Collapsed : Visibility::Visible);
+	Documents().Visibility(hasContent ? Visibility::Visible
+	                                  : Visibility::Collapsed);
+	Tabs().Visibility(hasContent ? Visibility::Visible : Visibility::Collapsed);
+	if (m_nightRun) {
+		m_nightRun->element().Visibility(gameSelected ? Visibility::Visible
+		                                              : Visibility::Collapsed);
+		if (!gameSelected) {
+			m_nightRun->pause();
+		}
+	}
 	Presets().Visibility(hasDocument ? Visibility::Visible
 	                                 : Visibility::Collapsed);
 	ResetZoomItem().IsEnabled(hasDocument);
@@ -659,28 +698,48 @@ void MainWindow::selectTab() {
 }
 
 void MainWindow::removeTab(Controls::TabViewItem tab) {
-	const auto found =
-	    std::find_if(m_tabs.begin(), m_tabs.end(),
-	                 [&tab](const auto& entry) { return entry.tab == tab; });
-	if (m_closing || found == m_tabs.end()) {
+	if (m_closing) {
 		return;
 	}
-	if (found->viewer == m_presentationViewer) {
-		endPresentation();
-	}
-	// port of app/helpers/file.ts close handler (L125-132)
-	m_closedTabs.push_back(found->path);
-	get_self<ViewerPage>(found->viewer)->close();
+	const bool closingGame = m_nightRun && tab == m_nightRunTab;
+	const bool restoreDocument = closingGame && nightRunSelected();
 	uint32_t index = 0;
-	if (Documents().Children().IndexOf(found->viewer, index)) {
-		Documents().Children().RemoveAt(index);
+	if (closingGame) {
+		m_nightRun->pause();
+		if (Documents().Children().IndexOf(m_nightRun->element(), index)) {
+			Documents().Children().RemoveAt(index);
+		}
+		m_nightRun.reset();
+		m_nightRunTab = nullptr;
+	} else {
+		const auto found = std::find_if(
+		    m_tabs.begin(), m_tabs.end(),
+		    [&tab](const auto& entry) { return entry.tab == tab; });
+		if (found == m_tabs.end()) {
+			return;
+		}
+		if (found->viewer == m_presentationViewer) {
+			endPresentation();
+		}
+		// port of app/helpers/file.ts close handler (L125-132)
+		m_closedTabs.push_back(found->path);
+		get_self<ViewerPage>(found->viewer)->close();
+		if (Documents().Children().IndexOf(found->viewer, index)) {
+			Documents().Children().RemoveAt(index);
+		}
+		m_tabs.erase(found);
 	}
-	m_tabs.erase(found);
-	if (Tabs().TabItems().IndexOf(tab, index)) {
-		Tabs().TabItems().RemoveAt(index);
+	auto items = Tabs().TabItems();
+	if (items.IndexOf(tab, index)) {
+		// select by item: the next PDF can inherit the game's old index
+		if (restoreDocument && items.Size() > 1) {
+			const auto next = index + 1 < items.Size() ? index + 1 : index - 1;
+			Tabs().SelectedItem(items.GetAt(next));
+		}
+		items.RemoveAt(index);
 	}
 	selectTab();
-	// the removed viewer may have had the focus
+	// the removed tab may have had the focus
 	DispatcherQueue().TryEnqueue([weak = get_weak()] {
 		if (const auto self = weak.get()) {
 			self->keepFocus();
@@ -699,6 +758,9 @@ void MainWindow::keepFocus() {
 	}
 	if (const auto viewer = Viewer();
 	    viewer && get_self<ViewerPage>(viewer)->takeFocus()) {
+		return;
+	}
+	if (nightRunSelected() && m_nightRun->focus()) {
 		return;
 	}
 	if (const auto tab =
