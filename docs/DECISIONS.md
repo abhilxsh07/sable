@@ -2778,4 +2778,12 @@ obstacle at a time and a distance score. A fixed step drives collisions
 and the pace picks up until it reaches a cap. A paused run keeps its place.
 The jump and crash sounds are synthesized locally and use Windows XAudio2
 with the game-effects category. The sounds need no bundled assets or
-packages. The shortcut and game page come next.
+packages.
+
+## Night Run page (2026-11-10)
+
+The page draws a night track in WinUI and scales it to the tab. Play
+starts the run, Pause holds it and Restart resets the score. Space and Up
+jump. Mute stops the cue and stays in effect for that open game. A
+stalled dispatcher catches up only a few steps so a stall can't run the
+whole game in the background.
