@@ -2770,3 +2770,12 @@ least 0.7 s apart, so a burst of presses still fades one at a time. Each
 fade takes 0.8 s, and the rest slide up to fill the gap. A full pile of
 eight lets its oldest go straight away, and the close button removes just
 that alert.
+
+## Night Run game logic and sound (2026-11-10)
+
+I kept Night Run separate from the reader. The runner has one jump, an
+obstacle at a time and a distance score. A fixed step drives collisions
+and the pace picks up until it reaches a cap. A paused run keeps its place.
+The jump and crash sounds are synthesized locally and use Windows XAudio2
+with the game-effects category. The sounds need no bundled assets or
+packages. The shortcut and game page come next.

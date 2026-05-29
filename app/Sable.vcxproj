@@ -116,7 +116,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<Link>
 			<!-- ShellExecuteW, and the open dialog later on -->
-			<AdditionalDependencies>shell32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>shell32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -167,6 +167,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="SettingsWindow.h" />
 		<ClInclude Include="Appearance.h" />
 		<ClInclude Include="MusicSession.h" />
+		<ClInclude Include="NightRunAudio.h" />
+		<ClInclude Include="helpers\night_run.h" />
 		<ClInclude Include="MusicPane.h" />
 		<ClInclude Include="App.xaml.h">
 			<DependentUpon>App.xaml</DependentUpon>
@@ -199,6 +201,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="SettingsLayout.cpp" />
 		<ClCompile Include="Appearance.cpp" />
 		<ClCompile Include="MusicSession.cpp" />
+		<ClCompile Include="NightRunAudio.cpp" />
+		<ClCompile Include="helpers\night_run.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
 		<ClCompile Include="MusicMetadata.cpp" />
 		<ClCompile Include="MusicCommands.cpp" />
 		<ClCompile Include="MusicPane.cpp" />
