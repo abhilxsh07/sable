@@ -83,15 +83,30 @@ void Audio::play(Cue cue) noexcept {
 	// https://learn.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-ixaudio2sourcevoice-submitsourcebuffer
 	static const auto jump = sweep<SAMPLE_RATE / 12>(390, 770);
 	static const auto crash = sweep<SAMPLE_RATE / 5>(245, 80);
-	XAUDIO2_BUFFER buffer{};
-	buffer.Flags = XAUDIO2_END_OF_STREAM;
-	if (cue == Cue::Jump) {
-		buffer.pAudioData = reinterpret_cast<const BYTE*>(jump.data());
-		buffer.AudioBytes = static_cast<UINT32>(jump.size() * sizeof(jump[0]));
-	} else {
-		buffer.pAudioData = reinterpret_cast<const BYTE*>(crash.data());
+	static const auto page = sweep<SAMPLE_RATE / 16>(880, 1320);
+	static const auto ink = sweep<SAMPLE_RATE / 8>(210, 120);
+	const auto use = [](const auto& samples) {
+		XAUDIO2_BUFFER buffer{};
+		buffer.Flags = XAUDIO2_END_OF_STREAM;
+		buffer.pAudioData = reinterpret_cast<const BYTE*>(samples.data());
 		buffer.AudioBytes =
-		    static_cast<UINT32>(crash.size() * sizeof(crash[0]));
+		    static_cast<UINT32>(samples.size() * sizeof(samples[0]));
+		return buffer;
+	};
+	XAUDIO2_BUFFER buffer{};
+	switch (cue) {
+	case Cue::Jump:
+		buffer = use(jump);
+		break;
+	case Cue::Crash:
+		buffer = use(crash);
+		break;
+	case Cue::Page:
+		buffer = use(page);
+		break;
+	case Cue::Ink:
+		buffer = use(ink);
+		break;
 	}
 	m_voice->FlushSourceBuffers();
 	if (SUCCEEDED(m_voice->SubmitSourceBuffer(&buffer))) {

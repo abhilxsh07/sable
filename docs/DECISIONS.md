@@ -2806,3 +2806,23 @@ The sea, board, rocks and pages are WinUI shapes, with no copied assets
 or new packages. The playfield takes focus when it loads and again after
 the tab selection settles, so the opening chord can hand over to the
 game's keys.
+
+## Night Run waves, hazards and the bookworm (2026-11-10)
+
+The single rock made every pass the same choice, so the track now carries
+rows of three lanes, and harder patterns join in as the distance grows: one
+rock, staples right across, rock and ink, an ink field, a two-rock wall,
+two walls with neighbouring gaps, and a rock beside two staple lanes. Every
+row leaves at least one way through, and a staple row leaves time to land
+before it.
+
+Rocks can't be hopped any more; you steer round them, or the shield takes
+one. Staples need a hop. Ink only slows the board for a second. A bookworm
+follows the board: it creeps closer on its own and faster later on, ink and
+a broken shield let it close in, and pages push it back. It ends the run
+when it catches up.
+
+The best distance is kept in night-run.json beside config.json rather than
+in config.json, so the settings file keeps the shape NightPDF wrote. A
+missing or unreadable file counts as 0. The page and ink cues are made in
+code like the jump and crash ones.

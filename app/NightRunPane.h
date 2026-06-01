@@ -22,10 +22,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "NightRunAudio.h"
 #include "helpers/night_run.h"
 #include <chrono>
+#include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <vector>
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 
 namespace winrt::Sable::implementation {
@@ -35,8 +38,10 @@ struct TabsTest;
 namespace night_run {
 class Pane {
   public:
+	// best is the file the best distance is kept in; empty keeps it in memory
 	static std::shared_ptr<Pane>
-	create(const winrt::Microsoft::UI::Dispatching::DispatcherQueue& queue);
+	create(const winrt::Microsoft::UI::Dispatching::DispatcherQueue& queue,
+	       std::filesystem::path best);
 	~Pane();
 
 	winrt::Microsoft::UI::Xaml::FrameworkElement element() const {
@@ -52,26 +57,36 @@ class Pane {
 	friend struct winrt::Sable::implementation::TabsTest;
 #endif
 	using Clock = std::chrono::steady_clock;
-	explicit Pane(
-	    const winrt::Microsoft::UI::Dispatching::DispatcherQueue& queue);
+	Pane(const winrt::Microsoft::UI::Dispatching::DispatcherQueue& queue,
+	     std::filesystem::path best);
 	void start(bool restart);
 	void tick();
 	void render();
 	void updateControls();
 	void sound(Cue cue);
+	void finish();
 
 	Run m_run{static_cast<unsigned>(Clock::now().time_since_epoch().count())};
 	Audio m_audio;
 	bool m_muted = false;
+	std::filesystem::path m_bestFile;
+	std::uint64_t m_best = 0;
+	bool m_newBest = false;
+	double m_wormX = 0;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_timer{nullptr};
 	Clock::time_point m_next;
 	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer m_root;
 	winrt::Microsoft::UI::Xaml::Controls::ContentControl m_field;
 	winrt::Microsoft::UI::Xaml::Controls::Button m_play, m_restart, m_mute;
 	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_score, m_status;
-	winrt::Microsoft::UI::Xaml::Shapes::Rectangle m_runner, m_obstacle;
-	winrt::Microsoft::UI::Xaml::Shapes::Rectangle m_page;
+	winrt::Microsoft::UI::Xaml::Shapes::Rectangle m_runner;
 	winrt::Microsoft::UI::Xaml::Shapes::Ellipse m_head, m_shield;
+	winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_board{nullptr},
+	    m_inked{nullptr};
 	std::vector<winrt::Microsoft::UI::Xaml::Shapes::Rectangle> m_waves;
+	// one shape per lane of every row that can be on the track at once
+	std::vector<winrt::Microsoft::UI::Xaml::Shapes::Rectangle> m_cells;
+	std::vector<Cell> m_cellKinds;
+	std::vector<winrt::Microsoft::UI::Xaml::Shapes::Ellipse> m_worm;
 };
 } // namespace night_run

@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <xaudio2.h>
 
 namespace night_run {
-enum class Cue { Jump, Crash };
+enum class Cue { Jump, Crash, Page, Ink };
 
 class Audio {
   public:

@@ -516,7 +516,11 @@ void MainWindow::openDocument(pdf::Engine& engine,
 
 void MainWindow::openNightRun() {
 	if (!m_nightRun) {
-		m_nightRun = night_run::Pane::create(DispatcherQueue());
+		const auto config = configFile();
+		m_nightRun = night_run::Pane::create(
+		    DispatcherQueue(), config.empty()
+		                           ? std::filesystem::path{}
+		                           : config.parent_path() / L"night-run.json");
 		m_nightRunTab = Controls::TabViewItem{};
 		m_nightRunTab.Header(box_value(L"Night Run"));
 		Automation::AutomationProperties::SetName(m_nightRunTab, L"Night Run");

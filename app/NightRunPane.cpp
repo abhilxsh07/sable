@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Text.h>
 
@@ -47,9 +48,63 @@ void place(const Shapes::Rectangle& shape, double width, double height,
 	Canvas::SetLeft(shape, x);
 	Canvas::SetTop(shape, y);
 }
+
+void place(const Shapes::Ellipse& shape, double size, double x, double y) {
+	shape.Width(size);
+	shape.Height(size);
+	Canvas::SetLeft(shape, x - size / 2);
+	Canvas::SetTop(shape, y - size / 2);
+}
+
+double laneX(int lane) {
+	return 160.0 * (lane + 1);
+}
+
+// rows come down the track towards the board
+double approach(double x) {
+	return GROUND - (x - RUNNER_X);
+}
+
+void style(const Shapes::Rectangle& shape, Cell cell) {
+	switch (cell) {
+	case Cell::Rock:
+		shape.Fill(brush(119, 137, 151));
+		shape.StrokeThickness(0);
+		shape.RadiusX(12);
+		shape.RadiusY(12);
+		break;
+	case Cell::Staple:
+		shape.Fill(brush(196, 204, 214));
+		shape.Stroke(brush(120, 132, 146));
+		shape.StrokeThickness(2);
+		shape.RadiusX(3);
+		shape.RadiusY(3);
+		break;
+	case Cell::Ink:
+		shape.Fill(brush(24, 16, 40));
+		shape.Stroke(brush(110, 86, 170));
+		shape.StrokeThickness(2);
+		shape.RadiusX(15);
+		shape.RadiusY(15);
+		break;
+	default:
+		shape.Fill(brush(255, 244, 201));
+		shape.Stroke(brush(215, 177, 86));
+		shape.StrokeThickness(2);
+		shape.RadiusX(2);
+		shape.RadiusY(2);
+		break;
+	}
+}
+
+// enough for every row between the top and bottom of the track
+constexpr std::size_t CELLS = 24;
+constexpr std::size_t WORM_SEGMENTS = 5;
 } // namespace
 
-Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
+Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue,
+           std::filesystem::path best)
+    : m_bestFile(std::move(best)), m_best(loadBest(m_bestFile)) {
 	m_root.Visibility(Visibility::Collapsed);
 	m_root.HorizontalContentAlignment(HorizontalAlignment::Stretch);
 	m_root.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
@@ -65,7 +120,8 @@ Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 	title.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
 	layout.Children().Append(title);
 	TextBlock tips;
-	tips.Text(L"Left / Right or A / D to steer · Space / Up to hop");
+	tips.Text(L"Left / Right or A / D to steer around rocks · Space / Up to "
+	          L"hop staples and ink · Pages keep the bookworm back");
 	tips.TextWrapping(TextWrapping::Wrap);
 	layout.Children().Append(tips);
 
@@ -84,13 +140,24 @@ Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 		track.Children().Append(wave);
 		m_waves.push_back(wave);
 	}
+	for (std::size_t i = 0; i < CELLS; ++i) {
+		Shapes::Rectangle cell;
+		cell.Visibility(Visibility::Collapsed);
+		track.Children().Append(cell);
+		m_cells.push_back(cell);
+	}
+	m_cellKinds.assign(CELLS, Cell::Empty);
+	for (std::size_t i = 0; i < WORM_SEGMENTS; ++i) {
+		Shapes::Ellipse segment;
+		segment.Fill(i == 0 ? brush(226, 140, 176) : brush(196, 112, 150));
+		track.Children().Append(segment);
+		m_worm.push_back(segment);
+	}
+	m_wormX = laneX(1);
+	m_board = brush(123, 225, 186);
+	m_inked = brush(150, 130, 200);
 	m_runner.RadiusX(12);
 	m_runner.RadiusY(12);
-	m_obstacle.RadiusX(12);
-	m_obstacle.RadiusY(12);
-	m_page.Fill(brush(255, 244, 201));
-	m_page.Stroke(brush(215, 177, 86));
-	m_page.StrokeThickness(2);
 	m_head.Fill(brush(244, 204, 167));
 	m_head.Width(14);
 	m_head.Height(14);
@@ -98,11 +165,8 @@ Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 	m_shield.Height(68);
 	m_shield.Stroke(brush(255, 224, 135));
 	m_shield.StrokeThickness(3);
-	m_runner.Fill(brush(123, 225, 186));
-	m_obstacle.Fill(brush(119, 137, 151));
+	m_runner.Fill(m_board);
 	track.Children().Append(m_runner);
-	track.Children().Append(m_obstacle);
-	track.Children().Append(m_page);
 	track.Children().Append(m_head);
 	track.Children().Append(m_shield);
 
@@ -140,8 +204,9 @@ Pane::Pane(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
 }
 
 std::shared_ptr<Pane>
-Pane::create(const Microsoft::UI::Dispatching::DispatcherQueue& queue) {
-	auto pane = std::shared_ptr<Pane>(new Pane(queue));
+Pane::create(const Microsoft::UI::Dispatching::DispatcherQueue& queue,
+             std::filesystem::path best) {
+	auto pane = std::shared_ptr<Pane>(new Pane(queue, std::move(best)));
 	const std::weak_ptr<Pane> weak = pane;
 	pane->m_field.Loaded([weak](auto&&, auto&&) {
 		if (const auto self = weak.lock();
@@ -207,6 +272,7 @@ void Pane::key() {
 
 void Pane::start(bool restart) {
 	m_audio.stop();
+	m_newBest = false;
 	if (!restart && m_run.phase() == Phase::Paused) {
 		m_run.resume();
 	} else {
@@ -236,65 +302,152 @@ void Pane::tick() {
 	m_next = (std::max)(m_next, now - 5 * STEP);
 	while (m_next <= now) {
 		m_next += STEP;
-		if (m_run.tick()) {
-			m_timer.Stop();
-			sound(Cue::Crash);
-			updateControls();
+		const bool ended = m_run.tick();
+		const auto events = m_run.events();
+		if (ended) {
+			finish();
 			break;
+		}
+		if (events & EVENT_SHIELD_LOST) {
+			sound(Cue::Crash);
+		} else if (events & EVENT_INK) {
+			sound(Cue::Ink);
+		} else if (events & EVENT_PAGE) {
+			sound(Cue::Page);
 		}
 	}
 	render();
 }
 
 void Pane::render() {
-	const double x = 160.0 * (m_run.lane() + 1);
+	const double x = laneX(m_run.lane());
 	const double y = GROUND - m_run.lift() / 4;
 	place(m_runner, 24, 48, x - 12, y - 24);
+	m_runner.Fill(m_run.slowed() ? m_inked : m_board);
 	Canvas::SetLeft(m_head, x - 7);
 	Canvas::SetTop(m_head, y - 15);
 	Canvas::SetLeft(m_shield, x - 29);
 	Canvas::SetTop(m_shield, y - 34);
 	m_shield.Visibility(m_run.shield() ? Visibility::Visible
 	                                   : Visibility::Collapsed);
-	const double approach = GROUND - (m_run.obstacleX() - RUNNER_X);
-	place(m_obstacle, 38, 38, 160.0 * (m_run.obstacleLane() + 1) - 19,
-	      approach - 19);
-	place(m_page, 22, 28, 160.0 * (m_run.pageLane() + 1) - 11, approach - 14);
-	m_page.Visibility(m_run.pageTaken() ? Visibility::Collapsed
-	                                    : Visibility::Visible);
+
+	std::size_t used = 0;
+	for (const auto& row : m_run.rows()) {
+		const double top = approach(row.x);
+		if (top < -40 || top > FIELD_HEIGHT + 40) {
+			continue;
+		}
+		for (int lane = 0; lane < 3 && used < m_cells.size(); ++lane) {
+			const Cell cell = row.cells[static_cast<std::size_t>(lane)];
+			if (cell == Cell::Empty || (cell == Cell::Page && row.taken)) {
+				continue;
+			}
+			const auto& shape = m_cells[used];
+			const double centre = laneX(lane);
+			// restyle a pooled shape only when it changes kind
+			const bool restyle = m_cellKinds[used] != cell;
+			m_cellKinds[used++] = cell;
+			if (restyle) {
+				style(shape, cell);
+			}
+			switch (cell) {
+			case Cell::Rock:
+				place(shape, 38, 38, centre - 19, top - 19);
+				break;
+			case Cell::Staple:
+				place(shape, 96, 10, centre - 48, top - 5);
+				break;
+			case Cell::Ink:
+				place(shape, 50, 30, centre - 25, top - 15);
+				break;
+			default:
+				place(shape, 22, 28, centre - 11, top - 14);
+				break;
+			}
+			shape.Visibility(Visibility::Visible);
+		}
+	}
+	for (; used < m_cells.size(); ++used) {
+		m_cells[used].Visibility(Visibility::Collapsed);
+	}
+
+	// the bookworm trails the board from below and rises as it closes in
+	m_wormX += (x - m_wormX) * 0.15;
+	const double wormTop = GROUND + 36 + m_run.worm() * 0.9;
+	const double wiggle = static_cast<double>(m_run.score()) * 0.4;
+	for (std::size_t i = 0; i < m_worm.size(); ++i) {
+		place(m_worm[i], i == 0 ? 30 : 26,
+		      m_wormX + std::sin(wiggle + static_cast<double>(i)) * 6,
+		      wormTop + 18 * static_cast<double>(i));
+	}
+
 	for (std::size_t i = 0; i < m_waves.size(); ++i) {
 		place(m_waves[i], 28, 3, 38 + static_cast<double>((i * 97) % 560),
 		      std::fmod(static_cast<double>(i * 47 + m_run.score() * 10),
 		                FIELD_HEIGHT));
 	}
-	m_score.Text(L"Distance " + std::to_wstring(m_run.score()));
+	m_score.Text(L"Distance " + std::to_wstring(m_run.score()) + L" · Best " +
+	             std::to_wstring((std::max)(m_best, m_run.score())));
 	if (m_run.phase() == Phase::Running) {
-		m_status.Text(L"Pages " + std::to_wstring(m_run.pages()) +
-		              (m_run.shield() ? L" · Shield ready"
-		                              : L" · Collect 3 for a shield"));
+		std::wstring status = L"Pages " + std::to_wstring(m_run.pages()) +
+		                      (m_run.shield() ? L" · Shield ready"
+		                                      : L" · Collect 3 for a shield");
+		if (m_run.slowed()) {
+			status += L" · Inked!";
+		} else if (m_run.worm() < 60) {
+			status += L" · The bookworm is closing in";
+		}
+		m_status.Text(status);
 	}
+}
+
+void Pane::finish() {
+	m_timer.Stop();
+	sound(Cue::Crash);
+	if (m_run.score() > m_best) {
+		m_best = m_run.score();
+		m_newBest = true;
+		saveBest(m_bestFile, m_best);
+	}
+	updateControls();
 }
 
 void Pane::updateControls() {
 	switch (m_run.phase()) {
 	case Phase::Ready:
 		m_play.Content(box_value(L"Play"));
-		m_status.Text(L"Space to sail. Left / Right or A / D to steer. Space / "
-		              L"Up to hop.");
+		m_status.Text(L"Space to sail. Dodge rocks, hop staples and ink, and "
+		              L"grab pages before the bookworm catches up.");
 		break;
 	case Phase::Running:
 		m_play.Content(box_value(L"Pause"));
-		m_status.Text(
-		    L"Collect pages for a shield. Dodge rocks or hop with Space.");
+		m_status.Text(L"Collect pages for a shield. Steer around rocks, hop "
+		              L"staples.");
 		break;
 	case Phase::Paused:
 		m_play.Content(box_value(L"Resume"));
 		m_status.Text(L"Paused. Press Resume or Space to keep going.");
 		break;
-	case Phase::Crashed:
+	case Phase::Crashed: {
 		m_play.Content(box_value(L"Play again"));
-		m_status.Text(L"Run ended. Press Space to try again.");
+		std::wstring status;
+		switch (m_run.ending()) {
+		case Ending::Staple:
+			status = L"You caught a staple.";
+			break;
+		case Ending::Worm:
+			status = L"The bookworm caught you.";
+			break;
+		default:
+			status = L"You hit a rock.";
+			break;
+		}
+		if (m_newBest) {
+			status += L" New best!";
+		}
+		m_status.Text(status + L" Press Space to try again.");
 		break;
+	}
 	}
 	m_restart.IsEnabled(m_run.phase() != Phase::Ready);
 }
