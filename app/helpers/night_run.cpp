@@ -158,7 +158,7 @@ void Run::spawn(double x) {
 		break;
 	case Pattern::Staples:
 		row.cells = {Cell::Staple, Cell::Staple, Cell::Staple};
-		row.cells[a] = Cell::Page;
+		row.cells[a] = Cell::StaplePage;
 		gap = (std::max)(gap, pace * 0.8);
 		break;
 	case Pattern::RockInk:
@@ -192,7 +192,7 @@ void Run::spawn(double x) {
 	}
 	case Pattern::RockHop:
 		row.cells[a] = Cell::Rock;
-		row.cells[b] = Cell::Page;
+		row.cells[b] = Cell::StaplePage;
 		row.cells[c] = Cell::Staple;
 		gap = (std::max)(gap, pace * 0.8);
 		break;
@@ -208,7 +208,7 @@ void Run::end(Ending ending) {
 
 void Run::resolve(Row& row) {
 	const Cell cell = row.cells[static_cast<std::size_t>(m_lane)];
-	if (cell == Cell::Page) {
+	if (hasPage(cell) && (!hasStaple(cell) || m_lift >= STAPLE_HEIGHT)) {
 		if (!row.taken) {
 			row.taken = true;
 			++m_pages;
@@ -232,7 +232,7 @@ void Run::resolve(Row& row) {
 		return;
 	}
 	const bool rock = cell == Cell::Rock;
-	if (rock || (cell == Cell::Staple && m_lift < STAPLE_HEIGHT)) {
+	if (rock || (hasStaple(cell) && m_lift < STAPLE_HEIGHT)) {
 		row.hit = true;
 		if (m_shield) {
 			m_shield = false;

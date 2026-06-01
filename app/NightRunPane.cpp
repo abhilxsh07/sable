@@ -98,7 +98,7 @@ void style(const Shapes::Rectangle& shape, Cell cell) {
 }
 
 // enough for every row between the top and bottom of the track
-constexpr std::size_t CELLS = 24;
+constexpr std::size_t CELLS = 32;
 constexpr std::size_t WORM_SEGMENTS = 5;
 } // namespace
 
@@ -332,39 +332,47 @@ void Pane::render() {
 	                                   : Visibility::Collapsed);
 
 	std::size_t used = 0;
+	const auto showCell = [&](Cell cell, double centre, double top) {
+		if (used == m_cells.size()) {
+			return;
+		}
+		const auto& shape = m_cells[used];
+		// restyle a pooled shape only when it changes kind
+		if (m_cellKinds[used] != cell) {
+			m_cellKinds[used] = cell;
+			style(shape, cell);
+		}
+		++used;
+		switch (cell) {
+		case Cell::Rock:
+			place(shape, 38, 38, centre - 19, top - 19);
+			break;
+		case Cell::Staple:
+			place(shape, 96, 10, centre - 48, top - 5);
+			break;
+		case Cell::Ink:
+			place(shape, 50, 30, centre - 25, top - 15);
+			break;
+		default:
+			place(shape, 22, 28, centre - 11, top - 14);
+			break;
+		}
+		shape.Visibility(Visibility::Visible);
+	};
 	for (const auto& row : m_run.rows()) {
 		const double top = approach(row.x);
 		if (top < -40 || top > FIELD_HEIGHT + 40) {
 			continue;
 		}
-		for (int lane = 0; lane < 3 && used < m_cells.size(); ++lane) {
+		for (int lane = 0; lane < 3; ++lane) {
 			const Cell cell = row.cells[static_cast<std::size_t>(lane)];
-			if (cell == Cell::Empty || (cell == Cell::Page && row.taken)) {
-				continue;
-			}
-			const auto& shape = m_cells[used];
 			const double centre = laneX(lane);
-			// restyle a pooled shape only when it changes kind
-			const bool restyle = m_cellKinds[used] != cell;
-			m_cellKinds[used++] = cell;
-			if (restyle) {
-				style(shape, cell);
+			if (cell != Cell::Empty && cell != Cell::Page) {
+				showCell(hasStaple(cell) ? Cell::Staple : cell, centre, top);
 			}
-			switch (cell) {
-			case Cell::Rock:
-				place(shape, 38, 38, centre - 19, top - 19);
-				break;
-			case Cell::Staple:
-				place(shape, 96, 10, centre - 48, top - 5);
-				break;
-			case Cell::Ink:
-				place(shape, 50, 30, centre - 25, top - 15);
-				break;
-			default:
-				place(shape, 22, 28, centre - 11, top - 14);
-				break;
+			if (hasPage(cell) && !row.taken) {
+				showCell(Cell::Page, centre, top - (hasStaple(cell) ? 20 : 0));
 			}
-			shape.Visibility(Visibility::Visible);
 		}
 	}
 	for (; used < m_cells.size(); ++used) {

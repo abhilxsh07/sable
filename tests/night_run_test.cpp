@@ -54,6 +54,7 @@ unsigned until(night_run::Run& run, unsigned mask, int ticks = 300) {
 int rank(const Row& next, int lane) {
 	switch (next.cells[static_cast<std::size_t>(lane)]) {
 	case Cell::Page:
+	case Cell::StaplePage:
 		return next.taken ? 1 : 0;
 	case Cell::Empty:
 		return 1;
@@ -93,7 +94,7 @@ void drive(night_run::Run& run) {
 	run.steer((best > run.lane()) - (best < run.lane()));
 	const double lead =
 	    next->x - (night_run::RUNNER_X + night_run::RUNNER_WIDTH);
-	if (next->cells[static_cast<std::size_t>(best)] == Cell::Staple &&
+	if (night_run::hasStaple(next->cells[static_cast<std::size_t>(best)]) &&
 	    lead < run.speed() * 0.1) {
 		run.jump();
 	}
@@ -163,6 +164,26 @@ TEST(NightRun, StaplesNeedAHop) {
 	EXPECT_EQ(hopping.phase(), Phase::Running);
 	EXPECT_LT(hopping.rows().front().x + night_run::OBSTACLE_WIDTH,
 	          night_run::RUNNER_X);
+}
+
+TEST(NightRun, APageAboveAStapleStillNeedsAHop) {
+	const auto sheet = row(160, Cell::Staple, Cell::StaplePage, Cell::Staple);
+	night_run::Run sitting(7);
+	sitting.start();
+	sitting.layRows({sheet});
+	until(sitting, night_run::EVENT_PAGE);
+	EXPECT_EQ(sitting.ending(), Ending::Staple);
+	EXPECT_EQ(sitting.pages(), 0u);
+
+	night_run::Run hopping(7);
+	hopping.start();
+	hopping.layRows({sheet});
+	ASSERT_TRUE(hopping.jump());
+	EXPECT_TRUE(until(hopping, night_run::EVENT_PAGE) & night_run::EVENT_PAGE);
+	for (int i = 0; i < 40; ++i) {
+		ASSERT_FALSE(hopping.tick());
+	}
+	EXPECT_EQ(hopping.pages(), 1u);
 }
 
 TEST(NightRun, InkSlowsTheBoardAndFeedsTheWorm) {
@@ -308,7 +329,7 @@ TEST(NightRun, ACarefulRunnerGetsThroughEveryPattern) {
 				int rocks = 0;
 				for (const auto cell : ahead.cells) {
 					rocks += cell == Cell::Rock;
-					staples |= cell == Cell::Staple;
+					staples |= night_run::hasStaple(cell);
 					ink |= cell == Cell::Ink;
 				}
 				ASSERT_LT(rocks, 3) << "seed " << seed << " a row had no gap";
@@ -316,7 +337,8 @@ TEST(NightRun, ACarefulRunnerGetsThroughEveryPattern) {
 				if (run.score() < 140) {
 					ASSERT_LE(rocks, 1) << "seed " << seed;
 					for (const auto cell : ahead.cells) {
-						ASSERT_TRUE(cell != Cell::Staple && cell != Cell::Ink)
+						ASSERT_TRUE(!night_run::hasStaple(cell) &&
+						            cell != Cell::Ink)
 						    << "seed " << seed;
 					}
 				}

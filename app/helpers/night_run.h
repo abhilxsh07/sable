@@ -47,7 +47,15 @@ enum class Phase { Ready, Running, Paused, Crashed };
 enum class Ending { None, Rock, Staple, Worm };
 // what sits in one lane of a row. Rocks can't be hopped, staples must be,
 // ink only slows the board and pages float above the water.
-enum class Cell : std::uint8_t { Empty, Rock, Staple, Ink, Page };
+enum class Cell : std::uint8_t { Empty, Rock, Staple, Ink, Page, StaplePage };
+
+inline bool hasStaple(Cell cell) {
+	return cell == Cell::Staple || cell == Cell::StaplePage;
+}
+
+inline bool hasPage(Cell cell) {
+	return cell == Cell::Page || cell == Cell::StaplePage;
+}
 
 struct Row {
 	double x = 0;
