@@ -1196,8 +1196,7 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
-	void checkNightRun(MainWindow& owner) {
-		using night_run::Phase;
+	void openNightRun(MainWindow& owner) {
 		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
 		check(!owner.m_nightRun && owner.Tabs().TabItems().Size() == 0,
 		      "Night Run showed at startup");
@@ -1209,7 +1208,15 @@ struct TabsTest {
 		          owner.Nav().Visibility() == Visibility::Collapsed &&
 		          !owner.PrintItem().IsEnabled(),
 		      "the shortcut did not open the game from Home");
+	}
+	void checkNightRunKeys(MainWindow& owner) {
+		using night_run::Phase;
+		const auto modifiers = helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT;
 		const auto game = owner.m_nightRun;
+		const auto root = owner.RootGrid().XamlRoot();
+		check(game->playfieldFocused(
+		          Input::FocusManager::GetFocusedElement(root)),
+		      "the opening shortcut did not focus the playfield");
 		check(game->m_run.phase() == Phase::Ready && owner.routeKey(VK_UP, 0) &&
 		          game->m_run.phase() == Phase::Running,
 		      "the game did not start with the keyboard");
@@ -1221,6 +1228,16 @@ struct TabsTest {
 		game->m_next = std::chrono::steady_clock::now();
 		game->tick();
 		check(game->m_run.lift() > 0, "jump did not lift the runner");
+		check(owner.m_nightRunTab.Focus(FocusState::Keyboard) &&
+		          !owner.routeKey(VK_LEFT, 0) && game->m_run.lane() == 1,
+		      "the game took a tab strip arrow");
+		check(game->m_mute.Focus(FocusState::Keyboard) &&
+		          !owner.routeKey(VK_UP, 0) && !owner.routeKey(VK_SPACE, 0),
+		      "the game took keys from Mute");
+		check(game->focus() && owner.routeKey('D', 0) &&
+		          game->m_run.lane() == 2 && owner.routeKey('A', 0) &&
+		          game->m_run.lane() == 1,
+		      "focused gameplay did not steer the runner");
 		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 		const auto viewer = owner.Viewer();
 		const auto lift = game->m_run.lift();
@@ -1233,7 +1250,16 @@ struct TabsTest {
 		          game->m_run.phase() == Phase::Paused &&
 		          game->m_run.lift() == lift,
 		      "reselecting the game did not keep the paused run");
-		check(owner.routeKey(VK_UP, 0) && game->m_run.phase() == Phase::Running,
+	}
+	void closeNightRun(MainWindow& owner) {
+		using night_run::Phase;
+		const auto game = owner.m_nightRun;
+		const auto viewer = owner.m_tabs.front().viewer;
+		check(game->playfieldFocused(Input::FocusManager::GetFocusedElement(
+		          owner.RootGrid().XamlRoot())),
+		      "a background PDF took the focus from the track");
+		check(owner.routeKey(VK_SPACE, 0) &&
+		          game->m_run.phase() == Phase::Running,
 		      "the game did not resume");
 		check(owner.routeKey('W', helpers::SHORTCUT_CTRL),
 		      "the close-tab shortcut was not handled");
@@ -1249,6 +1275,21 @@ struct TabsTest {
 		      "closing the last tab did not return Home");
 	}
 	void finishTick(MainWindow& owner) {
+		if (step == 0) {
+			openNightRun(owner);
+			++step;
+			return;
+		}
+		if (step == 1) {
+			checkNightRunKeys(owner);
+			++step;
+			return;
+		}
+		if (!get_self<ViewerPage>(owner.m_tabs.front().viewer)->m_layout) {
+			check(ticks < 40, "the background PDF did not load");
+			return;
+		}
+		closeNightRun(owner);
 		check(Application::Current().RequestedTheme() ==
 		              ApplicationTheme::Dark &&
 		          owner.RootGrid().ActualTheme() == ElementTheme::Dark,
@@ -1298,7 +1339,6 @@ struct TabsTest {
 			owner.removeMorty(owner.m_morties.front().alert);
 		}
 		check(stack.Children().Size() == 0, "Morty alerts left behind");
-		checkNightRun(owner);
 		peerWindow = app.createWindow();
 		// the new window has no XamlRoot yet, so it can't route keys
 		peerWindow->showMorty();

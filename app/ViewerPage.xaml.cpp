@@ -1658,8 +1658,11 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		// full extent before applying -p, rather than clamping it to zero.
 		m_layoutUpdated = LayoutUpdated(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
-		// app.js: the keys work as soon as the document is in
-		Scroller().Focus(FocusState::Programmatic);
+		// app.js: the keys work as soon as the document is in. A document
+		// that opens behind another tab leaves that tab's focus alone.
+		if (Visibility() == XVisibility::Visible) {
+			Scroller().Focus(FocusState::Programmatic);
+		}
 		updateVisible();
 	} catch (...) {
 		m_layout.reset();

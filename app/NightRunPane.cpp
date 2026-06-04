@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string>
 #include <utility>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Text.h>
 
 using namespace winrt;
@@ -214,6 +215,11 @@ Pane::create(const Microsoft::UI::Dispatching::DispatcherQueue& queue,
 			self->focus();
 		}
 	});
+	pane->m_field.PointerPressed([weak](auto&&, auto&&) {
+		if (const auto self = weak.lock()) {
+			self->focus();
+		}
+	});
 	pane->m_timer.Tick([weak](auto&&, auto&&) {
 		if (const auto self = weak.lock()) {
 			self->tick();
@@ -243,6 +249,9 @@ Pane::create(const Microsoft::UI::Dispatching::DispatcherQueue& queue,
 			}
 			self->m_mute.Content(
 			    box_value(self->m_muted ? L"Unmute" : L"Mute"));
+			if (self->m_mute.FocusState() == FocusState::Pointer) {
+				self->focus();
+			}
 		}
 	});
 	return pane;
@@ -254,6 +263,11 @@ Pane::~Pane() {
 
 bool Pane::focus() {
 	return m_field.Focus(FocusState::Programmatic);
+}
+
+bool Pane::playfieldFocused(
+    const Windows::Foundation::IInspectable& focused) const {
+	return focused == m_field;
 }
 
 void Pane::steer(int direction) {

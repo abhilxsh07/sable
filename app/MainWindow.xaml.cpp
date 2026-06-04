@@ -645,10 +645,20 @@ void MainWindow::selectTab() {
 	                                  : Visibility::Collapsed);
 	Tabs().Visibility(hasContent ? Visibility::Visible : Visibility::Collapsed);
 	if (m_nightRun) {
+		const bool showingGame =
+		    gameSelected &&
+		    m_nightRun->element().Visibility() == Visibility::Collapsed;
 		m_nightRun->element().Visibility(gameSelected ? Visibility::Visible
 		                                              : Visibility::Collapsed);
 		if (!gameSelected) {
 			m_nightRun->pause();
+		} else if (showingGame) {
+			DispatcherQueue().TryEnqueue([weak = get_weak()] {
+				if (const auto self = weak.get();
+				    self && self->nightRunSelected()) {
+					self->keepFocus();
+				}
+			});
 		}
 	}
 	Presets().Visibility(hasDocument ? Visibility::Visible

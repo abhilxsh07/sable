@@ -96,21 +96,20 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 		}
 		return true;
 	}
-	if (nightRunSelected() && modifiers == 0 &&
-	    (key == VK_LEFT || key == VK_RIGHT || key == 'A' || key == 'D')) {
-		if (!repeated) {
-			m_nightRun->steer(key == VK_LEFT || key == 'A' ? -1 : 1);
+	if (modifiers == 0 && nightRunSelected() &&
+	    m_nightRun->playfieldFocused(focused)) {
+		if (key == VK_LEFT || key == VK_RIGHT || key == 'A' || key == 'D') {
+			if (!repeated) {
+				m_nightRun->steer(key == VK_LEFT || key == 'A' ? -1 : 1);
+			}
+			return true;
 		}
-		return true;
-	}
-	if (nightRunSelected() && modifiers == 0 &&
-	    (key == VK_UP ||
-	     (key == VK_SPACE &&
-	      !focused.try_as<Controls::Primitives::ButtonBase>()))) {
-		if (!repeated) {
-			m_nightRun->key();
+		if (key == VK_UP || key == VK_SPACE) {
+			if (!repeated) {
+				m_nightRun->key();
+			}
+			return true;
 		}
-		return true;
 	}
 	if (!editing) {
 		if (const auto active = self->Viewer()) {

@@ -48,6 +48,8 @@ class Pane {
 		return m_root;
 	}
 	bool focus();
+	bool playfieldFocused(
+	    const winrt::Windows::Foundation::IInspectable& focused) const;
 	void key();
 	void steer(int direction);
 	void pause();
