@@ -60,8 +60,9 @@ inline bool hasPage(Cell cell) {
 struct Row {
 	double x = 0;
 	std::array<Cell, 3> cells{};
-	// the runner already touched this row's hazard or took its page
+	// the runner already hit something, crossed ink or took its page
 	bool hit = false;
+	bool inked = false;
 	bool taken = false;
 };
 

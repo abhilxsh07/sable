@@ -214,6 +214,16 @@ TEST(NightRun, InkSlowsTheBoardAndFeedsTheWorm) {
 	EXPECT_FALSE(skimming.slowed());
 }
 
+TEST(NightRun, CrossingInkDoesNotMakeTheNextLaneSafe) {
+	night_run::Run run(7);
+	run.start();
+	run.layRows({row(150, Cell::Rock, Cell::Ink, Cell::Page)});
+	ASSERT_TRUE(until(run, night_run::EVENT_INK) & night_run::EVENT_INK);
+	run.steer(-1);
+	EXPECT_TRUE(run.tick());
+	EXPECT_EQ(run.ending(), Ending::Rock);
+}
+
 TEST(NightRun, PagesHoldOffTheWormAndThreeGiveAShield) {
 	night_run::Run run(7);
 	run.start();

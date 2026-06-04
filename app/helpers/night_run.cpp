@@ -221,18 +221,15 @@ void Run::resolve(Row& row) {
 		}
 		return;
 	}
-	if (row.hit) {
-		return;
-	}
-	if (cell == Cell::Ink && m_lift < INK_HEIGHT) {
-		row.hit = true;
+	if (cell == Cell::Ink && !row.inked && m_lift < INK_HEIGHT) {
+		row.inked = true;
 		m_slowTicks = SLOW_TICKS;
 		m_worm -= WORM_INK;
 		m_events |= EVENT_INK;
 		return;
 	}
 	const bool rock = cell == Cell::Rock;
-	if (rock || (hasStaple(cell) && m_lift < STAPLE_HEIGHT)) {
+	if (!row.hit && (rock || (hasStaple(cell) && m_lift < STAPLE_HEIGHT))) {
 		row.hit = true;
 		if (m_shield) {
 			m_shield = false;
