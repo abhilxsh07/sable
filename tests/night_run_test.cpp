@@ -19,9 +19,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/helpers/night_run.h"
 #include "pdf_test_files.h"
+#include <barrier>
 #include <cstdlib>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <thread>
 
 using night_run::Cell;
 using night_run::Ending;
@@ -368,10 +370,16 @@ TEST(NightRun, BestDistanceSurvivesARestart) {
 	const auto dir = makeTempDir("night_run");
 	const auto file = dir / "night-run.json";
 	EXPECT_EQ(night_run::loadBest(file), 0u);
-	EXPECT_TRUE(night_run::saveBest(file, 1234));
+	const auto first = night_run::recordBest(file, 1234);
+	ASSERT_TRUE(first);
+	EXPECT_TRUE(first->improved);
+	EXPECT_EQ(first->distance, 1234u);
 	EXPECT_EQ(night_run::loadBest(file), 1234u);
-	EXPECT_TRUE(night_run::saveBest(file, 99));
-	EXPECT_EQ(night_run::loadBest(file), 99u);
+	const auto stale = night_run::recordBest(file, 99);
+	ASSERT_TRUE(stale);
+	EXPECT_FALSE(stale->improved);
+	EXPECT_EQ(stale->distance, 1234u);
+	EXPECT_EQ(night_run::loadBest(file), 1234u);
 	EXPECT_FALSE(std::filesystem::exists(dir / "night-run.json.tmp"));
 
 	for (const char* broken :
@@ -381,7 +389,28 @@ TEST(NightRun, BestDistanceSurvivesARestart) {
 		EXPECT_EQ(night_run::loadBest(file), 0u) << broken;
 	}
 	EXPECT_EQ(night_run::loadBest({}), 0u);
-	EXPECT_FALSE(night_run::saveBest({}, 5));
+	EXPECT_FALSE(night_run::recordBest({}, 5));
+	std::error_code ec;
+	std::filesystem::remove_all(dir, ec);
+}
+
+TEST(NightRun, ConcurrentFinishesKeepTheHigherScore) {
+	const auto dir = makeTempDir("night_run_concurrent");
+	const auto file = dir / "night-run.json";
+	std::barrier start(2);
+	std::optional<night_run::BestDistance> first, second;
+	std::jthread other([&] {
+		start.arrive_and_wait();
+		first = night_run::recordBest(file, 700);
+	});
+	start.arrive_and_wait();
+	second = night_run::recordBest(file, 500);
+	other.join();
+	ASSERT_TRUE(first);
+	ASSERT_TRUE(second);
+	EXPECT_TRUE(first->improved);
+	EXPECT_EQ(night_run::loadBest(file), 700u);
+	EXPECT_FALSE(std::filesystem::exists(dir / "night-run.json.tmp"));
 	std::error_code ec;
 	std::filesystem::remove_all(dir, ec);
 }

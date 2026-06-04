@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <optional>
 #include <random>
 
 namespace night_run {
@@ -154,5 +155,13 @@ class Run {
 // settings file keeps the shape NightPDF wrote. A missing or broken file reads
 // as 0; an empty path never touches the disk.
 std::uint64_t loadBest(const std::filesystem::path& file) noexcept;
-bool saveBest(const std::filesystem::path& file, std::uint64_t best) noexcept;
+
+struct BestDistance {
+	std::uint64_t distance;
+	bool improved;
+};
+
+// keeps the higher distance, even when another window finished first
+std::optional<BestDistance> recordBest(const std::filesystem::path& file,
+                                       std::uint64_t distance) noexcept;
 } // namespace night_run

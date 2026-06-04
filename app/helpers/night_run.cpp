@@ -19,6 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "night_run.h"
 
+#define NOMINMAX
+#include <Windows.h>
+
 #include <algorithm>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -291,10 +294,38 @@ bool Run::tick() {
 	return false;
 }
 
-std::uint64_t loadBest(const std::filesystem::path& file) noexcept {
-	if (file.empty()) {
-		return 0;
+namespace {
+class BestLock {
+  public:
+	BestLock() noexcept {
+		if (m_mutex) {
+			const DWORD result = WaitForSingleObject(m_mutex, 250);
+			m_locked = result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
+		}
 	}
+	~BestLock() {
+		if (m_locked) {
+			ReleaseMutex(m_mutex);
+		}
+		if (m_mutex) {
+			CloseHandle(m_mutex);
+		}
+	}
+	BestLock(const BestLock&) = delete;
+	BestLock& operator=(const BestLock&) = delete;
+
+	explicit operator bool() const {
+		return m_locked;
+	}
+
+  private:
+	// a separate Sable instance can finish a run at the same time
+	HANDLE m_mutex =
+	    CreateMutexW(nullptr, FALSE, L"Global\\Sable.NightRun.Best");
+	bool m_locked = false;
+};
+
+std::uint64_t readBest(const std::filesystem::path& file) noexcept {
 	try {
 		std::ifstream in(file, std::ios::binary);
 		if (!in) {
@@ -310,10 +341,28 @@ std::uint64_t loadBest(const std::filesystem::path& file) noexcept {
 		return 0;
 	}
 }
+} // namespace
 
-bool saveBest(const std::filesystem::path& file, std::uint64_t best) noexcept {
+std::uint64_t loadBest(const std::filesystem::path& file) noexcept {
 	if (file.empty()) {
-		return false;
+		return 0;
+	}
+	const BestLock lock;
+	return lock ? readBest(file) : 0;
+}
+
+std::optional<BestDistance> recordBest(const std::filesystem::path& file,
+                                       std::uint64_t distance) noexcept {
+	if (file.empty()) {
+		return std::nullopt;
+	}
+	const BestLock lock;
+	if (!lock) {
+		return std::nullopt;
+	}
+	const auto previous = readBest(file);
+	if (distance <= previous) {
+		return BestDistance{previous, false};
 	}
 	namespace fs = std::filesystem;
 	std::error_code ec;
@@ -326,25 +375,24 @@ bool saveBest(const std::filesystem::path& file, std::uint64_t best) noexcept {
 		{
 			std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
 			if (!out) {
-				return false;
+				return std::nullopt;
 			}
-			out << nlohmann::json{{"best", best}}.dump(1, '\t') << '\n';
-			out.flush();
+			out << nlohmann::json{{"best", distance}}.dump(1, '\t') << '\n';
+			out.close();
 			if (!out) {
-				out.close();
 				fs::remove(tmp, ec);
-				return false;
+				return std::nullopt;
 			}
 		}
 		fs::rename(tmp, file, ec);
 		if (ec) {
 			std::error_code ignored;
 			fs::remove(tmp, ignored);
-			return false;
+			return std::nullopt;
 		}
-		return true;
+		return BestDistance{distance, true};
 	} catch (...) {
-		return false;
+		return std::nullopt;
 	}
 }
 } // namespace night_run

@@ -272,6 +272,7 @@ void Pane::key() {
 
 void Pane::start(bool restart) {
 	m_audio.stop();
+	m_best = (std::max)(m_best, loadBest(m_bestFile));
 	m_newBest = false;
 	if (!restart && m_run.phase() == Phase::Paused) {
 		m_run.resume();
@@ -412,10 +413,14 @@ void Pane::render() {
 void Pane::finish() {
 	m_timer.Stop();
 	sound(Cue::Crash);
-	if (m_run.score() > m_best) {
-		m_best = m_run.score();
-		m_newBest = true;
-		saveBest(m_bestFile, m_best);
+	const auto score = m_run.score();
+	const auto previous = m_best;
+	m_best = (std::max)(score, previous);
+	if (const auto result = recordBest(m_bestFile, m_best)) {
+		m_best = result->distance;
+		m_newBest = score > previous && result->improved;
+	} else {
+		m_newBest = score > previous;
 	}
 	updateControls();
 }
