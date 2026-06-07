@@ -2,6 +2,27 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Night Run input and records (10 November 2026)
+
+On the normal Debug reader I open Night Run from Home with Shift+Alt+T.
+Space starts the run, D steers into the right lane and Up lifts the board.
+A rock ends the run and the displayed best stays higher. The Mute button
+changes to Unmute. Audible output still needs a listening check.
+
+With the rectangle fixture open beside the game, Ctrl+Tab switches to the
+PDF and pauses the run. Shift+Alt+T returns to the same paused game.
+Ctrl+W restores the PDF, and closing the fixture returns to Home.
+
+The native finish check waits for the dispatcher to hand focus to the
+track. Tab-strip arrows and Mute's Space stay with their controls. The
+track takes steering and jump keys on first open. A PDF finishes opening
+in the background, then Space resumes the paused game with focus still
+on the track. The normal Debug reader is rebuilt afterwards.
+
+The unit tests cover the page above a staple, the rock beside an ink blot
+and two finishes racing to save the best distance. Debug x64 and ARM64
+build without warnings. All 742 enabled x64 tests and formatting pass.
+
 ## Pen palette and shared drawing style (7 November 2026)
 
 `SableInkTest=true` passes with the new menu: five pen colors, a

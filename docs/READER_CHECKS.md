@@ -418,15 +418,23 @@ fit, text clarity, pointer/selection alignment and return to the first screen.
 Press Shift+Alt+M a few times on home and in a document: the green MORTY!
 alerts pile up and fade out one by one.
 
-Press Shift+Alt+T to open Night Run. Space or Up starts the run. Steer
-with Left / Right or A / D round rocks, hop staples with Space or Up, and
-check ink turns the board purple and slows it. Pages push the bookworm back
-down; let it catch you once to see the ending. Collect three pages for a
-shield, then hit a rock: the shield goes and the run continues. After a run,
-Best shows the distance, and it is still there after closing and reopening
-Sable. Restart clears distance, pages and shield; Mute silences every cue.
+## Night Run
+
+Press Shift+Alt+T to open Night Run and focus the track. Space or Up starts
+the run. Left / Right or A / D steer on the track. Arrows in the tab strip
+still navigate the tabs, and Space on Mute toggles it. Click or Tab into
+the playfield to steer again.
+
+Hop for a page above a staple. Ink slows the board and turns it purple,
+and the rock beside it still hits if you steer into it. Pages push the
+bookworm back. Let it catch up once to see the ending. Collect three pages
+for a shield, then hit a rock and check that the shield takes the hit.
+
+Finish a higher run in one window and a lower run in a window opened
+earlier. Reopen Sable and check that Best still shows the higher score.
+Restart clears distance, pages and shield. Mute silences every cue.
 Switch to a PDF or another window and return to the paused run. Press
-Shift+Alt+T to select the same tab, then Ctrl+W to close it.
+Shift+Alt+T to focus the same track, then Ctrl+W to close the game.
 
 ## Automated input check
 
