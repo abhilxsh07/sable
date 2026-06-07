@@ -225,6 +225,9 @@ class Document {
 	std::optional<int> addEllipse(int page, const AnnotationBounds& bounds,
 	                              std::uint64_t revision,
 	                              const std::function<bool()>& canceled = {});
+	std::optional<int> addStamp(int page, const AnnotationBounds& bounds,
+	                            const StampImage& image, std::uint64_t revision,
+	                            const std::function<bool()>& canceled = {});
 	// Black 2 pt strokes in PDF points, written as one Ink annotation.
 	std::optional<int> addInk(int page, const std::vector<InkStroke>& strokes,
 	                          std::uint64_t revision,
@@ -376,12 +379,13 @@ class Document {
 	                                   OutlineShape shape,
 	                                   std::uint64_t revision,
 	                                   const std::function<bool()>& canceled);
-	std::optional<int>
-	appendAnnotation(int page, int subtype, const AnnotationBounds& bounds,
-	                 const std::u16string& appearance,
-	                 const std::function<bool(fpdf_annotation_t__*)>& decorate,
-	                 const std::function<bool(fpdf_annotation_t__*)>& verify,
-	                 const std::function<bool()>& canceled);
+	std::optional<int> appendAnnotation(
+	    int page, int subtype, const AnnotationBounds& bounds,
+	    const std::optional<std::u16string>& appearance,
+	    const std::function<bool(fpdf_annotation_t__*, fpdf_document_t__*)>&
+	        decorate,
+	    const std::function<bool(fpdf_annotation_t__*)>& verify,
+	    const std::function<bool()>& canceled);
 	std::optional<std::vector<std::uint8_t>>
 	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
 	                bool hideNotes) const;

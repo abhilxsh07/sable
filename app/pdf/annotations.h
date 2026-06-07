@@ -34,6 +34,17 @@ struct TextBoxSize {
 struct ShapeSize {
 	float width = 0, height = 0;
 };
+struct StampImage {
+	static constexpr unsigned maxSide = 2048;
+	unsigned width = 0, height = 0;
+	// tightly packed, top down, with straight alpha
+	std::vector<std::uint8_t> bgra;
+
+	bool valid() const {
+		return width && height && width <= maxSide && height <= maxSide &&
+		       bgra.size() == 4 * width * height;
+	}
+};
 // Unrotated PDF coordinates, in points.
 struct InkPoint {
 	float x = 0, y = 0;

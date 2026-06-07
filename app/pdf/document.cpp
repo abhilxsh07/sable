@@ -1567,15 +1567,78 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 	                        canceled);
 }
 
+std::optional<int> Document::addStamp(int index, const AnnotationBounds& bounds,
+                                      const StampImage& image,
+                                      std::uint64_t revision,
+                                      const std::function<bool()>& canceled) {
+	const auto& [left, bottom, right, top] = bounds;
+	if (offThread() || !revision || !currentRevision(revision) ||
+	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
+	    index >= pageCount() || !image.valid() ||
+	    !(left >= -1000000.f && bottom >= -1000000.f && right <= 1000000.f &&
+	      top <= 1000000.f && right - left >= 1 && top - bottom >= 1) ||
+	    (canceled && canceled()) || !canAnnotate() ||
+	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
+	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
+	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
+		return {};
+	}
+	const FS_MATRIX matrix{right - left, 0, 0, top - bottom, left, bottom};
+	const auto write = [&](FPDF_ANNOTATION note, FPDF_DOCUMENT document) {
+		BitmapPtr bitmap(FPDFBitmap_Create(static_cast<int>(image.width),
+		                                   static_cast<int>(image.height), 1));
+		if (!bitmap) {
+			return false;
+		}
+		const auto stride = 4 * image.width;
+		if (FPDFBitmap_GetFormat(bitmap.get()) != FPDFBitmap_BGRA ||
+		    FPDFBitmap_GetStride(bitmap.get()) != static_cast<int>(stride) ||
+		    !FPDFBitmap_GetBuffer(bitmap.get())) {
+			return false;
+		}
+		std::memcpy(FPDFBitmap_GetBuffer(bitmap.get()), image.bgra.data(),
+		            image.bgra.size());
+		std::unique_ptr<fpdf_pageobject_t__, decltype(&FPDFPageObj_Destroy)>
+		    object(FPDFPageObj_NewImageObj(document), &FPDFPageObj_Destroy);
+		if (!object ||
+		    !FPDFImageObj_SetBitmap(nullptr, 0, object.get(), bitmap.get()) ||
+		    !FPDFPageObj_SetMatrix(object.get(), &matrix) ||
+		    !FPDFAnnot_AppendObject(note, object.get())) {
+			return false;
+		}
+		object.release();
+		return true;
+	};
+	const auto verify = [&](FPDF_ANNOTATION note) {
+		if (FPDFAnnot_GetObjectCount(note) != 1) {
+			return false;
+		}
+		const auto object = FPDFAnnot_GetObject(note, 0);
+		unsigned width = 0, height = 0;
+		FS_MATRIX kept{};
+		const auto same = [](float a, float b) {
+			return std::abs(a - b) < .001f;
+		};
+		return object && FPDFPageObj_GetType(object) == FPDF_PAGEOBJ_IMAGE &&
+		       FPDFImageObj_GetImagePixelSize(object, &width, &height) &&
+		       width == image.width && height == image.height &&
+		       FPDFPageObj_GetMatrix(object, &kept) && same(kept.a, matrix.a) &&
+		       same(kept.b, matrix.b) && same(kept.c, matrix.c) &&
+		       same(kept.d, matrix.d) && same(kept.e, matrix.e) &&
+		       same(kept.f, matrix.f);
+	};
+	return appendAnnotation(index, FPDF_ANNOT_STAMP, bounds, {}, write, verify,
+	                        canceled);
+}
+
 // i write into a canonical scratch copy, then reopen the saved bytes and
 // check the new annotation before replacing the live document.
-std::optional<int>
-Document::appendAnnotation(int index, int subtype,
-                           const AnnotationBounds& bounds,
-                           const std::u16string& appearance,
-                           const std::function<bool(FPDF_ANNOTATION)>& decorate,
-                           const std::function<bool(FPDF_ANNOTATION)>& verify,
-                           const std::function<bool()>& canceled) {
+std::optional<int> Document::appendAnnotation(
+    int index, int subtype, const AnnotationBounds& bounds,
+    const std::optional<std::u16string>& appearance,
+    const std::function<bool(FPDF_ANNOTATION, FPDF_DOCUMENT)>& decorate,
+    const std::function<bool(FPDF_ANNOTATION)>& verify,
+    const std::function<bool()>& canceled) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& [left, bottom, right, top] = bounds;
 	const FS_RECTF rect{left, top, right, bottom};
@@ -1623,10 +1686,11 @@ Document::appendAnnotation(int index, int subtype,
 		AnnotationPtr note(FPDFPage_CreateAnnot(page.get(), subtype));
 		if (!note || !FPDFAnnot_SetRect(note.get(), &rect) ||
 		    !FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) ||
-		    (decorate && !decorate(note.get())) ||
-		    !FPDFAnnot_SetAP(
-		        note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
-		        reinterpret_cast<FPDF_WIDESTRING>(appearance.c_str()))) {
+		    (decorate && !decorate(note.get(), scratch.document->m_handle)) ||
+		    (appearance &&
+		     !FPDFAnnot_SetAP(
+		         note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+		         reinterpret_cast<FPDF_WIDESTRING>(appearance->c_str())))) {
 			return {};
 		}
 	}
@@ -1648,19 +1712,24 @@ Document::appendAnnotation(int index, int subtype,
 		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), added)
 		                        : nullptr);
 		FS_RECTF kept{};
-		const auto size = static_cast<unsigned long>((appearance.size() + 1) *
-		                                             sizeof(FPDF_WCHAR));
-		std::vector<FPDF_WCHAR> ap(appearance.size() + 1);
 		if (!note || FPDFAnnot_GetSubtype(note.get()) != subtype ||
 		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
 		    (verify && !verify(note.get())) ||
 		    !FPDFAnnot_GetRect(note.get(), &kept) || kept.left != left ||
-		    kept.bottom != bottom || kept.right != right || kept.top != top ||
-		    FPDFAnnot_GetAP(note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
-		                    ap.data(), size) != size ||
-		    ap.back() ||
-		    !std::equal(appearance.begin(), appearance.end(), ap.begin())) {
+		    kept.bottom != bottom || kept.right != right || kept.top != top) {
 			return {};
+		}
+		if (appearance) {
+			std::vector<FPDF_WCHAR> ap(appearance->size() + 1);
+			const auto size =
+			    static_cast<unsigned long>(ap.size() * sizeof(FPDF_WCHAR));
+			if (FPDFAnnot_GetAP(note.get(), FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+			                    ap.data(), size) != size ||
+			    ap.back() ||
+			    !std::equal(appearance->begin(), appearance->end(),
+			                ap.begin())) {
+				return {};
+			}
 		}
 	}
 	if (!m_outlineBookmarks.empty() &&
@@ -1745,7 +1814,7 @@ std::optional<int> Document::addInk(int index,
 	// C and Border let other editors rebuild the same line. both have to go
 	// in before the appearance: PDFium refuses colors once one exists and
 	// drops it when the border changes.
-	const auto decorate = [&](FPDF_ANNOTATION note) {
+	const auto decorate = [&](FPDF_ANNOTATION note, FPDF_DOCUMENT) {
 		if (!FPDFAnnot_SetColor(note, FPDFANNOT_COLORTYPE_Color,
 		                        style.color.red, style.color.green,
 		                        style.color.blue, 255) ||

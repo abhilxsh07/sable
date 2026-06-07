@@ -2407,6 +2407,62 @@ TEST(Annotations, EllipseRefusalsAndCancellationKeepLiveBytesAndRevision) {
 	    .get();
 }
 
+TEST(Annotations, StampKeepsTransparentPixelsAndNeighborsAfterSave) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("outline.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.outline());
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    const auto revision = doc.annotationRevision();
+		    const pdf::AnnotationBounds bounds{100, 100, 160, 160};
+		    const pdf::StampImage image{
+		        2,
+		        2,
+		        {0, 0, 255, 255, 0, 0, 0, 0, 255, 0, 0, 255, 0, 0, 0, 128}};
+		    EXPECT_FALSE(doc.addStamp(0, bounds, {2, 2, {1}}, revision));
+		    EXPECT_FALSE(doc.addStamp(0, bounds, image, revision - 1));
+		    EXPECT_FALSE(
+		        doc.addStamp(0, bounds, image, revision, [] { return true; }));
+		    EXPECT_FALSE(doc.addStamp(0, {0, 100, 160, 160}, image, revision));
+		    EXPECT_EQ(doc.annotationRevision(), revision);
+		    ASSERT_EQ(doc.addStamp(0, bounds, image, revision), 1);
+		    EXPECT_EQ(doc.annotationRevision(), revision + 1);
+		    EXPECT_EQ(doc.textNote(0, 0, revision + 1), u"Keep note");
+		    EXPECT_TRUE(doc.outlineLink(0));
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    EXPECT_EQ(notes->entries[1].subtype, "Stamp");
+		    EXPECT_EQ(notes->entries[1].flags, FPDF_ANNOT_FLAG_PRINT);
+		    const auto screen = saved.document->render(0, 360, 240);
+		    const auto print =
+		        saved.document->printRaster(0, 360, 240, 0, 0, 360, 240);
+		    ASSERT_TRUE(screen && print);
+		    for (const auto* rendered : {&*screen, &*print}) {
+			    const auto sample = [&](int x, int y, int channel) {
+				    return rendered->pixels[(269 - y) * rendered->stride +
+				                            4 * (x - 20) + channel];
+			    };
+			    EXPECT_EQ(sample(115, 145, 0), 0);
+			    EXPECT_EQ(sample(115, 145, 2), 255);
+			    EXPECT_EQ(sample(145, 145, 0), 255);
+			    EXPECT_EQ(sample(145, 145, 2), 255);
+			    EXPECT_EQ(sample(115, 115, 0), 255);
+			    EXPECT_EQ(sample(115, 115, 2), 0);
+			    EXPECT_NEAR(sample(145, 115, 0), 127, 1);
+		    }
+		    EXPECT_EQ(annotationBytes("outline.pdf"), original);
+	    })
+	    .get();
+}
+
 TEST(Annotations, InkStrokesKeepNeighborsAndSavedScreenAndPrintPixels) {
 	pdf::Engine engine;
 	engine
