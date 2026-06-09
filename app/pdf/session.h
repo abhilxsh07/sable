@@ -194,6 +194,9 @@ class Session {
 	              std::uint64_t revision,
 	              std::function<void(NoteResult)> callback,
 	              InkStyle style = {});
+	bool addStampAt(int page, AnnotationPoint first, AnnotationPoint second,
+	                int rotation, StampImage image, std::uint64_t revision,
+	                std::function<void(NoteResult)> callback);
 	bool resizeShape(Annotation expected, ShapeSize size,
 	                 std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,

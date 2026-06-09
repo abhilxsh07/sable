@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -245,6 +246,11 @@ class Document {
 	                                AnnotationPoint second, int rotation,
 	                                std::uint64_t revision,
 	                                const std::function<bool()>& canceled = {});
+	std::optional<int> addStampAt(int page, AnnotationPoint first,
+	                              AnnotationPoint second, int rotation,
+	                              const StampImage& image,
+	                              std::uint64_t revision,
+	                              const std::function<bool()>& canceled = {});
 	// strokes use the displayed page, including the viewer's rotation.
 	std::optional<int> addInkAt(int page,
 	                            const std::vector<DisplayedStroke>& strokes,
@@ -370,6 +376,11 @@ class Document {
   private:
 	friend struct DocumentEditTest;
 	friend struct DocumentFormTest;
+	std::optional<int> writeStamp(int page, const AnnotationBounds& bounds,
+	                              const StampImage& image,
+	                              const std::array<float, 6>& transform,
+	                              std::uint64_t revision,
+	                              const std::function<bool()>& canceled);
 	std::optional<int> addOutlineShapeAt(int page, AnnotationPoint first,
 	                                     AnnotationPoint second, int rotation,
 	                                     OutlineShape shape,

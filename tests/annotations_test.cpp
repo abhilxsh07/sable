@@ -3478,6 +3478,45 @@ TEST(Annotations, DisplayedEllipsesRefuseInvalidCornersAndStaleRevisions) {
 	    .get();
 }
 
+TEST(Annotations, StampFitsUprightOnCroppedAndRotatedPages) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const pdf::StampImage image{2, 1, {0, 0, 255, 255, 255, 0, 0, 255}};
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto source =
+			        editableNoteBytes("/Contents (Keep)", "Text", {},
+			                          "/MediaBox [0 0 400 600] /CropBox [20 40 "
+			                          "380 560] /Rotate " +
+			                              std::to_string(intrinsic * 90));
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    const int turns = (intrinsic + rotation) % 4;
+				    SCOPED_TRACE(intrinsic * 4 + rotation);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    ASSERT_EQ(doc.addStampAt(0, {.625, .75}, {.125, .25},
+				                             rotation, image, 1),
+				              1);
+				    const int w = turns % 2 ? 520 : 360;
+				    const int h = turns % 2 ? 360 : 520;
+				    const auto pixels = doc.render(0, w, h, rotation);
+				    ASSERT_TRUE(pixels);
+				    const auto sample = [&](int x, int y, int channel) {
+					    return pixels
+					        ->pixels[y * pixels->stride + x * 4 + channel];
+				    };
+				    EXPECT_EQ(sample(w / 4, h / 4 + 15, 0), 0);
+				    EXPECT_EQ(sample(w / 4, h / 4 + 15, 2), 255);
+				    EXPECT_EQ(sample(w / 2, h / 4 + 15, 0), 255);
+				    EXPECT_EQ(sample(w / 2, h / 4 + 15, 2), 0);
+				    EXPECT_EQ(sample(w / 4, h / 4 + w / 4 + 5, 0), 255);
+			    }
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, DisplayedInkFollowsCropAndAllPageRotations) {
 	pdf::Engine engine;
 	engine

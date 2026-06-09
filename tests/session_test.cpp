@@ -4107,6 +4107,38 @@ TEST_F(SessionTest, InkQueueOwnsStrokesAndPreservesTheEllipseBesideIt) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, StampQueueOwnsPixelsAndRefusesStaleOrClosedWrites) {
+	const auto source = fixturePath("pages.pdf");
+	pdf::Session session(engine), closing(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->revision == 1);
+	pdf::StampImage image{1, 1, {0, 0, 255, 255}};
+	Reply<pdf::NoteResult> placed, stale, canceled;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.addStampAt(0, {.25, .25}, {.5, .5}, 0, image, 1,
+		                               placed.callback()));
+		ASSERT_TRUE(session.addStampAt(0, {.25, .25}, {.5, .5}, 0, image, 1,
+		                               stale.callback()));
+		ASSERT_TRUE(closing.addStampAt(0, {.25, .25}, {.5, .5}, 0, image, 1,
+		                               canceled.callback()));
+		closing.close();
+		image.bgra.clear();
+	}
+	const auto made = placed.wait(), old = stale.wait(),
+	           stopped = canceled.wait();
+	ASSERT_TRUE(made && old && stopped);
+	EXPECT_TRUE(made->changed && !made->canceled);
+	EXPECT_EQ(made->index, 0);
+	EXPECT_FALSE(old->changed || old->index || old->canceled);
+	EXPECT_TRUE(stopped->canceled && !stopped->changed && !stopped->index);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->revision == 2);
+	EXPECT_NE(before, after);
+}
+
 TEST_F(SessionTest, InkQueueCarriesItsStyle) {
 	const auto source = fixturePath("pages.pdf");
 	const auto original = readFile(source);

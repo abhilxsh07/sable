@@ -102,6 +102,21 @@ struct AnnotationCloser {
 using AnnotationPtr = std::unique_ptr<fpdf_annotation_t__, AnnotationCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
 
+bool onDisplayedPage(AnnotationPoint point) {
+	return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1;
+}
+
+bool displayedAnnotationPoint(FPDF_PAGE page, int rotation,
+                              AnnotationPoint point, double& x, double& y) {
+	constexpr int grid = 1 << 20;
+	return FPDF_DeviceToPage(page, 0, 0, grid, grid, rotation,
+	                         static_cast<int>(std::lround(point.x * grid)),
+	                         static_cast<int>(std::lround(point.y * grid)), &x,
+	                         &y) &&
+	       std::isfinite(x) && std::isfinite(y) && std::abs(x) <= 1000000. &&
+	       std::abs(y) <= 1000000.;
+}
+
 struct BoxProofRegion {
 	int pageWidth, pageHeight, left, top, width, height, objects;
 };
@@ -1571,6 +1586,18 @@ std::optional<int> Document::addStamp(int index, const AnnotationBounds& bounds,
                                       const StampImage& image,
                                       std::uint64_t revision,
                                       const std::function<bool()>& canceled) {
+	return writeStamp(index, bounds, image,
+	                  {bounds.right - bounds.left, 0, 0,
+	                   bounds.top - bounds.bottom, bounds.left, bounds.bottom},
+	                  revision, canceled);
+}
+
+std::optional<int> Document::writeStamp(int index,
+                                        const AnnotationBounds& bounds,
+                                        const StampImage& image,
+                                        const std::array<float, 6>& transform,
+                                        std::uint64_t revision,
+                                        const std::function<bool()>& canceled) {
 	const auto& [left, bottom, right, top] = bounds;
 	if (offThread() || !revision || !currentRevision(revision) ||
 	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
@@ -1583,7 +1610,8 @@ std::optional<int> Document::addStamp(int index, const AnnotationBounds& bounds,
 	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
 		return {};
 	}
-	const FS_MATRIX matrix{right - left, 0, 0, top - bottom, left, bottom};
+	const auto& [a, b, c, d, e, f] = transform;
+	const FS_MATRIX matrix{a, b, c, d, e, f};
 	const auto write = [&](FPDF_ANNOTATION note, FPDF_DOCUMENT document) {
 		BitmapPtr bitmap(FPDFBitmap_Create(static_cast<int>(image.width),
 		                                   static_cast<int>(image.height), 1));
@@ -2150,29 +2178,18 @@ Document::addOutlineShapeAt(int index, AnnotationPoint first,
                             AnnotationPoint second, int rotation,
                             OutlineShape shape, std::uint64_t revision,
                             const std::function<bool()>& canceled) {
-	const auto onPage = [](AnnotationPoint point) {
-		return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1;
-	};
 	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
-	    rotation > 3 || !onPage(first) || !onPage(second) || !revision ||
-	    !currentRevision(revision) || (canceled && canceled())) {
+	    rotation > 3 || !onDisplayedPage(first) || !onDisplayedPage(second) ||
+	    !revision || !currentRevision(revision) || (canceled && canceled())) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, index));
 	if (!page) {
 		return {};
 	}
-	const auto pagePoint = [&](AnnotationPoint point, double& x, double& y) {
-		constexpr int grid = 1 << 20;
-		return FPDF_DeviceToPage(page.get(), 0, 0, grid, grid, rotation,
-		                         static_cast<int>(std::lround(point.x * grid)),
-		                         static_cast<int>(std::lround(point.y * grid)),
-		                         &x, &y) &&
-		       std::isfinite(x) && std::isfinite(y) &&
-		       std::abs(x) <= 1000000. && std::abs(y) <= 1000000.;
-	};
 	double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-	if (!pagePoint(first, x0, y0) || !pagePoint(second, x1, y1)) {
+	if (!displayedAnnotationPoint(page.get(), rotation, first, x0, y0) ||
+	    !displayedAnnotationPoint(page.get(), rotation, second, x1, y1)) {
 		return {};
 	}
 	const AnnotationBounds bounds{static_cast<float>((std::min)(x0, x1)),
@@ -2181,6 +2198,57 @@ Document::addOutlineShapeAt(int index, AnnotationPoint first,
 	                              static_cast<float>((std::max)(y0, y1))};
 	page.reset();
 	return addOutlineShape(index, bounds, shape, revision, canceled);
+}
+
+std::optional<int> Document::addStampAt(int index, AnnotationPoint first,
+                                        AnnotationPoint second, int rotation,
+                                        const StampImage& image,
+                                        std::uint64_t revision,
+                                        const std::function<bool()>& canceled) {
+	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
+	    rotation > 3 || !onDisplayedPage(first) || !onDisplayedPage(second) ||
+	    !image.valid() || !revision || !currentRevision(revision) ||
+	    (canceled && canceled())) {
+		return {};
+	}
+	const double left = (std::min)(first.x, second.x);
+	const double right = (std::max)(first.x, second.x);
+	const double top = (std::min)(first.y, second.y);
+	const double bottom = (std::max)(first.y, second.y);
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	AnnotationPoint tl, tr, bl;
+	if (!page ||
+	    !displayedAnnotationPoint(page.get(), rotation, {left, top}, tl.x,
+	                              tl.y) ||
+	    !displayedAnnotationPoint(page.get(), rotation, {right, top}, tr.x,
+	                              tr.y) ||
+	    !displayedAnnotationPoint(page.get(), rotation, {left, bottom}, bl.x,
+	                              bl.y)) {
+		return {};
+	}
+	page.reset();
+	const double width = std::hypot(tr.x - tl.x, tr.y - tl.y);
+	const double height = std::hypot(bl.x - tl.x, bl.y - tl.y);
+	if (width < 1 || height < 1) {
+		return {};
+	}
+	// i fit the image at the top left and keep its axes on the displayed page.
+	const double scale = (std::min)(width / image.width, height / image.height);
+	const double sx = scale * image.width / width;
+	const double sy = scale * image.height / height;
+	const double a = (tr.x - tl.x) * sx, b = (tr.y - tl.y) * sx;
+	const double c = (tl.x - bl.x) * sy, d = (tl.y - bl.y) * sy;
+	const double e = tl.x - c, f = tl.y - d;
+	const AnnotationBounds bounds{
+	    static_cast<float>((std::min)({e, e + a, tl.x, tl.x + a})),
+	    static_cast<float>((std::min)({f, f + b, tl.y, tl.y + b})),
+	    static_cast<float>((std::max)({e, e + a, tl.x, tl.x + a})),
+	    static_cast<float>((std::max)({f, f + b, tl.y, tl.y + b}))};
+	return writeStamp(index, bounds, image,
+	                  {static_cast<float>(a), static_cast<float>(b),
+	                   static_cast<float>(c), static_cast<float>(d),
+	                   static_cast<float>(e), static_cast<float>(f)},
+	                  revision, canceled);
 }
 
 std::optional<int>
