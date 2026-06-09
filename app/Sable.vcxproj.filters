@@ -80,6 +80,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="NightRunAudio.cpp" />
 		<ClInclude Include="NightRunPane.h" />
 		<ClCompile Include="NightRunPane.cpp" />
+		<ClInclude Include="StampImage.h" />
+		<ClCompile Include="StampImage.cpp" />
 		<ClInclude Include="helpers\layout.h">
 			<Filter>helpers</Filter>
 		</ClInclude>
