@@ -19,18 +19,103 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "StampImage.h"
 #include "pdf/session.h"
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
 #include "helpers/filter.h"
 #include <algorithm>
 #include <cmath>
+#include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
+bool ViewerPage::canPickStamp() {
+	return !m_closed && m_session && m_layout && m_noteAllowed && !m_noteBusy &&
+	       !m_noteSaving && !m_noteDialog && !m_passwordDialog &&
+	       !m_linkPending && !m_presentation && commentsOpen() &&
+	       Rail().Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
+	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
+	       (!m_notesAvailable || m_notesAvailable());
+}
+
+fire_and_forget ViewerPage::pickStamp() {
+	const auto weak = get_weak();
+	std::uint64_t version = 0;
+	pdf::Session* session = nullptr;
+	try {
+		if (m_notePlacing && m_placementTool == PlacementTool::Stamp) {
+			cancelNotePlacement();
+			co_return;
+		}
+		if (!canPickStamp() || m_stampPicking) {
+			co_return;
+		}
+		cancelNotePlacement();
+		m_stampPicking = true;
+		version = ++m_stampPickVersion;
+		session = m_session.get();
+		showComments();
+		hstring path;
+#ifdef SABLE_SURFACE_TEST
+		if (m_stampPicker) {
+			path = co_await m_stampPicker();
+		} else
+#endif
+		{
+			path = co_await pickStampFile(
+			    XamlRoot().ContentIslandEnvironment().AppWindowId());
+		}
+		{
+			const auto self = weak.get();
+			if (!self || !self->m_stampPicking ||
+			    self->m_stampPickVersion != version ||
+			    self->m_session.get() != session) {
+				co_return;
+			}
+			if (path.empty() || !self->canPickStamp()) {
+				self->m_stampPicking = false;
+				self->showComments();
+				co_return;
+			}
+		}
+		const auto image = std::make_shared<pdf::StampImage>();
+		co_await decodeStampImage(path, image);
+		if (const auto self = weak.get(); self && self->m_stampPicking &&
+		                                  self->m_stampPickVersion == version &&
+		                                  self->m_session.get() == session) {
+			self->m_stampPicking = false;
+			if (self->canPickStamp()) {
+				self->beginNotePlacement(PlacementTool::Stamp);
+				if (self->m_notePlacing &&
+				    self->m_placementTool == PlacementTool::Stamp) {
+					self->m_stampImage = std::move(*image);
+				}
+			}
+			self->showComments();
+		}
+	} catch (...) {
+		try {
+			if (const auto self = weak.get();
+			    self && version && self->m_stampPicking &&
+			    self->m_stampPickVersion == version &&
+			    self->m_session.get() == session) {
+				self->m_stampPicking = false;
+				self->showComments();
+				self->showNotice(
+				    L"Couldn't open the stamp image. Choose a PNG or JPEG "
+				    L"up to 2048 pixels per side and 32 MiB.");
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't report the stamp picker error.");
+		}
+	}
+}
+
 void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	clearAnnotationSelection();
 	if (m_notePlacing && m_placementTool == tool) {
@@ -47,6 +132,8 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
 	m_shapeStart.reset();
+	m_stampPicking = false;
+	m_stampImage.reset();
 	dropInkStroke();
 	m_placementTool = tool;
 	m_notePlacing = true;
@@ -56,12 +143,14 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 
 bool ViewerPage::cancelNotePlacement() {
 	m_shapeStart.reset();
+	m_stampImage.reset();
 	dropInkStroke();
 	const bool canceled = std::exchange(m_notePlacing, false);
-	if (canceled && !m_closed) {
+	const bool canceledPicker = std::exchange(m_stampPicking, false);
+	if ((canceled || canceledPicker) && !m_closed) {
 		showComments();
 	}
-	return canceled;
+	return canceled || canceledPicker;
 }
 
 bool ViewerPage::placeNote(Windows::Foundation::Point point) {
@@ -89,7 +178,8 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 			const NoteTarget target{static_cast<int>(page), x, y,
 			                        key(page).rotation};
 			if (m_placementTool == PlacementTool::Rectangle ||
-			    m_placementTool == PlacementTool::Ellipse) {
+			    m_placementTool == PlacementTool::Ellipse ||
+			    m_placementTool == PlacementTool::Stamp) {
 				placeShape(target);
 				break;
 			}
@@ -108,6 +198,7 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 
 void ViewerPage::placeShape(NoteTarget target) {
 	const bool ellipse = m_placementTool == PlacementTool::Ellipse;
+	const bool stamp = m_placementTool == PlacementTool::Stamp;
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
 	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
@@ -137,36 +228,43 @@ void ViewerPage::placeShape(NoteTarget target) {
 	try {
 		const auto write = ellipse ? &pdf::Session::addEllipseAt
 		                           : &pdf::Session::addRectangleAt;
-		if ((session->*write)(
-		        target.page, {first.x, first.y}, {target.x, target.y},
-		        first.rotation, expected,
-		        [weak = get_weak(), queue = DispatcherQueue(), session,
-		         ellipse](pdf::NoteResult result) {
-			        queue.TryEnqueue([weak, session, result, ellipse] {
-				        const auto self = weak.get();
-				        if (!self || self->m_closed ||
-				            self->m_session.get() != session) {
-					        return;
-				        }
-				        self->m_noteBusy = false;
-				        self->m_notesDirty =
-				            self->m_notesDirty || result.changed;
-				        if (result.changed) {
-					        self->Message().IsOpen(false);
-					        self->refreshNotes();
-				        } else if (!result.canceled) {
-					        self->showNotice(
-					            ellipse
-					                ? L"Couldn't add this ellipse. Try a "
-					                  L"larger area. "
-					                  L"This PDF may restrict comments."
-					                : L"Couldn't add this rectangle. Try a "
-					                  L"larger "
-					                  L"area. This PDF may restrict comments.");
-				        }
-				        self->showComments();
-			        });
-		        })) {
+		const auto failure =
+		    stamp ? L"Couldn't add this image stamp. Try a larger area. "
+		            L"This PDF may restrict comments."
+		    : ellipse ? L"Couldn't add this ellipse. Try a larger area. "
+		                L"This PDF may restrict comments."
+		              : L"Couldn't add this rectangle. Try a larger area. "
+		                L"This PDF may restrict comments.";
+		auto callback = [weak = get_weak(), queue = DispatcherQueue(), session,
+		                 failure](pdf::NoteResult result) {
+			queue.TryEnqueue([weak, session, result, failure] {
+				const auto self = weak.get();
+				if (!self || self->m_closed ||
+				    self->m_session.get() != session) {
+					return;
+				}
+				self->m_noteBusy = false;
+				self->m_notesDirty = self->m_notesDirty || result.changed;
+				if (result.changed) {
+					self->Message().IsOpen(false);
+					self->refreshNotes();
+				} else if (!result.canceled) {
+					self->showNotice(failure);
+				}
+				self->showComments();
+			});
+		};
+		const pdf::AnnotationPoint start{first.x, first.y},
+		    end{target.x, target.y};
+		auto image = std::exchange(m_stampImage, std::nullopt);
+		const bool queued =
+		    stamp ? image &&
+		                session->addStampAt(target.page, start, end,
+		                                    first.rotation, std::move(*image),
+		                                    expected, std::move(callback))
+		          : (session->*write)(target.page, start, end, first.rotation,
+		                              expected, std::move(callback));
+		if (queued) {
 			showComments();
 			return;
 		}
@@ -174,8 +272,9 @@ void ViewerPage::placeShape(NoteTarget target) {
 	}
 	m_noteBusy = false;
 	showComments();
-	showNotice(ellipse ? L"Couldn't queue this ellipse. Try again."
-	                   : L"Couldn't queue this rectangle. Try again.");
+	showNotice(stamp     ? L"Couldn't queue this image stamp. Try again."
+	           : ellipse ? L"Couldn't queue this ellipse. Try again."
+	                     : L"Couldn't queue this rectangle. Try again.");
 }
 
 // mouse and pen strokes each become one Ink annotation. touch keeps

@@ -2767,6 +2767,41 @@ TEST(Annotations, InkRemovalKeepsNeighborsAndRefusesProtectedDrawings) {
 	    .get();
 }
 
+TEST(Annotations, StampRemovalKeepsOtherCommentsAndRespectsLocks) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openDocument(editableNoteBytes("/Contents (Keep)"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addStamp(0, {80, 80, 120, 120},
+		                           {1, 1, {0, 0, 255, 255}}, 1),
+		              1);
+		    const auto annotations = doc.annotations(0);
+		    ASSERT_TRUE(annotations && annotations->entries.size() == 2);
+		    const auto target = annotations->entries[1].target;
+		    auto stale = target;
+		    --stale.revision;
+		    EXPECT_FALSE(doc.removeAnnotation(stale));
+		    EXPECT_EQ(doc.removeAnnotation(target), true);
+		    const auto kept = doc.annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 1);
+		    EXPECT_EQ(kept->entries[0].contents, "Keep");
+
+		    const auto source = editableNoteBytes(
+		        "/F " + std::to_string(FPDF_ANNOT_FLAG_LOCKED), "Stamp");
+		    const auto locked = pdf::openDocument(source);
+		    ASSERT_TRUE(locked.document);
+		    const auto notes = locked.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    EXPECT_FALSE(
+		        locked.document->removeAnnotation(notes->entries[0].target));
+		    EXPECT_EQ(locked.document->serialize(1024 * 1024), source);
+	    })
+	    .get();
+}
+
 TEST(Annotations, ResizedShapesKeepAnchorsNeighborsAndSavedPixels) {
 	pdf::Engine engine;
 	engine

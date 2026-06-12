@@ -3584,7 +3584,8 @@ std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	    (target.subtype != "Text" && target.subtype != "Highlight" &&
 	     target.subtype != "Underline" && target.subtype != "StrikeOut" &&
 	     target.subtype != "FreeText" && target.subtype != "Square" &&
-	     target.subtype != "Circle" && target.subtype != "Ink")) {
+	     target.subtype != "Circle" && target.subtype != "Ink" &&
+	     target.subtype != "Stamp")) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, target.page));

@@ -2826,3 +2826,14 @@ The best distance is kept in night-run.json beside config.json rather than
 in config.json, so the settings file keeps the shape NightPDF wrote. A
 missing or unreadable file counts as 0. The page and ink cues are made in
 code like the jump and crash ones.
+
+## Image stamps in Comments (2026-11-10)
+
+I use the same two corners as the outline tools to size a stamp. The
+image fits at the top left of that area, keeps its aspect ratio and
+appears upright at the rotation used to place it.
+
+The Windows picker starts with PNG and JPEG. I cap the selected file at
+32 MiB and each decoded side at 2048 pixels. PDFium writes a printable
+Stamp with an image appearance, including PNG transparency. Comments
+lists it and offers the guarded Delete action. Save writes a PDF copy.

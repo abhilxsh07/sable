@@ -235,8 +235,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	enum class PlacementTool { Note, TextBox, Rectangle, Ellipse, Ink };
+	enum class PlacementTool { Note, TextBox, Rectangle, Ellipse, Ink, Stamp };
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
+	bool canPickStamp();
+	winrt::fire_and_forget pickStamp();
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	void placeShape(NoteTarget target);
@@ -245,6 +247,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		std::uint64_t revision;
 	};
 	std::optional<ShapeStart> m_shapeStart;
+	std::optional<pdf::StampImage> m_stampImage;
+	std::uint64_t m_stampPickVersion = 0;
+	bool m_stampPicking = false;
+#ifdef SABLE_SURFACE_TEST
+	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>()>
+	    m_stampPicker;
+#endif
 	bool m_notePlacing = false;
 	PlacementTool m_placementTool = PlacementTool::Note;
 	// the stroke under the pointer, in displayed page fractions

@@ -206,6 +206,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place ellipse on page" />
 									<MenuFlyoutItem x:Name="DrawInkButton"
 										Text="Draw on page" />
+									<MenuFlyoutItem x:Name="PlaceStampButton"
+										Text="Place image stamp" />
 									<!-- filled in by setupComments with the ink palette -->
 									<MenuFlyoutSubItem x:Name="InkStyleMenu"
 										Text="Drawing style" />

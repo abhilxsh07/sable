@@ -164,6 +164,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::Ellipse);
 		}
 	});
+	PlaceStampButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->pickStamp();
+		}
+	});
 	DrawInkButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement(PlacementTool::Ink);
@@ -312,6 +317,8 @@ void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 }
 void ViewerPage::closeComments() {
 	m_shapeStart.reset();
+	m_stampImage.reset();
+	m_stampPicking = false;
 	dropInkStroke();
 	m_notePlacing = false;
 	setCommentsOpen(false);
@@ -335,6 +342,8 @@ void ViewerPage::showComments() {
 	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
 	    Rail().Visibility() != XVisibility::Visible) {
 		m_shapeStart.reset();
+		m_stampImage.reset();
+		m_stampPicking = false;
 		dropInkStroke();
 		m_notePlacing = false;
 	}
@@ -361,6 +370,11 @@ void ViewerPage::showComments() {
 	                                  m_placementTool == PlacementTool::Ellipse
 	                              ? L"Cancel ellipse placement"
 	                              : L"Place ellipse on page");
+	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
+	PlaceStampButton().Text(m_notePlacing &&
+	                                m_placementTool == PlacementTool::Stamp
+	                            ? L"Cancel image stamp placement"
+	                            : L"Place image stamp");
 	DrawInkButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_noteDialog);
 	DrawInkButton().Text(m_notePlacing && m_placementTool == PlacementTool::Ink
@@ -435,12 +449,16 @@ void ViewerPage::showComments() {
 	    : m_notesDirty ? L"Unsaved changes"
 	                   : L"");
 	if (m_notePlacing && (m_placementTool == PlacementTool::Rectangle ||
-	                      m_placementTool == PlacementTool::Ellipse)) {
+	                      m_placementTool == PlacementTool::Ellipse ||
+	                      m_placementTool == PlacementTool::Stamp)) {
 		NotesState().Text(m_shapeStart
 		                      ? L"Click the opposite corner on the same page. "
 		                        L"Esc cancels."
 		                  : m_placementTool == PlacementTool::Ellipse
 		                      ? L"Click the first corner of the ellipse. "
+		                        L"Esc cancels."
+		                  : m_placementTool == PlacementTool::Stamp
+		                      ? L"Click the first corner of the image stamp. "
 		                        L"Esc cancels."
 		                      : L"Click the first corner of the rectangle. "
 		                        L"Esc cancels.");
