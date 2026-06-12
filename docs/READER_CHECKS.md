@@ -418,6 +418,19 @@ fit, text clarity, pointer/selection alignment and return to the first screen.
 Press Shift+Alt+M a few times on home and in a document: the green MORTY!
 alerts pile up and fade out one by one.
 
+## Image stamps
+
+Open Comments, then choose Place image stamp from More comment actions.
+Cancel the picker once and check that Save stays disabled. Choose a PNG
+with a transparent area, then click opposite corners on the same page.
+Check the image fits at the top left, keeps its proportions, and has a
+Stamp row. Repeat on a rotated page and check the image stays upright.
+
+Save a separate PDF and reopen it. Check the image and Stamp row are
+visible and that Save is disabled. Select the row and use Delete. Check
+the stamp disappears and the neighboring comments remain. Cancel a new
+stamp after its first corner with Esc. Try a JPEG as well.
+
 ## Night Run
 
 Press Shift+Alt+T to open Night Run and focus the track. Space or Up starts

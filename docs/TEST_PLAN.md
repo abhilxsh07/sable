@@ -2,6 +2,21 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Image stamp placement (10 November 2026)
+
+On the desktop I cancel the Windows image picker and Save stays disabled.
+I reopen it, choose a two-color PNG and click two corners on the first
+page. The picture fits the area at its original 2:1 ratio, and Comments
+adds a Stamp row. I save through the Windows picker. The new tab shows
+the same stamp and row with Save disabled, and the source SHA-256 stays
+the same.
+
+The native stamp check decodes a JPEG, refuses a PNG renamed to .jpg,
+and drops a picker result that arrives after cancel. A second corner on
+another page leaves the first corner in place. The saved stamp reopens
+at its original aspect ratio, and Delete removes its Comments row.
+The ink and Night Run checks pass on the same diagnostic build.
+
 ## Night Run input and records (10 November 2026)
 
 On the normal Debug reader I open Night Run from Home with Shift+Alt+T.

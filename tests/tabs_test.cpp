@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/SettingsWindow.h"
 #include "../app/MusicPane.h"
 #include "../app/NightRunPane.h"
+#include "../app/StampImage.h"
 #include "../app/helpers/version.h"
 #include "../app/helpers/logging.h"
 #include "../app/helpers/filter.h"
@@ -132,6 +133,9 @@ struct TabsTest {
 	bool notePlacementOnly = false;
 	bool ellipsePlacementOnly = false;
 	bool inkDrawingOnly = false;
+	bool stampOnly = false;
+	Windows::Foundation::IAsyncAction stampFixtures{nullptr};
+	std::filesystem::path stampPath;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
 	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
@@ -4913,6 +4917,201 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	static Windows::Foundation::IAsyncAction
+	makeStampFixtures(std::filesystem::path png) {
+		const auto store =
+		    [](const std::filesystem::path& path,
+		       const Windows::Storage::Streams::IBuffer& encoded) {
+			    std::vector<std::uint8_t> pixels(encoded.Length());
+			    Windows::Storage::Streams::DataReader::FromBuffer(encoded)
+			        .ReadBytes(pixels);
+			    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+			    out.write(reinterpret_cast<const char*>(pixels.data()),
+			              static_cast<std::streamsize>(pixels.size()));
+			    check_bool(static_cast<bool>(out));
+		    };
+		const auto artwork = co_await makeMusicArtwork();
+		store(png, artwork);
+		store(png.parent_path() / L"wrong.jpg", artwork);
+		using namespace Windows::Graphics::Imaging;
+		using namespace Windows::Storage::Streams;
+		InMemoryRandomAccessStream stream;
+		const auto encoder = co_await BitmapEncoder::CreateAsync(
+		    BitmapEncoder::JpegEncoderId(), stream);
+		std::vector<std::uint8_t> pixels(16 * 8 * 4, 255);
+		encoder.SetPixelData(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Ignore,
+		                     16, 8, 96, 96, pixels);
+		co_await encoder.FlushAsync();
+		stream.Seek(0);
+		DataReader reader(stream);
+		const auto size = static_cast<std::uint32_t>(stream.Size());
+		co_await reader.LoadAsync(size);
+		const auto jpg = png.parent_path() / L"stamp.jpg";
+		store(jpg, reader.ReadBuffer(size));
+		const auto decoded = std::make_shared<pdf::StampImage>();
+		co_await decodeStampImage(hstring(jpg.wstring()), decoded);
+		check_bool(decoded->valid() && decoded->width == 16 &&
+		           decoded->height == 8);
+	}
+	void stampTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		using Windows::Foundation::AsyncStatus;
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    v.m_stampPicking ||
+		    (stampFixtures && stampFixtures.Status() == AsyncStatus::Started) ||
+		    (notesSave && notesSave.Status() == AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto at = [&](int page, double x, double y) {
+			const auto& rect = v.m_layout->pages()[page];
+			return Windows::Foundation::Point{
+			    static_cast<float>(rect.x + x * rect.width),
+			    static_cast<float>(rect.y + y * rect.height)};
+		};
+		const auto& rows = v.m_commentScan.rows();
+		const auto stamp =
+		    std::find_if(rows.begin(), rows.end(), [](const auto& row) {
+			    return row.subtype == "Stamp";
+		    });
+		switch (step) {
+		case 0: {
+			v.setCommentsOpen(true);
+			const auto dir = makeTempDir("stamp_ui");
+			stampPath = dir / L"selected stamp.PNG";
+			notesPath = dir / L"saved stamp.pdf";
+			stampFixtures = makeStampFixtures(stampPath);
+			break;
+		}
+		case 1:
+			stampFixtures.GetResults();
+			v.m_stampPicker = [] { return attachmentChoice({}, {}); };
+			invoke(v.PlaceStampButton());
+			break;
+		case 2:
+			check(!v.m_notePlacing && !v.m_notesDirty,
+			      "canceling the picker changed the PDF");
+			v.m_stampPicker =
+			    [bad = hstring(
+			         (stampPath.parent_path() / L"wrong.jpg").wstring())] {
+				    return attachmentChoice(bad, {});
+			    };
+			invoke(v.PlaceStampButton());
+			break;
+		case 3:
+			check(!v.m_notePlacing && !v.m_notesDirty && v.Message().IsOpen(),
+			      "renamed PNG was accepted as JPEG");
+			attachmentGate = std::make_shared<winrt::handle>(
+			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+			v.m_stampPicker = [path = hstring(stampPath.wstring()),
+			                   gate = attachmentGate] {
+				return attachmentChoice(path, gate);
+			};
+			invoke(v.PlaceStampButton());
+			check(v.m_stampPicking && v.cancelNotePlacement(),
+			      "Escape did not cancel a pending picker");
+			SetEvent(attachmentGate->get());
+			break;
+		case 4:
+			check(!v.m_notePlacing && !v.m_stampImage && !v.m_notesDirty,
+			      "a canceled picker result returned to the page");
+			v.m_stampPicker = [path = hstring(stampPath.wstring())] {
+				return attachmentChoice(path, {});
+			};
+			invoke(v.PlaceStampButton());
+			break;
+		case 5:
+			check(v.m_notePlacing && v.m_stampImage &&
+			          v.m_stampImage->valid() &&
+			          v.PlaceStampButton().Text() ==
+			              L"Cancel image stamp placement",
+			      "a valid PNG did not arm placement");
+			v.placeNote(at(1, .25, .25));
+			v.placeNote(at(0, .6, .6));
+			check(v.m_shapeStart && v.m_shapeStart->corner.page == 1 &&
+			          v.m_notePlacing && !v.m_notesDirty,
+			      "a corner on another page consumed the stamp");
+			v.placeNote(at(1, .65, .60));
+			break;
+		case 6:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && stamp != rows.end() && stamp->page == 1 &&
+			          !v.m_notePlacing && !v.m_stampImage,
+			      "the placed stamp did not appear in Comments");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 7:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "saving the stamp failed");
+			check(
+			    engine
+			        .run([path = notesPath] {
+				        const auto saved = pdf::openFile(path);
+				        if (!saved.document) {
+					        return false;
+				        }
+				        const auto notes = saved.document->annotations(1);
+				        return notes &&
+				               std::any_of(
+				                   notes->entries.begin(), notes->entries.end(),
+				                   [](const auto& note) {
+					                   return note.subtype == "Stamp" &&
+					                          note.bounds &&
+					                          std::abs((note.bounds->right -
+					                                    note.bounds->left) -
+					                                   (note.bounds->top -
+					                                    note.bounds->bottom)) <
+					                              .002f;
+				                   });
+			        })
+			        .get(),
+			    "the reopened stamp lost its aspect ratio");
+			check(stamp != rows.end(), "stamp row disappeared after save");
+			v.CommentsList().SelectedIndex(
+			    static_cast<int>(stamp - rows.begin()));
+			v.showComments();
+			check(v.DeleteNoteButton().IsEnabled() &&
+			          !v.EditNoteButton().IsEnabled(),
+			      "stamp did not offer guarded Delete");
+			invoke(v.DeleteNoteButton());
+			break;
+		case 8:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && stamp == rows.end(),
+			      "deleting the stamp did not refresh Comments");
+			v.close();
+			status.Text(
+			    L"PASS: image stamp picker, placement, save and Delete");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		default:
+			check(false, "unexpected image stamp step");
+		}
+		++step;
+		ticks = 0;
+	}
 	void inkDrawingTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -7914,6 +8113,8 @@ struct TabsTest {
 					noteEditTick(*self);
 				} else if (inkDrawingOnly) {
 					inkDrawingTick(*self);
+				} else if (stampOnly) {
+					stampTick(*self);
 				} else if (notePlacementOnly) {
 					notePlacementTick(*self);
 				} else {
@@ -8617,10 +8818,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->notePlacementOnly || state->ellipsePlacementOnly;
 	state->inkDrawingOnly = GetEnvironmentVariableW(L"SableInkTest", mode, 8) &&
 	                        std::wstring_view(mode) == L"true";
+	state->stampOnly = GetEnvironmentVariableW(L"SableStampTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
-	                   state->noteEditOnly || state->inkDrawingOnly;
+	                   state->noteEditOnly || state->inkDrawingOnly ||
+	                   state->stampOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
