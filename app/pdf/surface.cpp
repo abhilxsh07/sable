@@ -20,13 +20,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "surface.h"
 
 #include <cstdio>
-#include <vector>
 
 #include "../helpers/logging.h"
 #include "surface_util.h"
 
 namespace pdf {
 static_assert(CONTENTS_LOST == static_cast<HRESULT>(E_SURFACE_CONTENTS_LOST));
+
+static void logUpdateFailure(HRESULT result) noexcept {
+	char message[80]{};
+	std::snprintf(message, sizeof(message),
+	              "Couldn't update page surface (0x%08X)",
+	              static_cast<unsigned>(result));
+	diagnostics::write(diagnostics::Level::Error, message);
+}
 
 struct Surface::Updates
     : winrt::implements<Updates, IVirtualSurfaceUpdatesCallbackNative> {
@@ -40,11 +47,7 @@ struct Surface::Updates
 			return S_OK;
 		} catch (...) {
 			const auto result = winrt::to_hresult();
-			char message[80]{};
-			std::snprintf(message, sizeof(message),
-			              "Couldn't update page surface (0x%08X)",
-			              static_cast<unsigned>(result));
-			diagnostics::write(diagnostics::Level::Error, message);
+			logUpdateFailure(result);
 			return result;
 		}
 	}
@@ -91,6 +94,11 @@ Surface::source() const {
 }
 
 void Surface::invalidate(const RECT& rect) {
+	m_updateRetried = false;
+	invalidateClipped(rect);
+}
+
+void Surface::invalidateClipped(const RECT& rect) {
 	if (const auto clipped = clipToSurface(rect, m_width, m_height)) {
 		winrt::check_hresult(m_native->Invalidate(*clipped));
 	}
@@ -100,14 +108,14 @@ void Surface::resize(int width, int height) {
 	winrt::check_hresult(m_native->Resize(width, height));
 	m_width = width;
 	m_height = height;
-	winrt::check_hresult(m_native->Invalidate({0, 0, m_width, m_height}));
+	invalidate({0, 0, m_width, m_height});
 }
 
 void Surface::setDevice(ID2D1Device& device) {
 	winrt::check_hresult(m_drawing->SetDevice(&device));
 	m_device.copy_from(&device);
 	m_waiting = false;
-	winrt::check_hresult(m_native->Invalidate({0, 0, m_width, m_height}));
+	invalidate({0, 0, m_width, m_height});
 }
 
 void Surface::drawUpdates() {
@@ -121,7 +129,8 @@ void Surface::drawUpdates() {
 	}
 	std::vector<RECT> rects(count);
 	winrt::check_hresult(m_native->GetUpdateRects(rects.data(), count));
-	for (const auto& rect : rects) {
+	for (auto current = rects.begin(); current != rects.end(); ++current) {
+		const auto& rect = *current;
 		winrt::com_ptr<ID2D1DeviceContext> context;
 		POINT offset{};
 		const auto begin = m_drawing->BeginDraw(
@@ -131,6 +140,8 @@ void Surface::drawUpdates() {
 			if (recover(begin)) {
 				return;
 			}
+			rects.erase(rects.begin(), current);
+			retryUpdates(std::move(rects));
 			winrt::throw_hresult(begin);
 		}
 		const auto units = context->GetUnitMode();
@@ -159,14 +170,43 @@ void Surface::drawUpdates() {
 		context->SetTransform(transform);
 		context->SetUnitMode(units);
 		const auto end = m_drawing->EndDraw();
-		// the draw callback can hit the loss first, e.g. creating a bitmap
-		if (recover(end) || recover(result)) {
-			return;
+		// a device loss from the draw takes precedence over lost contents
+		auto failure = FAILED(result) ? result : end;
+		if (drawLoss(end) != DrawLoss::None &&
+		    drawLoss(result) != DrawLoss::Device) {
+			failure = end;
 		}
-		winrt::check_hresult(result);
-		winrt::check_hresult(end);
+		if (FAILED(failure)) {
+			if (recover(failure)) {
+				return;
+			}
+			rects.erase(rects.begin(), current);
+			retryUpdates(std::move(rects));
+			winrt::throw_hresult(failure);
+		}
 	}
 	m_retried = false;
+	m_updateRetried = false;
+}
+
+// XAML already handed these rectangles to us. Give the failed tile and the
+// tiles after it one more update, outside the active draw callback.
+void Surface::retryUpdates(std::vector<RECT> rects) {
+	if (m_updateRetried) {
+		return;
+	}
+	m_updateRetried =
+	    m_queue.TryEnqueue([weak = m_self, rects = std::move(rects)] {
+		    if (auto self = weak.lock()) {
+			    for (const auto& rect : rects) {
+				    try {
+					    self->invalidateClipped(rect);
+				    } catch (...) {
+					    logUpdateFailure(winrt::to_hresult());
+				    }
+			    }
+		    }
+	    });
 }
 
 // XAML ignores what UpdatesNeeded returns, so a lost device would just leave
@@ -182,9 +222,7 @@ bool Surface::recover(HRESULT result) {
 	if (loss == DrawLoss::Contents && m_retried) {
 		loss = DrawLoss::Device;
 	}
-	m_waiting = true;
-	m_retried = loss == DrawLoss::Contents;
-	m_queue.TryEnqueue([weak = m_self, loss] {
+	m_waiting = m_queue.TryEnqueue([weak = m_self, loss] {
 		auto self = weak.lock();
 		if (!self) {
 			return;
@@ -201,6 +239,7 @@ bool Surface::recover(HRESULT result) {
 			self->m_lost();
 		}
 	});
-	return true;
+	m_retried = m_waiting && loss == DrawLoss::Contents;
+	return m_waiting;
 }
 } // namespace pdf

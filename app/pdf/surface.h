@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace pdf {
 // UI thread only. Drawing coordinates and invalidation rectangles are pixels.
@@ -51,7 +52,9 @@ class Surface {
   private:
 	struct Updates;
 	Surface(ID2D1Device& device, int width, int height, Draw draw, Lost lost);
+	void invalidateClipped(const RECT& rect);
 	void drawUpdates();
+	void retryUpdates(std::vector<RECT> rects);
 	bool recover(HRESULT result);
 	Draw m_draw;
 	Lost m_lost;
@@ -61,6 +64,8 @@ class Surface {
 	bool m_waiting = false;
 	// a contents loss was answered with SetDevice and nothing drew since
 	bool m_retried = false;
+	// one extra update until a fresh repaint request or a successful draw
+	bool m_updateRetried = false;
 	std::weak_ptr<Surface> m_self;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueue m_queue{nullptr};
 	winrt::com_ptr<ID2D1Device> m_device;
