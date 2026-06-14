@@ -2,6 +2,14 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Comments redraw baseline (10 November 2026)
+
+I reopen the rectangle input through the Windows picker. At 125% in a
+maximized window, the page and its three text boxes stay visible after
+opening Comments, choosing two different rows and closing the panel.
+This isolates panel reflow and selection from PDF writes. The earlier
+intermittent blank still needs a reproducible trigger.
+
 ## Image stamp placement (10 November 2026)
 
 On the desktop I cancel the Windows image picker and Save stays disabled.
