@@ -141,6 +141,8 @@ struct TabsTest {
 	Windows::Foundation::IAsyncOperation<bool> notesSave{nullptr};
 	std::filesystem::path notesPath;
 	std::shared_ptr<std::promise<void>> notesGate;
+	com_ptr<ID2D1Bitmap1> notesOldRaster;
+	bool notesFailedReplacement = false;
 	static Windows::Foundation::IAsyncOperation<ContentDialogResult>
 	notesChoice(ContentDialogResult choice) {
 		co_return choice;
@@ -5856,11 +5858,46 @@ struct TabsTest {
 			};
 		};
 		switch (step) {
-		case 0:
+		case 0: {
+			const auto raster = v.m_device.bitmaps.find(0);
+			if (raster == v.m_device.bitmaps.end() ||
+			    raster->second.version != v.m_renderVersion) {
+				return;
+			}
+			if (!notesOldRaster) {
+				notesOldRaster = raster->second.bitmap;
+				const auto version = v.m_renderVersion;
+				v.refreshNotes();
+				const auto retained = v.m_device.bitmaps.find(0);
+				check(
+				    retained != v.m_device.bitmaps.end() &&
+				        retained->second.bitmap.get() == notesOldRaster.get() &&
+				        retained->second.version == version &&
+				        v.m_renderVersion == version + 1 &&
+				        !v.m_cache.find(v.key(0)),
+				    "refresh dropped the displayed raster or kept stale input");
+				return;
+			}
+			check(raster->second.bitmap.get() != notesOldRaster.get(),
+			      "refresh did not upload a raster for the new revision");
+			if (!notesFailedReplacement) {
+				v.refreshNotes();
+				const auto maximum = v.m_device.context->GetMaximumBitmapSize();
+				const pdf::Bitmap oversized{
+				    static_cast<int>(maximum) + 1, 1, 0, {}};
+				check(!v.showRaster(0, &oversized),
+				      "oversized replacement unexpectedly uploaded");
+				check(!v.m_device.bitmaps.contains(0),
+				      "failed upload kept pre-edit pixels on the page");
+				notesFailedReplacement = true;
+				return;
+			}
+			notesOldRaster = nullptr;
 			v.setCommentsOpen(true);
 			check(v.AddNoteButton().IsEnabled(), "note creation disabled");
 			v.editNote();
 			break;
+		}
 		case 1: {
 			check(v.m_noteDialog != nullptr, "note editor did not open");
 			const auto fields = v.m_noteDialog.Content().as<StackPanel>();

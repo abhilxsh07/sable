@@ -71,6 +71,7 @@ void probePass(const Window& window) {
 void probeClosed() {
 	const bool automated = envIs(L"SableErrorTest", L"true") ||
 	                       envIs(L"SableScaleTest", L"true") ||
+	                       envIs(L"SableSurfaceRetryTest", L"true") ||
 	                       (envIs(L"SableTabsTest", L"true") &&
 	                        !envIs(L"SableShortcutTest", L"true"));
 	if (automated && probeResult.exitCode()) {
@@ -100,6 +101,7 @@ struct State {
 	int m_devices = 0;
 	int m_losses = 0;
 	bool m_closed = false;
+	bool m_retryArmed = false, m_retryFailed = false, m_retryPainted = false;
 
 	// Direct3D 11 can't remove its own device, so a removable one is
 	// Direct3D 11 on 12, with the Direct3D 12 device returned in d3d12.
@@ -174,6 +176,11 @@ struct State {
 		if (!m_filter) {
 			return;
 		}
+		const POINT probe{40, 40};
+		const bool retry = m_retryArmed && PtInRect(&rect, probe);
+		if (retry && !std::exchange(m_retryFailed, true)) {
+			throw_hresult(E_FAIL);
+		}
 		for (int page = rect.top / STEP; page * STEP < rect.bottom; page++) {
 			context.DrawImage(
 			    m_filter->output(),
@@ -186,6 +193,7 @@ struct State {
 		              std::to_wstring(m_losses) + L" | scale=" +
 		              std::to_wstring(m_image.XamlRoot().RasterizationScale()) +
 		              L" | " + m_preset);
+		m_retryPainted = m_retryPainted || retry;
 	}
 };
 } // namespace
@@ -295,6 +303,30 @@ Window surfaceTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(state->m_scroll, 1);
 	root.Children().Append(state->m_scroll);
 	window.Content(root);
+	if (envIs(L"SableSurfaceRetryTest", L"true")) {
+		auto timer = window.DispatcherQueue().CreateTimer();
+		timer.Interval(std::chrono::milliseconds(100));
+		timer.Tick([weak, window, ticks = 0](auto&& sender, auto&&) mutable {
+			try {
+				if (auto self = weak.lock(); self && !self->m_closed) {
+					if (self->m_retryPainted) {
+						sender.Stop();
+						probePass(window);
+					} else if (++ticks > 100) {
+						probeFail(
+						    L"FAIL: interrupted surface tile was not redrawn");
+					} else if (!self->m_retryArmed && self->m_draws > 0) {
+						self->m_retryArmed = true;
+						self->m_surface->invalidate({32, 32, 64, 64});
+					}
+				}
+			} catch (...) {
+				probeFail(L"FAIL: " + to_message());
+			}
+		});
+		window.Closed([timer](auto&&, auto&&) { timer.Stop(); });
+		timer.Start();
+	}
 	window.Closed([state](auto&&, auto&&) {
 		state->m_closed = true;
 		state->m_image.Source(nullptr);
