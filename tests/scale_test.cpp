@@ -71,7 +71,7 @@ struct ScaleTest {
 			if (bitmap == v.m_device.bitmaps.end()) {
 				return;
 			}
-			const auto size = bitmap->second->GetPixelSize();
+			const auto size = bitmap->second.bitmap->GetPixelSize();
 			if (size.width != static_cast<UINT32>(key.width) ||
 			    size.height != static_cast<UINT32>(key.height)) {
 				return;

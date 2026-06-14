@@ -7902,21 +7902,22 @@ struct TabsTest {
 				return;
 			}
 			pdf::RenderResult old{oldKey, *bitmap, false};
-			const auto oldGpu = v.m_device.bitmaps.at(0);
+			const auto oldGpu = v.m_device.bitmaps.at(0).bitmap;
 			v.rotateView(2);
 			check(v.key(0).width == oldKey.width &&
 			          v.key(0).height == oldKey.height &&
 			          v.key(0).rotation == 2,
 			      "half-turn raster size");
 			const auto gpu = v.m_device.bitmaps.find(0);
-			const auto fresh =
-			    gpu == v.m_device.bitmaps.end() ? nullptr : gpu->second.get();
+			const auto fresh = gpu == v.m_device.bitmaps.end()
+			                       ? nullptr
+			                       : gpu->second.bitmap.get();
 			check(fresh != oldGpu.get(), "half turn kept old GPU pixels");
 			v.rendered(std::move(old));
 			const auto after = v.m_device.bitmaps.find(0);
 			check((after == v.m_device.bitmaps.end()
 			           ? nullptr
-			           : after->second.get()) == fresh,
+			           : after->second.bitmap.get()) == fresh,
 			      "late half-turn raster replaced current pixels");
 			check(v.m_sizes[0].width == rotationSize.width &&
 			          v.m_sizes[0].height == rotationSize.height,

@@ -194,6 +194,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	friend struct ViewerErrorTest;
 #endif
 	struct Device {
+		struct Raster {
+			winrt::com_ptr<ID2D1Bitmap1> bitmap;
+			std::uint64_t version;
+		};
 		winrt::com_ptr<ID2D1Device> device;
 		winrt::com_ptr<ID2D1DeviceContext> context;
 		std::unique_ptr<pdf::PageFilter> filter;
@@ -203,7 +207,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		    annotationBackground;
 		winrt::com_ptr<ID2D1StrokeStyle> annotationDashes;
 		winrt::com_ptr<ID2D1SolidColorBrush> findMatch, findActive;
-		std::map<std::size_t, winrt::com_ptr<ID2D1Bitmap1>> bitmaps;
+		std::map<std::size_t, Raster> bitmaps;
 	};
 
 	void startOpen(const std::string& password);
@@ -526,6 +530,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void rebuildDevice();
 	void updateVisible();
 	void requestNext();
+	bool showRaster(std::size_t page, const pdf::Bitmap* bitmap);
 	bool upload(Device& device, std::size_t page, const pdf::Bitmap& bitmap);
 	void invalidate(std::size_t page);
 	void draw(ID2D1DeviceContext& context, const RECT& rect);

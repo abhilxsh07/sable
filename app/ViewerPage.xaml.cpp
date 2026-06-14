@@ -1841,16 +1841,15 @@ void ViewerPage::requestNext() {
 	}
 	for (const auto page : helpers::renderOrder(m_visible, m_wanted)) {
 		const auto wanted = key(page);
-		// one from before a zoom is only stretched, it still needs a render
+		// the old zoom or revision can still draw while a new raster is due
 		if (const auto found = m_device.bitmaps.find(page);
 		    found != m_device.bitmaps.end() &&
-		    sameSize(*found->second, wanted)) {
+		    found->second.version == m_renderVersion &&
+		    sameSize(*found->second.bitmap, wanted)) {
 			continue;
 		}
 		if (const auto* bitmap = m_cache.find(wanted)) {
-			if (upload(m_device, page, *bitmap)) {
-				invalidate(page);
-			}
+			showRaster(page, bitmap);
 			continue;
 		}
 		if (m_settling || m_rendering || m_failed.contains(wanted)) {
@@ -1923,13 +1922,11 @@ void ViewerPage::rendered(pdf::RenderResult result) {
 			if (page < m_layout->pages().size() && result.key == key(page)) {
 				if (!result.bitmap) {
 					m_failed.insert(result.key);
+					showRaster(page, nullptr);
 				} else {
 					const bool shown = page >= m_wanted.first &&
 					                   page < m_wanted.end &&
-					                   upload(m_device, page, *result.bitmap);
-					if (shown) {
-						invalidate(page);
-					}
+					                   showRaster(page, &*result.bitmap);
 					// kept nowhere means rendering it again would go the
 					// same way, round and round
 					if (!m_cache.put(result.key, std::move(*result.bitmap)) &&
@@ -1959,6 +1956,21 @@ void ViewerPage::rendered(pdf::RenderResult result) {
 	}
 }
 
+bool ViewerPage::showRaster(std::size_t page, const pdf::Bitmap* bitmap) {
+	if (bitmap && upload(m_device, page, *bitmap)) {
+		invalidate(page);
+		return true;
+	}
+	// if replacement fails, the earlier edit must not look like it saved
+	const auto old = m_device.bitmaps.find(page);
+	if (old != m_device.bitmaps.end() &&
+	    old->second.version != m_renderVersion) {
+		m_device.bitmaps.erase(old);
+		invalidate(page);
+	}
+	return false;
+}
+
 bool ViewerPage::upload(Device& device, std::size_t page,
                         const pdf::Bitmap& bitmap) {
 	const auto props = D2D1::BitmapProperties1(
@@ -1975,7 +1987,8 @@ bool ViewerPage::upload(Device& device, std::size_t page,
 	        copy.put()))) {
 		return false;
 	}
-	device.bitmaps[page] = std::move(copy);
+	device.bitmaps.insert_or_assign(
+	    page, Device::Raster{std::move(copy), m_renderVersion});
 	return true;
 }
 
@@ -2005,8 +2018,9 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 		const auto at = pixels(page);
 		const auto found = m_device.bitmaps.find(page);
 		if (found != m_device.bitmaps.end()) {
-			const auto size = found->second->GetPixelSize();
-			m_device.filter->setInput(found->second.get());
+			const auto& bitmap = found->second.bitmap;
+			const auto size = bitmap->GetPixelSize();
+			m_device.filter->setInput(bitmap.get());
 			if (static_cast<int>(size.width) == at.width &&
 			    static_cast<int>(size.height) == at.height) {
 				context.DrawImage(m_device.filter->output(),

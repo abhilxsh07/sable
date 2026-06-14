@@ -939,8 +939,7 @@ void ViewerPage::refreshNotes() {
 	m_session->cancelRender();
 	m_cache.clear();
 	m_failed.clear();
-	m_device.filter->setInput(nullptr);
-	m_device.bitmaps.clear();
+	// keep the pages on screen until the new revision has pixels to show.
 	m_thumbLoaded.clear();
 	for (const auto& [page, button] : m_thumbs) {
 		prepareThumbnail(button, page);
@@ -948,9 +947,6 @@ void ViewerPage::refreshNotes() {
 	pauseComments();
 	m_commentScan.reset(static_cast<int>(m_sizes.size()));
 	CommentsList().Items().Clear();
-	for (std::size_t page = 0; page < m_sizes.size(); ++page) {
-		invalidate(page);
-	}
 	updateVisible();
 }
 } // namespace winrt::Sable::implementation
