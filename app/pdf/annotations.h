@@ -85,6 +85,7 @@ struct InkStyle {
 };
 enum class HighlightColor { Yellow, Green, LightBlue, Pink, Red };
 enum class OutlineShape { Rectangle, Ellipse };
+enum class FillMark { Check, Cross };
 
 // These snapshots own their text and can outlive the document and engine.
 struct Annotation {

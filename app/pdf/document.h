@@ -257,6 +257,10 @@ class Document {
 	                            int rotation, std::uint64_t revision,
 	                            const std::function<bool()>& canceled = {},
 	                            InkStyle style = {});
+	std::optional<int>
+	addFillMarkAt(int page, AnnotationPoint point, int rotation, FillMark mark,
+	              std::uint64_t revision,
+	              const std::function<bool()>& canceled = {});
 	// Explicit lines are opt-in until the editor can preserve line breaks.
 	std::optional<int>
 	addTextBox(int page, const AnnotationBounds& bounds,

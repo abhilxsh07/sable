@@ -3641,6 +3641,84 @@ TEST(Annotations, DisplayedInkRefusesInvalidPointsAndStaleRevisions) {
 	    .get();
 }
 
+TEST(Annotations, FillMarksStayUprightOnTheDisplayedCrop) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (int intrinsic = 0; intrinsic < 4; ++intrinsic) {
+			    const auto source = editableNoteBytes(
+			        "/Contents (Keep)", "Text", {},
+			        "/MediaBox [0 0 400 600] /CropBox [20 40 380 560] "
+			        "/Rotate " +
+			            std::to_string(intrinsic * 90));
+			    for (int rotation = 0; rotation < 4; ++rotation) {
+				    SCOPED_TRACE(intrinsic * 4 + rotation);
+				    auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    auto& doc = *opened.document;
+				    ASSERT_EQ(doc.addFillMarkAt(0, {.5, .5}, rotation,
+				                                pdf::FillMark::Check, 1),
+				              1);
+				    ASSERT_EQ(doc.addFillMarkAt(0, {0, 0}, rotation,
+				                                pdf::FillMark::Cross, 2),
+				              2);
+				    const auto bytes = doc.serializeForCopy(1024 * 1024);
+				    ASSERT_TRUE(bytes);
+				    auto saved = pdf::openDocument(*bytes);
+				    ASSERT_TRUE(saved.document);
+				    const auto notes = saved.document->annotations(0);
+				    ASSERT_TRUE(notes && notes->entries.size() == 3);
+				    EXPECT_EQ(notes->entries[0].contents, "Keep");
+				    for (int i : {1, 2}) {
+					    EXPECT_EQ(notes->entries[i].subtype, "Ink");
+					    EXPECT_EQ(notes->entries[i].flags,
+					              FPDF_ANNOT_FLAG_PRINT);
+				    }
+				    const auto tick =
+				        pdf::DocumentEditTest::inkList(*saved.document, 1);
+				    const auto cross =
+				        pdf::DocumentEditTest::inkList(*saved.document, 2);
+				    ASSERT_EQ(tick.size(), 1u);
+				    ASSERT_EQ(tick.front().size(), 3u);
+				    ASSERT_EQ(cross.size(), 2u);
+				    const bool turned = (intrinsic + rotation) % 2 != 0;
+				    const int w = turned ? 520 : 360;
+				    const int h = turned ? 360 : 520;
+				    const auto raster =
+				        saved.document->render(0, w, h, rotation);
+				    ASSERT_TRUE(raster);
+				    const auto blue = [&](int x, int y) {
+					    return raster->pixels[y * raster->stride + x * 4];
+				    };
+				    EXPECT_LT(blue(w / 2 + 3, h / 2 - 3), 128);
+				    EXPECT_EQ(blue(w / 2 - 4, h / 2 - 4), 255);
+				    EXPECT_LT(blue(6, 6), 128);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, FillMarksRefuseInvalidAndCanceledPlacements) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = annotationBytes("pages.pdf");
+		    auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto mark = pdf::FillMark::Check;
+		    EXPECT_FALSE(doc.addFillMarkAt(0, {.5, .5}, 4, mark, 1));
+		    EXPECT_FALSE(doc.addFillMarkAt(0, {-.1, .5}, 0, mark, 1));
+		    EXPECT_FALSE(doc.addFillMarkAt(0, {.5, .5}, 0, mark, 2));
+		    EXPECT_FALSE(doc.addFillMarkAt(0, {.5, .5}, 0, mark, 1,
+		                                   [] { return true; }));
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_EQ(doc.serializeForCopy(1024 * 1024), source);
+	    })
+	    .get();
+}
+
 TEST(Annotations, DisplayedTextBoxesFollowCropAndAllPageRotations) {
 	pdf::Engine engine;
 	engine

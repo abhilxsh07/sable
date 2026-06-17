@@ -2295,6 +2295,51 @@ Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
 	return addInk(index, converted, revision, canceled, style);
 }
 
+std::optional<int>
+Document::addFillMarkAt(int index, AnnotationPoint point, int rotation,
+                        FillMark mark, std::uint64_t revision,
+                        const std::function<bool()>& canceled) {
+	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
+	    rotation > 3 || !onDisplayedPage(point) || !revision ||
+	    !currentRevision(revision) || (canceled && canceled())) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	AnnotationPoint tl, tr, bl;
+	if (!page ||
+	    !displayedAnnotationPoint(page.get(), rotation, {0, 0}, tl.x, tl.y) ||
+	    !displayedAnnotationPoint(page.get(), rotation, {1, 0}, tr.x, tr.y) ||
+	    !displayedAnnotationPoint(page.get(), rotation, {0, 1}, bl.x, bl.y)) {
+		return {};
+	}
+	page.reset();
+	const double width = std::hypot(tr.x - tl.x, tr.y - tl.y);
+	const double height = std::hypot(bl.x - tl.x, bl.y - tl.y);
+	// @todo: offer a mark size. the inset includes the round stroke caps.
+	constexpr double inset = 6.25;
+	if (width < 2 * inset || height < 2 * inset) {
+		return {};
+	}
+	const double x = std::clamp(point.x * width, inset, width - inset);
+	const double y = std::clamp(point.y * height, inset, height - inset);
+	const auto at = [&](double dx, double dy) {
+		const double along = (x + dx) / width, down = (y + dy) / height;
+		return InkPoint{static_cast<float>(tl.x + along * (tr.x - tl.x) +
+		                                   down * (bl.x - tl.x)),
+		                static_cast<float>(tl.y + along * (tr.y - tl.y) +
+		                                   down * (bl.y - tl.y))};
+	};
+	switch (mark) {
+	case FillMark::Check:
+		return addInk(index, {{at(-5, 0), at(-1.5, 3.5), at(5, -5)}}, revision,
+		              canceled);
+	case FillMark::Cross:
+		return addInk(index, {{at(-5, -5), at(5, 5)}, {at(-5, 5), at(5, -5)}},
+		              revision, canceled);
+	}
+	return {};
+}
+
 std::optional<int> Document::addTextBox(
     int index, const AnnotationBounds& bounds, std::u16string_view contents,
     std::u16string_view author, std::uint64_t revision,
