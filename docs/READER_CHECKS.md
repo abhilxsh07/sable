@@ -418,6 +418,22 @@ fit, text clarity, pointer/selection alignment and return to the first screen.
 Press Shift+Alt+M a few times on home and in a document: the green MORTY!
 alerts pile up and fade out one by one.
 
+## Comments redraw
+
+Open an annotated PDF and toggle Comments. Select two rows and check
+that the page text and marks stay visible. In a PDF with comments on
+different pages, follow a row to the next page and return.
+
+Edit a text box in a test PDF. Look for the new text on the page and
+in Comments. Zoom in, rotate the view and let the raster settle. Save
+a separate copy and reopen it in a second tab. Switch both ways and
+check each tab's page, zoom and rotation. The reopened copy should
+show the edit with Save disabled.
+
+If the page stays blank, note the last action, page, zoom and whether
+Comments was open. Look for `Couldn't update page surface` in the normal
+log and record its HRESULT.
+
 ## Image stamps
 
 Open Comments, then choose Place image stamp from More comment actions.

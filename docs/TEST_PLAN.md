@@ -10,6 +10,26 @@ opening Comments, choosing two different rows and closing the panel.
 This isolates panel reflow and selection from PDF writes. The earlier
 intermittent blank still needs a reproducible trigger.
 
+After the redraw changes I edit a text box at 125%. The new text shows
+on the page and in Comments, and all three boxes remain visible when I
+zoom to 140%. A clockwise turn briefly shows the page placeholder, then
+repaints on its own. The Windows picker saves a separate copy, which
+reopens with the new text, three comment rows and Save disabled. The two
+tabs keep their own zoom and rotation when I switch between them. The
+source SHA-256 matches before and after the save.
+
+The native surface probe interrupts one tile draw and waits for that tile
+to be drawn again without input. The Notes probe holds the displayed
+raster during a revision change, checks that a fresh raster replaces it,
+and asks Direct2D to upload a bitmap wider than the device supports. The
+refusal drops the previous revision, and the normal note and save flow
+still passes. Comments navigation, rotation, scaling, stamps and ink pass
+in the diagnostic reader. Debug x64 and ARM64 build without warnings with
+the local wrapper, and all 746 enabled x64 tests and formatting pass.
+
+I still have no repeatable trigger for the earlier blank after opening
+Comments or selecting a row. That report stays open.
+
 ## Image stamp placement (10 November 2026)
 
 On the desktop I cancel the Windows image picker and Save stays disabled.
