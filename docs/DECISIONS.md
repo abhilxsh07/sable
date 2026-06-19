@@ -2837,3 +2837,11 @@ The Windows picker starts with PNG and JPEG. I cap the selected file at
 32 MiB and each decoded side at 2048 pixels. PDFium writes a printable
 Stamp with an image appearance, including PNG transparency. Comments
 lists it and offers the guarded Delete action. Save writes a PDF copy.
+
+## Fill & Sign marks in Comments (2026-11-10)
+
+I put the first Fill & Sign commands in Comments under More. A single
+click places a check mark or cross with a black 2 pt stroke. The center
+moves inward near a page edge so the stroke caps stay inside the crop.
+I use printable Ink annotations, so Comments lists them as drawings
+and offers the same Delete and Save a Copy path.

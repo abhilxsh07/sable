@@ -183,6 +183,11 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 				placeShape(target);
 				break;
 			}
+			if (m_placementTool == PlacementTool::FillCheck ||
+			    m_placementTool == PlacementTool::FillCross) {
+				placeFillMark(target);
+				break;
+			}
 			m_notePlacing = false;
 			showComments();
 			if (m_placementTool == PlacementTool::TextBox) {
@@ -194,6 +199,58 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		}
 	}
 	return true;
+}
+
+std::function<void(pdf::NoteResult)>
+ViewerPage::placementReply(pdf::Session* session, const wchar_t* failure) {
+	return [weak = get_weak(), queue = DispatcherQueue(), session,
+	        failure](pdf::NoteResult result) {
+		queue.TryEnqueue([weak, session, result, failure] {
+			const auto self = weak.get();
+			if (!self || self->m_closed || self->m_session.get() != session) {
+				return;
+			}
+			self->m_noteBusy = false;
+			self->m_notesDirty = self->m_notesDirty || result.changed;
+			if (result.changed) {
+				self->Message().IsOpen(false);
+				self->refreshNotes();
+			} else if (!result.canceled) {
+				self->showNotice(failure);
+			}
+			self->showComments();
+		});
+	};
+}
+
+void ViewerPage::placeFillMark(NoteTarget target) {
+	const auto session = m_session.get();
+	const auto revision = session ? session->annotationRevision() : 0;
+	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
+	    m_noteDialog || m_passwordDialog) {
+		cancelNotePlacement();
+		return;
+	}
+	const auto mark = m_placementTool == PlacementTool::FillCheck
+	                      ? pdf::FillMark::Check
+	                      : pdf::FillMark::Cross;
+	m_notePlacing = false;
+	m_noteBusy = true;
+	try {
+		if (session->addFillMarkAt(
+		        target.page, {target.x, target.y}, target.rotation, mark,
+		        revision,
+		        placementReply(session,
+		                       L"Couldn't add this mark. The page "
+		                       L"may be too small or restrict comments."))) {
+			showComments();
+			return;
+		}
+	} catch (...) {
+	}
+	m_noteBusy = false;
+	showComments();
+	showNotice(L"Couldn't queue this mark. Try again.");
 }
 
 void ViewerPage::placeShape(NoteTarget target) {
@@ -235,25 +292,7 @@ void ViewerPage::placeShape(NoteTarget target) {
 		                L"This PDF may restrict comments."
 		              : L"Couldn't add this rectangle. Try a larger area. "
 		                L"This PDF may restrict comments.";
-		auto callback = [weak = get_weak(), queue = DispatcherQueue(), session,
-		                 failure](pdf::NoteResult result) {
-			queue.TryEnqueue([weak, session, result, failure] {
-				const auto self = weak.get();
-				if (!self || self->m_closed ||
-				    self->m_session.get() != session) {
-					return;
-				}
-				self->m_noteBusy = false;
-				self->m_notesDirty = self->m_notesDirty || result.changed;
-				if (result.changed) {
-					self->Message().IsOpen(false);
-					self->refreshNotes();
-				} else if (!result.canceled) {
-					self->showNotice(failure);
-				}
-				self->showComments();
-			});
-		};
+		auto callback = placementReply(session, failure);
 		const pdf::AnnotationPoint start{first.x, first.y},
 		    end{target.x, target.y};
 		auto image = std::exchange(m_stampImage, std::nullopt);

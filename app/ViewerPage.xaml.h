@@ -56,6 +56,7 @@ class Session;
 enum class TextMarkup;
 class Surface;
 struct RenderResult;
+struct NoteResult;
 struct SessionInfo;
 struct FindUpdate;
 struct Link;
@@ -239,13 +240,25 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	enum class PlacementTool { Note, TextBox, Rectangle, Ellipse, Ink, Stamp };
+	enum class PlacementTool {
+		Note,
+		TextBox,
+		Rectangle,
+		Ellipse,
+		Ink,
+		Stamp,
+		FillCheck,
+		FillCross
+	};
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool canPickStamp();
 	winrt::fire_and_forget pickStamp();
 	bool cancelNotePlacement();
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	void placeShape(NoteTarget target);
+	void placeFillMark(NoteTarget target);
+	std::function<void(pdf::NoteResult)> placementReply(pdf::Session* session,
+	                                                    const wchar_t* failure);
 	struct ShapeStart {
 		NoteTarget corner;
 		std::uint64_t revision;

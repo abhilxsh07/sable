@@ -169,6 +169,16 @@ void ViewerPage::setupComments() {
 			self->pickStamp();
 		}
 	});
+	PlaceCheckButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::FillCheck);
+		}
+	});
+	PlaceCrossButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::FillCross);
+		}
+	});
 	DrawInkButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement(PlacementTool::Ink);
@@ -371,6 +381,8 @@ void ViewerPage::showComments() {
 	                              ? L"Cancel ellipse placement"
 	                              : L"Place ellipse on page");
 	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
+	FillMarksMenu().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
+	                          !m_noteDialog && !m_passwordDialog);
 	PlaceStampButton().Text(m_notePlacing &&
 	                                m_placementTool == PlacementTool::Stamp
 	                            ? L"Cancel image stamp placement"
@@ -466,6 +478,13 @@ void ViewerPage::showComments() {
 	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
 		NotesState().Text(L"Drag on a page to draw (" +
 		                  inkStyleName(s_inkStyle) + L"). Esc stops drawing.");
+	}
+	if (m_notePlacing && (m_placementTool == PlacementTool::FillCheck ||
+	                      m_placementTool == PlacementTool::FillCross)) {
+		NotesState().Text(
+		    m_placementTool == PlacementTool::FillCheck
+		        ? L"Click a page to place a check mark. Esc cancels."
+		        : L"Click a page to place a cross. Esc cancels.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);
