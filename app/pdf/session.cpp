@@ -609,6 +609,31 @@ bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
                        int rotation, std::uint64_t revision,
                        std::function<void(NoteResult)> callback,
                        InkStyle style) {
+	return writeInk(
+	    page, revision,
+	    [page, strokes = std::move(strokes), rotation, revision,
+	     style](Document& doc, const auto& canceled) {
+		    return doc.addInkAt(page, strokes, rotation, revision, canceled,
+		                        style);
+	    },
+	    std::move(callback));
+}
+
+bool Session::addFillMarkAt(int page, AnnotationPoint point, int rotation,
+                            FillMark mark, std::uint64_t revision,
+                            std::function<void(NoteResult)> callback) {
+	return writeInk(
+	    page, revision,
+	    [page, point, rotation, mark, revision](Document& doc,
+	                                            const auto& canceled) {
+		    return doc.addFillMarkAt(page, point, rotation, mark, revision,
+		                             canceled);
+	    },
+	    std::move(callback));
+}
+
+bool Session::writeInk(int page, std::uint64_t revision, InkWrite write,
+                       std::function<void(NoteResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -616,15 +641,14 @@ bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, strokes = std::move(strokes), rotation,
-	                      revision, style, callback = std::move(callback)] {
+	state->m_engine.post([state, page, write = std::move(write),
+	                      callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
 		try {
 			if (!canceled()) {
-				result.index = state->m_document->addInkAt(
-				    page, strokes, rotation, revision, canceled, style);
+				result.index = write(*state->m_document, canceled);
 				result.changed = result.index.has_value();
 				if (result.changed) {
 					state->m_forms.reset();
@@ -635,7 +659,7 @@ bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't add a PDF ink drawing.");
+			                   "Couldn't add a PDF ink annotation.");
 		}
 		result.canceled = !result.changed && canceled();
 		callback(std::move(result));

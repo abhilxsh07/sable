@@ -4107,6 +4107,43 @@ TEST_F(SessionTest, InkQueueOwnsStrokesAndPreservesTheEllipseBesideIt) {
 	EXPECT_EQ(readFile(source), original);
 }
 
+TEST_F(SessionTest, FillMarkQueueSharesAnnotationRevisionAndCloseGuards) {
+	const auto source = fixturePath("pages.pdf");
+	pdf::Session session(engine), closing(engine);
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	ASSERT_EQ(open(closing, source).error, pdf::Error::None);
+	const auto before = readForms(session);
+	ASSERT_TRUE(before && before->revision == 1);
+	const auto check = pdf::FillMark::Check, cross = pdf::FillMark::Cross;
+	Reply<pdf::NoteResult> placed, second, stale, canceled;
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(
+		    session.addFillMarkAt(0, {.5, .5}, 0, check, 1, placed.callback()));
+		ASSERT_TRUE(
+		    session.addFillMarkAt(0, {.6, .5}, 0, cross, 1, stale.callback()));
+		ASSERT_TRUE(
+		    session.addFillMarkAt(0, {.6, .5}, 0, cross, 2, second.callback()));
+		ASSERT_TRUE(closing.addFillMarkAt(0, {.5, .5}, 0, check, 1,
+		                                  canceled.callback()));
+		closing.close();
+	}
+	const auto tick = placed.wait(), x = second.wait(), old = stale.wait(),
+	           closed = canceled.wait();
+	ASSERT_TRUE(tick && x && old && closed);
+	EXPECT_TRUE(tick->changed && !tick->canceled);
+	EXPECT_EQ(tick->index, 0);
+	EXPECT_TRUE(x->changed && !x->canceled);
+	EXPECT_EQ(x->index, 1);
+	EXPECT_FALSE(old->changed || old->index || old->canceled);
+	EXPECT_TRUE(closed->canceled && !closed->changed && !closed->index);
+	const auto after = readForms(session);
+	ASSERT_TRUE(after && after->revision == 3);
+	EXPECT_NE(before, after);
+	EXPECT_EQ(session.annotationRevision(), 3u);
+	EXPECT_EQ(closing.annotationRevision(), 0u);
+}
+
 TEST_F(SessionTest, StampQueueOwnsPixelsAndRefusesStaleOrClosedWrites) {
 	const auto source = fixturePath("pages.pdf");
 	pdf::Session session(engine), closing(engine);

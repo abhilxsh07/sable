@@ -194,6 +194,9 @@ class Session {
 	              std::uint64_t revision,
 	              std::function<void(NoteResult)> callback,
 	              InkStyle style = {});
+	bool addFillMarkAt(int page, AnnotationPoint point, int rotation,
+	                   FillMark mark, std::uint64_t revision,
+	                   std::function<void(NoteResult)> callback);
 	bool addStampAt(int page, AnnotationPoint first, AnnotationPoint second,
 	                int rotation, StampImage image, std::uint64_t revision,
 	                std::function<void(NoteResult)> callback);
@@ -286,6 +289,10 @@ class Session {
 	void close();
 
   private:
+	using InkWrite = std::function<std::optional<int>(
+	    Document&, const std::function<bool()>&)>;
+	bool writeInk(int page, std::uint64_t revision, InkWrite write,
+	              std::function<void(NoteResult)> callback);
 	bool writeOutlineShape(int page, AnnotationPoint first,
 	                       AnnotationPoint second, int rotation,
 	                       OutlineShape shape, std::uint64_t revision,
