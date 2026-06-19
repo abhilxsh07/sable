@@ -134,6 +134,7 @@ struct TabsTest {
 	bool ellipsePlacementOnly = false;
 	bool inkDrawingOnly = false;
 	bool stampOnly = false;
+	bool fillMarksOnly = false;
 	Windows::Foundation::IAsyncAction stampFixtures{nullptr};
 	std::filesystem::path stampPath;
 	bool notesOnly = false;
@@ -4955,6 +4956,146 @@ struct TabsTest {
 		check_bool(decoded->valid() && decoded->width == 16 &&
 		           decoded->height == 8);
 	}
+	void fillMarksTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		using Windows::Foundation::AsyncStatus;
+		if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+		    (notesSave && notesSave.Status() == AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto place = [&](int page) {
+			const auto& rect = v.m_layout->pages()[page];
+			check(v.placeNote({static_cast<float>(rect.x + .4 * rect.width),
+			                   static_cast<float>(rect.y + .6 * rect.height)}),
+			      "armed mark did not consume the page click");
+		};
+		const auto& rows = v.m_commentScan.rows();
+		const auto inkOn = [&](int page) {
+			return std::find_if(rows.begin(), rows.end(),
+			                    [page](const auto& r) {
+				                    return r.subtype == "Ink" && r.page == page;
+			                    });
+		};
+		switch (step) {
+		case 0:
+			v.setCommentsOpen(true);
+			check(v.FillMarksMenu().IsEnabled(), "fill marks are disabled");
+			invoke(v.PlaceCheckButton());
+			check(v.m_notePlacing && v.placeNote({-1, -1}) && v.m_notePlacing &&
+			          v.cancelNotePlacement() && !v.m_notesDirty,
+			      "page gap or Escape changed the PDF");
+			invoke(v.PlaceCrossButton());
+			check(v.m_notePlacing &&
+			          v.m_placementTool == ViewerPage::PlacementTool::FillCross,
+			      "cross command did not arm placement");
+			v.setCommentsOpen(false);
+			check(!v.m_notePlacing && !v.m_notesDirty,
+			      "closing Comments kept the mark armed");
+			v.setCommentsOpen(true);
+			invoke(v.PlaceCheckButton());
+			place(0);
+			break;
+		case 1:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && !v.m_notePlacing && inkOn(0) != rows.end(),
+			      "check mark did not refresh Comments");
+			v.rotateView(1);
+			v.goToPage(1);
+			break;
+		case 2:
+			check(v.m_rotation == 1, "cross placement did not rotate");
+			invoke(v.PlaceCrossButton());
+			place(1);
+			break;
+		case 3:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(inkOn(0) != rows.end() && inkOn(1) != rows.end(),
+			      "cross did not land on the next page");
+			notesPath = makeTempDir("fill_marks") / L"marked copy.pdf";
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 4:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "saving the two marks failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          const auto tick = saved.document->printRaster(
+				              0, 200, 300, 0, 0, 200, 300);
+				          const auto cross = saved.document->printRaster(
+				              1, 300, 200, 0, 0, 300, 200);
+				          const auto blue = [](const pdf::Bitmap& image, int x,
+				                               int y) {
+					          return image.pixels[y * image.stride + x * 4];
+				          };
+				          return tick && cross && blue(*tick, 83, 177) < 128 &&
+				                 blue(*tick, 76, 176) == 255 &&
+				                 blue(*cross, 175, 124) < 128;
+			          })
+			          .get(),
+			      "the saved check mark and cross did not print as placed");
+			owner.openDocument(engine, notesPath, 1);
+			break;
+		case 5:
+			if (v.m_path != notesPath) {
+				return;
+			}
+			v.setCommentsOpen(true);
+			break;
+		case 6:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(inkOn(0) != rows.end() && inkOn(1) != rows.end() &&
+			          !v.SaveNotesButton().IsEnabled(),
+			      "the reopened copy lost a mark or was dirty");
+			v.CommentsList().SelectedIndex(
+			    static_cast<int>(inkOn(1) - rows.begin()));
+			v.showComments();
+			check(v.DeleteNoteButton().IsEnabled(), "cross cannot be removed");
+			invoke(v.DeleteNoteButton());
+			break;
+		case 7:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && inkOn(0) != rows.end() &&
+			          inkOn(1) == rows.end(),
+			      "removing the cross lost the check mark or kept the cross");
+			v.close();
+			status.Text(
+			    L"PASS: check mark and cross placement, save and Delete");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		default:
+			check(false, "unexpected fill marks step");
+		}
+		++step;
+		ticks = 0;
+	}
 	void stampTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -8153,6 +8294,8 @@ struct TabsTest {
 					inkDrawingTick(*self);
 				} else if (stampOnly) {
 					stampTick(*self);
+				} else if (fillMarksOnly) {
+					fillMarksTick(*self);
 				} else if (notePlacementOnly) {
 					notePlacementTick(*self);
 				} else {
@@ -8858,11 +9001,14 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                        std::wstring_view(mode) == L"true";
 	state->stampOnly = GetEnvironmentVariableW(L"SableStampTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->fillMarksOnly =
+	    GetEnvironmentVariableW(L"SableFillMarksTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
 	                   state->noteEditOnly || state->inkDrawingOnly ||
-	                   state->stampOnly;
+	                   state->stampOnly || state->fillMarksOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
