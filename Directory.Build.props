@@ -54,6 +54,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 	</ItemDefinitionGroup>
 
+	<!-- limit ARM64 Debug compiler workers to fit the WinUI pch in memory.
+		/Z7 keeps debug info in the objects. -->
+	<ItemDefinitionGroup
+		Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
+		<ClCompile>
+			<DebugInformationFormat>OldStyle</DebugInformationFormat>
+			<MultiProcessorCompilation>true</MultiProcessorCompilation>
+			<ProcessorNumber>2</ProcessorNumber>
+		</ClCompile>
+	</ItemDefinitionGroup>
+
 	<!-- Hybrid CRT for the app: static VC runtime + STL, dynamic UCRT.
 		A self-contained build otherwise still needs the VC++ redistributable
 		installed, which defeats the point.

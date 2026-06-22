@@ -2845,3 +2845,11 @@ click places a check mark or cross with a black 2 pt stroke. The center
 moves inward near a page edge so the stroke caps stay inside the crop.
 I use printable Ink annotations, so Comments lists them as drawings
 and offers the same Delete and Save a Copy path.
+
+## Debug ARM64 build settings (2026-11-10)
+
+The ARM64 compiler ran out of memory mapping the WinUI pch with the
+default parallel build. I use one MSBuild worker and two compiler
+workers for Debug ARM64, with /Z7 debug info in the object files.
+Other configurations default to four MSBuild workers. The build
+script's -MaxCpu option overrides the MSBuild worker count.
