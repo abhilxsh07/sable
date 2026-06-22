@@ -2,6 +2,26 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Fill & Sign check marks and crosses (10 November 2026)
+
+I open pages.pdf, choose Fill & Sign in Comments and cancel the first
+check mark with Esc. Save stays disabled. A margin click leaves the next
+placement armed. I click inside the page for the check mark and at the
+right edge for the cross. Both show as Drawing rows, and the cross fits
+inside the edge.
+
+The Windows picker saves a separate copy. Sable reopens it with both
+marks visible and Save disabled, and the source SHA-256 matches. Acrobat
+shows both marks in black. Windows also reports a Font Capture
+application error during the Acrobat check.
+
+The native probe places the check mark on page 1 and the cross on page
+2 after rotating the view. It checks both shapes in the saved print
+raster, reopens the copy and removes only the cross. The Notes, Ink,
+Stamp and note placement probes also pass. Debug x64 and ARM64 build
+without warnings with the local wrapper, and all 749 enabled x64 tests
+and formatting pass.
+
 ## Comments redraw baseline (10 November 2026)
 
 I reopen the rectangle input through the Windows picker. At 125% in a

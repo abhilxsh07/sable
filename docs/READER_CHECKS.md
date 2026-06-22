@@ -434,6 +434,18 @@ If the page stays blank, note the last action, page, zoom and whether
 Comments was open. Look for `Couldn't update page surface` in the normal
 log and record its HRESULT.
 
+## Fill & Sign marks
+
+Open Comments, then choose Fill & Sign from More comment actions.
+Choose Place check mark or Place cross. Click in a page margin and
+check that placement stays armed. Press Esc and check that Save stays
+disabled. Choose the tool again and click inside a page.
+
+Place the other mark near a page edge and check that the whole stroke
+stays inside the page. Both marks appear as Drawing rows. Save a
+separate PDF, reopen it, and check both marks in the page and Comments.
+Select one drawing and check that Delete removes just that mark.
+
 ## Image stamps
 
 Open Comments, then choose Place image stamp from More comment actions.
