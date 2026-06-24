@@ -58,11 +58,7 @@ Engine::Engine() {
 Engine::~Engine() {
 	// joining itself would never return
 	assert(!onThread() && "pdf::Engine destroyed from its own thread");
-	{
-		std::lock_guard lock(m_mutex);
-		m_stopping = true;
-	}
-	m_wake.notify_one();
+	beginShutdown();
 	m_thread.join();
 	{
 		std::lock_guard lock(m_mutex);
@@ -73,16 +69,24 @@ Engine::~Engine() {
 	g_engines.fetch_sub(1);
 }
 
-void Engine::post(std::function<void()> work) {
+void Engine::beginShutdown() {
 	{
 		std::lock_guard lock(m_mutex);
-		// too late, the thread is on its way out
+		m_stopping = true;
+	}
+	m_wake.notify_one();
+}
+
+bool Engine::post(std::function<void()> work) {
+	{
+		std::lock_guard lock(m_mutex);
 		if (m_stopping) {
-			return;
+			return false;
 		}
 		m_queue.push_back(std::move(work));
 	}
 	m_wake.notify_one();
+	return true;
 }
 
 void Engine::background(std::function<void()> work,

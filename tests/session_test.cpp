@@ -758,6 +758,25 @@ TEST_F(SessionTest, FindYieldsBetweenPagesAndCloseStopsTheRemainingScan) {
 	EXPECT_FALSE(session.search(u"a", {}, [](auto) {}));
 }
 
+TEST_F(SessionTest, FindReportsCancellationWhenShutdownRejectsTheNextPage) {
+	auto session = std::make_unique<pdf::Session>(engine);
+	ASSERT_EQ(open(*session, fixturePath("text.pdf")).error, pdf::Error::None);
+	Gate gate(engine);
+	Reply<pdf::FindUpdate> reply;
+	ASSERT_TRUE(session->search(u"alpha", {}, reply.callback()));
+	auto close = engine.run(
+	    [session = std::move(session)]() mutable { session.reset(); });
+	engine.beginShutdown();
+	gate.open();
+	close.get();
+	const auto result = reply.wait();
+	ASSERT_TRUE(result);
+	EXPECT_TRUE(result->done);
+	EXPECT_TRUE(result->canceled);
+	EXPECT_EQ(result->pagesScanned, 1);
+	EXPECT_TRUE(result->matches.empty());
+}
+
 TEST_F(SessionTest, FindSupersedesQueuedQueryAndRejectsInvalidInput) {
 	pdf::Session session(engine);
 	Reply<pdf::FindUpdate> unopened;
@@ -3211,6 +3230,26 @@ TEST_F(SessionTest, SavesOneCopyAtATimeOnTheEngineThreadAndCancelsQueuedWork) {
 		EXPECT_FALSE(fs::exists(target));
 	}
 	EXPECT_FALSE(session.saveCopy(target, source, {}, before.callback()));
+}
+
+TEST_F(SessionTest, SaveCopyReportsRejectionDuringShutdown) {
+	auto session = std::make_unique<pdf::Session>(engine);
+	const auto source = fixturePath("pages.pdf");
+	const auto target = writeTemp("rejected-copy.pdf", "previous");
+	const auto previous = readFile(target);
+	ASSERT_EQ(open(*session, source).error, pdf::Error::None);
+	const auto calls = std::make_shared<std::atomic<int>>(0);
+	Gate gate(engine);
+	auto* live = session.get();
+	auto close = engine.run(
+	    [session = std::move(session)]() mutable { session.reset(); });
+	engine.beginShutdown();
+	EXPECT_FALSE(
+	    live->saveCopy(target, source, {}, [calls](auto) { ++*calls; }));
+	gate.open();
+	close.get();
+	EXPECT_EQ(*calls, 0);
+	EXPECT_EQ(readFile(target), previous);
 }
 
 TEST_F(SessionTest, ExistingNoteEditsOwnTextAndKeepNoOpAndStaleOutcomes) {

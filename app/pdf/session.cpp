@@ -132,7 +132,12 @@ struct Session::State::FindJob : std::enable_shared_from_this<FindJob> {
 		}
 		if (!update.done) {
 			const auto self = shared_from_this();
-			state->m_engine.post([self] { self->run(); });
+			if (!state->m_engine.post([self] { self->run(); })) {
+				update.done = true;
+				update.canceled = true;
+				update.matches.clear();
+				callback(std::move(update));
+			}
 		}
 	}
 };
@@ -151,8 +156,7 @@ bool Session::search(std::u16string query, FindOptions options,
 	job->query = std::move(query);
 	job->options = options;
 	job->callback = std::move(callback);
-	state->m_engine.post([job] { job->run(); });
-	return true;
+	return state->m_engine.post([job] { job->run(); });
 }
 void Session::cancelSearch() {
 	std::lock_guard lock(m_state->m_mutex);
@@ -196,9 +200,10 @@ bool Session::open(const std::filesystem::path& path,
 	}
 	// posted without the lock: the job checks for close() itself, and a
 	// callback that never gets queued isn't destroyed with the lock held
+	bool queued;
 	try {
-		state->m_engine.post([state, path, password,
-		                      callback = std::move(callback)] {
+		queued = state->m_engine.post([state, path, password,
+		                               callback = std::move(callback)] {
 			SessionInfo info;
 			OpenResult opened;
 			try {
@@ -255,7 +260,11 @@ bool Session::open(const std::filesystem::path& path,
 		state->m_opened = false;
 		throw;
 	}
-	return true;
+	if (!queued) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_opened = false;
+	}
+	return queued;
 }
 
 bool Session::render(PageKey key, std::function<void(RenderResult)> callback) {
@@ -271,8 +280,9 @@ bool Session::render(PageKey key, std::function<void(RenderResult)> callback) {
 		generation = state->m_generation;
 	}
 	// the same as open(): a close or cancel from here on reaches the job
+	bool queued;
 	try {
-		state->m_engine.post(
+		queued = state->m_engine.post(
 		    [state, key, generation, callback = std::move(callback)] {
 			    RenderResult result{key, std::nullopt};
 			    {
@@ -304,7 +314,11 @@ bool Session::render(PageKey key, std::function<void(RenderResult)> callback) {
 		state->m_rendering = false;
 		throw;
 	}
-	return true;
+	if (!queued) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_rendering = false;
+	}
+	return queued;
 }
 
 bool Session::linkAt(int page, double x, double y,
@@ -316,22 +330,22 @@ bool Session::linkAt(int page, double x, double y,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, x, y, callback = std::move(callback)] {
-		LinkResult result;
-		try {
-			if (!state->closed()) {
-				result.link = state->m_document->linkAt(page, x, y);
-			}
-		} catch (...) {
-			result.link.reset();
-		}
-		result.canceled = state->closed();
-		if (result.canceled) {
-			result.link.reset();
-		}
-		callback(std::move(result));
-	});
-	return true;
+	return state->m_engine.post(
+	    [state, page, x, y, callback = std::move(callback)] {
+		    LinkResult result;
+		    try {
+			    if (!state->closed()) {
+				    result.link = state->m_document->linkAt(page, x, y);
+			    }
+		    } catch (...) {
+			    result.link.reset();
+		    }
+		    result.canceled = state->closed();
+		    if (result.canceled) {
+			    result.link.reset();
+		    }
+		    callback(std::move(result));
+	    });
 }
 
 PrintRenderer Session::printRenderer() const {
@@ -344,8 +358,9 @@ PrintRenderer Session::printRenderer() const {
 				return false;
 			}
 		}
-		state->m_engine.post([state, request, canceled = std::move(canceled),
-		                      callback = std::move(callback)] {
+		return state->m_engine.post([state, request,
+		                             canceled = std::move(canceled),
+		                             callback = std::move(callback)] {
 			std::optional<Bitmap> result;
 			try {
 				if (!state->closed() && !canceled()) {
@@ -362,7 +377,6 @@ PrintRenderer Session::printRenderer() const {
 			}
 			callback(std::move(result));
 		});
-		return true;
 	};
 }
 
@@ -376,9 +390,10 @@ bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
 		}
 		state->m_printing = true;
 	}
+	bool queued;
 	try {
-		state->m_engine.post([state, job = std::move(job),
-		                      callback = std::move(callback)] {
+		queued = state->m_engine.post([state, job = std::move(job),
+		                               callback = std::move(callback)] {
 			PrintResult result = PrintResult::Failed;
 			try {
 				if (state->closed()) {
@@ -403,7 +418,11 @@ bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
 		state->m_printing = false;
 		throw;
 	}
-	return true;
+	if (!queued) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_printing = false;
+	}
+	return queued;
 }
 
 bool Session::outlineLink(std::size_t index,
@@ -417,8 +436,8 @@ bool Session::outlineLink(std::size_t index,
 		}
 		generation = ++state->m_outlineGeneration;
 	}
-	state->m_engine.post([state, index, generation,
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, index, generation,
+	                             callback = std::move(callback)] {
 		LinkResult result;
 		const auto canceled = [state, generation] {
 			std::lock_guard lock(state->m_mutex);
@@ -436,7 +455,6 @@ bool Session::outlineLink(std::size_t index,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::annotations(int page,
@@ -450,7 +468,7 @@ bool Session::annotations(int page,
 		}
 		generation = ++state->m_annotationGeneration;
 	}
-	state->m_engine.post(
+	return state->m_engine.post(
 	    [state, page, generation, callback = std::move(callback)] {
 		    AnnotationsResult result;
 		    result.page = page;
@@ -474,7 +492,6 @@ bool Session::annotations(int page,
 		    }
 		    callback(std::move(result));
 	    });
-	return true;
 }
 
 void Session::cancelAnnotations() {
@@ -494,8 +511,8 @@ bool Session::formFields(int page,
 		}
 		generation = ++state->m_formGeneration;
 	}
-	state->m_engine.post([state, page, generation,
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, generation,
+	                             callback = std::move(callback)] {
 		FormFieldsResult result;
 		result.page = page;
 		const auto canceled = [state, generation] {
@@ -529,7 +546,6 @@ bool Session::formFields(int page,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 void Session::cancelForms() {
@@ -573,8 +589,8 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, first, second, rotation, shape, revision,
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, first, second, rotation, shape,
+	                             revision, callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
@@ -602,7 +618,6 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 		result.canceled = !result.changed && canceled();
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
@@ -641,8 +656,8 @@ bool Session::writeInk(int page, std::uint64_t revision, InkWrite write,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, write = std::move(write),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, write = std::move(write),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
@@ -664,7 +679,6 @@ bool Session::writeInk(int page, std::uint64_t revision, InkWrite write,
 		result.canceled = !result.changed && canceled();
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::addStampAt(int page, AnnotationPoint first,
@@ -678,9 +692,9 @@ bool Session::addStampAt(int page, AnnotationPoint first,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, first, second, rotation, revision,
-	                      image = std::move(image),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, first, second, rotation, revision,
+	                             image = std::move(image),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		const auto canceled = [state] { return state->closed(); };
@@ -703,7 +717,6 @@ bool Session::addStampAt(int page, AnnotationPoint first,
 		result.canceled = !result.changed && canceled();
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::resizeShape(Annotation expected, ShapeSize size,
@@ -718,8 +731,8 @@ bool Session::resizeShape(Annotation expected, ShapeSize size,
 			return false;
 		}
 	}
-	state->m_engine.post([state, size, expected = std::move(expected),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, size, expected = std::move(expected),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = expected.target.page;
 		const auto canceled = [state] { return state->closed(); };
@@ -745,7 +758,6 @@ bool Session::resizeShape(Annotation expected, ShapeSize size,
 		result.canceled = !result.index && canceled();
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::addTextBox(int page, AnnotationBounds bounds,
@@ -782,10 +794,10 @@ bool Session::writeTextBox(int page, AnnotationBounds bounds,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, bounds, revision, point, rotation,
-	                      layout, contents = std::move(contents),
-	                      author = std::move(author),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, bounds, revision, point, rotation,
+	                             layout, contents = std::move(contents),
+	                             author = std::move(author),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		try {
@@ -815,7 +827,6 @@ bool Session::writeTextBox(int page, AnnotationBounds bounds,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::textBox(AnnotationTarget target,
@@ -831,8 +842,9 @@ bool Session::textBox(AnnotationTarget target,
 		}
 		generation = ++state->m_textBoxGeneration;
 	}
-	state->m_engine.post([state, generation, layout, target = std::move(target),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, generation, layout,
+	                             target = std::move(target),
+	                             callback = std::move(callback)] {
 		TextBoxResult result;
 		const auto canceled = [state, generation] {
 			std::lock_guard lock(state->m_mutex);
@@ -853,7 +865,6 @@ bool Session::textBox(AnnotationTarget target,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::updateTextBox(Annotation expected, std::u16string contents,
@@ -884,39 +895,38 @@ bool Session::changeTextBox(Annotation expected, std::u16string contents,
 			return false;
 		}
 	}
-	state->m_engine.post([state, size, layout, expected = std::move(expected),
-	                      contents = std::move(contents),
-	                      callback = std::move(callback)] {
-		NoteResult result;
-		result.page = expected.target.page;
-		try {
-			const auto canceled = [state] { return state->closed(); };
-			if (!canceled()) {
-				const auto changed =
-				    size ? state->m_document->updateTextBox(
-				               expected, contents, *size, canceled, layout)
-				         : state->m_document->updateTextBox(expected, contents,
-				                                            canceled, layout);
-				if (changed) {
-					result.index = expected.target.index;
-					result.changed = *changed;
-					if (*changed) {
-						state->m_forms.reset();
-						std::lock_guard lock(state->m_mutex);
-						state->m_annotationRevision =
-						    state->m_document->annotationRevision();
-					}
-				}
-			}
-			result.canceled = !result.index && canceled();
-		} catch (...) {
-			result.canceled = state->closed();
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't edit a PDF text box.");
-		}
-		callback(std::move(result));
-	});
-	return true;
+	return state->m_engine.post(
+	    [state, size, layout, expected = std::move(expected),
+	     contents = std::move(contents), callback = std::move(callback)] {
+		    NoteResult result;
+		    result.page = expected.target.page;
+		    try {
+			    const auto canceled = [state] { return state->closed(); };
+			    if (!canceled()) {
+				    const auto changed =
+				        size ? state->m_document->updateTextBox(
+				                   expected, contents, *size, canceled, layout)
+				             : state->m_document->updateTextBox(
+				                   expected, contents, canceled, layout);
+				    if (changed) {
+					    result.index = expected.target.index;
+					    result.changed = *changed;
+					    if (*changed) {
+						    state->m_forms.reset();
+						    std::lock_guard lock(state->m_mutex);
+						    state->m_annotationRevision =
+						        state->m_document->annotationRevision();
+					    }
+				    }
+			    }
+			    result.canceled = !result.index && canceled();
+		    } catch (...) {
+			    result.canceled = state->closed();
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't edit a PDF text box.");
+		    }
+		    callback(std::move(result));
+	    });
 }
 
 bool Session::addTextNote(int page, float x, float y, std::u16string contents,
@@ -953,10 +963,10 @@ bool Session::writeTextNote(int page,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, point, rotation,
-	                      contents = std::move(contents),
-	                      author = std::move(author),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, point, rotation,
+	                             contents = std::move(contents),
+	                             author = std::move(author),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		// this is the boundary: close can discard a queued write, but not
@@ -987,7 +997,6 @@ bool Session::writeTextNote(int page,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::annotationAt(int page, double x, double y,
@@ -1001,41 +1010,41 @@ bool Session::annotationAt(int page, double x, double y,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, x, y, callback = std::move(callback)] {
-		AnnotationHitResult result;
-		try {
-			if (!state->closed()) {
-				if (auto notes = state->m_document->annotations(page)) {
-					for (auto it = notes->entries.rbegin();
-					     it != notes->entries.rend(); ++it) {
-						if (it->subtype != "Highlight" &&
-						    it->subtype != "Underline" &&
-						    it->subtype != "StrikeOut") {
-							continue;
-						}
-						for (const auto& quad : it->displayQuads) {
-							if (insideQuad(quad, x, y)) {
-								result.annotation = std::move(*it);
-								break;
-							}
-						}
-						if (result.annotation) {
-							break;
-						}
-					}
-				}
-			}
-		} catch (...) {
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't select a PDF annotation.");
-		}
-		result.canceled = state->closed();
-		if (result.canceled) {
-			result.annotation.reset();
-		}
-		callback(std::move(result));
-	});
-	return true;
+	return state->m_engine.post(
+	    [state, page, x, y, callback = std::move(callback)] {
+		    AnnotationHitResult result;
+		    try {
+			    if (!state->closed()) {
+				    if (auto notes = state->m_document->annotations(page)) {
+					    for (auto it = notes->entries.rbegin();
+					         it != notes->entries.rend(); ++it) {
+						    if (it->subtype != "Highlight" &&
+						        it->subtype != "Underline" &&
+						        it->subtype != "StrikeOut") {
+							    continue;
+						    }
+						    for (const auto& quad : it->displayQuads) {
+							    if (insideQuad(quad, x, y)) {
+								    result.annotation = std::move(*it);
+								    break;
+							    }
+						    }
+						    if (result.annotation) {
+							    break;
+						    }
+					    }
+				    }
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't select a PDF annotation.");
+		    }
+		    result.canceled = state->closed();
+		    if (result.canceled) {
+			    result.annotation.reset();
+		    }
+		    callback(std::move(result));
+	    });
 }
 
 bool Session::highlightText(TextSelection selection,
@@ -1053,8 +1062,8 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 			return false;
 		}
 	}
-	state->m_engine.post([state, selection, markup, color,
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, selection, markup, color,
+	                             callback = std::move(callback)] {
 		MarkupResult result;
 		result.canceled = state->closed();
 		try {
@@ -1073,7 +1082,6 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::textNote(int page, int index,
@@ -1089,7 +1097,7 @@ bool Session::textNote(int page, int index,
 			revision = state->m_annotationRevision;
 		}
 	}
-	state->m_engine.post(
+	return state->m_engine.post(
 	    [state, page, index, revision, callback = std::move(callback)] {
 		    TextNoteResult result;
 		    result.page = page;
@@ -1114,7 +1122,6 @@ bool Session::textNote(int page, int index,
 		    }
 		    callback(std::move(result));
 	    });
-	return true;
 }
 
 bool Session::updateTextField(int page, int index, std::u16string expected,
@@ -1160,12 +1167,12 @@ bool Session::writeFormField(int page, int index, std::u16string expected,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, index, revision, checked, option,
-	                      control = std::move(control),
-	                      choice = std::move(choice),
-	                      expected = std::move(expected),
-	                      contents = std::move(contents),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, index, revision, checked, option,
+	                             control = std::move(control),
+	                             choice = std::move(choice),
+	                             expected = std::move(expected),
+	                             contents = std::move(contents),
+	                             callback = std::move(callback)] {
 		FormWriteResult result;
 		result.page = page;
 		result.index = index;
@@ -1205,7 +1212,6 @@ bool Session::writeFormField(int page, int index, std::u16string expected,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::updateTextNote(int page, int index, std::u16string expected,
@@ -1223,7 +1229,7 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 			revision = state->m_annotationRevision;
 		}
 	}
-	state->m_engine.post(
+	return state->m_engine.post(
 	    [state, page, index, revision, expected = std::move(expected),
 	     contents = std::move(contents), callback = std::move(callback)] {
 		    NoteResult result;
@@ -1246,7 +1252,6 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 		    }
 		    callback(std::move(result));
 	    });
-	return true;
 }
 
 bool Session::markupComment(int page, int index, TextMarkup markup,
@@ -1262,7 +1267,7 @@ bool Session::markupComment(int page, int index, TextMarkup markup,
 			revision = state->m_annotationRevision;
 		}
 	}
-	state->m_engine.post(
+	return state->m_engine.post(
 	    [state, page, index, revision, markup, callback = std::move(callback)] {
 		    TextNoteResult result;
 		    result.page = page;
@@ -1292,7 +1297,6 @@ bool Session::markupComment(int page, int index, TextMarkup markup,
 		    }
 		    callback(std::move(result));
 	    });
-	return true;
 }
 
 bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
@@ -1311,10 +1315,10 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 			revision = state->m_annotationRevision;
 		}
 	}
-	state->m_engine.post([state, page, index, revision, markup,
-	                      expected = std::move(expected),
-	                      contents = std::move(contents),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, page, index, revision, markup,
+	                             expected = std::move(expected),
+	                             contents = std::move(contents),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = page;
 		result.canceled = state->closed();
@@ -1334,7 +1338,6 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::removeAnnotation(AnnotationTarget target,
@@ -1362,9 +1365,9 @@ bool Session::changeAnnotation(AnnotationTarget target,
 			return false;
 		}
 	}
-	state->m_engine.post([state, target = std::move(target),
-	                      expected = std::move(expected),
-	                      callback = std::move(callback)] {
+	return state->m_engine.post([state, target = std::move(target),
+	                             expected = std::move(expected),
+	                             callback = std::move(callback)] {
 		NoteResult result;
 		result.page = target.page;
 		result.canceled = state->closed();
@@ -1391,7 +1394,6 @@ bool Session::changeAnnotation(AnnotationTarget target,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::saveEdits(const std::filesystem::path& destination,
@@ -1415,9 +1417,10 @@ bool Session::saveEdits(const std::filesystem::path& destination,
 		}
 		state->m_saving = true;
 	}
+	bool queued;
 	try {
-		state->m_engine.post([state, job, destination, source, limit,
-		                      callback = std::move(callback)] {
+		queued = state->m_engine.post([state, job, destination, source, limit,
+		                               callback = std::move(callback)] {
 			const auto done = [state, job, callback = std::move(callback)] {
 				{
 					std::lock_guard lock(state->m_mutex);
@@ -1458,7 +1461,11 @@ bool Session::saveEdits(const std::filesystem::path& destination,
 		state->m_saving = false;
 		throw;
 	}
-	return true;
+	if (!queued) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_saving = false;
+	}
+	return queued;
 }
 
 bool Session::properties(std::function<void(PropertiesResult)> callback) {
@@ -1469,7 +1476,7 @@ bool Session::properties(std::function<void(PropertiesResult)> callback) {
 			return false;
 		}
 	}
-	state->m_engine.post([state, callback = std::move(callback)] {
+	return state->m_engine.post([state, callback = std::move(callback)] {
 		PropertiesResult result;
 		try {
 			if (!state->closed()) {
@@ -1486,7 +1493,6 @@ bool Session::properties(std::function<void(PropertiesResult)> callback) {
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::saveCopy(const std::filesystem::path& destination,
@@ -1506,7 +1512,7 @@ bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
 			return false;
 		}
 	}
-	state->m_engine.post([state, callback = std::move(callback)] {
+	return state->m_engine.post([state, callback = std::move(callback)] {
 		AttachmentsResult result;
 		try {
 			if (!state->closed()) {
@@ -1523,7 +1529,6 @@ bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::attachment(int index,
@@ -1535,7 +1540,7 @@ bool Session::attachment(int index,
 			return false;
 		}
 	}
-	state->m_engine.post([state, index, callback = std::move(callback)] {
+	return state->m_engine.post([state, index, callback = std::move(callback)] {
 		AttachmentResult result;
 		try {
 			if (!state->closed()) {
@@ -1552,7 +1557,6 @@ bool Session::attachment(int index,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::outline(std::function<void(OutlineResult)> callback) {
@@ -1563,7 +1567,7 @@ bool Session::outline(std::function<void(OutlineResult)> callback) {
 			return false;
 		}
 	}
-	state->m_engine.post([state, callback = std::move(callback)] {
+	return state->m_engine.post([state, callback = std::move(callback)] {
 		OutlineResult result;
 		try {
 			if (!state->closed()) {
@@ -1578,7 +1582,6 @@ bool Session::outline(std::function<void(OutlineResult)> callback) {
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::textPage(int page, std::function<void(TextResult)> callback) {
@@ -1589,7 +1592,7 @@ bool Session::textPage(int page, std::function<void(TextResult)> callback) {
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, callback = std::move(callback)] {
+	return state->m_engine.post([state, page, callback = std::move(callback)] {
 		TextResult result{page};
 		try {
 			if (!state->closed()) {
@@ -1603,7 +1606,6 @@ bool Session::textPage(int page, std::function<void(TextResult)> callback) {
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 bool Session::copyText(TextSelection selection,
@@ -1615,7 +1617,8 @@ bool Session::copyText(TextSelection selection,
 			return false;
 		}
 	}
-	state->m_engine.post([state, selection, callback = std::move(callback)] {
+	return state->m_engine.post([state, selection,
+	                             callback = std::move(callback)] {
 		CopyResult result;
 		try {
 			const auto [first, last] = ordered(selection);
@@ -1657,7 +1660,6 @@ bool Session::copyText(TextSelection selection,
 		}
 		callback(std::move(result));
 	});
-	return true;
 }
 
 void Session::cancelRender() {

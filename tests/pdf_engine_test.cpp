@@ -78,8 +78,11 @@ TEST(PdfEngine, FinishesWhatsQueuedBeforeStopping) {
 	{
 		pdf::Engine engine;
 		for (int i = 0; i < 20; ++i) {
-			engine.post([&done] { ++done; });
+			EXPECT_TRUE(engine.post([&done] { ++done; }));
 		}
+		engine.beginShutdown();
+		EXPECT_FALSE(engine.post([&done] { ++done; }));
+		EXPECT_THROW(engine.run([] {}).get(), std::future_error);
 	}
 	EXPECT_EQ(done.load(), 20);
 }

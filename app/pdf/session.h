@@ -128,8 +128,8 @@ struct FindUpdate {
 };
 
 // The UI owns this, but the document stays on the engine thread. Engine must
-// outlive the session and its callbacks; work posted while it shuts down is
-// dropped. No method waits for PDFium work.
+// outlive the session and its callbacks. A request rejected during shutdown
+// returns false without a callback. No method waits for PDFium work.
 class Session {
   public:
 	explicit Session(Engine& engine);
@@ -255,7 +255,7 @@ class Session {
 	// One save at a time; successful replacement is never relabeled canceled.
 	// Serialization keeps engine queue order; file writes run on its worker.
 	// Cancellation can be polled by either thread.
-	// Completion returns on the engine thread, including during shutdown.
+	// An accepted save completes on the engine thread, even during shutdown.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,
 	               std::function<bool()> canceled,

@@ -46,8 +46,11 @@ class Engine {
 	Engine& operator=(const Engine&) = delete;
 
 	// queue work for the PDFium thread, it runs in the order it was posted.
-	// If it throws, the exception is dropped (there's nobody to give it to).
-	void post(std::function<void()> work);
+	// False means shutdown has started and the work was rejected.
+	bool post(std::function<void()> work);
+	// stop accepting jobs and drain the queue. the destructor joins the
+	// threads.
+	void beginShutdown();
 	// called on the engine: run I/O on a worker, then finish back here.
 	// shutdown drains both parts; the worker must never call PDFium.
 	void background(std::function<void()> work, std::function<void()> done);
@@ -64,7 +67,8 @@ class Engine {
 		auto fn = std::make_shared<Work>(std::forward<F>(work));
 		auto promise = std::make_shared<std::promise<Result>>();
 		auto result = promise->get_future();
-		post([fn, promise] {
+		// a rejected post leaves the future with a broken promise.
+		(void)post([fn, promise] {
 			try {
 				if constexpr (std::is_void_v<Result>) {
 					(*fn)();
