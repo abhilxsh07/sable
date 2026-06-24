@@ -20,9 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <barrier>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <sstream>
 
 #include "keybinds.h"
@@ -414,6 +416,32 @@ TEST_F(SettingsFiles, StoreDoesNotWriteForAnUnknownKey) {
 	EXPECT_FALSE(store.setGeneral("DisplayThumbnails", false));
 	EXPECT_FALSE(fs::exists(file()));
 	EXPECT_EQ(store.get(), helpers::nightpdf_default_settings(kVersion));
+}
+
+TEST_F(SettingsFiles, StoresMergeEditsFromStaleSnapshots) {
+	helpers::SettingsStore first(file(), kVersion);
+	helpers::SettingsStore second(file("CONFIG.JSON"), kVersion);
+	std::barrier start(2);
+	auto general = std::async(std::launch::async, [&] {
+		start.arrive_and_wait();
+		return first.setGeneral("DisplayThumbs", false);
+	});
+	start.arrive_and_wait();
+	EXPECT_TRUE(second.setTheme("obsidian"));
+	EXPECT_TRUE(general.get());
+
+	const auto primary = helpers::KeybindHelper::fromTrigger("Alt+O", "win32");
+	const auto secondary =
+	    helpers::KeybindHelper::fromTrigger("Alt+P", "win32");
+	ASSERT_TRUE(first.editKeybind("OpenWindow", 0, primary.getKeybind()));
+	ASSERT_TRUE(second.editKeybind("OpenWindow", 1, secondary.getKeybind()));
+	const auto loaded = helpers::loadSettings(file(), kVersion);
+	EXPECT_FALSE(loaded.general.DisplayThumbs);
+	EXPECT_EQ(loaded.general.Theme, "obsidian");
+	const auto& slots = loaded.keybinds.at("OpenWindow").keybind;
+	ASSERT_EQ(slots.size(), 2u);
+	EXPECT_EQ(slots[0], primary.getKeybind());
+	EXPECT_EQ(slots[1], secondary.getKeybind());
 }
 
 TEST_F(SettingsFiles, StoreKeepsItsStateWhenSavingFails) {

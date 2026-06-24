@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -420,9 +421,8 @@ TEST_F(RecentsFiles, SaveMakesTheFolderAndLeavesNoTempFile) {
 	const fs::path nested = dir() / "deeper" / "still" / "recent.json";
 	ASSERT_TRUE(helpers::saveRecents(nested, RecentFiles()));
 	EXPECT_TRUE(fs::exists(nested));
-	fs::path tmp = nested;
-	tmp += ".tmp";
-	EXPECT_FALSE(fs::exists(tmp));
+	const fs::directory_iterator files(nested.parent_path());
+	EXPECT_EQ(std::distance(files, fs::directory_iterator{}), 1);
 }
 
 TEST_F(RecentsFiles, SaveReplacesAnOlderFile) {
@@ -434,10 +434,34 @@ TEST_F(RecentsFiles, SaveReplacesAnOlderFile) {
 }
 
 TEST_F(RecentsFiles, SaveFailsWhenThePathIsAFolder) {
-	EXPECT_FALSE(helpers::saveRecents(dir(), RecentFiles()));
-	fs::path tmp = dir();
-	tmp += ".tmp";
-	EXPECT_FALSE(fs::exists(tmp));
+	fs::create_directory(file());
+	EXPECT_FALSE(helpers::saveRecents(file(), RecentFiles()));
+	EXPECT_EQ(
+	    std::distance(fs::directory_iterator(dir()), fs::directory_iterator{}),
+	    1);
+}
+
+TEST_F(RecentsFiles, UpdatesUseTheLatestOpensAndStars) {
+	RecentFiles first, second;
+	ASSERT_TRUE(helpers::updateRecents(file(), first, [](RecentFiles& recents) {
+		recents.add(make("a/one.pdf", 1));
+	}));
+	ASSERT_TRUE(
+	    helpers::updateRecents(file(), second, [](RecentFiles& recents) {
+		    recents.add(make("a/two.pdf", 2));
+	    }));
+	ASSERT_TRUE(helpers::updateRecents(file(), first, [](RecentFiles& recents) {
+		EXPECT_TRUE(recents.toggleStar("a/two.pdf"));
+	}));
+	ASSERT_EQ(first.items().size(), 2u);
+	ASSERT_TRUE(
+	    helpers::updateRecents(file(), second, [](RecentFiles& recents) {
+		    recents.clearUnstarred();
+	    }));
+	ASSERT_EQ(second.items().size(), 1u);
+	EXPECT_EQ(second.items()[0].path, fs::path("a/two.pdf"));
+	EXPECT_TRUE(second.items()[0].starred);
+	EXPECT_EQ(helpers::loadRecents(file()).items(), second.items());
 }
 
 TEST_F(RecentsFiles, MissingFileIsEmpty) {

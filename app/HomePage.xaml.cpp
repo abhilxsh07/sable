@@ -168,19 +168,13 @@ void HomePage::InitializeComponent() {
 }
 
 void HomePage::Remember(const std::filesystem::path& path) {
-	// another window may have changed the list since this one read it
-	if (!m_recentsFile.empty()) {
-		m_recents = helpers::loadRecents(m_recentsFile);
-	}
 	helpers::RecentFile file;
 	file.path = path;
 	file.openedAt = chr::floor<chr::seconds>(chr::system_clock::now());
 	std::error_code ec;
 	const auto size = fs::file_size(path, ec);
 	file.sizeBytes = ec ? 0 : size;
-	m_recents.add(std::move(file));
-	save();
-	rebuildList();
+	editRecents([&](helpers::RecentFiles& recents) { recents.add(file); });
 }
 
 void HomePage::onOpen(const Windows::Foundation::IInspectable&,
@@ -272,26 +266,22 @@ void HomePage::onSearchChanged(const AutoSuggestBox& sender,
 // clears the list but keeps what's starred, that's what the star is for
 void HomePage::onClearRecent(const Windows::Foundation::IInspectable&,
                              const RoutedEventArgs&) {
-	const auto keep = m_recents.starred();
-	m_recents.clear();
-	// add() puts things on top, so oldest first
-	for (auto it = keep.rbegin(); it != keep.rend(); ++it) {
-		m_recents.add(*it);
-	}
-	save();
-	rebuildList();
+	editRecents(
+	    [](helpers::RecentFiles& recents) { recents.clearUnstarred(); });
 }
 
 void HomePage::toggleStar(const fs::path& path) {
-	m_recents.toggleStar(path);
-	save();
-	rebuildList();
+	editRecents(
+	    [&](helpers::RecentFiles& recents) { recents.toggleStar(path); });
 }
 
-void HomePage::save() {
-	if (!m_recentsFile.empty()) {
-		helpers::saveRecents(m_recentsFile, m_recents);
+void HomePage::editRecents(
+    const std::function<void(helpers::RecentFiles&)>& edit) {
+	if (m_recentsFile.empty() ||
+	    !helpers::updateRecents(m_recentsFile, m_recents, edit)) {
+		edit(m_recents);
 	}
+	rebuildList();
 }
 
 void HomePage::rebuildList() {

@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 namespace helpers {
 enum class FileSaveResult { Saved, Canceled, Failed, Source };
@@ -30,6 +31,7 @@ FileSaveResult saveFile(const std::filesystem::path& destination,
                         const std::filesystem::path& source,
                         const std::vector<std::uint8_t>& bytes,
                         const std::function<bool()>& canceled = {});
+bool saveFile(const std::filesystem::path& destination, std::string_view text);
 std::string attachmentFilename(std::string name);
 bool saveAttachment(const std::filesystem::path& destination,
                     const std::filesystem::path& source,

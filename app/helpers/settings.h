@@ -22,6 +22,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -89,8 +91,7 @@ NightPDFSettings
 loadSettings(const std::filesystem::path& path, const std::string& version,
              std::vector<std::string>* resetSections = nullptr);
 
-// writes "<path>.tmp" and renames it over the real file so a crash can't
-// leave half a config behind. false if anything failed.
+// replaces the whole config after flushing a separate temporary file.
 bool saveSettings(const std::filesystem::path& path,
                   const NightPDFSettings& settings);
 
@@ -105,9 +106,15 @@ class SettingsStore {
 	bool setGeneral(const std::string& key, bool value);
 	bool setTheme(const std::string& theme);
 	bool setKeybind(const std::string& id, const Keybinds& command);
+	bool editKeybind(const std::string& id, std::size_t index,
+	                 const std::optional<Keybind>& binding);
 
   private:
+	bool update(const std::function<bool(NightPDFSettings&)>& edit);
+	bool changeKeybind(const std::string& id,
+	                   const std::function<void(NightPDFSettings&)>& edit);
 	std::filesystem::path m_path;
+	std::string m_version;
 	NightPDFSettings m_settings;
 };
 

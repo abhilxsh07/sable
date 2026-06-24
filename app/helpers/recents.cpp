@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "recents.h"
+#include "store_file.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,11 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <array>
 #include <exception>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <nlohmann/json.hpp>
-#include <system_error>
 #include <unordered_map>
 #include <utility>
 
@@ -88,16 +86,6 @@ std::vector<RecentFile>::iterator findEntry(std::vector<RecentFile>& items,
 	return std::find_if(items.begin(), items.end(), [&key](const auto& item) {
 		return foldedKey(item.path) == key;
 	});
-}
-
-bool readFile(const fs::path& path, std::string& out) {
-	std::ifstream in(path, std::ios::binary);
-	if (!in) {
-		return false;
-	}
-	out.assign(std::istreambuf_iterator<char>(in),
-	           std::istreambuf_iterator<char>());
-	return !in.bad();
 }
 
 bool readInt64(const RJson& j, std::int64_t& out) {
@@ -256,14 +244,19 @@ void RecentFiles::clear() {
 	m_items.clear();
 }
 
-RecentFiles loadRecents(const fs::path& file) {
+void RecentFiles::clearUnstarred() {
+	std::erase_if(m_items,
+	              [](const RecentFile& item) { return !item.starred; });
+}
+
+std::optional<RecentFiles> RecentFiles::read(const fs::path& file) {
 	RecentFiles result;
 	try {
-		std::string text;
-		if (!readFile(file, text)) {
-			return result;
+		const auto text = readStoreFile(file);
+		if (!text) {
+			return std::nullopt;
 		}
-		const RJson json = RJson::parse(text, nullptr, false);
+		const RJson json = RJson::parse(*text, nullptr, false);
 		if (json.is_discarded() || !json.is_object()) {
 			return result;
 		}
@@ -289,13 +282,26 @@ RecentFiles loadRecents(const fs::path& file) {
 		}
 		result.trim();
 	} catch (const std::exception&) {
-		return RecentFiles();
+		return std::nullopt;
 	}
 	return result;
 }
 
-bool saveRecents(const fs::path& file, const RecentFiles& recents) {
-	std::string text;
+RecentFiles loadRecents(const fs::path& file) {
+	std::optional<RecentFiles> recents;
+	try {
+		withStoreLock(file, [&] {
+			recents = RecentFiles::read(file);
+			return recents.has_value();
+		});
+	} catch (const std::exception&) {
+		return {};
+	}
+	return recents ? std::move(*recents) : RecentFiles{};
+}
+
+namespace {
+bool writeRecents(const fs::path& file, const RecentFiles& recents) {
 	try {
 		RJson files = RJson::array();
 		for (const RecentFile& item : recents.items()) {
@@ -316,37 +322,32 @@ bool saveRecents(const fs::path& file, const RecentFiles& recents) {
 		json["version"] = 1;
 		json["files"] = std::move(files);
 		// tabs, like the settings file
-		text = json.dump(1, '\t', false, RJson::error_handler_t::replace);
+		return writeStoreFile(
+		    file, json.dump(1, '\t', false, RJson::error_handler_t::replace));
 	} catch (const std::exception&) {
 		return false;
 	}
+}
+} // namespace
 
-	std::error_code ec;
-	if (file.has_parent_path()) {
-		fs::create_directories(file.parent_path(), ec);
-	}
-	fs::path tmp = file;
-	tmp += ".tmp";
-	{
-		std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-		if (!out) {
+bool saveRecents(const fs::path& file, const RecentFiles& recents) {
+	return withStoreLock(file, [&] { return writeRecents(file, recents); });
+}
+
+bool updateRecents(const fs::path& file, RecentFiles& recents,
+                   const std::function<void(RecentFiles&)>& edit) {
+	return withStoreLock(file, [&] {
+		auto latest = RecentFiles::read(file);
+		if (!latest) {
 			return false;
 		}
-		out << text;
-		out.flush();
-		if (!out) {
-			out.close();
-			fs::remove(tmp, ec);
+		edit(*latest);
+		if (!writeRecents(file, *latest)) {
 			return false;
 		}
-	}
-	fs::rename(tmp, file, ec);
-	if (ec) {
-		std::error_code ignored;
-		fs::remove(tmp, ignored);
-		return false;
-	}
-	return true;
+		recents = std::move(*latest);
+		return true;
+	});
 }
 
 std::string humanSize(std::uint64_t bytes) {

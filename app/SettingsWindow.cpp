@@ -277,13 +277,7 @@ bool SettingsWindow::saveBinding(
     const std::string& action, std::size_t index,
     const std::optional<helpers::Keybind>& binding) {
 	try {
-		helpers::KeybindsHelper edits(m_store.get().keybinds, "win32");
-		// adding to an empty secondary slot still makes the first binding
-		index = (std::min)(index, edits.config.at(action).keybind.size());
-		const auto command =
-		    binding ? edits.updateActionKeybind(action, index, *binding)
-		            : edits.removeActionKeybind(action, index);
-		if (m_store.setKeybind(action, command)) {
+		if (m_store.editKeybind(action, index, binding)) {
 			m_error.IsOpen(false);
 			buildKeybinds();
 			return true;

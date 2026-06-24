@@ -21,13 +21,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // https://github.com/Lunarequest/NightPDF/blob/mistress/app/helpers/settings.ts
 #include "settings.h"
 #include "logging.h"
+#include "store_file.h"
 
+#include <algorithm>
 #include <cctype>
-
-#include <fstream>
-#include <iterator>
-#include <sstream>
-#include <system_error>
 #include <utility>
 
 namespace helpers {
@@ -161,18 +158,6 @@ bool isKnownKeybindId(const std::string& id) {
 		}
 	}
 	return false;
-}
-
-// reads the file into a string, false if it can't be opened
-bool readFile(const fs::path& path, std::string& out) {
-	std::ifstream in(path, std::ios::binary);
-	if (!in) {
-		return false;
-	}
-	std::ostringstream buffer;
-	buffer << in.rdbuf();
-	out = buffer.str();
-	return true;
 }
 
 Json osVariantsToJson(const OsVariants& variants) {
@@ -525,16 +510,15 @@ NightPDFSettings settingsFromJson(const Json& json, const std::string& version,
 	return settings;
 }
 
-NightPDFSettings loadSettings(const fs::path& path, const std::string& version,
-                              std::vector<std::string>* resetSections) {
-	if (resetSections != nullptr) {
-		resetSections->clear();
+namespace {
+std::optional<NightPDFSettings>
+readSettings(const fs::path& path, const std::string& version,
+             std::vector<std::string>* resetSections = nullptr) {
+	const auto text = readStoreFile(path);
+	if (!text) {
+		return std::nullopt;
 	}
-	std::string text;
-	if (!readFile(path, text)) {
-		return nightpdf_default_settings(version);
-	}
-	Json json = Json::parse(text, nullptr, false);
+	Json json = Json::parse(*text, nullptr, false);
 	if (json.is_discarded() || !json.is_object()) {
 		return nightpdf_default_settings(version);
 	}
@@ -542,93 +526,118 @@ NightPDFSettings loadSettings(const fs::path& path, const std::string& version,
 	return settingsFromJson(json, version, resetSections);
 }
 
-bool saveSettings(const fs::path& path, const NightPDFSettings& settings) {
-	std::string text;
+bool writeSettings(const fs::path& path, const NightPDFSettings& settings) {
 	try {
 		const Json json = settings;
 		// tabs, like electron-store writes it
-		text = json.dump(1, '\t', false, Json::error_handler_t::replace);
+		return writeStoreFile(
+		    path, json.dump(1, '\t', false, Json::error_handler_t::replace));
 	} catch (const std::exception&) {
 		return false;
 	}
+}
+} // namespace
 
-	std::error_code ec;
-	if (path.has_parent_path()) {
-		fs::create_directories(path.parent_path(), ec);
+NightPDFSettings loadSettings(const fs::path& path, const std::string& version,
+                              std::vector<std::string>* resetSections) {
+	if (resetSections != nullptr) {
+		resetSections->clear();
 	}
-	fs::path tmp = path;
-	tmp += ".tmp";
-	{
-		std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-		if (!out) {
-			return false;
-		}
-		out << text;
-		out.flush();
-		if (!out) {
-			out.close();
-			fs::remove(tmp, ec);
-			return false;
-		}
-	}
-	fs::rename(tmp, path, ec);
-	if (ec) {
-		std::error_code ignored;
-		fs::remove(tmp, ignored);
-		return false;
-	}
-	return true;
+	std::optional<NightPDFSettings> settings;
+	withStoreLock(path, [&] {
+		settings = readSettings(path, version, resetSections);
+		return settings.has_value();
+	});
+	return settings ? std::move(*settings) : nightpdf_default_settings(version);
+}
+
+bool saveSettings(const fs::path& path, const NightPDFSettings& settings) {
+	return withStoreLock(path, [&] { return writeSettings(path, settings); });
 }
 
 SettingsStore::SettingsStore(fs::path path, const std::string& version)
-    : m_path(std::move(path)), m_settings(loadSettings(m_path, version)) {}
+    : m_path(std::move(path)), m_version(version),
+      m_settings(loadSettings(m_path, version)) {}
+
+bool SettingsStore::update(const std::function<bool(NightPDFSettings&)>& edit) {
+	return withStoreLock(m_path, [&] {
+		auto settings = readSettings(m_path, m_version);
+		if (!settings || !edit(*settings) ||
+		    !writeSettings(m_path, *settings)) {
+			return false;
+		}
+		m_settings = std::move(*settings);
+		return true;
+	});
+}
 
 bool SettingsStore::setTheme(const std::string& theme) {
 	if (theme != "dark" && theme != "obsidian") {
 		return false;
 	}
-	auto settings = m_settings;
-	settings.general.Theme = theme;
-	if (!saveSettings(m_path, settings)) {
-		return false;
-	}
-	m_settings = std::move(settings);
-	return true;
+	return update([&](NightPDFSettings& settings) {
+		settings.general.Theme = theme;
+		return true;
+	});
 }
 
 bool SettingsStore::setGeneral(const std::string& key, bool value) {
-	auto settings = m_settings;
+	bool GeneralSettings::* field = nullptr;
 	if (key == "MaximizeOnOpen") {
-		settings.general.MaximizeOnOpen = value;
+		field = &GeneralSettings::MaximizeOnOpen;
 	} else if (key == "DisplayThumbs") {
-		settings.general.DisplayThumbs = value;
+		field = &GeneralSettings::DisplayThumbs;
 	} else {
 		return false;
 	}
-	if (!saveSettings(m_path, settings)) {
+	if (!update([&](NightPDFSettings& settings) {
+		    settings.general.*field = value;
+		    return true;
+	    })) {
 		diagnostics::write(diagnostics::Level::Error,
 		                   "Couldn't save General settings");
 		return false;
 	}
-	m_settings = std::move(settings);
 	diagnostics::write(diagnostics::Level::Debug, "General settings saved");
 	return true;
 }
 
 bool SettingsStore::setKeybind(const std::string& id, const Keybinds& command) {
-	if (!m_settings.keybinds.contains(id)) {
-		return false;
-	}
-	auto settings = m_settings;
-	setkeybind(settings, id, command);
-	const Json json = settings;
-	if (!isValidSection("keybinds", json.at("keybinds")) ||
-	    !saveSettings(m_path, settings)) {
+	return changeKeybind(id, [&](NightPDFSettings& settings) {
+		setkeybind(settings, id, command);
+	});
+}
+
+bool SettingsStore::editKeybind(const std::string& id, std::size_t index,
+                                const std::optional<Keybind>& binding) {
+	return changeKeybind(id, [&](NightPDFSettings& settings) {
+		KeybindsHelper edits(std::move(settings.keybinds), "win32");
+		// adding to an empty secondary slot still makes the first binding
+		if (binding) {
+			const auto slot =
+			    (std::min)(index, edits.config.at(id).keybind.size());
+			edits.updateActionKeybind(id, slot, *binding);
+		} else {
+			edits.removeActionKeybind(id, index);
+		}
+		settings.keybinds = std::move(edits.config);
+	});
+}
+
+bool SettingsStore::changeKeybind(
+    const std::string& id, const std::function<void(NightPDFSettings&)>& edit) {
+	if (!update([&](NightPDFSettings& settings) {
+		    if (!settings.keybinds.contains(id)) {
+			    return false;
+		    }
+		    edit(settings);
+		    const Json json = settings;
+		    return isValidSection("keybinds", json.at("keybinds"));
+	    })) {
 		diagnostics::write(diagnostics::Level::Error,
 		                   "Couldn't save keybind settings");
 		return false;
 	}
-	m_settings = std::move(settings);
 	diagnostics::write(diagnostics::Level::Debug, "Keybind settings saved");
 	return true;
 }

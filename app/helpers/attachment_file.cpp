@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cctype>
 #include <chrono>
 #include <optional>
+#include <span>
 #include <string_view>
 namespace helpers {
 std::string attachmentFilename(std::string name) {
@@ -73,10 +74,11 @@ std::string attachmentFilename(std::string name) {
 	}
 	return name;
 }
-FileSaveResult saveFile(const std::filesystem::path& destination,
-                        const std::filesystem::path& source,
-                        const std::vector<std::uint8_t>& bytes,
-                        const std::function<bool()>& canceled) {
+namespace {
+FileSaveResult writeFile(const std::filesystem::path& destination,
+                         const std::filesystem::path* source,
+                         std::span<const std::byte> bytes,
+                         const std::function<bool()>& canceled) {
 	namespace fs = std::filesystem;
 	const auto poll = [&]() -> std::optional<FileSaveResult> {
 		try {
@@ -88,22 +90,26 @@ FileSaveResult saveFile(const std::filesystem::path& destination,
 		}
 		return {};
 	};
-	if (destination.empty() || source.empty()) {
+	if (destination.empty() || (source && source->empty())) {
 		return FileSaveResult::Failed;
 	}
 	if (const auto stopped = poll()) {
 		return *stopped;
 	}
 	std::error_code ec;
-	const auto input = fs::weakly_canonical(source, ec);
+	const auto input = source ? fs::weakly_canonical(*source, ec) : fs::path{};
 	if (ec) {
 		return FileSaveResult::Failed;
 	}
-	const auto output = fs::weakly_canonical(destination, ec);
+	const auto output = source ? fs::weakly_canonical(destination, ec)
+	                           : fs::absolute(destination, ec);
 	if (ec || output.filename().empty()) {
 		return FileSaveResult::Failed;
 	}
 	const auto sameSource = [&] {
+		if (!source) {
+			return false;
+		}
 		if (CompareStringOrdinal(input.c_str(), -1, output.c_str(), -1, TRUE) ==
 		    CSTR_EQUAL) {
 			return true;
@@ -184,6 +190,21 @@ FileSaveResult saveFile(const std::filesystem::path& destination,
 	writer.temporary.clear();
 	return FileSaveResult::Saved;
 }
+} // namespace
+
+FileSaveResult saveFile(const std::filesystem::path& destination,
+                        const std::filesystem::path& source,
+                        const std::vector<std::uint8_t>& bytes,
+                        const std::function<bool()>& canceled) {
+	return writeFile(destination, &source, std::as_bytes(std::span(bytes)),
+	                 canceled);
+}
+
+bool saveFile(const std::filesystem::path& destination, std::string_view text) {
+	const auto bytes = std::as_bytes(std::span(text.data(), text.size()));
+	return writeFile(destination, nullptr, bytes, {}) == FileSaveResult::Saved;
+}
+
 bool saveAttachment(const std::filesystem::path& destination,
                     const std::filesystem::path& source,
                     const std::vector<std::uint8_t>& bytes) {

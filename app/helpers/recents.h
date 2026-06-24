@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -65,9 +67,14 @@ class RecentFiles {
 
 	bool empty() const;
 	void clear();
+	void clearUnstarred();
 
   private:
 	friend RecentFiles loadRecents(const std::filesystem::path& file);
+	friend bool updateRecents(const std::filesystem::path& file,
+	                          RecentFiles& recents,
+	                          const std::function<void(RecentFiles&)>& edit);
+	static std::optional<RecentFiles> read(const std::filesystem::path& file);
 
 	void trim();
 
@@ -81,9 +88,12 @@ class RecentFiles {
 // first kMaxRecentFiles are kept, same rule as add().
 RecentFiles loadRecents(const std::filesystem::path& file);
 
-// writes "<file>.tmp" and renames it over the real file so a crash can't
-// leave half a list behind. false if anything failed.
+// replaces the whole list after flushing a separate temporary file.
 bool saveRecents(const std::filesystem::path& file, const RecentFiles& recents);
+
+// edits the latest list under the file lock and returns it after saving.
+bool updateRecents(const std::filesystem::path& file, RecentFiles& recents,
+                   const std::function<void(RecentFiles&)>& edit);
 
 // "0 B", "512 B", "1 KB", "454 KB", "4.0 MB", "1.2 GB", "1.0 TB".
 // Steps of 1024, whole numbers for KB, one decimal above that. A value that
