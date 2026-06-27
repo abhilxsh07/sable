@@ -83,6 +83,24 @@ class PackageTests(unittest.TestCase):
         package.archive(second, "Sable", files, {"version": "test"})
         self.assertEqual(package.digest(archive), package.digest(second))
 
+    def test_source_snapshot_excludes_untracked_files(self):
+        self.write("source.txt", b"staged source")
+        with patch.object(package, "ROOT", self.root):
+            package.git("init", "-q")
+            package.git("add", "--", "source.txt")
+            original = package.source_snapshot()
+            self.write("private-notes.md", b"local notes")
+            self.assertEqual(package.source_snapshot(), original)
+            self.write("source.txt", b"edited source")
+            files, tree = package.source_snapshot()
+
+        self.assertNotEqual(tree, original[1])
+        archive = self.root / "source.zip"
+        package.archive(archive, "source", files, {"sourceSnapshotSha256": tree})
+        self.assertEqual(set(package.verify(archive)["files"]), {"source.txt"})
+        with zipfile.ZipFile(archive) as zip:
+            self.assertEqual(zip.read("source/source.txt"), b"edited source")
+
     def test_wrong_architecture_and_missing_or_mismatched_pdfium_fail(self):
         directory = self.runtime()
         with patch.object(package, "ROOT", self.root):

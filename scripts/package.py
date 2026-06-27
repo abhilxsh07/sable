@@ -129,7 +129,7 @@ def notices(platform):
 
 
 def source_snapshot():
-    names = git("ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    names = git("ls-files", "-z", "--cached")
     files = {}
     tree = hashlib.sha256()
     for raw in sorted(set(names.split(b"\0")) - {b""}):
