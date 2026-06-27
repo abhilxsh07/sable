@@ -539,6 +539,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void rendered(pdf::RenderResult result);
 	void showMessage(const winrt::hstring& text);
 	void showNotice(const winrt::hstring& text);
+	void
+	showNotice(const winrt::hstring& text,
+	           winrt::Microsoft::UI::Xaml::Controls::InfoBarSeverity severity);
 	Device makeDevice();
 	void rebuildDevice();
 	void updateVisible();

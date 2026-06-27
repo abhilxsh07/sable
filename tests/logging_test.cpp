@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <fstream>
 #include <iterator>
 #include <thread>
@@ -73,6 +74,62 @@ TEST(Logging, RotatesWithABoundedBackupCount) {
 	EXPECT_TRUE(std::filesystem::exists(folder.path / "rotate.1.log"));
 	EXPECT_TRUE(std::filesystem::exists(folder.path / "rotate.2.log"));
 	EXPECT_FALSE(std::filesystem::exists(folder.path / "rotate.3.log"));
+}
+
+TEST(Logging, StartupPrunesOldLogSetsAndKeepsLockedAndUnrelatedFiles) {
+	namespace fs = std::filesystem;
+	using namespace std::chrono;
+	Folder folder;
+	const auto old = fs::file_time_type::clock::now() - hours(24);
+	const auto log = [&](DWORD process, std::wstring_view suffix) {
+		return folder.path /
+		       (L"Sable-" + std::to_wstring(process) + std::wstring(suffix));
+	};
+	const auto seed = [](const fs::path& file, fs::file_time_type modified) {
+		std::ofstream(file) << "old log";
+		fs::last_write_time(file, modified);
+	};
+	constexpr DWORD first = 4'294'967'200;
+	for (DWORD i = 0; i < 12; ++i) {
+		const auto modified = old + minutes(i);
+		if (i != 0) {
+			seed(log(first + i, L".log"), modified);
+		}
+		seed(log(first + i, L".1.log"), modified);
+	}
+	const auto other = log(first, L".extra.log");
+	seed(other, old);
+	const auto directory = log(first + 21, L".log");
+	fs::create_directory(directory);
+
+	const auto lockedPath = log(first + 20, L".log");
+	const auto lockedBackup = log(first + 20, L".1.log");
+	seed(lockedPath, old - hours(1));
+	seed(lockedBackup, old - hours(1));
+	diagnostics::Log locked(lockedPath, false);
+	ASSERT_TRUE(locked.ready());
+	const auto active = log(GetCurrentProcessId(), L".log");
+	const auto activeBackup = log(GetCurrentProcessId(), L".1.log");
+	seed(active, old - hours(1));
+	seed(activeBackup, old - hours(1));
+	struct ResetLog {
+		~ResetLog() {
+			diagnostics::initialize({}, false);
+		}
+	} reset;
+	ASSERT_TRUE(diagnostics::initialize(folder.path, false));
+	diagnostics::write(diagnostics::Level::Info, "started after pruning");
+
+	for (DWORD i = 0; i < 12; ++i) {
+		EXPECT_EQ(fs::exists(log(first + i, L".log")), i >= 3) << i;
+		EXPECT_EQ(fs::exists(log(first + i, L".1.log")), i >= 3) << i;
+	}
+	EXPECT_TRUE(fs::exists(lockedPath));
+	EXPECT_TRUE(fs::exists(lockedBackup));
+	EXPECT_TRUE(fs::exists(activeBackup));
+	EXPECT_NE(read(active).find("started after pruning"), std::string::npos);
+	EXPECT_TRUE(fs::exists(other));
+	EXPECT_TRUE(fs::is_directory(directory));
 }
 
 TEST(Logging, ConcurrentWritesRemainWholeAndBadPathsAreNonfatal) {

@@ -105,8 +105,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 			viewer->m_formsDirty = false;
 			viewer->m_notesDirty = false;
 			viewer->showNotice(forms ? L"Saved a copy with your changes."
-			                         : L"Saved a copy with your notes.");
-			viewer->Message().Severity(InfoBarSeverity::Success);
+			                         : L"Saved a copy with your notes.",
+			                   InfoBarSeverity::Success);
 			co_return true;
 		}
 		viewer->showNotice(

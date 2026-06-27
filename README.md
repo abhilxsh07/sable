@@ -104,8 +104,9 @@ The pre-commit hook checks formatting. Turn it on with
 
 Logs are written under `%LOCALAPPDATA%\Sable\logs`, with one
 `Sable-<process-id>.log` per process. Each file rotates at 2 MiB with three
-backups. Old process logs are retained. Set `DEBUG` to a nonempty value for
-debug-level entries; even `DEBUG=0` enables them, matching NightPDF.
+backups. Startup keeps the current log set and the nine newest other sets.
+Active or locked sets may stay longer. Set `DEBUG` to a nonempty value for
+debug-level entries. Even `DEBUG=0` enables them, matching NightPDF.
 An unavailable log folder does not stop the reader.
 
 ## Licenses

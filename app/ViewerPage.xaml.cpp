@@ -1680,11 +1680,18 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 }
 
 void ViewerPage::showNotice(const hstring& text) {
+	showNotice(text, InfoBarSeverity::Error);
+}
+
+void ViewerPage::showNotice(const hstring& text, InfoBarSeverity severity) {
 	if (m_closed) {
 		return;
 	}
-	diagnostics::write(diagnostics::Level::Warning, to_string(text));
-	Message().Severity(InfoBarSeverity::Error);
+	diagnostics::write(severity == InfoBarSeverity::Success
+	                       ? diagnostics::Level::Info
+	                       : diagnostics::Level::Warning,
+	                   to_string(text));
+	Message().Severity(severity);
 	Message().Message(text);
 	Message().IsClosable(true);
 	Message().IsOpen(true);

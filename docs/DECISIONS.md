@@ -2853,3 +2853,9 @@ default parallel build. I use one MSBuild worker and two compiler
 workers for Debug ARM64, with /Z7 debug info in the object files.
 Other configurations default to four MSBuild workers. The build
 script's -MaxCpu option overrides the MSBuild worker count.
+
+## Log retention (2026-11-10)
+
+I keep the current process log and the nine newest other sets, with their
+rotation backups. Startup leaves active or locked sets for a later run.
+Successful saves log at Info and keep the success banner.
