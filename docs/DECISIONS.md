@@ -2859,3 +2859,33 @@ script's -MaxCpu option overrides the MSBuild worker count.
 I keep the current process log and the nine newest other sets, with their
 rotation backups. Startup leaves active or locked sets for a later run.
 Successful saves log at Info and keep the success banner.
+
+## Review decisions (2026-11-10)
+
+Save a copy keeps the exact loaded bytes for any untouched document, even
+when it holds notes from other apps. This keeps "Untouched copies remain
+exact" (24 Oct) and replaces the copy rule in "Sidebar notes and highlight
+colors". When edits force a rewrite, the copy hides only notes Sable made.
+
+I rewrite the zoom steps, the "auto" scale, the wheel tick counting and
+the fixed-key comment from a written description of the behavior they
+match. Their comments describe that behavior instead of calling them
+ports, so pdf.js stays out of the notices. I accept PDFium's license file,
+BSD-3-Clause with the Apache-2.0 text, as recorded in
+THIRD_PARTY_NOTICES.md. NightPDF shipped Apache-2.0 pdf.js the same way.
+This closes D10. The Microsoft runtime terms are reviewed once the unused
+packages are gone.
+
+The app references only the Windows App SDK parts it uses: Base,
+Foundation, InteractiveExperiences, WinUI, DWrite and Runtime. The AI, ML,
+Search, Widgets and WebView2 packages go. The smaller package has to start
+on a clean Windows install before a release.
+
+The six Home tool buttons stay visible but disabled, with a "Coming later"
+tooltip. Each one is enabled when its tool is wired up.
+
+FEATURE_CHECKLIST.md is tracked and the README links to it. PORTING_STATUS
+stays a local working log.
+
+Python files keep four spaces, as .editorconfig says. The tabs rule covers
+every other file.
