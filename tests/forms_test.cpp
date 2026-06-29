@@ -454,13 +454,25 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 		    }
 		    const auto annotations = opened.document->annotations(0);
 		    ASSERT_TRUE(annotations);
-		    ASSERT_TRUE(opened.document->removeAnnotation(
+		    // Delete is refused beside a signature field, so the index
+		    // shift is checked on the same form without one.
+		    EXPECT_FALSE(opened.document->removeAnnotation(
 		        annotations->entries[0].target));
-		    const auto shifted = opened.document->formFields(0);
+		    EXPECT_EQ(opened.document->writeRefusal(),
+		              pdf::WriteRefusal::Signed);
+		    fields.pop_back();
+		    const auto plain = pdf::openDocument(formBytes(fields));
+		    ASSERT_TRUE(plain.document);
+		    const auto before = plain.document->formFields(0);
+		    const auto notes = plain.document->annotations(0);
+		    ASSERT_TRUE(before && notes);
+		    ASSERT_TRUE(
+		        plain.document->removeAnnotation(notes->entries[0].target));
+		    const auto shifted = plain.document->formFields(0);
 		    ASSERT_TRUE(shifted);
 		    ASSERT_FALSE(shifted->entries.empty());
 		    EXPECT_EQ(shifted->entries.front().index, 0);
-		    EXPECT_NE(shifted->revision, result->revision);
+		    EXPECT_NE(shifted->revision, before->revision);
 	    })
 	    .get();
 }
@@ -2757,6 +2769,11 @@ TEST(FormFields, RefusesSignedFormsAndInheritedActions) {
 		    ASSERT_EQ(pdf::DocumentFormTest::signatures(*nested.document), 0);
 		    EXPECT_FALSE(
 		        nested.document->updateTextField(0, 0, u"old", u"new", 1));
+		    // the counter can't see this field, so the token check names it.
+		    EXPECT_EQ(nested.document->writeRefusal(),
+		              pdf::WriteRefusal::Signed);
+		    EXPECT_FALSE(nested.document->addTextNote(0, 80, 100, u"New"));
+		    EXPECT_FALSE(nested.document->highlightText({{0, 0}, {0, 1}}));
 		    EXPECT_EQ(nested.document->serialize(1024 * 1024), nestedBytes);
 		    for (const auto name :
 		         {"notes_allowed.pdf", "notes_denied.pdf", "restricted.pdf"}) {

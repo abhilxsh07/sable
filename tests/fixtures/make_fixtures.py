@@ -498,6 +498,47 @@ def note_attachment_pdf() -> bytes:
     return w.finish(1, 7)
 
 
+def guard_pdf(name: str, kind: str) -> bytes:
+    """One page of text with a sticky note from another app, for the write
+    guard. kind is "signed" (a filled signature field), "lookalike" (names
+    that only start with /Sig, and no signature at all) or "embedded" (an
+    attached file, which Sable can't rewrite yet)."""
+    w = Writer(md5(b"sable " + name.encode("ascii")))
+    extra = {
+        "signed": " /AcroForm << /Fields [7 0 R] /SigFlags 3 >>",
+        "lookalike": " /AcroForm << /Fields [] /SigFlags 0 >>",
+        "embedded": " /Names << /EmbeddedFiles << /Names [(empty.bin) 7 0 R] "
+                    ">> >>",
+    }[kind]
+    font = "Signika-Regular" if kind == "lookalike" else "Helvetica"
+    w.add(1, f"<< /Type /Catalog /Pages 2 0 R{extra} >>")
+    w.add(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+    w.add(3, f"<< /Type /Font /Subtype /Type1 /BaseFont /{font} "
+          "/Encoding /WinAnsiEncoding >>")
+    w.add(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] "
+          "/Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R "
+          "/Annots [6 0 R] >>")
+    # the comment is page content, so the guard must not read it as a name
+    w.add_stream(5, content(
+        "% /FT /Sig /DocMDP",
+        "BT /F1 18 Tf 0 0 0 rg 40 300 Td (Sable guard page) Tj ET",
+    ))
+    w.add(6, "<< /Type /Annot /Subtype /Text /Rect [30 40 50 60] "
+          "/Contents (From another app) /T (Reviewer) /F 4 >>")
+    last = 7
+    if kind == "signed":
+        w.add(7, "<< /FT /Sig /T (signature) /V << /Type /Sig "
+              "/Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached "
+              "/Contents <00> /ByteRange [0 1 2 3] >> >>")
+        last = 8
+    elif kind == "embedded":
+        w.add(7, "<< /Type /Filespec /F (empty.bin) /EF << /F 8 0 R >> >>")
+        w.add_stream(8, b"")
+        last = 9
+    w.add(last, f"<< /Title (Sable {kind} note fixture) >>")
+    return w.finish(1, last)
+
+
 def comments_pdf() -> bytes:
     w = Writer(md5(b"sable comments sidebar"))
     w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -619,6 +660,8 @@ def main() -> None:
         "password_form_action.pdf": password_form_pdf(action=True),
         "annotations.pdf": annotations_pdf(),
         "note_attachment.pdf": note_attachment_pdf(),
+        "note_signed.pdf": guard_pdf("note_signed.pdf", "signed"),
+        "note_signika.pdf": guard_pdf("note_signika.pdf", "lookalike"),
         "note_offsets.pdf": build_pdf("note_offsets.pdf", [(
             "536870912 536870912 536871936 536871936", 0, b""
         )]),

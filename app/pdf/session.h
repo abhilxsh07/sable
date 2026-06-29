@@ -85,6 +85,7 @@ struct AnnotationHitResult {
 struct MarkupResult {
 	int count = 0;
 	bool changed = false, canceled = false;
+	WriteRefusal refusal = WriteRefusal::None;
 };
 using HighlightResult = MarkupResult;
 struct TextBoxResult {
@@ -103,11 +104,14 @@ struct NoteResult {
 	std::optional<int> index;
 	bool canceled = false;
 	bool changed = false;
+	// why the document refused, when it gave a reason.
+	WriteRefusal refusal = WriteRefusal::None;
 };
 struct FormWriteResult {
 	int page = 0, index = 0;
 	std::uint64_t revision = 0;
 	bool accepted = false, changed = false, canceled = false;
+	WriteRefusal refusal = WriteRefusal::None;
 };
 struct PropertiesResult {
 	std::optional<Properties> properties;

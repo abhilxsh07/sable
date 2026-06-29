@@ -317,12 +317,14 @@ fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
 							            return;
 						            }
 						            if (!result.index) {
-							            recover(L"Couldn't resize this shape. "
-							                    L"It may use an unsupported "
-							                    L"style, be protected, or "
-							                    L"extend outside the page. "
-							                    L"Check its size. Your draft "
-							                    L"is still here.");
+							            recover(writeNotice(
+							                result.refusal,
+							                L"Couldn't resize this shape. "
+							                L"It may use an unsupported "
+							                L"style, be protected, or "
+							                L"extend outside the page. "
+							                L"Check its size. Your draft "
+							                L"is still here."));
 							            return;
 						            }
 						            owner->m_noteBusy = false;
@@ -510,11 +512,12 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 										    target.has_value());
 									}
 									if (const auto message = failure.get()) {
-										message.Text(
+										message.Text(writeNotice(
+										    result.refusal,
 										    L"Couldn't apply this "
 										    L"change. The annotation may have "
 										    L"changed. Your text is "
-										    L"still here.");
+										    L"still here."));
 									}
 								}
 							}

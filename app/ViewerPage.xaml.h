@@ -42,6 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/thumbnails.h"
 #include "helpers/comments.h"
 #include "helpers/zoom.h"
+#include "pdf/write_guard.h"
 #include "helpers/rotation.h"
 #include "helpers/pan.h"
 #include <winrt/Microsoft.UI.Input.h>
@@ -70,6 +71,13 @@ class Controller;
 }
 
 namespace winrt::Sable::implementation {
+// a refused write names its reason when the document gave one.
+inline const wchar_t* writeNotice(pdf::WriteRefusal refusal,
+                                  const wchar_t* fallback) {
+	return refusal == pdf::WriteRefusal::Signed
+	           ? L"This PDF is signed; edits would break the signature."
+	           : fallback;
+}
 struct MainWindow;
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.

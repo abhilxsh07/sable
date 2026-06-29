@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "search.h"
 #include "properties.h"
 #include "annotations.h"
+#include "write_guard.h"
 #include "../helpers/attachment_file.h"
 
 // PDFium's handle type, declared here so this header doesn't need fpdfview.h
@@ -191,6 +192,11 @@ class Document {
 	bool canCopy() const;
 	bool canAnnotate() const;
 	bool canFillForms() const;
+	// Every write path asks this first. Signed covers signature fields,
+	// DocMDP and usage rights; Unavailable means it couldn't be checked.
+	WriteRefusal canWrite(const std::function<bool()>& canceled) const;
+	// The last answer canWrite reached, None before the first check.
+	WriteRefusal writeRefusal() const;
 	// Plain single-line text only. Refuses stale targets or incomplete writes.
 	// The exact nonzero revision and prior UTF-16 value come from a snapshot.
 	std::optional<bool>
@@ -445,6 +451,7 @@ class Document {
 	bool currentRevision(std::uint64_t revision) const;
 	bool matchesTarget(const AnnotationTarget& target) const;
 	mutable std::optional<bool> m_serializable;
+	mutable std::optional<WriteRefusal> m_writeRefusal;
 	mutable std::optional<std::vector<int>> m_editCounts;
 	mutable std::set<int> m_independentPages;
 	mutable std::set<std::pair<int, int>> m_uniqueMarkup;

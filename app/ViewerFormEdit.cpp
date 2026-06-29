@@ -452,7 +452,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 								}
 								dialog.IsPrimaryButtonEnabled(true);
 								if (const auto message = failure.get()) {
-									message.Text(
+									message.Text(writeNotice(
+									    result.refusal,
 									    button
 									        ? L"Couldn't apply this choice. "
 									          L"The field may be protected or "
@@ -463,7 +464,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 									          L"The field may be protected, "
 									          L"have a length limit, or use "
 									          L"an unsupported form feature. "
-									          L"Your text is still here.");
+									          L"Your text is still here."));
 								}
 							}
 						}

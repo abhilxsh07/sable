@@ -62,7 +62,8 @@ void ViewerPage::markSelection(pdf::TextMarkup markup,
 						        self->refreshNotes();
 					        }
 					        if (result.count == 0) {
-						        self->showNotice(
+						        self->showNotice(writeNotice(
+						            result.refusal,
 						            L"Couldn't mark this selection. The PDF "
 						            L"may "
 						            L"restrict comments or contain "
@@ -70,7 +71,7 @@ void ViewerPage::markSelection(pdf::TextMarkup markup,
 						            L"the "
 						            L"selection may be empty or too large. "
 						            L"Your "
-						            L"selection is still available.");
+						            L"selection is still available."));
 					        }
 					        self->showComments();
 				        } catch (...) {

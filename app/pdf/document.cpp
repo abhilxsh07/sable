@@ -830,6 +830,62 @@ bool Document::canAnnotate() const {
 	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x20) != 0;
 }
 
+WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
+	// a caller's cancel can fire once, so i keep it from then on.
+	bool halted = false;
+	const std::function<bool()> stopped = [&] {
+		halted = halted || (canceled && canceled());
+		return halted;
+	};
+	if (offThread() || stopped()) {
+		return WriteRefusal::Unavailable;
+	}
+	if (m_writeRefusal) {
+		return *m_writeRefusal;
+	}
+	// -1 is PDFium's error value, so i can't call that file unsigned.
+	if (const int signatures = FPDF_GetSignatureCount(m_handle)) {
+		m_writeRefusal =
+		    signatures > 0 ? WriteRefusal::Signed : WriteRefusal::Unavailable;
+		return *m_writeRefusal;
+	}
+	if (!canSerializeEdits(stopped)) {
+		// a file i never rewrite keeps whatever signature it has.
+		return stopped() ? WriteRefusal::Unavailable : WriteRefusal::None;
+	}
+	// the counter reads only the top-level /Fields array, and the public
+	// headers can't reach /Perms. i read the tokens of a full rewrite, which
+	// expands object streams, for nested fields and DocMDP. see:
+	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/fpdfsdk/fpdf_signature.cpp
+	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_signature.h
+	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_catalog.h
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, stopped);
+	if (!bytes || stopped()) {
+		return WriteRefusal::Unavailable;
+	}
+	const auto scratch = reopenFormCopy(std::move(*bytes));
+	if (!scratch.document || stopped()) {
+		return WriteRefusal::Unavailable;
+	}
+	scratch.document->m_modified = true;
+	const auto canonical = scratch.document->serialize(limit, stopped);
+	if (!canonical || stopped()) {
+		return WriteRefusal::Unavailable;
+	}
+	m_writeRefusal = detail::signatureTokens(
+	                     {reinterpret_cast<const char*>(canonical->data()),
+	                      canonical->size()})
+	                     ? WriteRefusal::Signed
+	                     : WriteRefusal::None;
+	return *m_writeRefusal;
+}
+
+WriteRefusal Document::writeRefusal() const {
+	return offThread() ? WriteRefusal::None
+	                   : m_writeRefusal.value_or(WriteRefusal::None);
+}
+
 bool Document::canFillForms() const {
 	if (offThread()) {
 		return false;
@@ -906,7 +962,8 @@ std::optional<bool> Document::updateFormField(
 	    pageIndex < 0 || pageIndex >= pageCount() || index < 0 ||
 	    !canFillForms() || !validNoteText(expected) ||
 	    !validNoteText(contents) || stopped() ||
-	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
+	    canWrite(canceled) != WriteRefusal::None ||
+	    !canSerializeEdits(canceled)) {
 		return {};
 	}
 	constexpr std::size_t limit = 128 * 1024 * 1024;
@@ -919,8 +976,8 @@ std::optional<bool> Document::updateFormField(
 	    FPDF_GetFormType(scratch.document->m_handle) != FORMTYPE_ACRO_FORM) {
 		return {};
 	}
-	// the signature counter misses nested fields. a full rewrite expands
-	// object streams and writes decoded dictionary/name tokens. see:
+	// a full rewrite expands object streams and writes decoded
+	// dictionary/name tokens. canWrite already refused signatures. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/parser/cpdf_name.cpp
 	scratch.document->m_modified = true;
@@ -944,9 +1001,8 @@ std::optional<bool> Document::updateFormField(
 		return false;
 	};
 	// i can't see every merged field's actions through its widget.
-	if (tokens.find("/Sig") != std::string_view::npos ||
-	    tokens.find("/DocMDP") != std::string_view::npos || actionKey("/A") ||
-	    actionKey("/AA") || tokens.find("/JS") != std::string_view::npos ||
+	if (actionKey("/A") || actionKey("/AA") ||
+	    tokens.find("/JS") != std::string_view::npos ||
 	    tokens.find("/JavaScript") != std::string_view::npos) {
 		return {};
 	}
@@ -1531,7 +1587,7 @@ Document::addOutlineShape(int index, const AnnotationBounds& bounds,
 	    index >= pageCount() || stopped() || !canAnnotate() ||
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
-	    FPDF_GetSignatureCount(m_handle) != 0) {
+	    canWrite(canceled) != WriteRefusal::None) {
 		return {};
 	}
 	for (float edge : {bounds.left, bounds.bottom, bounds.right, bounds.top}) {
@@ -1607,7 +1663,8 @@ std::optional<int> Document::writeStamp(int index,
 	    (canceled && canceled()) || !canAnnotate() ||
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
-	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
+	    canWrite(canceled) != WriteRefusal::None ||
+	    !canSerializeEdits(canceled)) {
 		return {};
 	}
 	const auto& [a, b, c, d, e, f] = transform;
@@ -1679,16 +1736,10 @@ std::optional<int> Document::appendAnnotation(
 	if (!scratch.document || stopped()) {
 		return {};
 	}
-	// i check expanded object streams for signature names before writing.
+	// i write on a copy with expanded object streams.
 	scratch.document->m_modified = true;
 	auto canonical = scratch.document->serialize(limit, canceled);
 	if (!canonical || stopped()) {
-		return {};
-	}
-	const std::string_view tokens(
-	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
-	if (tokens.find("/Sig") != std::string_view::npos ||
-	    tokens.find("/DocMDP") != std::string_view::npos) {
 		return {};
 	}
 	scratch = reopenFormCopy(std::move(*canonical));
@@ -1789,7 +1840,7 @@ std::optional<int> Document::addInk(int index,
 	    index >= pageCount() || stopped() || !canAnnotate() ||
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
-	    FPDF_GetSignatureCount(m_handle) != 0 || strokes.empty() ||
+	    canWrite(canceled) != WriteRefusal::None || strokes.empty() ||
 	    strokes.size() > 256 || !std::isfinite(style.width) ||
 	    style.width < .5f || style.width > 12 || style.color.red > 255 ||
 	    style.color.green > 255 || style.color.blue > 255 ||
@@ -1903,6 +1954,7 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    !matchesTarget(target) || !canAnnotate() ||
 	    !canSerializeEdits(canceled) ||
+	    canWrite(canceled) != WriteRefusal::None ||
 	    !provenUnique(target.page, target.index)) {
 		return {};
 	}
@@ -2354,7 +2406,8 @@ std::optional<int> Document::addTextBox(
 	    bounds.top <= bounds.bottom ||
 	    (FPDF_GetFormType(m_handle) != FORMTYPE_NONE &&
 	     FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) ||
-	    FPDF_GetSignatureCount(m_handle) != 0 || !canSerializeEdits(canceled)) {
+	    canWrite(canceled) != WriteRefusal::None ||
+	    !canSerializeEdits(canceled)) {
 		return {};
 	}
 	constexpr std::size_t limit = 128 * 1024 * 1024;
@@ -2367,8 +2420,7 @@ std::optional<int> Document::addTextBox(
 		return {};
 	}
 	scratch.document->m_modified = true;
-	// i expand object streams before checking hidden signature material.
-	// see:
+	// i expand object streams before choosing the font name. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
 	auto canonical = scratch.document->serialize(limit, canceled);
 	if (!canonical || stopped()) {
@@ -2376,10 +2428,6 @@ std::optional<int> Document::addTextBox(
 	}
 	const std::string_view tokens(
 	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
-	if (tokens.find("/Sig") != std::string_view::npos ||
-	    tokens.find("/DocMDP") != std::string_view::npos) {
-		return {};
-	}
 	// the rewrite expands object streams and canonicalizes names. i choose
 	// an absent name so existing DR fonts cannot replace this box's font.
 	// strings/streams can cause a conservative collision too. see:
@@ -2640,6 +2688,7 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 	    validateTextBoxText(contents, layout) != TextBoxTextError::None ||
 	    validateTextBoxText(previous, layout) != TextBoxTextError::None ||
 	    !matchesTarget(target) || !canSerializeEdits(canceled) ||
+	    canWrite(canceled) != WriteRefusal::None ||
 	    !provenUnique(target.page, target.index)) {
 		return {};
 	}
@@ -3039,7 +3088,8 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
                                          std::u16string_view author) {
 	if (offThread() || index < 0 || index >= pageCount() || !canAnnotate() ||
 	    contents.empty() || !validNoteText(contents) ||
-	    !validNoteText(author) || !std::isfinite(x) || !std::isfinite(y)) {
+	    !validNoteText(author) || !std::isfinite(x) || !std::isfinite(y) ||
+	    canWrite({}) != WriteRefusal::None) {
 		return {};
 	}
 	PagePtr page(FPDF_LoadPage(m_handle, index));
@@ -3143,7 +3193,8 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
                                              std::u16string_view contents,
                                              std::uint64_t revision) {
 	if (offThread() || !currentRevision(revision) || contents.empty() ||
-	    !validNoteText(contents) || !validNoteText(expected)) {
+	    !validNoteText(contents) || !validNoteText(expected) ||
+	    canWrite({}) != WriteRefusal::None) {
 		return {};
 	}
 	const auto previous = textNote(pageIndex, noteIndex, revision);
@@ -3255,7 +3306,7 @@ std::optional<bool> Document::setMarkupComment(int page, int index,
                                                std::u16string_view contents,
                                                std::uint64_t revision) {
 	if (offThread() || !currentRevision(revision) || !validNoteText(contents) ||
-	    !validNoteText(expected.text)) {
+	    !validNoteText(expected.text) || canWrite({}) != WriteRefusal::None) {
 		return {};
 	}
 	const auto previous = markupComment(page, index, markup, revision);
@@ -3308,7 +3359,7 @@ std::optional<int> Document::markText(TextSelection selection,
 	const auto [first, last] = ordered(selection);
 	if (first.page < 0 || first.index < 0 || last.index < 0 ||
 	    last.page >= pageCount() || last.page - first.page >= 128 ||
-	    !canSerializeEdits({})) {
+	    !canSerializeEdits({}) || canWrite({}) != WriteRefusal::None) {
 		return {};
 	}
 	struct Target {
@@ -3624,7 +3675,7 @@ bool Document::provenUnique(int pageIndex, int index) const {
 
 std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 	if (offThread() || !matchesTarget(target) || !canAnnotate() ||
-	    !canSerializeEdits({}) ||
+	    !canSerializeEdits({}) || canWrite({}) != WriteRefusal::None ||
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    (target.subtype != "Text" && target.subtype != "Highlight" &&
 	     target.subtype != "Underline" && target.subtype != "StrikeOut" &&

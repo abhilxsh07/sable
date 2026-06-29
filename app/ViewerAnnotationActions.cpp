@@ -245,9 +245,10 @@ void ViewerPage::deleteAnnotation() {
 					        self->clearAnnotationSelection();
 					        self->refreshNotes();
 				        } else if (!result.canceled) {
-					        self->showNotice(
+					        self->showNotice(writeNotice(
+					            result.refusal,
 					            L"Couldn't delete this comment. It may have "
-					            L"changed or be protected.");
+					            L"changed or be protected."));
 				        }
 				        self->showComments();
 			        });

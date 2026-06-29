@@ -137,6 +137,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="forms_test.cpp" />
 		<ClCompile Include="annotation_targets_test.cpp" />
 		<ClCompile Include="note_visibility_test.cpp" />
+		<ClCompile Include="write_guard_test.cpp" />
 		<ClCompile Include="comments_test.cpp" />
 		<ClCompile Include="keybinds_test.cpp" />
 	</ItemGroup>

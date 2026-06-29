@@ -616,6 +616,9 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 			                       : "Couldn't add a PDF ellipse.");
 		}
 		result.canceled = !result.changed && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -677,6 +680,9 @@ bool Session::writeInk(int page, std::uint64_t revision, InkWrite write,
 			                   "Couldn't add a PDF ink annotation.");
 		}
 		result.canceled = !result.changed && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -715,6 +721,9 @@ bool Session::addStampAt(int page, AnnotationPoint first,
 			                   "Couldn't add a PDF image stamp.");
 		}
 		result.canceled = !result.changed && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -756,6 +765,9 @@ bool Session::resizeShape(Annotation expected, ShapeSize size,
 			                   "Couldn't resize a PDF shape.");
 		}
 		result.canceled = !result.index && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -824,6 +836,9 @@ bool Session::writeTextBox(int page, AnnotationBounds bounds,
 			result.canceled = state->closed();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't add a PDF text box.");
+		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
 		}
 		callback(std::move(result));
 	});
@@ -925,6 +940,9 @@ bool Session::changeTextBox(Annotation expected, std::u16string contents,
 			    diagnostics::write(diagnostics::Level::Error,
 			                       "Couldn't edit a PDF text box.");
 		    }
+		    if (!result.changed && state->m_document) {
+			    result.refusal = state->m_document->writeRefusal();
+		    }
 		    callback(std::move(result));
 	    });
 }
@@ -994,6 +1012,9 @@ bool Session::writeTextNote(int page,
 			result.changed = state->m_document && state->m_document->modified();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't add a PDF text note.");
+		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
 		}
 		callback(std::move(result));
 	});
@@ -1079,6 +1100,9 @@ bool Session::markText(TextSelection selection, TextMarkup markup,
 			result.changed = state->m_document && state->m_document->modified();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't mark PDF text.");
+		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
 		}
 		callback(std::move(result));
 	});
@@ -1210,6 +1234,9 @@ bool Session::writeFormField(int page, int index, std::u16string expected,
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't update a PDF form field.");
 		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -1249,6 +1276,9 @@ bool Session::updateTextNote(int page, int index, std::u16string expected,
 			        state->m_document && state->m_document->modified();
 			    diagnostics::write(diagnostics::Level::Error,
 			                       "Couldn't update a PDF text note.");
+		    }
+		    if (!result.changed && state->m_document) {
+			    result.refusal = state->m_document->writeRefusal();
 		    }
 		    callback(std::move(result));
 	    });
@@ -1336,6 +1366,9 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't update a PDF markup comment.");
 		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
 		callback(std::move(result));
 	});
 }
@@ -1391,6 +1424,9 @@ bool Session::changeAnnotation(AnnotationTarget target,
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't change a PDF annotation.");
+		}
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
 		}
 		callback(std::move(result));
 	});

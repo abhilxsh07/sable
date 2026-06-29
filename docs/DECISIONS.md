@@ -2889,3 +2889,23 @@ stays a local working log.
 
 Python files keep four spaces, as .editorconfig says. The tabs rule covers
 every other file.
+
+## One write guard for signed PDFs (2026-11-11)
+
+Every edit asks one guard before it touches the document. Notes,
+highlights, line markup, comment edits and Delete used to skip the
+signature check that shapes, ink, stamps, text boxes and form fields had.
+A signed PDF now refuses all of them and says why: "This PDF is signed;
+edits would break the signature." Other refusals keep their old text.
+
+PDFium's signature counter reads only the top-level fields, and its public
+headers can't reach /Perms, so I still read a full rewrite of the file. I
+read it as tokens instead of raw bytes: stream bodies, strings and comments
+are skipped and escaped names are decoded. /Sig counts as a field type, a
+dictionary type or a bare object, and /DocMDP and /UR3 count anywhere.
+/SigFlags, a font named /Signika and compressed data no longer block edits.
+
+An empty signature field still counts as signed, as it did for shapes. The
+first edit on a document pays for one rewrite and the answer is kept. A
+file over the 128 MiB rewrite limit refuses notes too. A file Sable can't
+rewrite at all, such as one with attachments, is left to that refusal.

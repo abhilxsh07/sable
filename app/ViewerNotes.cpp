@@ -216,7 +216,7 @@ ViewerPage::placementReply(pdf::Session* session, const wchar_t* failure) {
 				self->Message().IsOpen(false);
 				self->refreshNotes();
 			} else if (!result.canceled) {
-				self->showNotice(failure);
+				self->showNotice(writeNotice(result.refusal, failure));
 			}
 			self->showComments();
 		});
@@ -446,9 +446,10 @@ void ViewerPage::finishInkStroke() {
 					        self->Message().IsOpen(false);
 					        self->refreshNotes();
 				        } else if (!result.canceled) {
-					        self->showNotice(L"Couldn't add this drawing. "
-					                         L"This PDF may restrict "
-					                         L"comments.");
+					        self->showNotice(writeNotice(
+					            result.refusal, L"Couldn't add this drawing. "
+					                            L"This PDF may restrict "
+					                            L"comments."));
 				        }
 				        self->showComments();
 			        });
@@ -781,12 +782,14 @@ ViewerPage::editTextBox(NoteTarget target,
 								    }
 								    owner->showComments();
 							    } else {
-								    recover(L"Couldn't apply this text box. "
-								            L"The PDF may restrict "
-								            L"this change, or the text may "
-								            L"not fit inside the page or box. "
-								            L"Check the text and box size. "
-								            L"Your draft is still here.");
+								    recover(writeNotice(
+								        result.refusal,
+								        L"Couldn't apply this text box. "
+								        L"The PDF may restrict "
+								        L"this change, or the text may "
+								        L"not fit inside the page or box. "
+								        L"Check the text and box size. "
+								        L"Your draft is still here."));
 							    }
 						    } catch (...) {
 							    diagnostics::write(
@@ -935,7 +938,8 @@ void ViewerPage::submitNote(int page, std::u16string text,
 						if (result.index) {
 							self->m_noteDraft = {};
 						} else {
-							self->showNotice(
+							self->showNotice(writeNotice(
+							    result.refusal,
 							    L"Couldn't add this note. This PDF may "
 							    L"restrict "
 							    L"comments, contain attachments, or be "
@@ -943,7 +947,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
 							    L"small "
 							    L"for a note. Your text is still in "
 							    L"Add "
-							    L"note.");
+							    L"note."));
 						}
 						self->showComments();
 					} catch (...) {
