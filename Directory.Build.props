@@ -42,8 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<!-- /permissive- -->
 			<ConformanceMode>true</ConformanceMode>
 			<WarningLevel>Level4</WarningLevel>
-			<!-- the sources have non-ASCII literals (the easter egg flag, for one),
-				so don't let MSVC guess the code page -->
+			<!-- read the sources as UTF-8 so MSVC keeps non-ASCII literals -->
 			<AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
 			<TreatWarningAsError Condition="'$(CI)'=='true'">true</TreatWarningAsError>
 			<!-- /FS. The App SDK's auto-initializer .cpp files build without the

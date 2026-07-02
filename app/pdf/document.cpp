@@ -4409,6 +4409,70 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 	return stopped() ? std::nullopt : std::optional{std::move(result)};
 }
 
+namespace {
+// i keep these flags specific to text fields. see:
+// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
+constexpr int noSpellCheckFlag = 1 << 22, combFlag = 1 << 24;
+// i preserve the stored option order for Sort fields. see:
+// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
+constexpr int sortChoiceFlag = 1 << 19;
+} // namespace
+
+bool FormField::singleChoice() const {
+	if ((type != FormFieldType::ComboBox && type != FormFieldType::ListBox) ||
+	    !options || options->empty() || options->size() > 256) {
+		return false;
+	}
+	int selected = 0;
+	for (std::size_t i = 0; i < options->size(); ++i) {
+		const auto& option = (*options)[i];
+		if (option.index != static_cast<int>(i) || option.label.empty()) {
+			return false;
+		}
+		selected += option.selected ? 1 : 0;
+	}
+	return selected <= 1;
+}
+
+bool FormField::multiline() const {
+	return type == FormFieldType::Text &&
+	       (flags & FPDF_FORMFLAG_TEXT_MULTILINE);
+}
+
+bool FormField::noSpellCheck() const {
+	return type == FormFieldType::Text && (flags & noSpellCheckFlag);
+}
+
+bool FormField::supportsEditor() const {
+	const bool text = type == FormFieldType::Text;
+	const bool selection = singleChoice();
+	const bool radio =
+	    type == FormFieldType::RadioButton && control.has_value();
+	if (!text && !selection &&
+	    !((type == FormFieldType::CheckBox || radio) && checked.has_value())) {
+		return false;
+	}
+	constexpr int plain = FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
+	constexpr int locked = FPDF_ANNOT_FLAG_READONLY | FPDF_ANNOT_FLAG_LOCKED |
+	                       FPDF_ANNOT_FLAG_NOZOOM | FPDF_ANNOT_FLAG_NOROTATE |
+	                       FPDF_ANNOT_FLAG_TOGGLENOVIEW | 0x200;
+	int allowed = plain;
+	if (radio) {
+		// i allow Radio and NoToggleToOff for radio fields.
+		allowed |= (1 << 14) | (1 << 15);
+	} else if (selection) {
+		allowed |= sortChoiceFlag;
+		if (type == FormFieldType::ComboBox) {
+			allowed |= FPDF_FORMFLAG_CHOICE_COMBO;
+		}
+	} else if (text) {
+		// i keep comb and multiline flags exclusive.
+		allowed |= noSpellCheckFlag |
+		           (multiline() ? FPDF_FORMFLAG_TEXT_MULTILINE : combFlag);
+	}
+	return !(flags & ~allowed) && !(annotationFlags & locked);
+}
+
 std::optional<FormFields>
 Document::formFields(int index, const std::function<bool()>& canceled) const {
 	const auto stopped = [&] { return canceled && canceled(); };

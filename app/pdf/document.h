@@ -150,6 +150,11 @@ struct FormField {
 	std::optional<AnnotationBounds> bounds;
 	// Clipped page fractions; absent for hidden, off-page or unusable bounds.
 	std::optional<AnnotationRect> displayBounds;
+
+	bool singleChoice() const;
+	bool multiline() const;
+	bool noSpellCheck() const;
+	bool supportsEditor() const;
 };
 struct FormFields {
 	int page = 0;

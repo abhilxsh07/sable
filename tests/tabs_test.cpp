@@ -1361,7 +1361,7 @@ struct TabsTest {
 		check(log.find("native logging marker") != std::string::npos &&
 		          log.find("Verbose logging enabled") != std::string::npos &&
 		          log.find("I'm a PDF reader Morty!") != std::string::npos,
-		      "startup/debug/notification file logging");
+		      "startup/debug/Morty file logging");
 		status.Text(
 		    L"PASS: Night Run, Morty alerts and startup/debug/file logging");
 		probePass(owner.get_strong().as<Window>());

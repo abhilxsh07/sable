@@ -20,7 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
-#include <fpdf_annot.h>
 #include <algorithm>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
@@ -29,32 +28,6 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
-namespace {
-// i keep this flag specific to text fields. see:
-// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
-constexpr int NO_SPELL_CHECK_FLAG = 1 << 22;
-// i preserve the stored option order for Sort fields. see:
-// https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
-constexpr int SORT_CHOICE_FLAG = 1 << 19;
-
-bool singleChoice(const pdf::FormField& field) {
-	if ((field.type != pdf::FormFieldType::ComboBox &&
-	     field.type != pdf::FormFieldType::ListBox) ||
-	    !field.options || field.options->empty() ||
-	    field.options->size() > 256) {
-		return false;
-	}
-	int selected = 0;
-	for (std::size_t i = 0; i < field.options->size(); ++i) {
-		const auto& option = (*field.options)[i];
-		if (option.index != static_cast<int>(i) || option.label.empty()) {
-			return false;
-		}
-		selected += option.selected ? 1 : 0;
-	}
-	return selected <= 1;
-}
-} // namespace
 namespace winrt::Sable::implementation {
 void ViewerPage::cancelFormRequest() {
 	++m_formVersion;
@@ -130,55 +103,8 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 						                   source.y >= b->top &&
 						                   source.y <= b->bottom;
 					            });
-					        constexpr int plain =
-					            FPDF_FORMFLAG_REQUIRED | FPDF_FORMFLAG_NOEXPORT;
-					        // i allow Radio and NoToggleToOff for radio fields.
-					        const bool radio =
-					            found != fields.rend() &&
-					            found->type ==
-					                pdf::FormFieldType::RadioButton &&
-					            found->control.has_value();
-					        const bool selection =
-					            found != fields.rend() && singleChoice(*found);
-					        const bool text =
-					            found != fields.rend() &&
-					            found->type == pdf::FormFieldType::Text;
-					        // i keep comb and multiline flags exclusive. see:
-					        // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/constants/form_flags.h
-					        const int textFlags =
-					            !text
-					                ? 0
-					                : NO_SPELL_CHECK_FLAG |
-					                      (found->flags &
-					                               FPDF_FORMFLAG_TEXT_MULTILINE
-					                           ? FPDF_FORMFLAG_TEXT_MULTILINE
-					                           : 1 << 24);
-					        const int choiceFlags =
-					            !selection
-					                ? 0
-					                : SORT_CHOICE_FLAG |
-					                      (found->type ==
-					                               pdf::FormFieldType::ComboBox
-					                           ? FPDF_FORMFLAG_CHOICE_COMBO
-					                           : 0);
-					        constexpr int locked =
-					            FPDF_ANNOT_FLAG_READONLY |
-					            FPDF_ANNOT_FLAG_LOCKED |
-					            FPDF_ANNOT_FLAG_NOZOOM |
-					            FPDF_ANNOT_FLAG_NOROTATE |
-					            FPDF_ANNOT_FLAG_TOGGLENOVIEW | 0x200;
 					        if (found != fields.rend() &&
-					            (found->type == pdf::FormFieldType::Text ||
-					             selection ||
-					             ((found->type ==
-					                   pdf::FormFieldType::CheckBox ||
-					               radio) &&
-					              found->checked.has_value())) &&
-					            !(found->flags &
-					              ~(plain | (radio       ? (1 << 14) | (1 << 15)
-					                         : selection ? choiceFlags
-					                                     : textFlags))) &&
-					            !(found->annotationFlags & locked)) {
+					            found->supportsEditor()) {
 						        self->editFormField(static_cast<int>(page),
 						                            result.fields->revision,
 						                            *found);
@@ -202,7 +128,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		const bool checkbox = field.type == pdf::FormFieldType::CheckBox;
 		const bool radio = field.type == pdf::FormFieldType::RadioButton;
 		const bool button = checkbox || radio;
-		const bool selection = singleChoice(field);
+		const bool selection = field.singleChoice();
 		const bool clearList =
 		    selection && field.type == pdf::FormFieldType::ListBox;
 		if ((button && !field.checked.has_value()) ||
@@ -255,12 +181,10 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		contents.Header(box_value(L"Value"));
 		contents.MinWidth(320);
 		contents.MaxLength(32767);
-		if (field.type == pdf::FormFieldType::Text &&
-		    (field.flags & NO_SPELL_CHECK_FLAG)) {
+		if (field.noSpellCheck()) {
 			contents.IsSpellCheckEnabled(false);
 		}
-		if (field.type == pdf::FormFieldType::Text &&
-		    (field.flags & FPDF_FORMFLAG_TEXT_MULTILINE)) {
+		if (field.multiline()) {
 			contents.AcceptsReturn(true);
 			contents.TextWrapping(TextWrapping::Wrap);
 			contents.MinHeight(100);
