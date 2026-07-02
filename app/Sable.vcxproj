@@ -115,6 +115,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
 		</ClCompile>
 		<Link>
+			<AdditionalOptions>
+				%(AdditionalOptions) /PDBALTPATH:%_PDB%
+			</AdditionalOptions>
 			<!-- ShellExecuteW, and the open dialog later on -->
 			<AdditionalDependencies>shell32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
