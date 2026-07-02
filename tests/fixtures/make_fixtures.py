@@ -662,6 +662,7 @@ def main() -> None:
         "note_attachment.pdf": note_attachment_pdf(),
         "note_signed.pdf": guard_pdf("note_signed.pdf", "signed"),
         "note_signika.pdf": guard_pdf("note_signika.pdf", "lookalike"),
+        "note_embedded.pdf": guard_pdf("note_embedded.pdf", "embedded"),
         "note_offsets.pdf": build_pdf("note_offsets.pdf", [(
             "536870912 536870912 536871936 536871936", 0, b""
         )]),

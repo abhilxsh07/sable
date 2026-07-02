@@ -26,6 +26,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/note_visibility.h"
 #include "pdf_test_files.h"
 
+namespace {
+std::vector<std::uint8_t> fileBytes(const char* name) {
+	std::ifstream file(fixturePath(name), std::ios::binary);
+	return {std::istreambuf_iterator<char>(file), {}};
+}
+} // namespace
+
 TEST(NoteVisibility, ImportedIconsStayHiddenWithoutChangingLiveNotes) {
 	pdf::Engine engine;
 	engine
@@ -40,9 +47,11 @@ TEST(NoteVisibility, ImportedIconsStayHiddenWithoutChangingLiveNotes) {
 		    const auto screen = doc.render(0, 300, 400);
 		    const auto print = doc.printRaster(0, 300, 400, 0, 0, 300, 400);
 		    ASSERT_TRUE(screen && print);
+		    // nothing was edited, so the copy is the file as it was opened.
 		    const auto bytes = doc.serializeForCopy(1024 * 1024);
 		    ASSERT_TRUE(bytes);
-		    EXPECT_NE(bytes, original);
+		    EXPECT_EQ(bytes, original);
+		    EXPECT_EQ(*bytes, fileBytes("comments.pdf"));
 		    EXPECT_FALSE(doc.modified());
 		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
 		    const auto live = doc.annotations(0);
@@ -54,18 +63,14 @@ TEST(NoteVisibility, ImportedIconsStayHiddenWithoutChangingLiveNotes) {
 		    ASSERT_TRUE(notes);
 		    ASSERT_EQ(notes->entries.size(), before->entries.size());
 		    for (std::size_t i = 0; i < notes->entries.size(); ++i) {
-			    const auto& note = notes->entries[i];
 			    EXPECT_EQ(live->entries[i].flags, before->entries[i].flags);
 			    EXPECT_EQ(live->entries[i].contents,
 			              before->entries[i].contents);
-			    EXPECT_EQ(note.contents, before->entries[i].contents);
-			    if (note.subtype == "Text") {
-				    EXPECT_NE(note.flags & FPDF_ANNOT_FLAG_NOVIEW, 0);
-				    EXPECT_EQ(note.flags & FPDF_ANNOT_FLAG_PRINT, 0);
-			    } else {
-				    EXPECT_EQ(note.flags, before->entries[i].flags);
-			    }
+			    EXPECT_EQ(notes->entries[i].contents,
+			              before->entries[i].contents);
+			    EXPECT_EQ(notes->entries[i].flags, before->entries[i].flags);
 		    }
+		    // Sable still masks the icons when it draws either file.
 		    const auto savedScreen = saved.document->render(0, 300, 400);
 		    const auto savedPrint =
 		        saved.document->printRaster(0, 300, 400, 0, 0, 300, 400);
@@ -98,12 +103,99 @@ TEST(NoteVisibility, ImportedIconsStayHiddenWithoutChangingLiveNotes) {
 			    }
 			    return pixels;
 		    };
-		    EXPECT_NE(rawRaster(*original), screen->pixels);
-		    EXPECT_EQ(rawRaster(*bytes), screen->pixels);
+		    EXPECT_NE(rawRaster(*bytes), screen->pixels);
 		    EXPECT_FALSE(doc.serializeForCopy(8));
 		    EXPECT_FALSE(
 		        doc.serializeForCopy(1024 * 1024, [] { return true; }));
 		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
+	    })
+	    .get();
+}
+
+TEST(NoteVisibility, UntouchedCopiesKeepTheirExactBytes) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    // other apps' notes beside a signature, an embedded file and an
+		    // attachment annotation.
+		    for (const auto* name :
+		         {"note_signed.pdf", "note_embedded.pdf", "note_signika.pdf",
+		          "note_attachment.pdf"}) {
+			    SCOPED_TRACE(name);
+			    const auto original = fileBytes(name);
+			    ASSERT_FALSE(original.empty());
+			    const auto opened = pdf::openFile(fixturePath(name));
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    EXPECT_TRUE(doc.render(0, 150, 200));
+			    EXPECT_TRUE(doc.printRaster(0, 150, 200, 0, 0, 150, 200));
+			    const auto bytes = doc.serializeForCopy(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    EXPECT_EQ(*bytes, original);
+			    EXPECT_FALSE(doc.modified());
+		    }
+	    })
+	    .get();
+}
+
+TEST(NoteVisibility, EditedCopiesHideOnlyTheNotesSableMade) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("note_signika.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto before = doc.annotations(0);
+		    ASSERT_TRUE(before);
+		    ASSERT_EQ(before->entries.size(), 1u);
+		    ASSERT_EQ(before->entries[0].flags, FPDF_ANNOT_FLAG_PRINT);
+		    ASSERT_EQ(doc.addTextNote(0, 80, 100, u"Mine"), 1);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 2u);
+		    EXPECT_EQ(notes->entries[0].contents, "From another app");
+		    EXPECT_EQ(notes->entries[0].flags, FPDF_ANNOT_FLAG_PRINT);
+		    EXPECT_EQ(notes->entries[1].contents, "Mine");
+		    EXPECT_EQ(notes->entries[1].flags, FPDF_ANNOT_FLAG_NOVIEW);
+		    const auto live = doc.annotations(0);
+		    ASSERT_TRUE(live);
+		    EXPECT_EQ(live->entries[0].flags, FPDF_ANNOT_FLAG_PRINT);
+	    })
+	    .get();
+}
+
+TEST(NoteVisibility, EditsToSignedOrAttachedFilesStillRefuse) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto signedBytes = fileBytes("note_signed.pdf");
+		    const auto signedFile =
+		        pdf::openFile(fixturePath("note_signed.pdf"));
+		    ASSERT_TRUE(signedFile.document);
+		    EXPECT_FALSE(signedFile.document->addTextNote(0, 80, 100, u"New"));
+		    EXPECT_EQ(signedFile.document->writeRefusal(),
+		              pdf::WriteRefusal::Signed);
+		    EXPECT_EQ(signedFile.document->serializeForCopy(1024 * 1024),
+		              signedBytes);
+
+		    const auto attached =
+		        pdf::openFile(fixturePath("note_embedded.pdf"));
+		    ASSERT_TRUE(attached.document);
+		    auto& doc = *attached.document;
+		    // the tools refuse before anything changes.
+		    EXPECT_FALSE(doc.addTextNoteAt(0, 0.5, 0.5, 0, u"New"));
+		    EXPECT_FALSE(doc.highlightText({{0, 0}, {0, 4}}));
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.serializeForCopy(1024 * 1024),
+		              fileBytes("note_embedded.pdf"));
+		    // a note forced in underneath them still can't be rewritten.
+		    ASSERT_EQ(doc.addTextNote(0, 80, 100, u"Forced"), 1);
+		    EXPECT_TRUE(doc.modified());
+		    EXPECT_FALSE(doc.serializeForCopy(1024 * 1024));
 	    })
 	    .get();
 }

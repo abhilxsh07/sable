@@ -3912,19 +3912,21 @@ bool Document::modified() const {
 std::optional<std::vector<std::uint8_t>>
 Document::serialize(std::size_t limit,
                     const std::function<bool()>& canceled) const {
-	return serializeOutput(limit, canceled, false);
+	return serializeOutput(limit, canceled);
 }
 
 std::optional<std::vector<std::uint8_t>>
 Document::serializeForCopy(std::size_t limit,
                            const std::function<bool()>& canceled) const {
-	return serializeOutput(limit, canceled, true);
+	// an untouched file is copied byte for byte, whoever wrote its notes.
+	// a rewrite needs no masking: the notes i add or edit already store
+	// NoView without Print, and other apps' notes keep their flags.
+	return serializeOutput(limit, canceled);
 }
 
 std::optional<std::vector<std::uint8_t>>
 Document::serializeOutput(std::size_t limit,
-                          const std::function<bool()>& canceled,
-                          bool hideNotes) const {
+                          const std::function<bool()>& canceled) const {
 	if (offThread()) {
 		return {};
 	}
@@ -3968,12 +3970,7 @@ Document::serializeOutput(std::size_t limit,
 	if (writer.stopped()) {
 		return {};
 	}
-	detail::NoteVisibility notes;
-	if (hideNotes &&
-	    !notes.collect(m_handle, [&writer] { return writer.stopped(); })) {
-		return {};
-	}
-	if (!m_modified && notes.empty()) {
+	if (!m_modified) {
 		if (m_data.size() > limit) {
 			return {};
 		}
@@ -3982,8 +3979,7 @@ Document::serializeOutput(std::size_t limit,
 		if (!canSerializeEdits([&writer] { return writer.stopped(); })) {
 			return {};
 		}
-		if (!notes.run(
-		        [&] { return FPDF_SaveAsCopy(m_handle, &writer, 0) != 0; })) {
+		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
 			return {};
 		}
 	}

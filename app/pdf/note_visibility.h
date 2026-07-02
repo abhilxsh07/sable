@@ -53,28 +53,6 @@ class NoteVisibility {
 		}
 		return true;
 	}
-	bool collect(FPDF_DOCUMENT document,
-	             const std::function<bool()>& canceled) {
-		const int count = FPDF_GetPageCount(document);
-		for (int index = 0; index < count; ++index) {
-			if (canceled && canceled()) {
-				return false;
-			}
-			Page page(FPDF_LoadPage(document, index));
-			const auto before = m_notes.size();
-			if (!page) {
-				return false;
-			}
-			const bool complete = collect(page.get());
-			if (m_notes.size() != before) {
-				m_pages.push_back(std::move(page));
-			}
-			if (!complete) {
-				return false;
-			}
-		}
-		return count >= 0;
-	}
 	bool empty() const {
 		return m_notes.empty();
 	}
@@ -99,17 +77,11 @@ class NoteVisibility {
 	}
 
   private:
-	struct ClosePage {
-		void operator()(fpdf_page_t__* page) const {
-			FPDF_ClosePage(page);
-		}
-	};
 	struct CloseAnnotation {
 		void operator()(fpdf_annotation_t__* note) const {
 			FPDFPage_CloseAnnot(note);
 		}
 	};
-	using Page = std::unique_ptr<fpdf_page_t__, ClosePage>;
 	using Annotation = std::unique_ptr<fpdf_annotation_t__, CloseAnnotation>;
 	struct Note {
 		Annotation annotation;
@@ -130,7 +102,6 @@ class NoteVisibility {
 			throw std::runtime_error("Couldn't restore note visibility.");
 		}
 	}
-	std::vector<Page> m_pages;
 	std::vector<Note> m_notes;
 	std::size_t m_applied = 0;
 };

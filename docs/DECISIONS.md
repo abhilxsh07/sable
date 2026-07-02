@@ -2909,3 +2909,14 @@ An empty signature field still counts as signed, as it did for shapes. The
 first edit on a document pays for one rewrite and the answer is kept. A
 file over the 128 MiB rewrite limit refuses notes too. A file Sable can't
 rewrite at all, such as one with attachments, is left to that refusal.
+
+## Save a copy after the guard (2026-11-11)
+
+Save a copy no longer masks notes at all. An untouched document is copied
+byte for byte. A rewrite only happens after edits, and the notes I add or
+edit already store NoView without Print, so other apps' notes keep their
+flags. Rendering and printing still mask every note icon.
+
+I left the "Choose a writable folder" message alone. With the guard and
+the exact copy in place, the tools refuse a file with attachments before
+anything changes, so Save a copy can't reach that refusal from the app.
