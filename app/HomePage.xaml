@@ -96,54 +96,78 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<TextBlock Text="Open" FontWeight="SemiBold" VerticalAlignment="Center" />
 							</StackPanel>
 						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Put several PDFs together into one">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#26d773e9">
-									<FontIcon Glyph="&#xE8C8;" FontSize="15" Foreground="#d773e9" />
-								</Border>
-								<TextBlock Text="Combine files" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Reorder, rotate, insert or delete pages">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#26fc515d">
-									<FontIcon Glyph="&#xE8A9;" FontSize="15" Foreground="#fc515d" />
-								</Border>
-								<TextBlock Text="Organize pages" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Fill in forms and sign">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#26c2ad80">
-									<FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="#c2ad80" />
-								</Border>
-								<TextBlock Text="Fill &amp; Sign" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Highlights, sticky notes and drawing">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#2690a582">
-									<FontIcon Glyph="&#xE8BD;" FontSize="15" Foreground="#a3ba94" />
-								</Border>
-								<TextBlock Text="Comment" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Save pages as images or text">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#26bc8b96">
-									<FontIcon Glyph="&#xEDE1;" FontSize="15" Foreground="#d29fab" />
-								</Border>
-								<TextBlock Text="Export" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Have the page read out to you">
-							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#268fb8de">
-									<FontIcon Glyph="&#xE767;" FontSize="15" Foreground="#8fb8de" />
-								</Border>
-								<TextBlock Text="Read aloud" FontWeight="SemiBold" VerticalAlignment="Center" />
-							</StackPanel>
-						</Button>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Combine files, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#26d773e9">
+										<FontIcon Glyph="&#xE8C8;" FontSize="15" Foreground="#d773e9" />
+									</Border>
+									<TextBlock Text="Combine files" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Organize pages, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#26fc515d">
+										<FontIcon Glyph="&#xE8A9;" FontSize="15" Foreground="#fc515d" />
+									</Border>
+									<TextBlock Text="Organize pages" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Fill &amp; Sign, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#26c2ad80">
+										<FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="#c2ad80" />
+									</Border>
+									<TextBlock Text="Fill &amp; Sign" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Comment, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#2690a582">
+										<FontIcon Glyph="&#xE8BD;" FontSize="15" Foreground="#a3ba94" />
+									</Border>
+									<TextBlock Text="Comment" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Export, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#26bc8b96">
+										<FontIcon Glyph="&#xEDE1;" FontSize="15" Foreground="#d29fab" />
+									</Border>
+									<TextBlock Text="Export" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
+						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
+							<Button Style="{StaticResource SableFlatButtonStyle}"
+								IsEnabled="False" IsHitTestVisible="False"
+								AutomationProperties.Name="Read aloud, unavailable">
+								<StackPanel Orientation="Horizontal" Spacing="10">
+									<Border Width="30" Height="30" CornerRadius="6" Background="#268fb8de">
+										<FontIcon Glyph="&#xE767;" FontSize="15" Foreground="#8fb8de" />
+									</Border>
+									<TextBlock Text="Read aloud" FontWeight="SemiBold" VerticalAlignment="Center" />
+								</StackPanel>
+							</Button>
+						</Border>
 					</StackPanel>
 				</ScrollViewer>
 			</Border>
