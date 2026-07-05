@@ -24,6 +24,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -75,11 +78,122 @@ std::string attachmentFilename(std::string name) {
 	return name;
 }
 namespace {
+namespace fs = std::filesystem;
+constexpr std::wstring_view tempPrefix = L".sable-save.sable-";
+
+bool samePath(const fs::path& first, const fs::path& second) {
+	return CompareStringOrdinal(first.c_str(), -1, second.c_str(), -1, TRUE) ==
+	       CSTR_EQUAL;
+}
+
+DWORD temporaryOwner(std::wstring_view name) {
+	if (!name.starts_with(tempPrefix) || !name.ends_with(L".tmp")) {
+		return 0;
+	}
+	name.remove_prefix(tempPrefix.size());
+	name.remove_suffix(4);
+	const auto dash = name.find(L'-');
+	if (dash == name.npos || dash == 0 || dash > 10) {
+		return 0;
+	}
+	const auto pid = name.substr(0, dash);
+	name.remove_prefix(dash + 1);
+	const auto separator = name.find(L'-');
+	const auto digits = [](std::wstring_view part) {
+		return !part.empty() && std::ranges::all_of(part, [](wchar_t ch) {
+			return ch >= L'0' && ch <= L'9';
+		});
+	};
+	if (separator == name.npos || !digits(pid) ||
+	    !digits(name.substr(0, separator)) ||
+	    !digits(name.substr(separator + 1))) {
+		return 0;
+	}
+	std::uint64_t owner = 0;
+	for (const auto digit : pid) {
+		owner = owner * 10 + static_cast<unsigned>(digit - L'0');
+	}
+	return owner <= (std::numeric_limits<DWORD>::max)()
+	           ? static_cast<DWORD>(owner)
+	           : 0;
+}
+
+void pruneSaveTemps(const fs::path& output, const fs::path& input) noexcept {
+	try {
+		// i can only check process ids on this machine. see:
+		// https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdrivetypew
+		std::error_code ec;
+		const auto directory = fs::canonical(output.parent_path(), ec);
+		if (ec) {
+			return;
+		}
+		const auto drive = GetDriveTypeW(directory.root_path().c_str());
+		if (drive != DRIVE_FIXED && drive != DRIVE_REMOVABLE &&
+		    drive != DRIVE_RAMDISK) {
+			return;
+		}
+		fs::directory_iterator entry(output.parent_path(), ec);
+		for (; !ec && entry != fs::directory_iterator{}; entry.increment(ec)) {
+			const auto& path = entry->path();
+			const DWORD owner = temporaryOwner(path.filename().native());
+			if (!owner || owner == GetCurrentProcessId() ||
+			    samePath(path, output) || samePath(path, input)) {
+				continue;
+			}
+			const auto attrs = GetFileAttributesW(path.c_str());
+			if (attrs == INVALID_FILE_ATTRIBUTES ||
+			    (attrs &
+			     (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+				continue;
+			}
+			const std::unique_ptr<void, decltype(&CloseHandle)> process(
+			    OpenProcess(SYNCHRONIZE, FALSE, owner), CloseHandle);
+			const bool exited =
+			    process ? WaitForSingleObject(process.get(), 0) == WAIT_OBJECT_0
+			            : GetLastError() == ERROR_INVALID_PARAMETER;
+			if (exited) {
+				DeleteFileW(path.c_str());
+			}
+		}
+	} catch (...) {
+		// a directory scan failure must not stop the save.
+	}
+}
+
+bool replaceDestination(const fs::path& output, const fs::path& temporary) {
+	std::error_code ec;
+	const bool exists = fs::exists(output, ec);
+	if (ec) {
+		return false;
+	}
+	if (!exists) {
+		return MoveFileExW(temporary.c_str(), output.c_str(),
+		                   MOVEFILE_WRITE_THROUGH) != FALSE;
+	}
+
+	// keep the old file recoverable if the replacement only gets halfway.
+	// see:
+	// https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew
+	auto backup = temporary;
+	backup += L".bak";
+	if (fs::exists(backup, ec) || ec) {
+		return false;
+	}
+	if (ReplaceFileW(output.c_str(), temporary.c_str(), backup.c_str(), 0,
+	                 nullptr, nullptr)) {
+		DeleteFileW(backup.c_str());
+		return true;
+	}
+	if (GetLastError() == ERROR_UNABLE_TO_MOVE_REPLACEMENT_2) {
+		MoveFileExW(backup.c_str(), output.c_str(), MOVEFILE_WRITE_THROUGH);
+	}
+	return false;
+}
+
 FileSaveResult writeFile(const std::filesystem::path& destination,
                          const std::filesystem::path* source,
                          std::span<const std::byte> bytes,
                          const std::function<bool()>& canceled) {
-	namespace fs = std::filesystem;
 	const auto poll = [&]() -> std::optional<FileSaveResult> {
 		try {
 			if (canceled && canceled()) {
@@ -110,8 +224,7 @@ FileSaveResult writeFile(const std::filesystem::path& destination,
 		if (!source) {
 			return false;
 		}
-		if (CompareStringOrdinal(input.c_str(), -1, output.c_str(), -1, TRUE) ==
-		    CSTR_EQUAL) {
+		if (samePath(input, output)) {
 			return true;
 		}
 		const bool exists = fs::exists(output, ec);
@@ -128,6 +241,7 @@ FileSaveResult writeFile(const std::filesystem::path& destination,
 	if (ec) {
 		return FileSaveResult::Failed;
 	}
+	pruneSaveTemps(output, input);
 	struct Writer {
 		HANDLE file = INVALID_HANDLE_VALUE;
 		fs::path temporary;
@@ -141,9 +255,9 @@ FileSaveResult writeFile(const std::filesystem::path& destination,
 		}
 	} writer;
 	static std::atomic<unsigned> counter{0};
-	writer.temporary = output.parent_path() / L".sable-save";
+	writer.temporary = output.parent_path() / tempPrefix;
 	writer.temporary +=
-	    L".sable-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+	    std::to_wstring(GetCurrentProcessId()) + L"-" +
 	    std::to_wstring(
 	        std::chrono::steady_clock::now().time_since_epoch().count()) +
 	    L"-" + std::to_wstring(counter++) + L".tmp";
@@ -182,9 +296,7 @@ FileSaveResult writeFile(const std::filesystem::path& destination,
 	if (sameSource()) {
 		return FileSaveResult::Source;
 	}
-	if (ec ||
-	    !MoveFileExW(writer.temporary.c_str(), output.c_str(),
-	                 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+	if (ec || !replaceDestination(output, writer.temporary)) {
 		return FileSaveResult::Failed;
 	}
 	writer.temporary.clear();

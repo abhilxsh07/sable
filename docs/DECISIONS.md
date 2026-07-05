@@ -2860,6 +2860,14 @@ I keep the current process log and the nine newest other sets, with their
 rotation backups. Startup leaves active or locked sets for a later run.
 Successful saves log at Info and keep the success banner.
 
+## Replacing saved files (2026-11-11)
+
+I use ReplaceFileW for existing destinations so their permissions and
+named streams carry over. I keep the old file beside the destination
+until the replacement succeeds or I can restore it. New files still
+use a write-through move. Before saving on a local drive I clear old
+save temps whose process has exited.
+
 ## Review decisions (2026-11-10)
 
 Save a copy keeps the exact loaded bytes for any untouched document, even

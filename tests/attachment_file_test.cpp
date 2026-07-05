@@ -111,6 +111,53 @@ TEST_F(FileSaveTest, DoesNotQueryCancellationAfterReplacingTheDestination) {
 	noTemporaryFiles();
 }
 
+TEST_F(FileSaveTest, ReplacingAnExistingFileKeepsItsNamedStream) {
+	const auto source = dir / "source.pdf", target = dir / "copy.pdf";
+	auto stream = target;
+	stream += L":sable-test";
+	write(source, "source");
+	write(target, "previous");
+	write(stream, "metadata");
+	const auto metadata = read(stream);
+	ASSERT_EQ(metadata.size(), 8u);
+
+	const std::vector<std::uint8_t> bytes{1, 2, 3};
+	ASSERT_EQ(helpers::saveFile(target, source, bytes),
+	          helpers::FileSaveResult::Saved);
+	EXPECT_EQ(read(target), bytes);
+	EXPECT_EQ(read(stream), metadata);
+	EXPECT_EQ(std::distance(std::filesystem::directory_iterator(dir),
+	                        std::filesystem::directory_iterator{}),
+	          2);
+}
+
+TEST_F(FileSaveTest, PrunesAbandonedTempsBesideTheTarget) {
+	const auto stale = dir / L".sable-save.sable-4294967292-1-0.tmp";
+	const auto source = dir / L".sable-save.sable-4294967292-1-1.tmp";
+	const auto target = dir / L".sable-save.sable-4294967292-1-2.tmp";
+	const auto active =
+	    dir / (L".sable-save.sable-" + std::to_wstring(GetCurrentProcessId()) +
+	           L"-1-0.tmp");
+	const auto unrelated = dir / L".sable-save.sable-other.tmp";
+	const auto folder = dir / L".sable-save.sable-4294967292-1-3.tmp";
+	std::filesystem::create_directory(folder);
+	const auto nested = folder / stale.filename();
+	for (const auto& file :
+	     {stale, source, target, active, unrelated, nested}) {
+		write(file, "original");
+	}
+	const auto original = read(source);
+	const std::vector<std::uint8_t> bytes{1, 2, 3};
+	ASSERT_EQ(helpers::saveFile(target, source, bytes),
+	          helpers::FileSaveResult::Saved);
+	EXPECT_FALSE(std::filesystem::exists(stale));
+	EXPECT_EQ(read(target), bytes);
+	for (const auto& file : {source, active, unrelated, nested}) {
+		EXPECT_EQ(read(file), original);
+	}
+	EXPECT_TRUE(std::filesystem::is_directory(folder));
+}
+
 TEST_F(FileSaveTest, RechecksSourceAliasesJustBeforeReplacingTheDestination) {
 	const auto source = dir / "source.pdf", target = dir / "alias.pdf";
 	write(source, "source");
