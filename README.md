@@ -36,7 +36,8 @@ review. The Windows PDF driver passes the opt-in
 output check. PDF layers are deferred because the pinned
 PDFium API lacks visibility controls. See the [test record](docs/TEST_PLAN.md)
 for current results, [reader checks](docs/READER_CHECKS.md) for the remaining
-desktop pass and [current status](docs/PORTING_STATUS.md) for the work history.
+desktop pass and the [feature checklist](docs/FEATURE_CHECKLIST.md) for
+implemented features and remaining work.
 
 Portable alpha packaging and the draft-release workflow are described in
 [releasing Sable](docs/RELEASING.md). Public binary publication still needs

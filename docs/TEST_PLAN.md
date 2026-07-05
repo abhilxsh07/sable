@@ -824,7 +824,6 @@ of related checks, not a claim that every possible input has been tested.
 | D04 | Release workflow/script parsing and source/package exclusions | Static | Partial: 5 scripts and 9 workflow blocks parse; first hosted run pending |
 | D05 | Clean Windows PC/VM and actual ARM64 execution | Separate machine | Manual |
 | D06 | Different DPI monitors, touch/pen, accessibility settings | Device | Manual |
-| D07 | Opt-in notification display and click activation | Desktop | Manual |
 
 ## Findings
 
