@@ -1558,6 +1558,11 @@ in [DESIGN.md](DESIGN.md).
 
 ## Differences from NightPDF
 
+- I removed the `EASTER_EGG` switch, its Shift+Alt+T notification and the
+  marker comments that went with it.
+- Shift+Alt+M shows the MORTY! alert inside the reader.
+- Shift+Alt+T opens Night Run in a tab. The run pauses when I switch tabs
+  or the window loses focus.
 - Tab headers keep U+202A/U+202C around the filename and right-to-left flow
   to put the ellipsis at the start. This departs from Q11's no-control-marks
   rule: WinUI's [TextTrimming enum](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.texttrimming?view=windows-app-sdk-2.0)
