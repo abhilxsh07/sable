@@ -394,7 +394,7 @@ bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
 	}
 	// i compare dictionary identity, including independent annotation arrays.
 	// see:
-	// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/fpdfsdk/fpdf_annot.cpp
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_annot.cpp
 	for (int page = 0; page < FPDF_GetPageCount(document); ++page) {
 		if (page == pageIndex) {
 			continue;
@@ -3985,7 +3985,7 @@ Document::serializeOutput(std::size_t limit,
 	}
 	// i keep callback failure sticky, including PDFium's final flush.
 	// see:
-	// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/core/fpdfapi/edit/cpdf_creator.cpp
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
 	if (writer.stopped()) {
 		return {};
 	}
@@ -4702,7 +4702,7 @@ Document::formFields(int index, const std::function<bool()>& canceled) const {
 }
 
 // see:
-// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_attachment.h
+// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_attachment.h
 std::optional<Attachments>
 Document::attachments(const std::function<bool()>& canceled) const {
 	if (offThread()) {

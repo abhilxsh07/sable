@@ -67,7 +67,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- Hybrid CRT for the app: static VC runtime + STL, dynamic UCRT.
 		A self-contained build otherwise still needs the VC++ redistributable
 		installed, which defeats the point.
-		see: https://github.com/microsoft/WindowsAppSDK/blob/main/HybridCRT.props
+		see: https://github.com/microsoft/WindowsAppSDK/blob/587f406d512702b9c1694ff39eae82ce03949eba/HybridCRT.props
 		see: https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/self-contained-deploy/deploy-self-contained-apps -->
 	<ItemDefinitionGroup Condition="'$(MSBuildProjectName)'=='Sable' and '$(Configuration)'=='Debug'">
 		<ClCompile>

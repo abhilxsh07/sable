@@ -595,7 +595,7 @@ Edited documents use FPDF_SaveAsCopy with no security-removal flags. The
 writer catches callback exceptions and permanently records failed writes,
 limits and cancellation, including the final flush. No partial output is
 returned. Passwords and user permissions survive the round-trip checks.
-// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/main/core/fpdfapi/edit/cpdf_creator.cpp
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
 
 The attachment regression reproduces the known empty-stream rewrite: Sable
 reads eight compressed bytes where it previously read an empty file.

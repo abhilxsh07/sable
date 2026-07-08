@@ -80,7 +80,7 @@ fire_and_forget Source::job(com_ptr<Source> self, PrintTaskOptions options,
 		    static_cast<float>((std::max)(first.DpiX, first.DpiY)));
 		// The system's job target already carries copies and paper options.
 		// see:
-		// https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/D2DPrintingFromDesktopApps/cpp/D2DPrintingFromDesktopApps.cpp
+		// https://github.com/microsoft/Windows-classic-samples/blob/434f6002bdf9cf9829406c3ff2b33387982d6168/Samples/D2DPrintingFromDesktopApps/cpp/D2DPrintingFromDesktopApps.cpp
 		UINT32 jobPage = 0;
 		for (const int page : pages) {
 			if (canceled()) {
