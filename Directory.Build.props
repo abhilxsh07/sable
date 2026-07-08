@@ -44,12 +44,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<WarningLevel>Level4</WarningLevel>
 			<!-- read the sources as UTF-8 so MSVC keeps non-ASCII literals -->
 			<AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
-			<TreatWarningAsError Condition="'$(CI)'=='true'">true</TreatWarningAsError>
+			<TreatWarningAsError>true</TreatWarningAsError>
+			<ControlFlowGuard>Guard</ControlFlowGuard>
+			<SDLCheck>true</SDLCheck>
 			<!-- /FS. The App SDK's auto-initializer .cpp files build without the
 				pch at the same time as everything else and they all write the same
 				vc143.pdb (C1041 in Debug). VC only adds /FS by itself in
 				multi-tool-task mode, see the comment in Microsoft.CppCommon.targets -->
 			<ForceSynchronousPDBWrites>true</ForceSynchronousPDBWrites>
+		</ClCompile>
+		<Link>
+			<CETCompat Condition="'$(Platform)'=='x64'">true</CETCompat>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+		<ClCompile>
+			<Optimization>MaxSpeed</Optimization>
+			<DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+		</ClCompile>
+	</ItemDefinitionGroup>
+	<!-- CFG needs /Zi here. the Debug x64 default is Edit and Continue. -->
+	<ItemDefinitionGroup
+		Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+		<ClCompile>
+			<DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
 		</ClCompile>
 	</ItemDefinitionGroup>
 
