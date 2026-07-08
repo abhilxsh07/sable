@@ -26,7 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	Background="Transparent">
 
 	<Page.Resources>
-		<!-- the sample page in the Night mode card. HomePage.xaml.cpp runs these
+		<!-- the sample page in the Night mode card. HomePage.xaml.cpp runs
+		these
 			through the real filter whenever a preset is picked. -->
 		<SolidColorBrush x:Key="PreviewPaperBrush" Color="#ffffff" />
 		<SolidColorBrush x:Key="PreviewInkBrush" Color="#202020" />
@@ -38,7 +39,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Setter Property="FontSize" Value="11" />
 			<Setter Property="FontWeight" Value="SemiBold" />
 			<Setter Property="CharacterSpacing" Value="80" />
-			<Setter Property="Foreground" Value="{ThemeResource SableTextTertiaryBrush}" />
+			<Setter Property="Foreground"
+				Value="{ThemeResource SableTextTertiaryBrush}" />
 			<Setter Property="VerticalAlignment" Value="Center" />
 		</Style>
 		<Style x:Key="PreviewLineStyle" TargetType="Rectangle">
@@ -46,17 +48,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Setter Property="RadiusX" Value="2" />
 			<Setter Property="RadiusY" Value="2" />
 			<Setter Property="HorizontalAlignment" Value="Left" />
-			<Setter Property="Fill" Value="{StaticResource PreviewMutedInkBrush}" />
+			<Setter Property="Fill"
+				Value="{StaticResource PreviewMutedInkBrush}" />
 		</Style>
 		<Style x:Key="CardStyle" TargetType="Border">
-			<Setter Property="Background" Value="{ThemeResource SableCardBrush}" />
-			<Setter Property="BorderBrush" Value="{ThemeResource SableCardBorderBrush}" />
+			<Setter Property="Background" Value="{ThemeResource SableCardBrush}"
+				/>
+			<Setter Property="BorderBrush"
+				Value="{ThemeResource SableCardBorderBrush}" />
 			<Setter Property="BorderThickness" Value="1" />
-			<Setter Property="CornerRadius" Value="{StaticResource SableCardCornerRadius}" />
+			<Setter Property="CornerRadius"
+				Value="{StaticResource SableCardCornerRadius}" />
 		</Style>
 	</Page.Resources>
 
-	<ScrollViewer x:Name="Scroller" HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+	<ScrollViewer x:Name="Scroller" HorizontalScrollMode="Disabled"
+		VerticalScrollBarVisibility="Auto">
 		<VisualStateManager.VisualStateGroups>
 			<VisualStateGroup>
 				<!-- narrow: the Night mode card drops under the drop zone -->
@@ -68,7 +75,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<VisualState.Setters>
 						<Setter Target="NightCard.(Grid.Row)" Value="0" />
 						<Setter Target="NightCard.(Grid.Column)" Value="1" />
-						<Setter Target="NightCard.(Grid.ColumnSpan)" Value="1" />
+						<Setter Target="NightCard.(Grid.ColumnSpan)" Value="1"
+							/>
 						<Setter Target="NightCard.Width" Value="540" />
 					</VisualState.Setters>
 				</VisualState>
@@ -77,7 +85,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<StackPanel x:Name="Root" Padding="36,28,36,36" Spacing="24">
 			<StackPanel Spacing="4">
-				<TextBlock Text="Welcome to Sable" FontSize="28" FontWeight="SemiBold"
+				<TextBlock Text="Welcome to Sable" FontSize="28"
+					FontWeight="SemiBold"
 					Foreground="{ThemeResource SableTextBrush}" />
 				<TextBlock Text="Easy on the eyes, even at 2 am." FontSize="14"
 					Foreground="{ThemeResource SableTextSecondaryBrush}" />
@@ -85,86 +94,140 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 			<!-- tools strip. Open works; the other tools come later. -->
 			<Border Style="{StaticResource CardStyle}" Padding="10,8">
-				<ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
-					VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+				<ScrollViewer HorizontalScrollMode="Auto"
+					HorizontalScrollBarVisibility="Auto"
+					VerticalScrollMode="Disabled"
+					VerticalScrollBarVisibility="Disabled">
 					<StackPanel Orientation="Horizontal" Spacing="4">
-						<Button Style="{StaticResource SableFlatButtonStyle}" ToolTipService.ToolTip="Open a PDF (Ctrl+O)" Click="onOpen">
+						<Button Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Open a PDF (Ctrl+O)"
+							Click="onOpen">
 							<StackPanel Orientation="Horizontal" Spacing="10">
-								<Border Width="30" Height="30" CornerRadius="6" Background="#2629c0ea">
-									<FontIcon Glyph="&#xE8E5;" FontSize="15" Foreground="#29c0ea" />
+								<Border Width="30" Height="30" CornerRadius="6"
+									Background="#2629c0ea">
+									<FontIcon Glyph="&#xE8E5;" FontSize="15"
+										Foreground="#29c0ea" />
 								</Border>
-								<TextBlock Text="Open" FontWeight="SemiBold" VerticalAlignment="Center" />
+								<TextBlock Text="Open" FontWeight="SemiBold"
+									VerticalAlignment="Center" />
 							</StackPanel>
 						</Button>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Combine files, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#26d773e9">
-										<FontIcon Glyph="&#xE8C8;" FontSize="15" Foreground="#d773e9" />
+								AutomationProperties.Name=
+								"Combine files, unavailable">
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#26d773e9">
+										<FontIcon Glyph="&#xE8C8;" FontSize="15"
+											Foreground="#d773e9" />
 									</Border>
-									<TextBlock Text="Combine files" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Combine files"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Organize pages, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#26fc515d">
-										<FontIcon Glyph="&#xE8A9;" FontSize="15" Foreground="#fc515d" />
+								AutomationProperties.Name=
+								"Organize pages, unavailable">
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#26fc515d">
+										<FontIcon Glyph="&#xE8A9;" FontSize="15"
+											Foreground="#fc515d" />
 									</Border>
-									<TextBlock Text="Organize pages" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Organize pages"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Fill &amp; Sign, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#26c2ad80">
-										<FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="#c2ad80" />
+								AutomationProperties.Name=
+								"Fill &amp; Sign, unavailable">
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#26c2ad80">
+										<FontIcon Glyph="&#xE70F;" FontSize="15"
+											Foreground="#c2ad80" />
 									</Border>
-									<TextBlock Text="Fill &amp; Sign" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Fill &amp; Sign"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Comment, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#2690a582">
-										<FontIcon Glyph="&#xE8BD;" FontSize="15" Foreground="#a3ba94" />
+								AutomationProperties.Name=
+								"Comment, unavailable">
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#2690a582">
+										<FontIcon Glyph="&#xE8BD;" FontSize="15"
+											Foreground="#a3ba94" />
 									</Border>
-									<TextBlock Text="Comment" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Comment"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
 								AutomationProperties.Name="Export, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#26bc8b96">
-										<FontIcon Glyph="&#xEDE1;" FontSize="15" Foreground="#d29fab" />
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#26bc8b96">
+										<FontIcon Glyph="&#xEDE1;" FontSize="15"
+											Foreground="#d29fab" />
 									</Border>
-									<TextBlock Text="Export" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Export"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent" ToolTipService.ToolTip="Coming later">
-							<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Border Background="Transparent"
+							ToolTipService.ToolTip="Coming later">
+							<Button
+								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Read aloud, unavailable">
-								<StackPanel Orientation="Horizontal" Spacing="10">
-									<Border Width="30" Height="30" CornerRadius="6" Background="#268fb8de">
-										<FontIcon Glyph="&#xE767;" FontSize="15" Foreground="#8fb8de" />
+								AutomationProperties.Name=
+								"Read aloud, unavailable">
+								<StackPanel Orientation="Horizontal"
+									Spacing="10">
+									<Border Width="30" Height="30"
+										CornerRadius="6" Background="#268fb8de">
+										<FontIcon Glyph="&#xE767;" FontSize="15"
+											Foreground="#8fb8de" />
 									</Border>
-									<TextBlock Text="Read aloud" FontWeight="SemiBold" VerticalAlignment="Center" />
+									<TextBlock Text="Read aloud"
+										FontWeight="SemiBold"
+										VerticalAlignment="Center" />
 								</StackPanel>
 							</Button>
 						</Border>
@@ -183,32 +246,48 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</Grid.RowDefinitions>
 
 				<!-- NightPDF's splash (app/index.html L100-110) as a card. Same
-					gradient on the dashed border (gradient3.svg, bottom to top),
+					gradient on the dashed border (gradient3.svg, bottom to
+					top),
 					same two lines. -->
-				<Border x:Name="DropCard" AllowDrop="True" Tapped="onOpenTapped" Style="{StaticResource CardStyle}" Height="264" Padding="14">
+				<Border x:Name="DropCard" AllowDrop="True" Tapped="onOpenTapped"
+					Style="{StaticResource CardStyle}" Height="264"
+					Padding="14">
 					<Grid>
-						<Rectangle RadiusX="6" RadiusY="6" StrokeThickness="1.5" StrokeDashArray="4 4">
+						<Rectangle RadiusX="6" RadiusY="6" StrokeThickness="1.5"
+							StrokeDashArray="4 4">
 							<Rectangle.Stroke>
-								<LinearGradientBrush StartPoint="0.52,1" EndPoint="0.48,0">
+								<LinearGradientBrush StartPoint="0.52,1"
+									EndPoint="0.48,0">
 									<GradientStop Offset="0" Color="#29c0ea" />
-									<GradientStop Offset="0.683" Color="#d773e9" />
+									<GradientStop Offset="0.683" Color="#d773e9"
+										/>
 									<GradientStop Offset="1" Color="#fc515d" />
 								</LinearGradientBrush>
 							</Rectangle.Stroke>
 						</Rectangle>
-						<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-							<Image Source="ms-appx:///assets/icon2.png" Width="76" HorizontalAlignment="Center" />
-							<TextBlock Text="Drop PDF here" FontSize="20" FontWeight="Bold"
-								Foreground="#cccccc" Margin="0,16,0,0" HorizontalAlignment="Center" />
-							<TextBlock Text="Open File with CTRL+O" FontSize="14" FontWeight="SemiBold"
-								Foreground="#bbbbbb" Margin="0,6,0,0" HorizontalAlignment="Center" />
-							<Button Style="{StaticResource SableAccentButtonStyle}" Content="Open a PDF" Click="onOpen"
-								Margin="0,18,0,0" HorizontalAlignment="Center" />
+						<StackPanel HorizontalAlignment="Center"
+							VerticalAlignment="Center">
+							<Image Source="ms-appx:///assets/icon2.png"
+								Width="76" HorizontalAlignment="Center" />
+							<TextBlock Text="Drop PDF here" FontSize="20"
+								FontWeight="Bold"
+								Foreground="#cccccc" Margin="0,16,0,0"
+								HorizontalAlignment="Center" />
+							<TextBlock Text="Open File with CTRL+O"
+								FontSize="14" FontWeight="SemiBold"
+								Foreground="#bbbbbb" Margin="0,6,0,0"
+								HorizontalAlignment="Center" />
+							<Button
+								Style="{StaticResource SableAccentButtonStyle}"
+								Content="Open a PDF" Click="onOpen"
+								Margin="0,18,0,0" HorizontalAlignment="Center"
+								/>
 						</StackPanel>
 					</Grid>
 				</Border>
 
-				<Border x:Name="NightCard" Style="{StaticResource CardStyle}" Grid.Row="1" Grid.ColumnSpan="2"
+				<Border x:Name="NightCard" Style="{StaticResource CardStyle}"
+					Grid.Row="1" Grid.ColumnSpan="2"
 					Height="264" Padding="22,20">
 					<Grid ColumnSpacing="24">
 						<Grid.ColumnDefinitions>
@@ -217,49 +296,93 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</Grid.ColumnDefinitions>
 						<StackPanel Spacing="10">
 							<StackPanel Orientation="Horizontal" Spacing="10">
-								<FontIcon Glyph="&#xE708;" FontSize="17" Foreground="#d773e9" />
-								<TextBlock Text="Night mode" FontSize="16" FontWeight="SemiBold" />
+								<FontIcon Glyph="&#xE708;" FontSize="17"
+									Foreground="#d773e9" />
+								<TextBlock Text="Night mode" FontSize="16"
+									FontWeight="SemiBold" />
 							</StackPanel>
-							<TextBlock TextWrapping="Wrap" FontSize="13" LineHeight="19"
-								Foreground="{ThemeResource SableTextSecondaryBrush}"
-								Text="The four NightPDF presets. Try them on the sample page, once a PDF is open they sit in the title bar." />
-							<!-- same colours as #default-button etc. in index.sass, 8px apart -->
-							<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
-								<Button x:Name="DefaultPreset" Tag="default" Content="Default" Click="onPresetClick"
-									Style="{StaticResource SablePresetButtonStyle}" Background="#1e2024" Foreground="#fbfbff" />
-								<Button x:Name="SepiaPreset" Tag="sepia" Content="Sepia" Click="onPresetClick"
-									Style="{StaticResource SablePresetButtonStyle}" Background="#9e9174" Foreground="#40392d" />
-								<Button x:Name="RedeyePreset" Tag="redeye" Content="Redeye" Click="onPresetClick"
-									Style="{StaticResource SablePresetButtonStyle}" Background="#36272b" Foreground="#bc8b96" />
-								<Button x:Name="CustomPreset" Tag="custom" Content="Custom" Click="onPresetClick"
-									Style="{StaticResource SablePresetButtonStyle}" Background="#c1c1c1" Foreground="#232323"
+							<TextBlock TextWrapping="Wrap" FontSize="13"
+								LineHeight="19"
+								Foreground=
+								"{ThemeResource SableTextSecondaryBrush}"
+								Text="The four NightPDF presets. Try them on the
+sample page, once a PDF is open they sit in the title bar." />
+							<!-- same colours as #default-button etc. in
+							index.sass, 8px apart -->
+							<StackPanel Orientation="Horizontal" Spacing="8"
+								Margin="0,6,0,0">
+								<Button x:Name="DefaultPreset" Tag="default"
+									Content="Default" Click="onPresetClick"
+									Style=
+									"{StaticResource SablePresetButtonStyle}"
+									Background="#1e2024" Foreground="#fbfbff" />
+								<Button x:Name="SepiaPreset" Tag="sepia"
+									Content="Sepia" Click="onPresetClick"
+									Style=
+									"{StaticResource SablePresetButtonStyle}"
+									Background="#9e9174" Foreground="#40392d" />
+								<Button x:Name="RedeyePreset" Tag="redeye"
+									Content="Redeye" Click="onPresetClick"
+									Style=
+									"{StaticResource SablePresetButtonStyle}"
+									Background="#36272b" Foreground="#bc8b96" />
+								<Button x:Name="CustomPreset" Tag="custom"
+									Content="Custom" Click="onPresetClick"
+									Style=
+									"{StaticResource SablePresetButtonStyle}"
+									Background="#c1c1c1" Foreground="#232323"
 									Padding="3.5,4" />
 							</StackPanel>
-							<TextBlock x:Name="PresetDetails" TextWrapping="Wrap" FontSize="12" LineHeight="18"
-								Margin="0,4,0,0" Foreground="{ThemeResource SableTextTertiaryBrush}" />
+							<TextBlock x:Name="PresetDetails"
+								TextWrapping="Wrap" FontSize="12"
+								LineHeight="18"
+								Margin="0,4,0,0"
+								Foreground=
+								"{ThemeResource SableTextTertiaryBrush}" />
 						</StackPanel>
 
-						<!-- a little page: heading, text, a picture, more text -->
-						<Border Grid.Column="1" Width="128" Height="172" VerticalAlignment="Center"
-							CornerRadius="4" Padding="13,15" BorderThickness="1" BorderBrush="#3a3a3a"
+						<!-- a little page: heading, text, a picture, more text
+						-->
+						<Border Grid.Column="1" Width="128" Height="172"
+							VerticalAlignment="Center"
+							CornerRadius="4" Padding="13,15" BorderThickness="1"
+							BorderBrush="#3a3a3a"
 							Background="{StaticResource PreviewPaperBrush}">
 							<StackPanel Spacing="6">
-								<Rectangle Height="7" Width="66" RadiusX="2" RadiusY="2" HorizontalAlignment="Left"
+								<Rectangle Height="7" Width="66" RadiusX="2"
+									RadiusY="2" HorizontalAlignment="Left"
 									Fill="{StaticResource PreviewInkBrush}" />
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="100" Margin="0,4,0,0" />
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="96" />
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="74" />
-								<Grid Height="38" CornerRadius="2" Margin="0,4,0,4">
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="100" Margin="0,4,0,0" />
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="96" />
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="74" />
+								<Grid Height="38" CornerRadius="2"
+									Margin="0,4,0,4">
 									<Grid.RowDefinitions>
 										<RowDefinition Height="3*" />
 										<RowDefinition Height="2*" />
 									</Grid.RowDefinitions>
-									<Rectangle Fill="{StaticResource PreviewSkyBrush}" />
-									<Rectangle Grid.Row="1" Fill="{StaticResource PreviewHillBrush}" />
+									<Rectangle
+										Fill="{StaticResource PreviewSkyBrush}"
+										/>
+									<Rectangle Grid.Row="1"
+										Fill="{StaticResource PreviewHillBrush}"
+										/>
 								</Grid>
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="100" />
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="90" />
-								<Rectangle Style="{StaticResource PreviewLineStyle}" Width="58" />
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="100" />
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="90" />
+								<Rectangle
+									Style="{StaticResource PreviewLineStyle}"
+									Width="58" />
 							</StackPanel>
 						</Border>
 					</Grid>
@@ -272,48 +395,67 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<ColumnDefinition Width="*" />
 						<ColumnDefinition Width="Auto" />
 					</Grid.ColumnDefinitions>
-					<TextBlock x:Name="ListTitle" Text="Recent" FontSize="20" FontWeight="SemiBold"
+					<TextBlock x:Name="ListTitle" Text="Recent" FontSize="20"
+						FontWeight="SemiBold"
 						VerticalAlignment="Center" />
-					<AutoSuggestBox x:Name="SearchBox" Grid.Column="1" Width="280"
+					<AutoSuggestBox x:Name="SearchBox" Grid.Column="1"
+						Width="280"
 						PlaceholderText="Search recent files" QueryIcon="Find"
 						TextChanged="onSearchChanged" />
 				</Grid>
 
 				<!-- columns are set from code, see setColumns() -->
 				<Grid x:Name="ListHeader" Height="34" Padding="12,0">
-					<TextBlock Grid.Column="1" Text="NAME" Style="{StaticResource ColumnHeaderStyle}" />
-					<TextBlock Grid.Column="2" Text="LOCATION" Style="{StaticResource ColumnHeaderStyle}" />
-					<TextBlock Grid.Column="3" Text="OPENED" Style="{StaticResource ColumnHeaderStyle}" />
-					<TextBlock Grid.Column="4" Text="SIZE" Style="{StaticResource ColumnHeaderStyle}" />
+					<TextBlock Grid.Column="1" Text="NAME"
+						Style="{StaticResource ColumnHeaderStyle}" />
+					<TextBlock Grid.Column="2" Text="LOCATION"
+						Style="{StaticResource ColumnHeaderStyle}" />
+					<TextBlock Grid.Column="3" Text="OPENED"
+						Style="{StaticResource ColumnHeaderStyle}" />
+					<TextBlock Grid.Column="4" Text="SIZE"
+						Style="{StaticResource ColumnHeaderStyle}" />
 				</Grid>
-				<Rectangle Height="1" Fill="{ThemeResource SableDividerBrush}" />
+				<Rectangle Height="1" Fill="{ThemeResource SableDividerBrush}"
+					/>
 
-				<ListView x:Name="RecentList" SelectionMode="None" IsItemClickEnabled="True">
+				<ListView x:Name="RecentList" SelectionMode="None"
+					IsItemClickEnabled="True">
 					<ListView.ItemContainerStyle>
 						<Style TargetType="ListViewItem">
 							<Setter Property="Padding" Value="12,0" />
 							<Setter Property="Margin" Value="0" />
 							<Setter Property="MinHeight" Value="60" />
-							<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+							<Setter Property="HorizontalContentAlignment"
+								Value="Stretch" />
 						</Style>
 					</ListView.ItemContainerStyle>
 				</ListView>
 
-				<StackPanel x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,40,0,16" Spacing="6">
-					<Border Width="64" Height="64" CornerRadius="32" HorizontalAlignment="Center"
-						Background="{ThemeResource SableCardBrush}" BorderBrush="{ThemeResource SableCardBorderBrush}"
+				<StackPanel x:Name="EmptyState" HorizontalAlignment="Center"
+					Margin="0,40,0,16" Spacing="6">
+					<Border Width="64" Height="64" CornerRadius="32"
+						HorizontalAlignment="Center"
+						Background="{ThemeResource SableCardBrush}"
+						BorderBrush="{ThemeResource SableCardBorderBrush}"
 						BorderThickness="1">
-						<FontIcon x:Name="EmptyIcon" Glyph="&#xE823;" FontSize="26"
-							Foreground="{ThemeResource SableTextSecondaryBrush}" />
+						<FontIcon x:Name="EmptyIcon" Glyph="&#xE823;"
+							FontSize="26"
+							Foreground="{ThemeResource SableTextSecondaryBrush}"
+							/>
 					</Border>
-					<TextBlock x:Name="EmptyTitle" Text="No recent files yet" FontSize="16" FontWeight="SemiBold"
+					<TextBlock x:Name="EmptyTitle" Text="No recent files yet"
+						FontSize="16" FontWeight="SemiBold"
 						HorizontalAlignment="Center" Margin="0,10,0,0" />
-					<TextBlock x:Name="EmptyText" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="380"
-						FontSize="13" LineHeight="19" Foreground="{ThemeResource SableTextSecondaryBrush}"
-						Text="PDFs you open show up here, newest first. Star the ones you keep coming back to." />
+					<TextBlock x:Name="EmptyText" TextAlignment="Center"
+						TextWrapping="Wrap" MaxWidth="380"
+						FontSize="13" LineHeight="19"
+						Foreground="{ThemeResource SableTextSecondaryBrush}"
+						Text="PDFs you open show up here, newest first. Star the
+ones you keep coming back to." />
 				</StackPanel>
 
-				<HyperlinkButton x:Name="ClearButton" Content="Clear recent" HorizontalAlignment="Right"
+				<HyperlinkButton x:Name="ClearButton" Content="Clear recent"
+					HorizontalAlignment="Right"
 					Margin="0,8,0,0" Click="onClearRecent" />
 			</StackPanel>
 		</StackPanel>

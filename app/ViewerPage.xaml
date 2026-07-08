@@ -38,25 +38,55 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="2"
 			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
 			IsHitTestVisible="False" />
-  <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed" Padding="8"
+  <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed"
+	Padding="8"
    Background="{ThemeResource SablePaneBrush}" CornerRadius="8">
    <StackPanel Spacing="4">
     <Grid ColumnSpacing="4">
-     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-     <TextBox x:Name="FindBox" MaxLength="4096" PlaceholderText="Find in document…"
-      IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" AutomationProperties.Name="Find in document" />
-     <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center" FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
-     <Button x:Name="FindPrevious" Grid.Column="2" ToolTipService.ToolTip="Previous match (Shift+Enter)" AutomationProperties.Name="Previous match"><FontIcon Glyph="&#xE70E;" FontSize="12" /></Button>
-     <Button x:Name="FindNext" Grid.Column="3" ToolTipService.ToolTip="Next match (Enter)" AutomationProperties.Name="Next match"><FontIcon Glyph="&#xE70D;" FontSize="12" /></Button>
-     <Button x:Name="FindClose" Grid.Column="4" ToolTipService.ToolTip="Close Find (Esc)" AutomationProperties.Name="Close Find"><FontIcon Glyph="&#xE8BB;" FontSize="12" /></Button>
+     <Grid.ColumnDefinitions>
+		<ColumnDefinition Width="*" />
+		<ColumnDefinition Width="Auto" />
+		<ColumnDefinition Width="Auto" />
+		<ColumnDefinition Width="Auto" />
+		<ColumnDefinition Width="Auto" />
+     </Grid.ColumnDefinitions>
+     <TextBox x:Name="FindBox" MaxLength="4096"
+		PlaceholderText="Find in document…"
+      IsSpellCheckEnabled="False" IsTextPredictionEnabled="False"
+      AutomationProperties.Name="Find in document" />
+     <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center"
+		FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
+     <Button x:Name="FindPrevious" Grid.Column="2"
+		ToolTipService.ToolTip="Previous match (Shift+Enter)"
+		AutomationProperties.Name="Previous match">
+		<FontIcon Glyph="&#xE70E;" FontSize="12" />
+     </Button>
+     <Button x:Name="FindNext" Grid.Column="3"
+		ToolTipService.ToolTip="Next match (Enter)"
+		AutomationProperties.Name="Next match">
+		<FontIcon Glyph="&#xE70D;" FontSize="12" />
+     </Button>
+     <Button x:Name="FindClose" Grid.Column="4"
+		ToolTipService.ToolTip="Close Find (Esc)"
+		AutomationProperties.Name="Close Find">
+		<FontIcon Glyph="&#xE8BB;" FontSize="12" />
+     </Button>
     </Grid>
     <Grid ColumnSpacing="16">
-     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+     <Grid.RowDefinitions>
+		<RowDefinition Height="Auto" />
+		<RowDefinition Height="Auto" />
+     </Grid.RowDefinitions>
+     <Grid.ColumnDefinitions>
+		<ColumnDefinition Width="*" />
+		<ColumnDefinition Width="*" />
+     </Grid.ColumnDefinitions>
      <CheckBox x:Name="FindCase" Content="Match case" />
      <CheckBox x:Name="FindWords" Grid.Column="1" Content="Whole words" />
-     <CheckBox x:Name="FindDiacritics" Grid.Row="1" Content="Match diacritics" />
-     <CheckBox x:Name="FindHighlight" Grid.Row="1" Grid.Column="1" Content="Highlight all" IsChecked="True" />
+     <CheckBox x:Name="FindDiacritics" Grid.Row="1" Content="Match diacritics"
+		/>
+     <CheckBox x:Name="FindHighlight" Grid.Row="1" Grid.Column="1"
+		Content="Highlight all" IsChecked="True" />
     </Grid>
    </StackPanel>
   </Border>
@@ -64,10 +94,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
 			rectangle, as it has outline: none. -->
-		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Enabled" Background="Transparent"
+		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Enabled"
+			Background="Transparent"
 			HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled"
 			IsHorizontalRailEnabled="False" IsVerticalRailEnabled="False"
-			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+			HorizontalScrollBarVisibility="Auto"
+			VerticalScrollBarVisibility="Auto"
 			IsTabStop="True" UseSystemFocusVisuals="False">
 			<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
 				HorizontalAlignment="Center" VerticalAlignment="Top" />
@@ -85,9 +117,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
-		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
+		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3"
+			Visibility="Collapsed"
 			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"
-			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480" />
+			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480"
+			/>
 
 		<!-- the right rail. Page number and zoom sit at the bottom, where
 			pdf.js had them in its toolbar: the page box, "of N", previous and
@@ -97,9 +131,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- pdf.js's sidebar showing thumbnails, 200 px wide, opened from the
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
-		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200" Visibility="Collapsed"
-			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0" CornerRadius="8">
-			<ScrollViewer x:Name="ThumbnailScroller" HorizontalScrollBarVisibility="Disabled"
+		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200"
+			Visibility="Collapsed"
+			BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="1,0,0,0" CornerRadius="8">
+			<ScrollViewer x:Name="ThumbnailScroller"
+				HorizontalScrollBarVisibility="Disabled"
 				VerticalScrollBarVisibility="Auto">
 				<Canvas x:Name="Thumbnails" TabFocusNavigation="Local" />
 			</ScrollViewer>
@@ -107,7 +144,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
 		<Border x:Name="OutlinePanel" Grid.Row="1" Grid.Column="1" Width="200"
-			Visibility="Collapsed" BorderBrush="{ThemeResource SableDividerBrush}"
+			Visibility="Collapsed"
+			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
 				<Grid.RowDefinitions>
@@ -116,22 +154,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<RowDefinition Height="*" />
 					<RowDefinition Height="Auto" />
 				</Grid.RowDefinitions>
-				<TextBlock Text="Document Outline" Margin="12,12,12,8" FontSize="13"
+				<TextBlock Text="Document Outline" Margin="12,12,12,8"
+					FontSize="13"
 					Foreground="{ThemeResource SableTextSecondaryBrush}" />
-				<TextBlock x:Name="OutlineStatus" Grid.Row="1" Margin="12,4,12,12"
-					TextWrapping="Wrap" Foreground="{ThemeResource SableTextSecondaryBrush}"
+				<TextBlock x:Name="OutlineStatus" Grid.Row="1"
+					Margin="12,4,12,12"
+					TextWrapping="Wrap"
+					Foreground="{ThemeResource SableTextSecondaryBrush}"
 					AutomationProperties.LiveSetting="Polite" />
-				<TreeView x:Name="OutlineTree" Grid.Row="2" SelectionMode="Single"
-					CanDragItems="False" CanReorderItems="False" AllowDrop="False"
+				<TreeView x:Name="OutlineTree" Grid.Row="2"
+					SelectionMode="Single"
+					CanDragItems="False" CanReorderItems="False"
+					AllowDrop="False"
 					ScrollViewer.HorizontalScrollBarVisibility="Auto"
 					AutomationProperties.Name="Document outline" />
-				<Button x:Name="OutlineRetry" Grid.Row="3" Content="Retry" Margin="12"
+				<Button x:Name="OutlineRetry" Grid.Row="3" Content="Retry"
+					Margin="12"
 					Visibility="Collapsed" HorizontalAlignment="Left" />
 			</Grid>
 		</Border>
 
-		<Border x:Name="AttachmentPanel" Grid.Row="1" Grid.Column="1" Width="200"
-			Visibility="Collapsed" BorderBrush="{ThemeResource SableDividerBrush}"
+		<Border x:Name="AttachmentPanel" Grid.Row="1" Grid.Column="1"
+			Width="200"
+			Visibility="Collapsed"
+			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
 				<Grid.RowDefinitions>
@@ -142,12 +188,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</Grid.RowDefinitions>
 				<TextBlock Text="Attachments" Margin="12,12,12,8" FontSize="13"
 					Foreground="{ThemeResource SableTextSecondaryBrush}" />
-				<TextBlock x:Name="AttachmentStatus" Grid.Row="1" Margin="12,4,12,12"
-					TextWrapping="Wrap" Foreground="{ThemeResource SableTextSecondaryBrush}"
+				<TextBlock x:Name="AttachmentStatus" Grid.Row="1"
+					Margin="12,4,12,12"
+					TextWrapping="Wrap"
+					Foreground="{ThemeResource SableTextSecondaryBrush}"
 					AutomationProperties.LiveSetting="Polite" />
-				<ListView x:Name="AttachmentList" Grid.Row="2" SelectionMode="Single"
+				<ListView x:Name="AttachmentList" Grid.Row="2"
+					SelectionMode="Single"
 					AutomationProperties.Name="Attachments" />
-				<Button x:Name="AttachmentRetry" Grid.Row="3" Content="Retry" Margin="12"
+				<Button x:Name="AttachmentRetry" Grid.Row="3" Content="Retry"
+					Margin="12"
 					Visibility="Collapsed" HorizontalAlignment="Left" />
 			</Grid>
 		</Border>
@@ -200,7 +250,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place note on page" />
 									<MenuFlyoutItem x:Name="PlaceTextBoxButton"
 										Text="Place text box on page" />
-									<MenuFlyoutItem x:Name="PlaceRectangleButton"
+									<MenuFlyoutItem
+										x:Name="PlaceRectangleButton"
 										Text="Place rectangle on page" />
 									<MenuFlyoutItem x:Name="PlaceEllipseButton"
 										Text="Place ellipse on page" />
@@ -210,12 +261,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place image stamp" />
 									<MenuFlyoutSubItem x:Name="FillMarksMenu"
 										Text="Fill &amp; Sign">
-										<MenuFlyoutItem x:Name="PlaceCheckButton"
+										<MenuFlyoutItem
+											x:Name="PlaceCheckButton"
 											Text="Place check mark" />
-										<MenuFlyoutItem x:Name="PlaceCrossButton"
+										<MenuFlyoutItem
+											x:Name="PlaceCrossButton"
 											Text="Place cross" />
 									</MenuFlyoutSubItem>
-									<!-- filled in by setupComments with the ink palette -->
+									<!-- filled in by setupComments with the ink
+									palette -->
 									<MenuFlyoutSubItem x:Name="InkStyleMenu"
 										Text="Drawing style" />
 								</MenuFlyout>
@@ -252,100 +306,151 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56" Visibility="Collapsed"
+		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56"
+			Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
-			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0" CornerRadius="8">
+			BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Border.Resources>
 				<!-- a disabled button stays flat, only its icon dims -->
-				<SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
-				<SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+				<SolidColorBrush x:Key="ButtonBackgroundDisabled"
+					Color="Transparent" />
+				<SolidColorBrush x:Key="ButtonBorderBrushDisabled"
+					Color="Transparent" />
 				<!-- an open panel's button is lit, not accent coloured -->
-				<SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#33FFFFFF" />
-				<SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#40FFFFFF" />
-				<SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#26FFFFFF" />
-				<SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#E8E8E8" />
-				<SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#E8E8E8" />
-				<SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#E8E8E8" />
-				<SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
-				<SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
-				<SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="Transparent" />
+				<SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
+					Color="#33FFFFFF" />
+				<SolidColorBrush
+					x:Key="ToggleButtonBackgroundCheckedPointerOver"
+					Color="#40FFFFFF" />
+				<SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed"
+					Color="#26FFFFFF" />
+				<SolidColorBrush x:Key="ToggleButtonForegroundChecked"
+					Color="#E8E8E8" />
+				<SolidColorBrush
+					x:Key="ToggleButtonForegroundCheckedPointerOver"
+					Color="#E8E8E8" />
+				<SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"
+					Color="#E8E8E8" />
+				<SolidColorBrush x:Key="ToggleButtonBorderBrushChecked"
+					Color="Transparent" />
+				<SolidColorBrush
+					x:Key="ToggleButtonBorderBrushCheckedPointerOver"
+					Color="Transparent" />
+				<SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed"
+					Color="Transparent" />
 			</Border.Resources>
 			<Grid>
 				<!-- the panels, starting with pdfjs-thumbs-button -->
-				<StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Padding="0,8,0,0">
-					<ToggleButton x:Name="ThumbnailsButton" Style="{StaticResource SableRailToggleButtonStyle}"
+				<StackPanel VerticalAlignment="Top" HorizontalAlignment="Center"
+					Padding="0,8,0,0">
+					<ToggleButton x:Name="ThumbnailsButton"
+						Style="{StaticResource SableRailToggleButtonStyle}"
 						ToolTipService.ToolTip="Show Thumbnails"
-						AutomationProperties.Name="Show Thumbnails" Click="onThumbnailsClick">
+						AutomationProperties.Name="Show Thumbnails"
+						Click="onThumbnailsClick">
 						<FontIcon Glyph="&#xE8A9;" FontSize="14" />
 					</ToggleButton>
-					<ToggleButton x:Name="OutlineButton" Style="{StaticResource SableRailToggleButtonStyle}"
+					<ToggleButton x:Name="OutlineButton"
+						Style="{StaticResource SableRailToggleButtonStyle}"
 						ToolTipService.ToolTip="Show Document Outline"
 						AutomationProperties.Name="Show Document Outline">
 						<FontIcon Glyph="&#xE8A4;" FontSize="14" />
 					</ToggleButton>
-					<ToggleButton x:Name="CommentsButton" Style="{StaticResource SableRailToggleButtonStyle}"
+					<ToggleButton x:Name="CommentsButton"
+						Style="{StaticResource SableRailToggleButtonStyle}"
 						ToolTipService.ToolTip="Show Comments"
 						AutomationProperties.Name="Show Comments">
 						<FontIcon Glyph="&#xE90A;" FontSize="14" />
 					</ToggleButton>
-					<ToggleButton x:Name="AttachmentButton" Style="{StaticResource SableRailToggleButtonStyle}"
+					<ToggleButton x:Name="AttachmentButton"
+						Style="{StaticResource SableRailToggleButtonStyle}"
 						ToolTipService.ToolTip="Show Attachments"
 						AutomationProperties.Name="Show Attachments">
 						<FontIcon Glyph="&#xE723;" FontSize="14" />
 					</ToggleButton>
 				</StackPanel>
-				<StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center"
+				<StackPanel VerticalAlignment="Bottom"
+					HorizontalAlignment="Center"
 					Spacing="2" Padding="0,8,0,12">
-					<TextBox x:Name="PageBox" Width="44" MinWidth="0" Padding="2,5,2,6"
+					<TextBox x:Name="PageBox" Width="44" MinWidth="0"
+						Padding="2,5,2,6"
 						TextAlignment="Center" IsSpellCheckEnabled="False"
 						IsTextPredictionEnabled="False"
-						ToolTipService.ToolTip="Page" AutomationProperties.Name="Page"
+						ToolTipService.ToolTip="Page"
+						AutomationProperties.Name="Page"
 						KeyDown="onPageBoxKeyDown" GotFocus="onPageBoxGotFocus"
 						LosingFocus="onPageBoxLosingFocus" />
 					<TextBlock x:Name="PageTotal" MaxWidth="52" Margin="0,2,0,6"
 						FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
 						HorizontalAlignment="Center"
 						Foreground="{ThemeResource SableTextSecondaryBrush}" />
-					<Button x:Name="PreviousButton" Style="{StaticResource SableRailButtonStyle}"
+					<Button x:Name="PreviousButton"
+						Style="{StaticResource SableRailButtonStyle}"
 						ToolTipService.ToolTip="Previous Page"
-						AutomationProperties.Name="Previous Page" Click="onPreviousPage">
+						AutomationProperties.Name="Previous Page"
+						Click="onPreviousPage">
 						<FontIcon Glyph="&#xE70E;" FontSize="14" />
 					</Button>
-					<Button x:Name="NextButton" Style="{StaticResource SableRailButtonStyle}"
+					<Button x:Name="NextButton"
+						Style="{StaticResource SableRailButtonStyle}"
 						ToolTipService.ToolTip="Next Page"
-						AutomationProperties.Name="Next Page" Click="onNextPage">
+						AutomationProperties.Name="Next Page"
+						Click="onNextPage">
 						<FontIcon Glyph="&#xE70D;" FontSize="14" />
 					</Button>
-					<Border Height="1" Margin="6,6" Background="{ThemeResource SableDividerBrush}" />
-					<Button x:Name="ZoomInButton" Style="{StaticResource SableRailButtonStyle}"
+					<Border Height="1" Margin="6,6"
+						Background="{ThemeResource SableDividerBrush}" />
+					<Button x:Name="ZoomInButton"
+						Style="{StaticResource SableRailButtonStyle}"
 						ToolTipService.ToolTip="Zoom In"
 						AutomationProperties.Name="Zoom In" Click="onZoomIn">
 						<FontIcon Glyph="&#xE8A3;" FontSize="14" />
 					</Button>
-					<!-- pdf.js's zoom menu (#scaleSelect), with its values as tags -->
-					<Button x:Name="ZoomButton" Style="{StaticResource SableRailButtonStyle}"
+					<!-- pdf.js's zoom menu (#scaleSelect), with its values as
+					tags -->
+					<Button x:Name="ZoomButton"
+						Style="{StaticResource SableRailButtonStyle}"
 						Width="52" ToolTipService.ToolTip="Zoom"
 						AutomationProperties.Name="Zoom">
 						<TextBlock x:Name="ZoomText" FontSize="11" />
 						<Button.Flyout>
-							<MenuFlyout x:Name="ZoomMenu" Placement="Left" Opening="onZoomMenuOpening">
-								<RadioMenuFlyoutItem Text="Automatic Zoom" Tag="auto" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="Actual Size" Tag="page-actual" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="Page Fit" Tag="page-fit" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="Page Width" Tag="page-width" GroupName="Zoom" Click="onZoomChoice" />
+							<MenuFlyout x:Name="ZoomMenu" Placement="Left"
+								Opening="onZoomMenuOpening">
+								<RadioMenuFlyoutItem Text="Automatic Zoom"
+									Tag="auto" GroupName="Zoom"
+									Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="Actual Size"
+									Tag="page-actual" GroupName="Zoom"
+									Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="Page Fit"
+									Tag="page-fit" GroupName="Zoom"
+									Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="Page Width"
+									Tag="page-width" GroupName="Zoom"
+									Click="onZoomChoice" />
 								<MenuFlyoutSeparator />
-								<RadioMenuFlyoutItem Text="50%" Tag="0.5" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="75%" Tag="0.75" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="100%" Tag="1" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="125%" Tag="1.25" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="150%" Tag="1.5" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="200%" Tag="2" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="300%" Tag="3" GroupName="Zoom" Click="onZoomChoice" />
-								<RadioMenuFlyoutItem Text="400%" Tag="4" GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="50%" Tag="0.5"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="75%" Tag="0.75"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="100%" Tag="1"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="125%" Tag="1.25"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="150%" Tag="1.5"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="200%" Tag="2"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="300%" Tag="3"
+									GroupName="Zoom" Click="onZoomChoice" />
+								<RadioMenuFlyoutItem Text="400%" Tag="4"
+									GroupName="Zoom" Click="onZoomChoice" />
 							</MenuFlyout>
 						</Button.Flyout>
 					</Button>
-					<Button x:Name="ZoomOutButton" Style="{StaticResource SableRailButtonStyle}"
+					<Button x:Name="ZoomOutButton"
+						Style="{StaticResource SableRailButtonStyle}"
 						ToolTipService.ToolTip="Zoom Out"
 						AutomationProperties.Name="Zoom Out" Click="onZoomOut">
 						<FontIcon Glyph="&#xE71F;" FontSize="14" />
@@ -353,23 +458,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</StackPanel>
 			</Grid>
 		</Border>
-		<Border x:Name="PresentationControls" Grid.RowSpan="2" Grid.ColumnSpan="3"
+		<Border x:Name="PresentationControls" Grid.RowSpan="2"
+			Grid.ColumnSpan="3"
 			Visibility="Collapsed" VerticalAlignment="Bottom"
 			HorizontalAlignment="Center" Background="#000000"
 			BorderBrush="#404040" BorderThickness="1" CornerRadius="8"
 			Padding="8" Margin="12">
 			<StackPanel Orientation="Horizontal" Spacing="8">
-				<Button x:Name="PresentationPrevious" AllowFocusOnInteraction="False" ToolTipService.ToolTip="Previous page"
+				<Button x:Name="PresentationPrevious"
+					AllowFocusOnInteraction="False"
+					ToolTipService.ToolTip="Previous page"
 					AutomationProperties.Name="Previous page">
 					<FontIcon Glyph="&#xE76B;" FontSize="14" />
 				</Button>
-				<TextBlock x:Name="PresentationPosition" VerticalAlignment="Center"
+				<TextBlock x:Name="PresentationPosition"
+					VerticalAlignment="Center"
 					AutomationProperties.LiveSetting="Polite" />
-				<Button x:Name="PresentationNext" AllowFocusOnInteraction="False" ToolTipService.ToolTip="Next page"
+				<Button x:Name="PresentationNext"
+					AllowFocusOnInteraction="False"
+					ToolTipService.ToolTip="Next page"
 					AutomationProperties.Name="Next page">
 					<FontIcon Glyph="&#xE76C;" FontSize="14" />
 				</Button>
-				<Button x:Name="PresentationExit" AllowFocusOnInteraction="False" Content="Exit" ToolTipService.ToolTip="Exit presentation (Esc)"
+				<Button x:Name="PresentationExit"
+					AllowFocusOnInteraction="False" Content="Exit"
+					ToolTipService.ToolTip="Exit presentation (Esc)"
 					AutomationProperties.Name="Exit presentation" />
 			</StackPanel>
 		</Border>

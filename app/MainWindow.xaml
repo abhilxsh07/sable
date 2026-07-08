@@ -28,7 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	mc:Ignorable="d"
 	Title="Sable">
 
-	<Grid x:Name="RootGrid" RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}"
+	<Grid x:Name="RootGrid" RowDefinitions="Auto,*"
+		Background="{ThemeResource SablePaneBrush}"
 		Tapped="onHideConfigurator" KeyDown="onFilterKeyDown">
 		<!-- my own title bar instead of the system one. The Menu button takes
 			the place of NightPDF's menu bar (menutemplate.ts), same items, same
@@ -37,14 +38,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			IsBackButtonVisible="False" IsPaneToggleButtonVisible="False"
 			Background="{ThemeResource SableTitleBarBrush}">
 			<TitleBar.Resources>
-				<!-- the title bar centres content by default; tabs start left -->
-				<HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Left</HorizontalAlignment>
+				<!-- the title bar centres content by default; tabs start left
+				-->
+				<HorizontalAlignment
+					x:Key=
+"TitleBarContentHorizontalAlignment">Left</HorizontalAlignment>
 			</TitleBar.Resources>
 			<TitleBar.IconSource>
 				<ImageIconSource ImageSource="ms-appx:///assets/icon.png" />
 			</TitleBar.IconSource>
 			<TitleBar.LeftHeader>
-				<Button x:Name="MenuButton" Style="{StaticResource SableTitleBarButtonStyle}"
+				<Button x:Name="MenuButton"
+					Style="{StaticResource SableTitleBarButtonStyle}"
 					AllowFocusOnInteraction="False"
 					Margin="4,0,0,0" ToolTipService.ToolTip="Menu"
 					AutomationProperties.Name="Menu">
@@ -53,77 +58,193 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<TextBlock Text="Menu" />
 					</StackPanel>
 					<Button.Flyout>
-						<MenuFlyout x:Name="MainMenu" Placement="BottomEdgeAlignedLeft">
+						<MenuFlyout x:Name="MainMenu"
+							Placement="BottomEdgeAlignedLeft">
 							<MenuFlyoutSubItem Text="File">
-								<MenuFlyoutItem x:Name="OpenItem" Text="Open..." KeyboardAcceleratorTextOverride="Ctrl+O">
-									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
+								<MenuFlyoutItem x:Name="OpenItem" Text="Open..."
+									KeyboardAcceleratorTextOverride="Ctrl+O">
+									<MenuFlyoutItem.Icon>
+										<FontIcon Glyph="&#xE8E5;" />
+									</MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
-								<!-- disabled until a tab is open, like NightPDF -->
-								<MenuFlyoutItem x:Name="SaveCopyItem" Text="Save a copy..." KeyboardAcceleratorTextOverride="Ctrl+S" IsEnabled="False" Click="onSaveCopy">
-									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
+								<!-- disabled until a tab is open, like NightPDF
+								-->
+								<MenuFlyoutItem x:Name="SaveCopyItem"
+									Text="Save a copy..."
+									KeyboardAcceleratorTextOverride="Ctrl+S"
+									IsEnabled="False" Click="onSaveCopy">
+									<MenuFlyoutItem.Icon>
+										<FontIcon Glyph="&#xE74E;" />
+									</MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
-								<MenuFlyoutItem x:Name="PrintItem" Text="Print" KeyboardAcceleratorTextOverride="Ctrl+P" IsEnabled="False" Click="onPrint">
-									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE749;" /></MenuFlyoutItem.Icon>
+								<MenuFlyoutItem x:Name="PrintItem" Text="Print"
+									KeyboardAcceleratorTextOverride="Ctrl+P"
+									IsEnabled="False" Click="onPrint">
+									<MenuFlyoutItem.Icon>
+										<FontIcon Glyph="&#xE749;" />
+									</MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
-								<MenuFlyoutItem x:Name="PropertiesItem" Text="Document properties" IsEnabled="False" Click="onDocumentProperties">
-								<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
+								<MenuFlyoutItem x:Name="PropertiesItem"
+									Text="Document properties" IsEnabled="False"
+									Click="onDocumentProperties">
+								<MenuFlyoutItem.Icon>
+									<FontIcon Glyph="&#xE946;" />
+								</MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
-								<MenuFlyoutItem x:Name="SettingsItem" Text="Settings" KeyboardAcceleratorTextOverride="Alt+S" Click="onOpenSettings">
-									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+								<MenuFlyoutItem x:Name="SettingsItem"
+									Text="Settings"
+									KeyboardAcceleratorTextOverride="Alt+S"
+									Click="onOpenSettings">
+									<MenuFlyoutItem.Icon>
+										<FontIcon Glyph="&#xE713;" />
+									</MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
 							</MenuFlyoutSubItem>
-							<!-- Native edit roles act on the focused text field. -->
+							<!-- Native edit roles act on the focused text
+							field. -->
 							<MenuFlyoutSubItem Text="Edit">
-								<MenuFlyoutItem x:Name="UndoItem" Text="Undo" Tag="undo" KeyboardAcceleratorTextOverride="Ctrl+Z" IsEnabled="False" Click="onEditCommand" />
-								<MenuFlyoutItem x:Name="RedoItem" Text="Redo" Tag="redo" KeyboardAcceleratorTextOverride="Ctrl+Y" IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="UndoItem" Text="Undo"
+									Tag="undo"
+									KeyboardAcceleratorTextOverride="Ctrl+Z"
+									IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="RedoItem" Text="Redo"
+									Tag="redo"
+									KeyboardAcceleratorTextOverride="Ctrl+Y"
+									IsEnabled="False" Click="onEditCommand" />
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem x:Name="CutItem" Text="Cut" Tag="cut" KeyboardAcceleratorTextOverride="Ctrl+X" IsEnabled="False" Click="onEditCommand" />
-								<MenuFlyoutItem x:Name="CopyItem" Text="Copy" Tag="copy" KeyboardAcceleratorTextOverride="Ctrl+C" IsEnabled="False" Click="onEditCommand" />
-								<MenuFlyoutItem x:Name="PasteItem" Text="Paste" Tag="paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="CutItem" Text="Cut"
+									Tag="cut"
+									KeyboardAcceleratorTextOverride="Ctrl+X"
+									IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="CopyItem" Text="Copy"
+									Tag="copy"
+									KeyboardAcceleratorTextOverride="Ctrl+C"
+									IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="PasteItem" Text="Paste"
+									Tag="paste"
+									KeyboardAcceleratorTextOverride="Ctrl+V"
+									IsEnabled="False" Click="onEditCommand" />
 <MenuFlyoutSeparator />
-<MenuFlyoutItem x:Name="FindItem" Text="Find…" Tag="find" KeyboardAcceleratorTextOverride="Ctrl+F" IsEnabled="False" Click="onEditCommand" />
+<MenuFlyoutItem x:Name="FindItem" Text="Find…" Tag="find"
+	KeyboardAcceleratorTextOverride="Ctrl+F" IsEnabled="False"
+	Click="onEditCommand" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="View">
-								<!-- they zoom the document, the way pdf.js's own Ctrl+0, Ctrl++
-									and Ctrl+- did. Enabled once a PDF is open. -->
-								<MenuFlyoutItem x:Name="ResetZoomItem" Text="Reset Zoom" KeyboardAcceleratorTextOverride="Ctrl+0" IsEnabled="False" Click="onResetZoom" />
-								<MenuFlyoutItem x:Name="ZoomInItem" Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Plus" IsEnabled="False" Click="onZoomIn" />
-								<MenuFlyoutItem x:Name="ZoomOutItem" Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" IsEnabled="False" Click="onZoomOut" />
+								<!-- they zoom the document, the way pdf.js's
+								own Ctrl+0, Ctrl++
+									and Ctrl+- did. Enabled once a PDF is open.
+									-->
+								<MenuFlyoutItem x:Name="ResetZoomItem"
+									Text="Reset Zoom"
+									KeyboardAcceleratorTextOverride="Ctrl+0"
+									IsEnabled="False" Click="onResetZoom" />
+								<MenuFlyoutItem x:Name="ZoomInItem"
+									Text="Zoom In"
+									KeyboardAcceleratorTextOverride="Ctrl+Plus"
+									IsEnabled="False" Click="onZoomIn" />
+								<MenuFlyoutItem x:Name="ZoomOutItem"
+									Text="Zoom Out"
+									KeyboardAcceleratorTextOverride="Ctrl+-"
+									IsEnabled="False" Click="onZoomOut" />
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem x:Name="RotateClockwiseItem" Text="Rotate Clockwise" Tag="1" KeyboardAcceleratorTextOverride="R" IsEnabled="False" Click="onRotateView" />
-								<MenuFlyoutItem x:Name="RotateCounterClockwiseItem" Text="Rotate Counterclockwise" Tag="-1" KeyboardAcceleratorTextOverride="Shift+R" IsEnabled="False" Click="onRotateView" />
+								<MenuFlyoutItem x:Name="RotateClockwiseItem"
+									Text="Rotate Clockwise" Tag="1"
+									KeyboardAcceleratorTextOverride="R"
+									IsEnabled="False" Click="onRotateView" />
+								<MenuFlyoutItem
+									x:Name="RotateCounterClockwiseItem"
+									Text="Rotate Counterclockwise" Tag="-1"
+									KeyboardAcceleratorTextOverride="Shift+R"
+									IsEnabled="False" Click="onRotateView" />
 								<MenuFlyoutSeparator />
-								<MenuFlyoutSubItem x:Name="CursorToolMenu" Text="Cursor tool" IsEnabled="False">
-								<RadioMenuFlyoutItem x:Name="SelectToolItem" Text="Text selection" Tag="select" GroupName="CursorTool" IsChecked="True" KeyboardAcceleratorTextOverride="S" Click="onCursorTool" />
-								<RadioMenuFlyoutItem x:Name="HandToolItem" Text="Hand tool" Tag="hand" GroupName="CursorTool" KeyboardAcceleratorTextOverride="H" Click="onCursorTool" />
+								<MenuFlyoutSubItem x:Name="CursorToolMenu"
+									Text="Cursor tool" IsEnabled="False">
+								<RadioMenuFlyoutItem x:Name="SelectToolItem"
+									Text="Text selection" Tag="select"
+									GroupName="CursorTool" IsChecked="True"
+									KeyboardAcceleratorTextOverride="S"
+									Click="onCursorTool" />
+								<RadioMenuFlyoutItem x:Name="HandToolItem"
+									Text="Hand tool" Tag="hand"
+									GroupName="CursorTool"
+									KeyboardAcceleratorTextOverride="H"
+									Click="onCursorTool" />
 								</MenuFlyoutSubItem>
 								<MenuFlyoutSeparator />
-								<MenuFlyoutSubItem x:Name="ScrollModeMenu" Text="Scrolling" IsEnabled="False">
-									<RadioMenuFlyoutItem x:Name="ScrollVerticalItem" Text="Vertical" Tag="scroll:0" GroupName="ScrollMode" IsChecked="True" Click="onPageLayout" />
-									<RadioMenuFlyoutItem x:Name="ScrollHorizontalItem" Text="Horizontal" Tag="scroll:1" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
-									<RadioMenuFlyoutItem x:Name="ScrollWrappedItem" Text="Wrapped" Tag="scroll:2" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
-									<RadioMenuFlyoutItem x:Name="ScrollPageItem" Text="Page" Tag="scroll:3" GroupName="ScrollMode" IsChecked="False" Click="onPageLayout" />
+								<MenuFlyoutSubItem x:Name="ScrollModeMenu"
+									Text="Scrolling" IsEnabled="False">
+									<RadioMenuFlyoutItem
+										x:Name="ScrollVerticalItem"
+										Text="Vertical" Tag="scroll:0"
+										GroupName="ScrollMode" IsChecked="True"
+										Click="onPageLayout" />
+									<RadioMenuFlyoutItem
+										x:Name="ScrollHorizontalItem"
+										Text="Horizontal" Tag="scroll:1"
+										GroupName="ScrollMode" IsChecked="False"
+										Click="onPageLayout" />
+									<RadioMenuFlyoutItem
+										x:Name="ScrollWrappedItem"
+										Text="Wrapped" Tag="scroll:2"
+										GroupName="ScrollMode" IsChecked="False"
+										Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="ScrollPageItem"
+										Text="Page" Tag="scroll:3"
+										GroupName="ScrollMode" IsChecked="False"
+										Click="onPageLayout" />
 								</MenuFlyoutSubItem>
-								<MenuFlyoutSubItem x:Name="SpreadModeMenu" Text="Spreads" IsEnabled="False">
-									<RadioMenuFlyoutItem x:Name="SpreadNoneItem" Text="No spread" Tag="spread:0" GroupName="SpreadMode" IsChecked="True" Click="onPageLayout" />
-									<RadioMenuFlyoutItem x:Name="SpreadOddItem" Text="Odd-page spreads" Tag="spread:1" GroupName="SpreadMode" IsChecked="False" Click="onPageLayout" />
-									<RadioMenuFlyoutItem x:Name="SpreadEvenItem" Text="Even-page spreads" Tag="spread:2" GroupName="SpreadMode" IsChecked="False" Click="onPageLayout" />
+								<MenuFlyoutSubItem x:Name="SpreadModeMenu"
+									Text="Spreads" IsEnabled="False">
+									<RadioMenuFlyoutItem x:Name="SpreadNoneItem"
+										Text="No spread" Tag="spread:0"
+										GroupName="SpreadMode" IsChecked="True"
+										Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="SpreadOddItem"
+										Text="Odd-page spreads" Tag="spread:1"
+										GroupName="SpreadMode" IsChecked="False"
+										Click="onPageLayout" />
+									<RadioMenuFlyoutItem x:Name="SpreadEvenItem"
+										Text="Even-page spreads" Tag="spread:2"
+										GroupName="SpreadMode" IsChecked="False"
+										Click="onPageLayout" />
 								</MenuFlyoutSubItem>
-								<ToggleMenuFlyoutItem x:Name="ClickSpreadsItem" Text="Click pages to turn spreads"
-									IsChecked="False" IsEnabled="False" Click="onClickSpreads" />
+								<ToggleMenuFlyoutItem x:Name="ClickSpreadsItem"
+									Text="Click pages to turn spreads"
+									IsChecked="False" IsEnabled="False"
+									Click="onClickSpreads" />
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem x:Name="FullScreenItem" Text="Toggle Full Screen" KeyboardAcceleratorTextOverride="F11" Click="onToggleFullScreen" />
-								<MenuFlyoutItem x:Name="PresentationItem" Text="Presentation mode" KeyboardAcceleratorTextOverride="Ctrl+Alt+P" IsEnabled="False" Click="onPresentation" />
+								<MenuFlyoutItem x:Name="FullScreenItem"
+									Text="Toggle Full Screen"
+									KeyboardAcceleratorTextOverride="F11"
+									Click="onToggleFullScreen" />
+								<MenuFlyoutItem x:Name="PresentationItem"
+									Text="Presentation mode"
+									KeyboardAcceleratorTextOverride="Ctrl+Alt+P"
+									IsEnabled="False" Click="onPresentation" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="Window">
-								<MenuFlyoutItem x:Name="MinimizeItem" Text="Minimize" KeyboardAcceleratorTextOverride="Ctrl+M" Click="onMinimize" />
+								<MenuFlyoutItem x:Name="MinimizeItem"
+									Text="Minimize"
+									KeyboardAcceleratorTextOverride="Ctrl+M"
+									Click="onMinimize" />
 							</MenuFlyoutSubItem>
-							<!-- upstream's links point at NightPDF, these at Sable's repo.
-								No Contact item until there's an address for it. -->
+							<!-- upstream's links point at NightPDF, these at
+							Sable's repo.
+								No Contact item until there's an address for it.
+								-->
 							<MenuFlyoutSubItem Text="Help">
-								<MenuFlyoutItem x:Name="LearnMoreItem" Text="Learn More" Tag="https://github.com/abhilxsh07/sable" Click="onOpenLink" />
-								<MenuFlyoutItem x:Name="LicenseItem" Text="License" Tag="https://github.com/abhilxsh07/sable/blob/main/LICENSE" Click="onOpenLink" />
-								<MenuFlyoutItem x:Name="BugsItem" Text="Bugs" Tag="https://github.com/abhilxsh07/sable/issues" Click="onOpenLink" />
+								<MenuFlyoutItem x:Name="LearnMoreItem"
+									Text="Learn More"
+									Tag="https://github.com/abhilxsh07/sable"
+									Click="onOpenLink" />
+								<MenuFlyoutItem x:Name="LicenseItem"
+									Text="License"
+									Tag=
+"https://github.com/abhilxsh07/sable/blob/main/LICENSE" Click="onOpenLink" />
+								<MenuFlyoutItem x:Name="BugsItem" Text="Bugs"
+									Tag=
+									"https://github.com/abhilxsh07/sable/issues"
+									Click="onOpenLink" />
 							</MenuFlyoutSubItem>
 						</MenuFlyout>
 					</Button.Flyout>
@@ -139,21 +260,35 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</TitleBar.Content>
 			<TitleBar.RightHeader>
 				<StackPanel Orientation="Horizontal" Spacing="8" Margin="8,0">
-					<Button x:Name="MusicButton" Visibility="Collapsed" Width="40"
+					<Button x:Name="MusicButton" Visibility="Collapsed"
+						Width="40"
 						Style="{StaticResource SableTitleBarButtonStyle}"
-						ToolTipService.ToolTip="Music" AutomationProperties.Name="Music">
+						ToolTipService.ToolTip="Music"
+						AutomationProperties.Name="Music">
 						<FontIcon Glyph="&#xE8D6;" FontSize="18" />
 					</Button>
-					<StackPanel x:Name="Presets" Orientation="Horizontal" Spacing="8"
+					<StackPanel x:Name="Presets" Orientation="Horizontal"
+						Spacing="8"
 						Visibility="Collapsed" Tapped="onKeepConfigurator">
-						<Button x:Name="DefaultPreset" Tag="default" Content="Default" Click="onPresetClick" AutomationProperties.ItemStatus="Selected"
-							Style="{StaticResource SablePresetButtonStyle}" Background="#1e2024" Foreground="#fbfbff" BorderBrush="#797979" />
-						<Button x:Name="SepiaPreset" Tag="sepia" Content="Sepia" Click="onPresetClick"
-							Style="{StaticResource SablePresetButtonStyle}" Background="#9e9174" Foreground="#40392d" />
-						<Button x:Name="RedeyePreset" Tag="redeye" Content="Redeye" Click="onPresetClick"
-							Style="{StaticResource SablePresetButtonStyle}" Background="#36272b" Foreground="#bc8b96" />
-						<Button x:Name="CustomPreset" Tag="custom" Content="Custom" Click="onPresetClick"
-							Style="{StaticResource SablePresetButtonStyle}" Background="#c1c1c1" Foreground="#232323" Padding="3.5,4" />
+						<Button x:Name="DefaultPreset" Tag="default"
+							Content="Default" Click="onPresetClick"
+							AutomationProperties.ItemStatus="Selected"
+							Style="{StaticResource SablePresetButtonStyle}"
+							Background="#1e2024" Foreground="#fbfbff"
+							BorderBrush="#797979" />
+						<Button x:Name="SepiaPreset" Tag="sepia" Content="Sepia"
+							Click="onPresetClick"
+							Style="{StaticResource SablePresetButtonStyle}"
+							Background="#9e9174" Foreground="#40392d" />
+						<Button x:Name="RedeyePreset" Tag="redeye"
+							Content="Redeye" Click="onPresetClick"
+							Style="{StaticResource SablePresetButtonStyle}"
+							Background="#36272b" Foreground="#bc8b96" />
+						<Button x:Name="CustomPreset" Tag="custom"
+							Content="Custom" Click="onPresetClick"
+							Style="{StaticResource SablePresetButtonStyle}"
+							Background="#c1c1c1" Foreground="#232323"
+							Padding="3.5,4" />
 					</StackPanel>
 				</StackPanel>
 			</TitleBar.RightHeader>
@@ -168,35 +303,60 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			IsSettingsVisible="False" IsTitleBarAutoPaddingEnabled="False"
 			OpenPaneLength="232" SelectionChanged="onNavSelectionChanged">
 			<NavigationView.MenuItems>
-				<NavigationViewItem Content="Recent" Tag="recent" IsSelected="True">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE823;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Recent" Tag="recent"
+					IsSelected="True">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE823;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 				<NavigationViewItem Content="Starred" Tag="starred">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE734;" /></NavigationViewItem.Icon>
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE734;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 				<NavigationViewItemHeader Content="Tools" />
-				<NavigationViewItem Content="Organize pages" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8A9;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Organize pages"
+					SelectsOnInvoked="False">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE8A9;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Combine files" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8C8;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Combine files"
+					SelectsOnInvoked="False">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE8C8;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Fill &amp; Sign" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE70F;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Fill &amp; Sign"
+					SelectsOnInvoked="False">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE70F;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 				<NavigationViewItem Content="Comment" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;" /></NavigationViewItem.Icon>
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE8BD;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 				<NavigationViewItem Content="Export" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xEDE1;" /></NavigationViewItem.Icon>
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xEDE1;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Read aloud" SelectsOnInvoked="False">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE767;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Read aloud"
+					SelectsOnInvoked="False">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE767;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 			</NavigationView.MenuItems>
 			<NavigationView.FooterMenuItems>
-				<NavigationViewItem Content="Settings" Tag="settings" SelectsOnInvoked="False" ToolTipService.ToolTip="Settings (Alt+S)">
-					<NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
+				<NavigationViewItem Content="Settings" Tag="settings"
+					SelectsOnInvoked="False"
+					ToolTipService.ToolTip="Settings (Alt+S)">
+					<NavigationViewItem.Icon>
+						<FontIcon Glyph="&#xE713;" />
+					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 			</NavigationView.FooterMenuItems>
 
@@ -211,7 +371,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- Shift+Alt+M. Every press adds an alert on top, and they fade out
 			oldest first. No background, so clicks go through to the page. -->
 		<StackPanel x:Name="MortyStack" Grid.Row="1" VerticalAlignment="Top"
-			HorizontalAlignment="Center" Width="420" Margin="0,12,0,0" Spacing="8">
+			HorizontalAlignment="Center" Width="420" Margin="0,12,0,0"
+			Spacing="8">
 			<StackPanel.ChildrenTransitions>
 				<TransitionCollection>
 					<EntranceThemeTransition FromVerticalOffset="-24" />
@@ -224,15 +385,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			a small shadow. Lined up under the preset buttons when it opens. -->
 		<Border x:Name="DarkConfigurator" Grid.Row="1" Visibility="Collapsed"
 			HorizontalAlignment="Right" VerticalAlignment="Top" Width="200"
-			MaxHeight="550" Margin="0,0,8,8" Background="{ThemeResource SablePopupBrush}"
+			MaxHeight="550" Margin="0,0,8,8"
+			Background="{ThemeResource SablePopupBrush}"
 			BorderBrush="#666666" BorderThickness="1" Padding="24,16"
 			CornerRadius="8" Translation="0,0,8" Tapped="onKeepConfigurator">
 			<Border.Shadow>
 				<ThemeShadow />
 			</Border.Shadow>
-			<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+			<ScrollViewer VerticalScrollBarVisibility="Auto"
+				HorizontalScrollBarVisibility="Disabled">
 				<StackPanel Spacing="8">
-					<TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+					<TextBlock Text="Settings" FontSize="18"
+						FontWeight="SemiBold" Margin="0,0,0,8" />
 					<StackPanel x:Name="FilterSliders" Spacing="8" />
 				</StackPanel>
 			</ScrollViewer>

@@ -452,7 +452,8 @@ void ViewerPage::showComments() {
 	    CommentsCount(), to_hstring(notes.size()) + L" comments loaded");
 	NotesState().Text(
 	    m_notePlacing  ? (m_placementTool == PlacementTool::TextBox
-	                          ? L"Click a page to place a text box. Esc cancels."
+	                          ? L"Click a page to place a text box. "
+                               L"Esc cancels."
 	                      : m_placementTool == PlacementTool::Ink
 	                          ? L"Drag on a page to draw. Esc stops drawing."
 	                          : L"Click a page to place a note. Esc cancels.")

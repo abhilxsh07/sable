@@ -34,7 +34,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				NightPDF showed around the pages -->
 			<SolidColorBrush x:Key="SableViewerBrush" Color="#2a2a2e" />
 			<SolidColorBrush x:Key="SableSettingsButtonBrush" Color="#29292c" />
-			<SolidColorBrush x:Key="SableSettingsShortcutBrush" Color="#262629" />
+			<SolidColorBrush x:Key="SableSettingsShortcutBrush" Color="#262629"
+				/>
 			<SolidColorBrush x:Key="SablePopupBrush" Color="#2d2d2d" />
 			<SolidColorBrush x:Key="SableCardBrush" Color="#2b2b2b" />
 			<SolidColorBrush x:Key="SableCardHoverBrush" Color="#323232" />
@@ -47,11 +48,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 			<!-- NavigationView's own keys, so the pane reads like part of the
 				app and not like the Settings app -->
-			<SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#1e1e1e" />
-			<SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#1e1e1e" />
-			<SolidColorBrush x:Key="NavigationViewContentBackground" Color="#232323" />
-			<SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#2f2f2f" />
-			<LinearGradientBrush x:Key="NavigationViewSelectionIndicatorForeground" StartPoint="0.5,1" EndPoint="0.5,0">
+			<SolidColorBrush x:Key="NavigationViewExpandedPaneBackground"
+				Color="#1e1e1e" />
+			<SolidColorBrush x:Key="NavigationViewDefaultPaneBackground"
+				Color="#1e1e1e" />
+			<SolidColorBrush x:Key="NavigationViewContentBackground"
+				Color="#232323" />
+			<SolidColorBrush x:Key="NavigationViewContentGridBorderBrush"
+				Color="#2f2f2f" />
+			<LinearGradientBrush
+				x:Key="NavigationViewSelectionIndicatorForeground"
+				StartPoint="0.5,1" EndPoint="0.5,0">
 				<GradientStop Offset="0" Color="#29c0ea" />
 				<GradientStop Offset="0.683" Color="#d773e9" />
 				<GradientStop Offset="1" Color="#fc515d" />
@@ -64,12 +71,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<SolidColorBrush x:Key="SableMortyTextBrush" Color="#000000" />
 	<Style x:Key="SableMortyAlertStyle" TargetType="InfoBar">
 		<Setter Property="Title" Value="MORTY!" />
-		<Setter Property="Message" Value="I'm a PDF reader Morty! I'm PDF reader Rick!!!" />
+		<Setter Property="Message"
+			Value="I'm a PDF reader Morty! I'm PDF reader Rick!!!" />
 		<Setter Property="IsClosable" Value="True" />
 		<Setter Property="IsIconVisible" Value="False" />
-		<Setter Property="Background" Value="{StaticResource SableMortyBrush}" />
-		<Setter Property="BorderBrush" Value="{StaticResource SableMortyBrush}" />
-		<Setter Property="Foreground" Value="{StaticResource SableMortyTextBrush}" />
+		<Setter Property="Background" Value="{StaticResource SableMortyBrush}"
+			/>
+		<Setter Property="BorderBrush" Value="{StaticResource SableMortyBrush}"
+			/>
+		<Setter Property="Foreground"
+			Value="{StaticResource SableMortyTextBrush}" />
 		<Setter Property="RequestedTheme" Value="Light" />
 	</Style>
 
@@ -78,7 +89,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<Color x:Key="SableCoral">#fc515d</Color>
 
 	<!-- left to right version of the splash gradient, for buttons -->
-	<LinearGradientBrush x:Key="SableAccentGradient" StartPoint="0,0.5" EndPoint="1,0.5">
+	<LinearGradientBrush x:Key="SableAccentGradient" StartPoint="0,0.5"
+		EndPoint="1,0.5">
 		<GradientStop Offset="0" Color="#29c0ea" />
 		<GradientStop Offset="0.683" Color="#d773e9" />
 		<GradientStop Offset="1" Color="#fc515d" />
@@ -90,7 +102,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		on hover -->
 	<Style x:Key="SableAccentButtonStyle" TargetType="Button">
 		<Setter Property="Foreground" Value="#ffffff" />
-		<Setter Property="Background" Value="{StaticResource SableAccentGradient}" />
+		<Setter Property="Background"
+			Value="{StaticResource SableAccentGradient}" />
 		<Setter Property="Padding" Value="22,9" />
 		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="FontSize" Value="14" />
@@ -99,25 +112,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Template">
 			<Setter.Value>
 				<ControlTemplate TargetType="Button">
-					<Grid x:Name="Root" Background="{TemplateBinding Background}"
+					<Grid x:Name="Root"
+						Background="{TemplateBinding Background}"
 						CornerRadius="{TemplateBinding CornerRadius}">
 						<VisualStateManager.VisualStateGroups>
 							<VisualStateGroup x:Name="CommonStates">
 								<VisualState x:Name="Normal" />
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
-										<Setter Target="Wash.Opacity" Value="0.14" />
+										<Setter Target="Wash.Opacity"
+											Value="0.14" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
-										<Setter Target="Wash.Opacity" Value="0.06" />
-										<Setter Target="Root.Opacity" Value="0.85" />
+										<Setter Target="Wash.Opacity"
+											Value="0.06" />
+										<Setter Target="Root.Opacity"
+											Value="0.85" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Disabled">
 									<VisualState.Setters>
-										<Setter Target="Root.Opacity" Value="0.4" />
+										<Setter Target="Root.Opacity"
+											Value="0.4" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -127,14 +145,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							Foreground="{TemplateBinding Foreground}"
 							Content="{TemplateBinding Content}"
 							ContentTemplate="{TemplateBinding ContentTemplate}"
-							HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center" />
 					</Grid>
 				</ControlTemplate>
 			</Setter.Value>
 		</Setter>
 	</Style>
 
-	<!-- NightPDF's preset buttons (index.sass L105-133): 14px, weight 600, 4px 8px
+	<!-- NightPDF's preset buttons (index.sass L105-133): 14px, weight 600, 4px
+	8px
 		padding, 6px radius, 2px rgb(30,30,30) border that goes rgb(121,121,121)
 		on hover. Each button sets its own colours. -->
 	<Style x:Key="SablePresetButtonStyle" TargetType="Button">
@@ -148,7 +168,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Template">
 			<Setter.Value>
 				<ControlTemplate TargetType="Button">
-					<Border x:Name="Chip" Background="{TemplateBinding Background}"
+					<Border x:Name="Chip"
+						Background="{TemplateBinding Background}"
 						BorderBrush="{TemplateBinding BorderBrush}"
 						BorderThickness="{TemplateBinding BorderThickness}"
 						CornerRadius="{TemplateBinding CornerRadius}">
@@ -157,12 +178,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Normal" />
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
-										<Setter Target="Chip.BorderBrush" Value="#797979" />
+										<Setter Target="Chip.BorderBrush"
+											Value="#797979" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
-										<Setter Target="Chip.BorderBrush" Value="#797979" />
+										<Setter Target="Chip.BorderBrush"
+											Value="#797979" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -177,7 +200,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 
 	<!-- the tools strip and other quiet buttons -->
-	<Style x:Key="SableFlatButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+	<Style x:Key="SableFlatButtonStyle" TargetType="Button"
+		BasedOn="{StaticResource DefaultButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Padding" Value="10,8" />
@@ -185,7 +209,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 
 	<!-- icon buttons on the viewer's right rail -->
-	<Style x:Key="SableRailButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+	<Style x:Key="SableRailButtonStyle" TargetType="Button"
+		BasedOn="{StaticResource DefaultButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Width" Value="40" />
@@ -198,7 +223,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 
 	<!-- the rail's buttons that open a panel; lit while it's open -->
-	<Style x:Key="SableRailToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+	<Style x:Key="SableRailToggleButtonStyle" TargetType="ToggleButton"
+		BasedOn="{StaticResource DefaultToggleButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Width" Value="40" />
@@ -226,7 +252,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 
 	<!-- flat buttons that sit in the title bar (the Menu button) -->
-	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button"
+		BasedOn="{StaticResource DefaultButtonStyle}">
 		<Setter Property="Background" Value="Transparent" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Padding" Value="10,6" />
@@ -271,17 +298,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Normal" />
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
-										<Setter Target="Hover.Background" Value="#15FFFFFF" />
+										<Setter Target="Hover.Background"
+											Value="#15FFFFFF" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
-										<Setter Target="Hover.Background" Value="#25FFFFFF" />
+										<Setter Target="Hover.Background"
+											Value="#25FFFFFF" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Disabled">
 									<VisualState.Setters>
-										<Setter Target="Body.Opacity" Value="0.3" />
+										<Setter Target="Body.Opacity"
+											Value="0.3" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -289,18 +319,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Unchecked" />
 								<VisualState x:Name="Checked">
 									<VisualState.Setters>
-										<Setter Target="Glyph.Opacity" Value="1" />
-										<Setter Target="Dot.Opacity" Value="1" />
+										<Setter Target="Glyph.Opacity" Value="1"
+											/>
+										<Setter Target="Dot.Opacity" Value="1"
+											/>
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
 						</VisualStateManager.VisualStateGroups>
 						<Grid x:Name="Body">
 							<Border x:Name="Hover" CornerRadius="4" />
-							<ContentPresenter x:Name="Glyph" Content="{TemplateBinding Content}"
-								Foreground="{TemplateBinding Foreground}" Opacity="0.5"
-								HorizontalAlignment="Center" VerticalAlignment="Center" />
-							<Ellipse x:Name="Dot" Width="3" Height="3" Fill="White" Opacity="0"
+							<ContentPresenter x:Name="Glyph"
+								Content="{TemplateBinding Content}"
+								Foreground="{TemplateBinding Foreground}"
+								Opacity="0.5"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Center" />
+							<Ellipse x:Name="Dot" Width="3" Height="3"
+								Fill="White" Opacity="0"
 								VerticalAlignment="Bottom" Margin="0,0,0,1" />
 						</Grid>
 					</Grid>
@@ -324,17 +360,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Normal" />
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
-										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+										<Setter Target="HorizontalThumb.Opacity"
+											Value="1" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
-										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+										<Setter Target="HorizontalThumb.Opacity"
+											Value="1" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Disabled">
 									<VisualState.Setters>
-										<Setter Target="HorizontalTemplate.Opacity" Value="0.35" />
+										<Setter
+											Target="HorizontalTemplate.Opacity"
+											Value="0.35" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -342,19 +382,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Unfocused" />
 								<VisualState x:Name="Focused">
 									<VisualState.Setters>
-										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+										<Setter Target="HorizontalThumb.Opacity"
+											Value="1" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="PointerFocused" />
 							</VisualStateGroup>
 						</VisualStateManager.VisualStateGroups>
-						<Grid x:Name="HorizontalTemplate" ColumnDefinitions="Auto,Auto,*">
-							<Rectangle x:Name="HorizontalTrackRect" Grid.ColumnSpan="3"
-								Fill="{TemplateBinding Background}" Height="4" RadiusX="2" RadiusY="2" />
+						<Grid x:Name="HorizontalTemplate"
+							ColumnDefinitions="Auto,Auto,*">
+							<Rectangle x:Name="HorizontalTrackRect"
+								Grid.ColumnSpan="3"
+								Fill="{TemplateBinding Background}" Height="4"
+								RadiusX="2" RadiusY="2" />
 							<Rectangle x:Name="HorizontalDecreaseRect"
-								Fill="{TemplateBinding Foreground}" Height="4" RadiusX="2" RadiusY="2" />
-							<Thumb x:Name="HorizontalThumb" Grid.Column="1" Width="12" Height="12"
-								Opacity="0" AutomationProperties.AccessibilityView="Raw">
+								Fill="{TemplateBinding Foreground}" Height="4"
+								RadiusX="2" RadiusY="2" />
+							<Thumb x:Name="HorizontalThumb" Grid.Column="1"
+								Width="12" Height="12"
+								Opacity="0"
+								AutomationProperties.AccessibilityView="Raw">
 								<Thumb.Template>
 									<ControlTemplate TargetType="Thumb">
 										<Ellipse Fill="White" />
@@ -371,7 +418,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- quiet settings controls with the native keyboard focus outline -->
 	<Style x:Key="SableSettingsButtonStyle" TargetType="Button">
 		<Setter Property="CornerRadius" Value="8" />
-		<Setter Property="Background" Value="{ThemeResource SableSettingsButtonBrush}" />
+		<Setter Property="Background"
+			Value="{ThemeResource SableSettingsButtonBrush}" />
 		<Setter Property="BorderBrush" Value="#3b3b3f" />
 		<Setter Property="BorderThickness" Value="1" />
 		<Setter Property="Foreground" Value="#eeeeef" />
@@ -391,17 +439,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="Normal" />
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
-										<Setter Target="SettingsWash.Opacity" Value="0.05" />
+										<Setter Target="SettingsWash.Opacity"
+											Value="0.05" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
-										<Setter Target="SettingsWash.Opacity" Value="0.09" />
+										<Setter Target="SettingsWash.Opacity"
+											Value="0.09" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Disabled">
 									<VisualState.Setters>
-										<Setter Target="SettingsRoot.Opacity" Value="0.4" />
+										<Setter Target="SettingsRoot.Opacity"
+											Value="0.4" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -410,12 +461,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							BorderBrush="{TemplateBinding BorderBrush}"
 							BorderThickness="{TemplateBinding BorderThickness}"
 							CornerRadius="{TemplateBinding CornerRadius}" />
-						<Border x:Name="SettingsWash" Background="White" Opacity="0"
+						<Border x:Name="SettingsWash" Background="White"
+							Opacity="0"
 							IsHitTestVisible="False"
 							CornerRadius="{TemplateBinding CornerRadius}" />
 						<ContentPresenter Content="{TemplateBinding Content}"
 							ContentTemplate="{TemplateBinding ContentTemplate}"
-							ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+							ContentTemplateSelector=
+							"{TemplateBinding ContentTemplateSelector}"
 							Padding="{TemplateBinding Padding}"
 							Margin="{TemplateBinding BorderThickness}"
 							Foreground="{TemplateBinding Foreground}"
@@ -423,9 +476,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							FontSize="{TemplateBinding FontSize}"
 							FontWeight="{TemplateBinding FontWeight}"
 							FontStyle="{TemplateBinding FontStyle}"
-							CharacterSpacing="{TemplateBinding CharacterSpacing}"
-							HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-							VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+							CharacterSpacing=
+							"{TemplateBinding CharacterSpacing}"
+							HorizontalContentAlignment=
+							"{TemplateBinding HorizontalContentAlignment}"
+							VerticalContentAlignment=
+							"{TemplateBinding VerticalContentAlignment}" />
 					</Grid>
 				</ControlTemplate>
 			</Setter.Value>
@@ -440,7 +496,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 	<Style x:Key="SableSettingsShortcutStyle" TargetType="Button"
 		BasedOn="{StaticResource SableSettingsButtonStyle}">
-		<Setter Property="Background" Value="{ThemeResource SableSettingsShortcutBrush}" />
+		<Setter Property="Background"
+			Value="{ThemeResource SableSettingsShortcutBrush}" />
 		<Setter Property="BorderBrush" Value="#38383d" />
 		<Setter Property="Padding" Value="10,7" />
 		<Setter Property="MinWidth" Value="0" />
