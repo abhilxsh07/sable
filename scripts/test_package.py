@@ -83,6 +83,16 @@ class PackageTests(unittest.TestCase):
         package.archive(second, "Sable", files, {"version": "test"})
         self.assertEqual(package.digest(archive), package.digest(second))
 
+    def test_runtime_omits_webview_dlls(self):
+        directory = self.runtime()
+        self.write("build/Microsoft.Web.WebView2.Core.dll")
+        self.write("build/runtimes/win-x64/native/WebView2Loader.dll")
+        with patch.object(package, "ROOT", self.root):
+            files = package.runtime_files(directory, "x64")
+        self.assertNotIn("Microsoft.Web.WebView2.Core.dll", files)
+        self.assertNotIn("runtimes/win-x64/native/WebView2Loader.dll", files)
+        self.assertIn("Microsoft.ui.xaml.dll", files)
+
     def test_source_snapshot_excludes_untracked_files(self):
         self.write("source.txt", b"staged source")
         with patch.object(package, "ROOT", self.root):

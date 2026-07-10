@@ -33,6 +33,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
 DEVELOPMENT = {".pdb", ".obj", ".lib", ".exp", ".ilk", ".iobj", ".ipdb"}
+# WinUI needs WebView2 metadata at build time. The reader has no web view.
+WEBVIEW_RUNTIME = {"microsoft.web.webview2.core.dll", "webview2loader.dll"}
 
 
 def git(*args):
@@ -71,6 +73,7 @@ def runtime_files(directory, platform):
         parts = PurePosixPath(name).parts
         if (parts[0].lower() in {"fixtures", "tests"}
                 or path.suffix.lower() in DEVELOPMENT
+                or path.name.lower() in WEBVIEW_RUNTIME
                 or path.name.lower().startswith(("sable.tests", "gtest"))):
             continue
         files[name] = path

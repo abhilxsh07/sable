@@ -2933,3 +2933,9 @@ flags. Rendering and printing still mask every note icon.
 I left the "Choose a writable folder" message alone. With the guard and
 the exact copy in place, the tools refuse a file with attachments before
 anything changes, so Save a copy can't reach that refusal from the app.
+
+## Windows App SDK parts in the portable ZIP (2026-11-11)
+
+I dropped the metapackage and reference the runtime and the five SDK parts
+the reader uses. WinUI's projection still needs the WebView2 metadata, so
+I keep that build reference and leave its runtime DLLs out of the ZIP.
