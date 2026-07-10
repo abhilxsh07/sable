@@ -843,21 +843,32 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	if (m_writeRefusal) {
 		return *m_writeRefusal;
 	}
-	// -1 is PDFium's error value, so i can't call that file unsigned.
-	if (const int signatures = FPDF_GetSignatureCount(m_handle)) {
-		m_writeRefusal =
-		    signatures > 0 ? WriteRefusal::Signed : WriteRefusal::Unavailable;
+	const int signatures = FPDF_GetSignatureCount(m_handle);
+	if (signatures < 0) {
+		m_writeRefusal = WriteRefusal::Unavailable;
 		return *m_writeRefusal;
+	}
+	// the count includes empty fields. the contents come from the field's
+	// signature value. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_signature.h
+	for (int index = 0; index < signatures; ++index) {
+		if (stopped()) {
+			return WriteRefusal::Unavailable;
+		}
+		const auto signature = FPDF_GetSignatureObject(m_handle, index);
+		if (signature && FPDFSignatureObj_GetContents(signature, nullptr, 0)) {
+			m_writeRefusal = WriteRefusal::Signed;
+			return *m_writeRefusal;
+		}
 	}
 	if (!canSerializeEdits(stopped)) {
 		// a file i never rewrite keeps whatever signature it has.
 		return stopped() ? WriteRefusal::Unavailable : WriteRefusal::None;
 	}
 	// the counter reads only the top-level /Fields array, and the public
-	// headers can't reach /Perms. i read the tokens of a full rewrite, which
-	// expands object streams, for nested fields and DocMDP. see:
-	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/fpdfsdk/fpdf_signature.cpp
-	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_signature.h
+	// headers can't reach /Perms. i read a full rewrite, which expands
+	// object streams, for nested signature values, DocMDP and /Perms. see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_signature.cpp
 	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_catalog.h
 	constexpr std::size_t limit = 128 * 1024 * 1024;
 	auto bytes = serialize(limit, stopped);

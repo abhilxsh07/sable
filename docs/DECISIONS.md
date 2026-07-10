@@ -2939,3 +2939,13 @@ anything changes, so Save a copy can't reach that refusal from the app.
 I dropped the metapackage and reference the runtime and the five SDK parts
 the reader uses. WinUI's projection still needs the WebView2 metadata, so
 I keep that build reference and leave its runtime DLLs out of the ZIP.
+
+## Empty signature fields (2026-11-11)
+
+An unsigned signature field can sit beside notes and editable form fields.
+I check its signature contents before refusing an edit. The token reader
+follows direct and indirect values and inherited field types, so a blank
+field or an unused signature dictionary leaves the document editable.
+DocMDP or /Perms still refuses edits, including an empty /Perms dictionary.
+Signed files keep the same refusal message. This replaces the empty-field
+rule in "One write guard for signed PDFs" above.

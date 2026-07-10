@@ -25,18 +25,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 TEST(WriteGuard, TokensOnlyCountRealSignatureNames) {
 	using pdf::detail::signatureTokens;
-	EXPECT_TRUE(signatureTokens("1 0 obj\n<< /FT /Sig >>\nendobj"));
-	EXPECT_TRUE(signatureTokens("<< /Type/Sig>>"));
-	EXPECT_TRUE(signatureTokens("<< /FT /S#69g >>"));
+	EXPECT_TRUE(signatureTokens("<< /FT /Sig /V << /Contents <00> >> >>"));
+	EXPECT_TRUE(
+	    signatureTokens("<< /V << /Contents (signed) >> /FT /S#69g >>"));
 	EXPECT_TRUE(signatureTokens("<< /TransformMethod /D#6fcMDP >>"));
 	EXPECT_TRUE(signatureTokens("<< /Perms << /UR3 9 0 R >> >>"));
-	EXPECT_TRUE(signatureTokens("7 0 obj\n/Sig\nendobj"));
-	EXPECT_TRUE(signatureTokens(
-	    "<< /Length 4 >>\nstream\nabcd\nendstream\n<< /FT /Sig >>"));
+	EXPECT_TRUE(signatureTokens("<< /Perms << >> >>"));
+	EXPECT_TRUE(signatureTokens("<< /Length 4 >>\nstream\nabcd\nendstream\n"
+	                            "<< /FT /Sig /V << /Contents <00> >> >>"));
 	EXPECT_FALSE(signatureTokens(""));
 	EXPECT_FALSE(
 	    signatureTokens("<< /SigFlags 0 /BaseFont /Signika-Regular >>"));
 	EXPECT_FALSE(signatureTokens("<< /Font << /Sig 5 0 R >> >>"));
+	EXPECT_FALSE(signatureTokens("1 0 obj\n<< /FT /Sig >>\nendobj"));
+	EXPECT_FALSE(signatureTokens("7 0 obj\n/Sig\nendobj"));
+	EXPECT_FALSE(signatureTokens("<< /Type /Sig /Contents <00> >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V null >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V << /Type /Sig >> >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V << /Contents < > >> >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V << /Contents () >> >>"));
+	EXPECT_FALSE(signatureTokens("<< /UR3 9 0 R >>"));
 	EXPECT_FALSE(signatureTokens("<< /Contents (/FT /Sig \\) /DocMDP) >>"));
 	EXPECT_FALSE(
 	    signatureTokens("% /FT /Sig\n<< /T <2F5369672F446F634D4450> >>"));
@@ -45,6 +53,31 @@ TEST(WriteGuard, TokensOnlyCountRealSignatureNames) {
 	// a wrong /Length falls back to the endstream keyword.
 	EXPECT_FALSE(signatureTokens("<< /Length 3 >>\nstream\n/FT /Sig /DocMDP\n"
 	                             "endstream\n<< /SigFlags 1 >>"));
+}
+
+TEST(WriteGuard, FollowsSignatureValuesAndInheritedFieldTypes) {
+	using pdf::detail::signatureTokens;
+	const std::string value = "8 2 obj\n<< /Contents <00> >>\nendobj\n";
+	EXPECT_TRUE(
+	    signatureTokens(value + "1 0 obj\n<< /FT /Sig /V 8 2 R >>\nendobj"));
+	EXPECT_TRUE(
+	    signatureTokens("1 0 obj\n<< /FT /Sig /V 8 2 R >>\nendobj\n" + value));
+	EXPECT_TRUE(signatureTokens(
+	    "1 0 obj\n<< /FT /Sig >>\nendobj\n"
+	    "2 0 obj\n<< /Parent 1 0 R /V 8 % a reference\n2 R >>\nendobj\n" +
+	    value));
+	EXPECT_FALSE(
+	    signatureTokens(value + "1 0 obj\n<< /FT /Sig /V 8 0 R >>\nendobj"));
+	EXPECT_FALSE(
+	    signatureTokens(value + "1 0 obj\n<< /FT /Tx /V 8 2 R >>\nendobj"));
+	EXPECT_FALSE(
+	    signatureTokens("1 0 obj\n<< /Parent 2 0 R /V 8 2 R >>\nendobj\n"
+	                    "2 0 obj\n<< /Parent 1 0 R >>\nendobj\n" +
+	                    value));
+	EXPECT_FALSE(
+	    signatureTokens("<< /FT /Sig /V << /Other << /Contents <00> >> >> >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V << /Contents (\\\n) >> >>"));
+	EXPECT_FALSE(signatureTokens("<< /FT /Sig /V << /Contents [<00>] >> >>"));
 }
 
 TEST(WriteGuard, SignedPdfRefusesNotesHighlightsAndDelete) {

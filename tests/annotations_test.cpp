@@ -2275,7 +2275,8 @@ TEST(Annotations, RectangleWritesKeepNeighborsAndRejectUnsafeTargets) {
 
 		    for (const auto& source :
 		         {annotationBytes("notes_denied.pdf"),
-		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig "
+		                            "/V << /Contents <00> >>"),
 		          sharedHighlightBytes(2)}) {
 			    const auto refused = pdf::openDocument(source);
 			    ASSERT_TRUE(refused.document);
@@ -2395,7 +2396,8 @@ TEST(Annotations, EllipseRefusalsAndCancellationKeepLiveBytesAndRevision) {
 		    }
 		    for (const auto& source :
 		         {annotationBytes("notes_denied.pdf"),
-		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig "
+		                            "/V << /Contents <00> >>"),
 		          sharedHighlightBytes(2)}) {
 			    const auto refused = pdf::openDocument(source);
 			    ASSERT_TRUE(refused.document);
@@ -2654,7 +2656,8 @@ TEST(Annotations, InkRefusalsAndCancellationKeepLiveBytesAndRevision) {
 		    }
 		    for (const auto& source :
 		         {annotationBytes("notes_denied.pdf"),
-		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig "
+		                            "/V << /Contents <00> >>"),
 		          sharedHighlightBytes(2)}) {
 			    const auto refused = pdf::openDocument(source);
 			    ASSERT_TRUE(refused.document);
@@ -3201,7 +3204,8 @@ TEST(Annotations, TextBoxRefusalsLeaveTheLiveDocumentIntact) {
 		    EXPECT_EQ(doc.serialize(1024 * 1024), original);
 		    for (const auto& bytes :
 		         {annotationBytes("notes_denied.pdf"),
-		          editableNoteBytes("/Contents (Keep) /FT /Sig"),
+		          editableNoteBytes("/Contents (Keep) /FT /Sig "
+		                            "/V << /Contents <00> >>"),
 		          sharedHighlightBytes(2)}) {
 			    const auto refused = pdf::openDocument(bytes);
 			    ASSERT_TRUE(refused.document);

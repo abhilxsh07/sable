@@ -454,25 +454,49 @@ TEST(FormFields, KeepsControlTypesAndAnnotationIndices) {
 		    }
 		    const auto annotations = opened.document->annotations(0);
 		    ASSERT_TRUE(annotations);
-		    // Delete is refused beside a signature field, so the index
-		    // shift is checked on the same form without one.
-		    EXPECT_FALSE(opened.document->removeAnnotation(
+		    ASSERT_TRUE(opened.document->removeAnnotation(
 		        annotations->entries[0].target));
-		    EXPECT_EQ(opened.document->writeRefusal(),
-		              pdf::WriteRefusal::Signed);
-		    fields.pop_back();
-		    const auto plain = pdf::openDocument(formBytes(fields));
-		    ASSERT_TRUE(plain.document);
-		    const auto before = plain.document->formFields(0);
-		    const auto notes = plain.document->annotations(0);
-		    ASSERT_TRUE(before && notes);
-		    ASSERT_TRUE(
-		        plain.document->removeAnnotation(notes->entries[0].target));
-		    const auto shifted = plain.document->formFields(0);
+		    EXPECT_EQ(opened.document->writeRefusal(), pdf::WriteRefusal::None);
+		    const auto shifted = opened.document->formFields(0);
 		    ASSERT_TRUE(shifted);
 		    ASSERT_FALSE(shifted->entries.empty());
 		    EXPECT_EQ(shifted->entries.front().index, 0);
-		    EXPECT_NE(shifted->revision, before->revision);
+		    EXPECT_NE(shifted->revision, result->revision);
+	    })
+	    .get();
+}
+
+TEST(FormFields, EmptySignatureFieldsAcceptNotesDeleteAndText) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const std::string value :
+		         {"", "/V null", "/V << >>",
+		          "/V << /Type /Sig /Contents <> /ByteRange [0 0 0 0] >>"}) {
+			    SCOPED_TRACE(value);
+			    const auto opened = pdf::openDocument(
+			        formBytes({WIDGET + "/FT /Tx /T (field) /V (old)",
+			                   WIDGET + "/FT /Sig /T (signature) " + value}));
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    EXPECT_EQ(pdf::DocumentFormTest::signatures(doc), 1);
+			    ASSERT_EQ(doc.addTextNote(0, 50, 60, u"New"), 2);
+			    const auto notes = doc.annotations(0);
+			    ASSERT_TRUE(notes && !notes->entries.empty());
+			    ASSERT_TRUE(doc.removeAnnotation(notes->entries.back().target));
+			    ASSERT_TRUE(doc.updateTextField(0, 0, u"old", u"new",
+			                                    doc.annotationRevision()));
+			    EXPECT_EQ(doc.writeRefusal(), pdf::WriteRefusal::None);
+			    const auto saved = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    const auto fields = reopened.document->formFields(0);
+			    ASSERT_TRUE(fields && fields->entries.size() == 2);
+			    EXPECT_EQ(fields->entries[0].value, "new");
+			    EXPECT_EQ(fields->entries[1].type,
+			              pdf::FormFieldType::Signature);
+		    }
 	    })
 	    .get();
 }

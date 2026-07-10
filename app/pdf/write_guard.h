@@ -18,20 +18,25 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
+#include <charconv>
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace pdf {
 // why a write is refused. None means the edit may go ahead.
 enum class WriteRefusal { None, Signed, Unavailable };
 
 namespace detail {
-// i read a rewritten copy token by token for signature names. stream
-// bodies, strings and comments are skipped and #xx escapes are decoded, so
-// /SigFlags, a font called /Signika or compressed bytes don't count.
-// /Sig only counts as a field type, a dictionary type or a bare object.
+// i follow signature fields to their values in the rewritten copy. an
+// empty field has no signature contents. strings, streams and comments
+// cannot supply dictionary keys, and #xx escapes are decoded first.
 inline bool signatureTokens(std::string_view bytes) {
 	const auto space = [](char c) {
 		return c == 0 || c == 9 || c == 10 || c == 12 || c == 13 || c == 32;
@@ -45,10 +50,74 @@ inline bool signatureTokens(std::string_view bytes) {
 		       : c >= 'A' && c <= 'F' ? c - 'A' + 10
 		                              : -1;
 	};
+	using Object = std::pair<std::uint32_t, std::uint32_t>;
+	const auto reference =
+	    [&](std::string_view first, std::size_t& at,
+	        std::string_view ending) -> std::optional<Object> {
+		std::size_t next = at;
+		const auto word = [&]() {
+			while (next < bytes.size()) {
+				if (space(bytes[next])) {
+					++next;
+				} else if (bytes[next] == '%') {
+					while (next < bytes.size() && bytes[next] != '\n' &&
+					       bytes[next] != '\r') {
+						++next;
+					}
+				} else {
+					break;
+				}
+			}
+			const auto start = next;
+			while (next < bytes.size() && !space(bytes[next]) &&
+			       !delimiter(bytes[next])) {
+				++next;
+			}
+			return bytes.substr(start, next - start);
+		};
+		Object id{};
+		const auto number = [](std::string_view text, std::uint32_t& value) {
+			const auto result =
+			    std::from_chars(text.data(), text.data() + text.size(), value);
+			return !text.empty() && result.ec == std::errc{} &&
+			       result.ptr == text.data() + text.size();
+		};
+		if (!number(first, id.first) || !id.first ||
+		    !number(word(), id.second) || word() != ending) {
+			return {};
+		}
+		at = next;
+		return id;
+	};
+	enum class Key { None, Other, FieldType, Contents, Value, Parent, Length };
+	struct Field {
+		bool typed = false, signature = false;
+		std::optional<Object> parent;
+	};
+	struct Dictionary {
+		Field field;
+		Key key = Key::None;
+		std::size_t arrays = 0;
+		std::optional<Object> object, value;
+		bool contents = false, valueContents = false, valueOfParent = false;
+	};
+	std::vector<Dictionary> dictionaries, candidates;
+	std::map<Object, Field> fields;
+	std::set<Object> contents;
+	std::optional<Object> object;
+	std::size_t arrays = 0;
+	const auto takeKey = [&]() {
+		return dictionaries.empty() || dictionaries.back().arrays != arrays
+		           ? Key::None
+		           : std::exchange(dictionaries.back().key, Key::None);
+	};
+	const auto stringValue = [&](bool nonempty) {
+		if (takeKey() == Key::Contents) {
+			dictionaries.back().contents = nonempty;
+		}
+	};
 	const std::size_t size = bytes.size();
-	std::string previous;
 	std::optional<std::size_t> length;
-	bool lengthNext = false, afterObj = false;
 	std::size_t at = 0;
 	while (at < size) {
 		const char c = bytes[at];
@@ -56,9 +125,6 @@ inline bool signatureTokens(std::string_view bytes) {
 			++at;
 			continue;
 		}
-		const bool wantLength = lengthNext, bare = afterObj;
-		lengthNext = false;
-		afterObj = false;
 		if (c == '%') {
 			while (at < size && bytes[at] != '\n' && bytes[at] != '\r') {
 				++at;
@@ -66,28 +132,82 @@ inline bool signatureTokens(std::string_view bytes) {
 			continue;
 		}
 		if (c == '(') {
-			int depth = 0;
-			do {
-				if (bytes[at] == '\\') {
-					++at;
-				} else if (bytes[at] == '(') {
+			int depth = 1;
+			bool nonempty = false;
+			++at;
+			while (at < size && depth > 0) {
+				const char value = bytes[at++];
+				if (value == '\\' && at < size) {
+					const char escaped = bytes[at++];
+					if (escaped == '\r' && at < size && bytes[at] == '\n') {
+						++at;
+					}
+					nonempty = nonempty || (escaped != '\r' && escaped != '\n');
+				} else if (value == '(') {
 					++depth;
-				} else if (bytes[at] == ')') {
+					nonempty = true;
+				} else if (value == ')') {
 					--depth;
+					nonempty = nonempty || depth > 0;
+				} else {
+					nonempty = true;
 				}
-				++at;
-			} while (at < size && depth > 0);
-			previous.clear();
+			}
+			stringValue(nonempty);
 			continue;
 		}
 		if (c == '<') {
 			if (at + 1 < size && bytes[at + 1] == '<') {
+				const bool value = takeKey() == Key::Value;
+				Dictionary dictionary;
+				dictionary.arrays = arrays;
+				dictionary.valueOfParent = value;
+				if (dictionaries.empty() && arrays == 0) {
+					dictionary.object = object;
+				}
+				dictionaries.push_back(dictionary);
 				at += 2;
 			} else {
-				const auto close = bytes.find('>', at);
-				at = close == std::string_view::npos ? size : close + 1;
+				bool nonempty = false;
+				for (++at; at < size && bytes[at] != '>'; ++at) {
+					nonempty = nonempty || hex(bytes[at]) >= 0;
+				}
+				at += at < size;
+				stringValue(nonempty);
 			}
-			previous.clear();
+			continue;
+		}
+		if (c == '>' && bytes.substr(at, 2) == ">>") {
+			if (!dictionaries.empty()) {
+				const auto dictionary = dictionaries.back();
+				dictionaries.pop_back();
+				if (dictionary.object) {
+					if (dictionary.field.typed || dictionary.field.parent) {
+						fields[*dictionary.object] = dictionary.field;
+					}
+					if (dictionary.contents) {
+						contents.insert(*dictionary.object);
+					}
+				}
+				if (dictionary.value || dictionary.valueContents) {
+					candidates.push_back(dictionary);
+				}
+				if (dictionary.valueOfParent && !dictionaries.empty()) {
+					dictionaries.back().valueContents = dictionary.contents;
+				}
+			}
+			at += 2;
+			continue;
+		}
+		if (c == '[') {
+			takeKey();
+			++arrays;
+			++at;
+			continue;
+		}
+		if (c == ']') {
+			arrays -= arrays > 0;
+			++at;
 			continue;
 		}
 		if (c == '/') {
@@ -103,16 +223,25 @@ inline bool signatureTokens(std::string_view bytes) {
 					name.push_back(bytes[at]);
 				}
 			}
-			if (name == "DocMDP" || name == "UR3" ||
-			    (name == "Sig" &&
-			     (bare || previous == "FT" || previous == "Type"))) {
+			if (name == "DocMDP" || name == "Perms") {
 				return true;
 			}
-			lengthNext = name == "Length";
-			previous = std::move(name);
+			if (!dictionaries.empty() && dictionaries.back().arrays == arrays) {
+				auto& dictionary = dictionaries.back();
+				if (dictionary.key == Key::None) {
+					dictionary.key = name == "FT"         ? Key::FieldType
+					                 : name == "Contents" ? Key::Contents
+					                 : name == "V"        ? Key::Value
+					                 : name == "Parent"   ? Key::Parent
+					                 : name == "Length"   ? Key::Length
+					                                      : Key::Other;
+				} else if (takeKey() == Key::FieldType) {
+					dictionary.field.typed = true;
+					dictionary.field.signature = name == "Sig";
+				}
+			}
 			continue;
 		}
-		previous.clear();
 		if (delimiter(c)) {
 			++at;
 			continue;
@@ -122,17 +251,22 @@ inline bool signatureTokens(std::string_view bytes) {
 			++at;
 		}
 		const auto word = bytes.substr(start, at - start);
-		if (word == "obj") {
+		const auto key = takeKey();
+		if (dictionaries.empty() && arrays == 0 && word != "stream") {
+			object = reference(word, at, "obj");
 			length.reset();
-			afterObj = true;
-		} else if (wantLength) {
-			std::size_t value = 0;
-			bool number = word.size() <= 9;
-			for (const char digit : word) {
-				number = number && digit >= '0' && digit <= '9';
-				value = value * 10 + static_cast<std::size_t>(digit - '0');
-			}
-			length = number ? std::optional<std::size_t>(value) : std::nullopt;
+		} else if (key == Key::Value) {
+			dictionaries.back().value = reference(word, at, "R");
+		} else if (key == Key::Parent) {
+			dictionaries.back().field.parent = reference(word, at, "R");
+		} else if (key == Key::Length) {
+			std::size_t value{};
+			const auto result =
+			    std::from_chars(word.data(), word.data() + word.size(), value);
+			length = result.ec == std::errc{} &&
+			                 result.ptr == word.data() + word.size()
+			             ? std::optional<std::size_t>(value)
+			             : std::nullopt;
 		} else if (word == "stream") {
 			if (at < size && bytes[at] == '\r') {
 				++at;
@@ -156,6 +290,25 @@ inline bool signatureTokens(std::string_view bytes) {
 			}
 			at = end == std::string_view::npos ? size : end + 9;
 			length.reset();
+		}
+	}
+	for (const auto& candidate : candidates) {
+		if (!candidate.valueContents &&
+		    (!candidate.value || !contents.contains(*candidate.value))) {
+			continue;
+		}
+		auto field = candidate.field;
+		std::set<Object> visited;
+		while (!field.typed && field.parent &&
+		       visited.insert(*field.parent).second) {
+			const auto found = fields.find(*field.parent);
+			if (found == fields.end()) {
+				break;
+			}
+			field = found->second;
+		}
+		if (field.signature) {
+			return true;
 		}
 	}
 	return false;
