@@ -617,6 +617,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	pdf::PageCache m_cache;
 	// renders that came back empty, so they aren't asked for again
 	std::set<pdf::PageKey> m_failed;
+	std::set<pdf::PageKey> m_loggedPlaceholders;
+	std::set<std::size_t> m_uploadFailed;
 	bool m_rendering = false;
 	bool m_closed = false;
 	bool m_linkPending = false;

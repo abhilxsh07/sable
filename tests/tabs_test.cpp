@@ -100,6 +100,7 @@ struct TabsTest {
 	bool musicOnly = false;
 	bool selectionOnly = false;
 	bool rotationOnly = false;
+	bool redrawOnly = false;
 	int rotationRound = 0;
 	helpers::PageSize rotationSize{};
 	bool findOnly = false;
@@ -2138,6 +2139,54 @@ struct TabsTest {
 			status.Text(
 			    L"PASS: Windows input delivery, text editing, zoom, Find, "
 			    L"rotation, tools, presentation and dialog isolation");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
+
+	void redrawTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current || ticks < 3) {
+			return;
+		}
+		auto& viewer = *get_self<ViewerPage>(current);
+		if (!ready(viewer) || viewer.m_rendering) {
+			return;
+		}
+		const auto wanted = viewer.key(0);
+		switch (step) {
+		case 0:
+			if (!viewer.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			viewer.m_loggedPlaceholders.clear();
+			viewer.m_cache.clear();
+			viewer.m_failed.insert(wanted);
+			viewer.m_device.bitmaps.erase(0);
+			viewer.invalidate(0);
+			break;
+		case 1:
+			if (!viewer.m_loggedPlaceholders.contains(wanted)) {
+				return;
+			}
+			check(!viewer.m_device.bitmaps.contains(0),
+			      "the failed page did not stay on its placeholder");
+			viewer.invalidate(0);
+			break;
+		case 2:
+			check(viewer.m_loggedPlaceholders.count(wanted) == 1,
+			      "the idle placeholder diagnostic was not retained");
+			viewer.m_failed.erase(wanted);
+			viewer.requestNext();
+			break;
+		case 3:
+			if (!viewer.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			status.Text(L"PASS: idle placeholder diagnosed and page restored");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
@@ -8251,6 +8300,10 @@ struct TabsTest {
 				rotationTick(*self);
 				return;
 			}
+			if (redrawOnly) {
+				redrawTick(*self);
+				return;
+			}
 			if (propertiesOnly) {
 				propertiesTick(*self);
 				return;
@@ -9050,6 +9103,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->rotationOnly =
 	    GetEnvironmentVariableW(L"SableRotationTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->redrawOnly = GetEnvironmentVariableW(L"SableRedrawTest", mode, 8) &&
+	                    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->passwordFormOnly || state->mixedFormOnly || state->choiceOnly ||
@@ -9059,10 +9114,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->musicOnly || state->selectionOnly || state->findOnly ||
 	    state->outlineOnly || state->attachmentsOnly || state->commentsOnly ||
 	    state->attachmentSaveOnly || state->annotationActionsOnly ||
-	    state->rotationOnly || state->propertiesOnly || state->panOnly ||
-	    state->layoutOnly || state->presentationOnly || state->saveCopyOnly ||
-	    state->keyboardOnly || state->keyboardInputOnly ||
-	    state->gesturesOnly || state->longGesturesOnly) {
+	    state->rotationOnly || state->redrawOnly || state->propertiesOnly ||
+	    state->panOnly || state->layoutOnly || state->presentationOnly ||
+	    state->saveCopyOnly || state->keyboardOnly ||
+	    state->keyboardInputOnly || state->gesturesOnly ||
+	    state->longGesturesOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -9165,7 +9221,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		                         : L"tests/fixtures/comments.pdf",
 		                     1);
 	} else if (state->selectionOnly || state->findOnly || state->rotationOnly ||
-	           state->panOnly || state->gesturesOnly ||
+	           state->redrawOnly || state->panOnly || state->gesturesOnly ||
 	           state->longGesturesOnly || state->layoutOnly ||
 	           state->presentationOnly || state->keyboardOnly ||
 	           state->keyboardInputOnly) {

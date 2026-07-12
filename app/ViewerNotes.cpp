@@ -982,6 +982,8 @@ void ViewerPage::refreshNotes() {
 	m_session->cancelRender();
 	m_cache.clear();
 	m_failed.clear();
+	m_loggedPlaceholders.clear();
+	m_uploadFailed.clear();
 	// keep the pages on screen until the new revision has pixels to show.
 	m_thumbLoaded.clear();
 	for (const auto& [page, button] : m_thumbs) {

@@ -1987,13 +1987,21 @@ bool ViewerPage::upload(Device& device, std::size_t page,
 	com_ptr<ID2D1Bitmap1> copy;
 	// a lost device shows up here too; the surface notices it on its next
 	// draw, until then the page stays a placeholder
-	if (FAILED(device.context->CreateBitmap(
-	        D2D1::SizeU(static_cast<UINT32>(bitmap.width),
-	                    static_cast<UINT32>(bitmap.height)),
-	        bitmap.pixels.data(), static_cast<UINT32>(bitmap.stride), props,
-	        copy.put()))) {
+	const HRESULT result = device.context->CreateBitmap(
+	    D2D1::SizeU(static_cast<UINT32>(bitmap.width),
+	                static_cast<UINT32>(bitmap.height)),
+	    bitmap.pixels.data(), static_cast<UINT32>(bitmap.stride), props,
+	    copy.put());
+	if (FAILED(result)) {
+		m_uploadFailed.insert(page);
+		diagnostics::write(
+		    diagnostics::Level::Warning,
+		    "Page bitmap upload failed, page " + std::to_string(page + 1) +
+		        ", HRESULT " +
+		        std::to_string(static_cast<std::uint32_t>(result)));
 		return false;
 	}
+	m_uploadFailed.erase(page);
 	device.bitmaps.insert_or_assign(
 	    page, Device::Raster{std::move(copy), m_renderVersion});
 	return true;
@@ -2025,6 +2033,7 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 		const auto at = pixels(page);
 		const auto found = m_device.bitmaps.find(page);
 		if (found != m_device.bitmaps.end()) {
+			m_loggedPlaceholders.erase(key(page));
 			const auto& bitmap = found->second.bitmap;
 			const auto size = bitmap->GetPixelSize();
 			m_device.filter->setInput(bitmap.get());
@@ -2048,6 +2057,22 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 				context.SetTransform(base);
 			}
 			continue;
+		}
+		const auto wanted = key(page);
+		if (!m_rendering && !m_settling && page >= m_visible.first &&
+		    page < m_visible.end &&
+		    m_loggedPlaceholders.insert(wanted).second) {
+			const auto reason = m_uploadFailed.contains(page) ? "upload failed"
+			                    : m_failed.contains(wanted)   ? "render failed"
+			                                                  : "no request";
+			diagnostics::write(
+			    diagnostics::Level::Warning,
+			    "Visible page placeholder while idle, page " +
+			        std::to_string(page + 1) + ", raster " +
+			        std::to_string(wanted.width) + "x" +
+			        std::to_string(wanted.height) + ", rotation " +
+			        std::to_string(wanted.rotation) + ", revision " +
+			        std::to_string(m_renderVersion) + ", reason: " + reason);
 		}
 		context.FillRectangle(D2D1::RectF(static_cast<float>(at.x),
 		                                  static_cast<float>(at.y),
