@@ -2957,3 +2957,10 @@ Steps use decimal hundredths to choose their next tenth, and wheel ticks
 keep their remainder until the direction changes. Presets, menu values
 and fixed-key priority follow the same description. The comments describe
 that behavior, and pdf.js stays out of the shipped notices.
+
+## Recovering failed page rasters (2026-11-11)
+
+An empty raster gets one retry for its page, size and rotation. Another
+failure waits for an edit or rotation, keeping a bad page from spinning
+the render queue. A bitmap upload failure queues one device rebuild for
+that raster outside drawing. Cached page images supply the new device.

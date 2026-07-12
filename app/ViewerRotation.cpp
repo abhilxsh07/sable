@@ -83,6 +83,10 @@ void ViewerPage::rotateView(int turns) {
 		m_device.filter->setInput(nullptr);
 		m_device.bitmaps.clear();
 		m_failed.clear();
+		m_retriedRenders.clear();
+		m_retriedUploads.clear();
+		m_loggedPlaceholders.clear();
+		m_uploadFailed.clear();
 		settle();
 		cancelSelectionDrag();
 		dropInkStroke();

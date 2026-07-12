@@ -101,6 +101,7 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool rotationOnly = false;
 	bool redrawOnly = false;
+	winrt::com_ptr<ID2D1Device> redrawDevice;
 	int rotationRound = 0;
 	helpers::PageSize rotationSize{};
 	bool findOnly = false;
@@ -2164,11 +2165,25 @@ struct TabsTest {
 			}
 			viewer.m_loggedPlaceholders.clear();
 			viewer.m_cache.clear();
-			viewer.m_failed.insert(wanted);
 			viewer.m_device.bitmaps.erase(0);
-			viewer.invalidate(0);
+			viewer.rendered({wanted, {}, false});
+			check(viewer.m_retriedRenders.contains(wanted),
+			      "an empty render did not start its retry");
 			break;
 		case 1:
+			if (!viewer.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			check(!viewer.m_failed.contains(wanted),
+			      "the successful retry left a failed raster");
+			viewer.m_cache.clear();
+			viewer.m_device.bitmaps.erase(0);
+			viewer.rendered({wanted, {}, false});
+			check(viewer.m_failed.contains(wanted),
+			      "the repeated empty render was not bounded");
+			viewer.invalidate(0);
+			break;
+		case 2:
 			if (!viewer.m_loggedPlaceholders.contains(wanted)) {
 				return;
 			}
@@ -2176,20 +2191,51 @@ struct TabsTest {
 			      "the failed page did not stay on its placeholder");
 			viewer.invalidate(0);
 			break;
-		case 2:
+		case 3:
 			check(viewer.m_loggedPlaceholders.count(wanted) == 1,
 			      "the idle placeholder diagnostic was not retained");
 			viewer.m_failed.erase(wanted);
+			viewer.m_retriedRenders.erase(wanted);
 			viewer.requestNext();
 			break;
-		case 3:
+		case 4: {
 			if (!viewer.m_device.bitmaps.contains(0)) {
 				return;
 			}
-			status.Text(L"PASS: idle placeholder diagnosed and page restored");
+			redrawDevice = viewer.m_device.device;
+			viewer.m_device.bitmaps.erase(0);
+			const auto maximum =
+			    viewer.m_device.context->GetMaximumBitmapSize();
+			const pdf::Bitmap oversized{
+			    static_cast<int>(maximum) + 1, 1, 0, {}};
+			check(!viewer.showRaster(0, &oversized) &&
+			          viewer.m_deviceRecoveryPending &&
+			          viewer.m_retriedUploads.contains(wanted),
+			      "a failed upload did not queue device recovery");
+			check(!viewer.showRaster(0, &oversized),
+			      "a repeated oversized upload unexpectedly succeeded");
+			break;
+		}
+		case 5: {
+			if (viewer.m_deviceRecoveryPending ||
+			    !viewer.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			check(viewer.m_device.device.get() != redrawDevice.get(),
+			      "device recovery did not replace the failed device");
+			const auto maximum =
+			    viewer.m_device.context->GetMaximumBitmapSize();
+			const pdf::Bitmap oversized{
+			    static_cast<int>(maximum) + 1, 1, 0, {}};
+			check(!viewer.showRaster(0, &oversized) &&
+			          !viewer.m_deviceRecoveryPending,
+			      "the upload recovery kept queuing rebuilds");
+			status.Text(
+			    L"PASS: bounded render retry and upload device recovery");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
+		}
 		}
 		++step;
 		ticks = 0;

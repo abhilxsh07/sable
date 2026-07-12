@@ -1859,7 +1859,7 @@ void ViewerPage::requestNext() {
 			showRaster(page, bitmap);
 			continue;
 		}
-		if (m_settling || m_rendering || m_failed.contains(wanted)) {
+		if (m_settling || m_rendering || !retryFailed(wanted)) {
 			continue;
 		}
 		startRender(wanted);
@@ -1893,11 +1893,25 @@ void ViewerPage::requestNext() {
 			showThumbnail(page, *bitmap);
 			continue;
 		}
-		if (m_settling || m_rendering || m_failed.contains(wanted)) {
+		if (m_settling || m_rendering || !retryFailed(wanted)) {
 			continue;
 		}
 		startRender(wanted);
 	}
+}
+
+bool ViewerPage::retryFailed(const pdf::PageKey& wanted) {
+	if (!m_failed.contains(wanted)) {
+		return true;
+	}
+	if (!m_retriedRenders.insert(wanted).second) {
+		return false;
+	}
+	m_failed.erase(wanted);
+	diagnostics::write(diagnostics::Level::Info,
+	                   "Retrying page raster, page " +
+	                       std::to_string(wanted.page + 1));
+	return true;
 }
 
 void ViewerPage::startRender(const pdf::PageKey& key) {
@@ -1915,6 +1929,9 @@ void ViewerPage::startRender(const pdf::PageKey& key) {
 			}
 		});
 	});
+	if (!m_rendering) {
+		m_failed.insert(key);
+	}
 }
 
 void ViewerPage::rendered(pdf::RenderResult result) {
@@ -1999,6 +2016,24 @@ bool ViewerPage::upload(Device& device, std::size_t page,
 		    "Page bitmap upload failed, page " + std::to_string(page + 1) +
 		        ", HRESULT " +
 		        std::to_string(static_cast<std::uint32_t>(result)));
+		// i rebuild outside drawing and allow one attempt for this raster.
+		if (&device == &m_device && m_layout && m_layout->contains(page) &&
+		    !m_deviceRecoveryPending &&
+		    m_retriedUploads.insert(key(page)).second) {
+			m_deviceRecoveryPending = true;
+			const bool queued =
+			    DispatcherQueue().TryEnqueue([weak = get_weak()] {
+				    if (const auto self = weak.get()) {
+					    self->m_deviceRecoveryPending = false;
+					    if (!self->m_closed) {
+						    self->rebuildDevice();
+					    }
+				    }
+			    });
+			if (!queued) {
+				m_deviceRecoveryPending = false;
+			}
+		}
 		return false;
 	}
 	m_uploadFailed.erase(page);

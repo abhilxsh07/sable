@@ -540,6 +540,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void showThumbnail(std::size_t page, const pdf::Bitmap& bitmap);
 	pdf::PageKey thumbKey(std::size_t page) const;
 	void queueRequest();
+	bool retryFailed(const pdf::PageKey& key);
 	void startRender(const pdf::PageKey& key);
 	double imageLeft();
 	void onWheel(
@@ -615,8 +616,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	helpers::PageRange m_visible;
 	helpers::PageRange m_wanted;
 	pdf::PageCache m_cache;
-	// renders that came back empty, so they aren't asked for again
+	// failed rasters get one retry before an edit or rotation resets them.
 	std::set<pdf::PageKey> m_failed;
+	std::set<pdf::PageKey> m_retriedRenders, m_retriedUploads;
+	bool m_deviceRecoveryPending = false;
 	std::set<pdf::PageKey> m_loggedPlaceholders;
 	std::set<std::size_t> m_uploadFailed;
 	bool m_rendering = false;
