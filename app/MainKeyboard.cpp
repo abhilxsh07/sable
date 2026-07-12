@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace winrt::Sable::implementation {
-// port of viewer.mjs webViewerKeyDown() and NightPDF's fixed menu keys.
+// fixed menu keys take priority over editable bindings and viewer keys.
 bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	auto self = this;
 	const auto current = Viewer();

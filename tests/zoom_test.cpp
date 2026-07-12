@@ -67,6 +67,13 @@ TEST(Zoom, SeveralStepsAtOnce) {
 	EXPECT_DOUBLE_EQ(helpers::zoomOut(1, 20), helpers::MIN_ZOOM);
 }
 
+TEST(Zoom, ZeroOrNegativeCountsStillMakeOneStep) {
+	for (const int count : {0, -1, -20}) {
+		EXPECT_DOUBLE_EQ(helpers::zoomIn(1.25, count), 1.4);
+		EXPECT_DOUBLE_EQ(helpers::zoomOut(1.25, count), 1.1);
+	}
+}
+
 TEST(AutoZoom, PortraitFillsTheWidthUpTo125) {
 	const helpers::PageSize a4{595.28, 841.89};
 	EXPECT_DOUBLE_EQ(helpers::autoZoom(a4, 1920, 984), 1.25);
@@ -221,6 +228,15 @@ TEST(WheelTicks, ChangingDirectionDropsTheRemainder) {
 	EXPECT_EQ(ticks.add(helpers::wheelTicks(120, 3)), 3);
 	EXPECT_EQ(ticks.add(helpers::wheelTicks(-120, 3)), -3);
 	EXPECT_EQ(ticks.add(helpers::wheelTicks(-120, 3)), -3);
+}
+
+TEST(WheelTicks, ZeroKeepsTheRemainderAndAReverseEventDropsIt) {
+	helpers::WheelTicks ticks;
+	EXPECT_EQ(ticks.add(-0.75), 0);
+	EXPECT_EQ(ticks.add(0), 0);
+	EXPECT_EQ(ticks.add(-0.5), -1);
+	EXPECT_EQ(ticks.add(0.75), 0);
+	EXPECT_EQ(ticks.add(0.25), 1);
 }
 
 TEST(WheelTicks, MoreLinesPerNotchMeansMoreTicks) {

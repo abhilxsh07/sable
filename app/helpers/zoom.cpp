@@ -22,58 +22,87 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <system_error>
+#include <cstdint>
+#include <limits>
 
 namespace helpers {
 namespace {
-constexpr double STEP = 1.1;
-constexpr double PDF_TO_DIPS = 96.0 / 72.0;
-
-// JavaScript's (value).toFixed(2), read back as a number
-double toFixed2(double value) {
+// i round to decimal hundredths before choosing the tenth for this step.
+double stepScale(double value, bool increasing) {
 	char text[64];
-	std::snprintf(text, sizeof(text), "%.2f", value);
-	return std::strtod(text, nullptr);
+	const auto formatted = std::to_chars(text, text + sizeof(text), value,
+	                                     std::chars_format::fixed, 2);
+	if (formatted.ec != std::errc{}) {
+		return value;
+	}
+	const auto point = std::find(text, formatted.ptr, '.');
+	std::int64_t whole{};
+	const auto parsed = std::from_chars(text, point, whole);
+	if (parsed.ec != std::errc{} || parsed.ptr != point ||
+	    formatted.ptr - point != 3 ||
+	    whole >= (std::numeric_limits<std::int64_t>::max)() / 100 ||
+	    whole <= (std::numeric_limits<std::int64_t>::min)() / 100) {
+		return value;
+	}
+	const int fraction = (point[1] - '0') * 10 + point[2] - '0';
+	const auto hundredths = whole * 100 + (value < 0 ? -fraction : fraction);
+	auto tenths = hundredths / 10;
+	if (hundredths % 10 != 0) {
+		if (increasing && hundredths > 0) {
+			++tenths;
+		} else if (!increasing && hundredths < 0) {
+			--tenths;
+		}
+	}
+	return static_cast<double>(tenths) / 10;
 }
 } // namespace
 
 double zoomIn(double zoom, int steps) {
-	do {
-		zoom = std::ceil(toFixed2(zoom * STEP) * 10) / 10;
-	} while (--steps > 0 && zoom < MAX_ZOOM);
-	return (std::min)(MAX_ZOOM, zoom);
+	const int count = (std::max)(1, steps);
+	for (int step = 0; step < count; ++step) {
+		zoom = stepScale(zoom * 1.1, true);
+		if (!(zoom < MAX_ZOOM)) {
+			return (std::min)(MAX_ZOOM, zoom);
+		}
+	}
+	return zoom;
 }
 
 double zoomOut(double zoom, int steps) {
-	do {
-		zoom = std::floor(toFixed2(zoom / STEP) * 10) / 10;
-	} while (--steps > 0 && zoom > MIN_ZOOM);
-	return (std::max)(MIN_ZOOM, zoom);
+	const int count = (std::max)(1, steps);
+	for (int step = 0; step < count; ++step) {
+		zoom = stepScale(zoom / 1.1, false);
+		if (!(zoom > MIN_ZOOM)) {
+			return (std::max)(MIN_ZOOM, zoom);
+		}
+	}
+	return zoom;
 }
 
 double presetZoom(ZoomPreset preset, const PageSize& page, double viewportWidth,
                   double viewportHeight) {
 	if (preset == ZoomPreset::None || preset == ZoomPreset::PageActual ||
-	    !(page.width > 0) || !(page.height > 0) || !(viewportWidth > 0) ||
-	    !(viewportHeight > 0)) {
+	    !(page.width > 0 && page.height > 0 && viewportWidth > 0 &&
+	      viewportHeight > 0)) {
 		return 1;
 	}
-	// SCROLLBAR_PADDING and VERTICAL_PADDING in ui_utils.js
-	const double widthZoom = (viewportWidth - 40) / (page.width * PDF_TO_DIPS);
-	const double heightZoom =
-	    (viewportHeight - 5) / (page.height * PDF_TO_DIPS);
-	double zoom = widthZoom;
-	if (preset == ZoomPreset::PageFit) {
-		zoom = (std::min)(widthZoom, heightZoom);
-	} else if (preset == ZoomPreset::Auto) {
-		const bool portrait = page.width <= page.height;
-		zoom = (std::min)(MAX_AUTO_ZOOM,
-		                  portrait ? widthZoom
-		                           : (std::min)(widthZoom, heightZoom));
+	const double pointsToPixels = 96.0 / 72.0;
+	const double width = (viewportWidth - 40) / (page.width * pointsToPixels);
+	const double height = (viewportHeight - 5) / (page.height * pointsToPixels);
+	double scale = width;
+	switch (preset) {
+	case ZoomPreset::PageFit:
+		scale = (std::min)(width, height);
+		break;
+	case ZoomPreset::Auto:
+		scale = page.width <= page.height ? width : (std::min)(width, height);
+		scale = (std::min)(MAX_AUTO_ZOOM, scale);
+		break;
+	default:
+		break;
 	}
-	return std::clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+	return std::clamp(scale, MIN_ZOOM, MAX_ZOOM);
 }
 
 double autoZoom(const PageSize& page, double viewportWidth,
@@ -82,28 +111,31 @@ double autoZoom(const PageSize& page, double viewportWidth,
 }
 
 bool followsViewport(ZoomPreset preset) {
-	return preset == ZoomPreset::Auto || preset == ZoomPreset::PageFit ||
-	       preset == ZoomPreset::PageWidth;
+	switch (preset) {
+	case ZoomPreset::Auto:
+	case ZoomPreset::PageFit:
+	case ZoomPreset::PageWidth:
+		return true;
+	default:
+		return false;
+	}
 }
 
 std::optional<ZoomValue> zoomValue(std::string_view value) {
-	// parseFloat skips leading white space and reads the longest number at
-	// the start, so "1.5x" is 1.5 too
-	auto text = value;
-	while (!text.empty() && (text.front() == ' ' || text.front() == '\t' ||
-	                         text.front() == '\n' || text.front() == '\r')) {
-		text.remove_prefix(1);
+	auto numberText = value;
+	const auto start = numberText.find_first_not_of(" \t\r\n");
+	numberText.remove_prefix(start == std::string_view::npos ? numberText.size()
+	                                                         : start);
+	if (numberText.starts_with('+')) {
+		numberText.remove_prefix(1);
 	}
-	if (!text.empty() && text.front() == '+') {
-		text.remove_prefix(1);
-	}
-	double number = 0;
-	const auto [ptr, error] =
-	    std::from_chars(text.data(), text.data() + text.size(), number);
-	if (ptr != text.data() && error == std::errc{} && std::isfinite(number) &&
-	    number > 0) {
+	double scale{};
+	const auto parsed = std::from_chars(
+	    numberText.data(), numberText.data() + numberText.size(), scale);
+	if (parsed.ptr != numberText.data() && parsed.ec == std::errc{} &&
+	    std::isfinite(scale) && scale > 0) {
 		return ZoomValue{ZoomPreset::None,
-		                 std::clamp(number, MIN_ZOOM, MAX_ZOOM)};
+		                 std::clamp(scale, MIN_ZOOM, MAX_ZOOM)};
 	}
 	if (value == "auto") {
 		return ZoomValue{ZoomPreset::Auto};
@@ -117,53 +149,60 @@ std::optional<ZoomValue> zoomValue(std::string_view value) {
 	if (value == "page-width") {
 		return ZoomValue{ZoomPreset::PageWidth};
 	}
-	return std::nullopt;
+	return {};
 }
 
 bool zoomChoiceSelected(const ZoomValue& choice, ZoomPreset preset,
                         double zoom) {
-	if (choice.preset != preset) {
+	if (preset != choice.preset) {
 		return false;
 	}
-	return preset != ZoomPreset::None || std::abs(choice.zoom - zoom) < 1e-9;
+	if (preset == ZoomPreset::None) {
+		return std::abs(zoom - choice.zoom) < 1e-9;
+	}
+	return true;
 }
 
 std::string zoomPercent(double zoom) {
-	// Math.round(pageScale * 10000) / 100
-	const double percent = std::round(zoom * 10000) / 100;
-	char text[64];
-	std::snprintf(text, sizeof(text), "%.2f", percent);
-	std::string number = text;
-	while (number.back() == '0') {
-		number.pop_back();
+	const auto hundredths = std::llround(zoom * 10000);
+	std::string result = std::to_string(hundredths / 100);
+	for (auto remaining = result.size(); remaining > 3; remaining -= 3) {
+		result.insert(remaining - 3, 1, ',');
 	}
-	if (number.back() == '.') {
-		number.pop_back();
+	const auto fraction = hundredths % 100;
+	if (fraction) {
+		result += '.';
+		if (fraction < 10) {
+			result += '0';
+		}
+		result += std::to_string(fraction);
+		if (result.back() == '0') {
+			result.pop_back();
+		}
 	}
-	// en-US grouping of the whole part
-	const auto point = number.find('.');
-	const auto digits = point == std::string::npos ? number.size() : point;
-	for (auto at = digits; at > 3; at -= 3) {
-		number.insert(at - 3, 1, ',');
-	}
-	return number + "%";
+	result += '%';
+	return result;
 }
 
 int WheelTicks::add(double ticks) {
-	if ((m_unused > 0 && ticks < 0) || (m_unused < 0 && ticks > 0)) {
-		m_unused = 0;
+	if (ticks != 0 && m_remainder != 0 &&
+	    std::signbit(ticks) != std::signbit(m_remainder)) {
+		m_remainder = 0;
 	}
-	m_unused += ticks;
-	const double whole = std::trunc(m_unused);
-	m_unused -= whole;
+	double whole{};
+	m_remainder = std::modf(m_remainder + ticks, &whole);
 	return static_cast<int>(whole);
 }
 
 double wheelTicks(int wheelDelta, int linesPerNotch) {
 	if (linesPerNotch <= 0) {
-		return wheelDelta > 0 ? 1 : (wheelDelta < 0 ? -1 : 0);
+		if (wheelDelta == 0) {
+			return 0;
+		}
+		return wheelDelta > 0 ? 1 : -1;
 	}
-	const double pixels = wheelDelta / 120.0 * linesPerNotch * (100.0 / 3.0);
-	return pixels / 30.0;
+	const double notches = wheelDelta / 120.0;
+	const double pixels = notches * linesPerNotch * (100.0 / 3.0);
+	return pixels / 30;
 }
 } // namespace helpers

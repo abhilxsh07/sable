@@ -2949,3 +2949,11 @@ field or an unused signature dictionary leaves the document editable.
 DocMDP or /Perms still refuses edits, including an empty /Perms dictionary.
 Signed files keep the same refusal message. This replaces the empty-field
 rule in "One write guard for signed PDFs" above.
+
+## Zoom behavior rewrite (2026-11-11)
+
+I rewrote the zoom calculations from the saved behavior description.
+Steps use decimal hundredths to choose their next tenth, and wheel ticks
+keep their remainder until the direction changes. Presets, menu values
+and fixed-key priority follow the same description. The comments describe
+that behavior, and pdf.js stays out of the shipped notices.
