@@ -1852,6 +1852,7 @@ void ViewerPage::requestNext() {
 		if (const auto found = m_device.bitmaps.find(page);
 		    found != m_device.bitmaps.end() &&
 		    found->second.version == m_renderVersion &&
+		    found->second.rotation == m_rotation &&
 		    sameSize(*found->second.bitmap, wanted)) {
 			continue;
 		}
@@ -2038,7 +2039,7 @@ bool ViewerPage::upload(Device& device, std::size_t page,
 	}
 	m_uploadFailed.erase(page);
 	device.bitmaps.insert_or_assign(
-	    page, Device::Raster{std::move(copy), m_renderVersion});
+	    page, Device::Raster{std::move(copy), m_renderVersion, m_rotation});
 	return true;
 }
 
@@ -2071,20 +2072,40 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 			m_loggedPlaceholders.erase(key(page));
 			const auto& bitmap = found->second.bitmap;
 			const auto size = bitmap->GetPixelSize();
+			const int turns =
+			    helpers::quarterTurns(m_rotation - found->second.rotation);
 			m_device.filter->setInput(bitmap.get());
-			if (static_cast<int>(size.width) == at.width &&
+			if (turns == 0 && static_cast<int>(size.width) == at.width &&
 			    static_cast<int>(size.height) == at.height) {
 				context.DrawImage(m_device.filter->output(),
 				                  D2D1::Point2F(static_cast<float>(at.x),
 				                                static_cast<float>(at.y)));
 			} else {
-				// rendered before a zoom, or capped: stretched to fit
+				// i keep the previous view until its replacement has pixels.
 				D2D1::Matrix3x2F base;
 				context.GetTransform(&base);
+				const float width = static_cast<float>(size.width);
+				const float height = static_cast<float>(size.height);
+				D2D1::Matrix3x2F turn = D2D1::Matrix3x2F::Identity();
+				switch (turns) {
+				case 1:
+					turn = {0, 1, -1, 0, height, 0};
+					break;
+				case 2:
+					turn = {-1, 0, 0, -1, width, height};
+					break;
+				case 3:
+					turn = {0, -1, 1, 0, 0, width};
+					break;
+				default:
+					break;
+				}
 				context.SetTransform(
-				    D2D1::Matrix3x2F::Scale(
-				        static_cast<float>(at.width) / size.width,
-				        static_cast<float>(at.height) / size.height) *
+				    turn *
+				    D2D1::Matrix3x2F::Scale(static_cast<float>(at.width) /
+				                                (turns % 2 ? height : width),
+				                            static_cast<float>(at.height) /
+				                                (turns % 2 ? width : height)) *
 				    D2D1::Matrix3x2F::Translation(static_cast<float>(at.x),
 				                                  static_cast<float>(at.y)) *
 				    base);

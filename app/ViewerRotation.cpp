@@ -81,7 +81,6 @@ void ViewerPage::rotateView(int turns) {
 		++m_outlineLinkVersion;
 		m_outlineLinkPending = false;
 		m_device.filter->setInput(nullptr);
-		m_device.bitmaps.clear();
 		m_failed.clear();
 		m_retriedRenders.clear();
 		m_retriedUploads.clear();

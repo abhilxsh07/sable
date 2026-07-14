@@ -8150,9 +8150,18 @@ struct TabsTest {
 		case 3: {
 			check(copiedText == "Alpha" && copyCalls == rotationRound + 1,
 			      "rotated selection copy");
+			if (!v.m_device.bitmaps.contains(0)) {
+				return;
+			}
+			const auto previousRaster = v.m_device.bitmaps.at(0).bitmap;
+			v.m_cache.clear();
 			const auto active = v.m_findActive;
 			const auto selection = v.m_selection;
 			v.rotateView(1);
+			check(v.m_device.bitmaps.contains(0) &&
+			          v.m_device.bitmaps.at(0).bitmap.get() ==
+			              previousRaster.get(),
+			      "a quarter turn discarded the displayed raster");
 			check(v.m_selection == selection && v.m_findActive == active &&
 			          v.m_findMatches.size() == 4,
 			      "rotation discarded reading state");
@@ -8176,6 +8185,8 @@ struct TabsTest {
 			}
 			pdf::RenderResult old{oldKey, *bitmap, false};
 			const auto oldGpu = v.m_device.bitmaps.at(0).bitmap;
+			const auto oldRotation = v.m_device.bitmaps.at(0).rotation;
+			v.m_cache.clear();
 			v.rotateView(2);
 			check(v.key(0).width == oldKey.width &&
 			          v.key(0).height == oldKey.height &&
@@ -8185,7 +8196,9 @@ struct TabsTest {
 			const auto fresh = gpu == v.m_device.bitmaps.end()
 			                       ? nullptr
 			                       : gpu->second.bitmap.get();
-			check(fresh != oldGpu.get(), "half turn kept old GPU pixels");
+			check(
+			    fresh == oldGpu.get() && gpu->second.rotation == oldRotation,
+			    "a half turn discarded the previous raster before replacement");
 			v.rendered(std::move(old));
 			const auto after = v.m_device.bitmaps.find(0);
 			check((after == v.m_device.bitmaps.end()

@@ -206,6 +206,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		struct Raster {
 			winrt::com_ptr<ID2D1Bitmap1> bitmap;
 			std::uint64_t version;
+			int rotation = 0;
 		};
 		winrt::com_ptr<ID2D1Device> device;
 		winrt::com_ptr<ID2D1DeviceContext> context;

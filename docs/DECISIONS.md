@@ -2964,3 +2964,10 @@ An empty raster gets one retry for its page, size and rotation. Another
 failure waits for an edit or rotation, keeping a bad page from spinning
 the render queue. A bitmap upload failure queues one device rebuild for
 that raster outside drawing. Cached page images supply the new device.
+
+## Page images during rotation (2026-11-11)
+
+I keep each displayed raster's rotation with its pixels. Rotation draws
+those pixels through the new quarter-turn transform until a matching
+raster arrives. A half turn also asks for fresh pixels when its size is
+unchanged. Notes and other edit refreshes keep their revision checks.
