@@ -749,6 +749,80 @@ OpenResult Document::reopenFormCopy(std::vector<std::uint8_t> data) const {
 	return copy;
 }
 
+bool Document::Transaction::stopped() {
+	halted = halted || (canceled && canceled());
+	return halted;
+}
+
+Document::Transaction
+Document::transaction(const std::function<bool()>& canceled) {
+	Transaction result{*this, canceled, {}};
+	const std::function<bool()> stopped = [&result] {
+		return result.stopped();
+	};
+	if (offThread() || stopped() || canWrite(stopped) != WriteRefusal::None ||
+	    !canSerializeEdits(stopped)) {
+		return result;
+	}
+	auto bytes = serialize(EDIT_LIMIT, stopped);
+	if (bytes && !stopped()) {
+		auto opened = reopenFormCopy(std::move(*bytes));
+		result.document = std::move(opened.document);
+	}
+	return result;
+}
+
+bool Document::Transaction::canonicalize() {
+	if (!document || stopped()) {
+		return false;
+	}
+	document->m_modified = true;
+	const auto stop = [this] { return stopped(); };
+	auto bytes = document->serialize(EDIT_LIMIT, stop);
+	if (!bytes || stopped()) {
+		return false;
+	}
+	auto opened = source.reopenFormCopy(std::move(*bytes));
+	document = std::move(opened.document);
+	return document && !stopped();
+}
+
+OpenResult Document::Transaction::save() {
+	if (!document || stopped()) {
+		return {};
+	}
+	document->m_modified = true;
+	const auto stop = [this] { return stopped(); };
+	auto bytes = document->serialize(EDIT_LIMIT, stop);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	auto next = source.reopenFormCopy(std::move(*bytes));
+	if (!next.document || next.document->pageCount() != source.pageCount() ||
+	    stopped()) {
+		return {};
+	}
+	return next;
+}
+
+bool Document::Transaction::commit(std::unique_ptr<Document> next) {
+	if (!next ||
+	    (!source.m_outlineBookmarks.empty() &&
+	     (!next->outline([this] { return stopped(); }) ||
+	      next->m_outlineBookmarks.size() !=
+	          source.m_outlineBookmarks.size())) ||
+	    stopped()) {
+		return false;
+	}
+	source.m_data.swap(next->m_data);
+	std::swap(source.m_handle, next->m_handle);
+	source.m_outlineBookmarks.swap(next->m_outlineBookmarks);
+	source.invalidateEdits();
+	++source.m_annotationRevision;
+	source.m_modified = true;
+	return true;
+}
+
 Document* Document::formDrawingDocument() const {
 	if (offThread() || FPDF_GetFormType(m_handle) != FORMTYPE_ACRO_FORM) {
 		return nullptr;
@@ -1738,23 +1812,8 @@ std::optional<int> Document::appendAnnotation(
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& [left, bottom, right, top] = bounds;
 	const FS_RECTF rect{left, top, right, bottom};
-	constexpr std::size_t limit = 128 * 1024 * 1024;
-	auto bytes = serialize(limit, canceled);
-	if (!bytes || stopped()) {
-		return {};
-	}
-	auto scratch = reopenFormCopy(std::move(*bytes));
-	if (!scratch.document || stopped()) {
-		return {};
-	}
-	// i write on a copy with expanded object streams.
-	scratch.document->m_modified = true;
-	auto canonical = scratch.document->serialize(limit, canceled);
-	if (!canonical || stopped()) {
-		return {};
-	}
-	scratch = reopenFormCopy(std::move(*canonical));
-	if (!scratch.document || stopped()) {
+	auto scratch = transaction(canceled);
+	if (!scratch.document || !scratch.canonicalize()) {
 		return {};
 	}
 
@@ -1787,12 +1846,7 @@ std::optional<int> Document::appendAnnotation(
 	if (stopped() || !scratch.document->checkEditCounts(*expected, {index})) {
 		return {};
 	}
-	scratch.document->m_modified = true;
-	auto saved = scratch.document->serialize(limit, canceled);
-	if (!saved || stopped()) {
-		return {};
-	}
-	auto next = reopenFormCopy(std::move(*saved));
+	auto next = scratch.save();
 	if (!next.document || next.document->pageCount() != pageCount() ||
 	    !next.document->checkEditCounts(*expected, {index})) {
 		return {};
@@ -1822,21 +1876,9 @@ std::optional<int> Document::appendAnnotation(
 			}
 		}
 	}
-	if (!m_outlineBookmarks.empty() &&
-	    (!next.document->outline(canceled) ||
-	     next.document->m_outlineBookmarks.size() !=
-	         m_outlineBookmarks.size())) {
+	if (!scratch.commit(std::move(next.document))) {
 		return {};
 	}
-	if (stopped()) {
-		return {};
-	}
-	m_data.swap(next.document->m_data);
-	std::swap(m_handle, next.document->m_handle);
-	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
-	invalidateEdits();
-	++m_annotationRevision;
-	m_modified = true;
 	return added;
 }
 

@@ -392,6 +392,18 @@ class Document {
   private:
 	friend struct DocumentEditTest;
 	friend struct DocumentFormTest;
+	static constexpr std::size_t EDIT_LIMIT = 128 * 1024 * 1024;
+	struct Transaction {
+		Document& source;
+		const std::function<bool()>& canceled;
+		std::unique_ptr<Document> document;
+		bool halted = false;
+		bool stopped();
+		bool canonicalize();
+		OpenResult save();
+		bool commit(std::unique_ptr<Document> next);
+	};
+	Transaction transaction(const std::function<bool()>& canceled);
 	std::optional<int> writeStamp(int page, const AnnotationBounds& bounds,
 	                              const StampImage& image,
 	                              const std::array<float, 6>& transform,
