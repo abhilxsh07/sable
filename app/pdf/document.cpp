@@ -772,6 +772,21 @@ Document::transaction(const std::function<bool()>& canceled) {
 	return result;
 }
 
+Document::Transaction
+Document::transaction(std::vector<std::uint8_t> data,
+                      const std::function<bool()>& canceled) {
+	Transaction result{*this, canceled, {}};
+	if (offThread() || result.stopped()) {
+		return result;
+	}
+	// i keep the raw snapshot used by the caller's appearance proofs.
+	auto opened = reopenFormCopy(std::move(data));
+	if (!result.stopped()) {
+		result.document = std::move(opened.document);
+	}
+	return result;
+}
+
 bool Document::Transaction::canonicalize() {
 	if (!document || stopped()) {
 		return false;
@@ -1051,27 +1066,19 @@ std::optional<bool> Document::updateFormField(
 	    !canSerializeEdits(canceled)) {
 		return {};
 	}
-	constexpr std::size_t limit = 128 * 1024 * 1024;
-	auto bytes = serialize(limit, canceled);
-	if (!bytes || stopped()) {
-		return {};
-	}
-	auto scratch = reopenFormCopy(std::move(*bytes));
+	auto scratch = transaction(canceled);
 	if (!scratch.document ||
-	    FPDF_GetFormType(scratch.document->m_handle) != FORMTYPE_ACRO_FORM) {
+	    FPDF_GetFormType(scratch.document->m_handle) != FORMTYPE_ACRO_FORM ||
+	    !scratch.canonicalize()) {
 		return {};
 	}
 	// a full rewrite expands object streams and writes decoded
 	// dictionary/name tokens. canWrite already refused signatures. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/parser/cpdf_name.cpp
-	scratch.document->m_modified = true;
-	auto canonical = scratch.document->serialize(limit, canceled);
-	if (!canonical || stopped()) {
-		return {};
-	}
 	const std::string_view tokens(
-	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	    reinterpret_cast<const char*>(scratch.document->m_data.data()),
+	    scratch.document->m_data.size());
 	const auto actionKey = [&](std::string_view key) {
 		for (auto at = tokens.find(key); at != std::string_view::npos;
 		     at = tokens.find(key, at + key.size())) {
@@ -1091,10 +1098,7 @@ std::optional<bool> Document::updateFormField(
 	    tokens.find("/JavaScript") != std::string_view::npos) {
 		return {};
 	}
-	scratch = reopenFormCopy(std::move(*canonical));
-	if (!scratch.document || stopped()) {
-		return {};
-	}
+
 	const auto matchesChoice = [&](const FormField& field, bool after) {
 		return field.index == index && field.type == type &&
 		       field.name == choice->name && field.flags == choice->flags &&
@@ -1555,13 +1559,8 @@ std::optional<bool> Document::updateFormField(
 	}
 	// i commit only saved, reopened bytes; failed edits never touch the live
 	// PDF.
-	scratch.document->m_modified = true;
-	auto saved = scratch.document->serialize(limit, canceled);
-	if (!saved || stopped()) {
-		return {};
-	}
-	auto next = reopenFormCopy(std::move(*saved));
-	if (!next.document || next.document->pageCount() != pageCount()) {
+	auto next = scratch.save();
+	if (!next.document) {
 		return {};
 	}
 	if (inheritedTarget || clearingChoice) {
@@ -1627,22 +1626,9 @@ std::optional<bool> Document::updateFormField(
 			}
 		}
 	}
-	if (!m_outlineBookmarks.empty()) {
-		if (!next.document->outline(canceled) ||
-		    next.document->m_outlineBookmarks.size() !=
-		        m_outlineBookmarks.size()) {
-			return {};
-		}
-	}
-	if (stopped()) {
+	if (!scratch.commit(std::move(next.document))) {
 		return {};
 	}
-	m_data.swap(next.document->m_data);
-	std::swap(m_handle, next.document->m_handle);
-	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
-	invalidateEdits();
-	++m_annotationRevision;
-	m_modified = true;
 	return true;
 }
 
@@ -1847,8 +1833,7 @@ std::optional<int> Document::appendAnnotation(
 		return {};
 	}
 	auto next = scratch.save();
-	if (!next.document || next.document->pageCount() != pageCount() ||
-	    !next.document->checkEditCounts(*expected, {index})) {
+	if (!next.document || !next.document->checkEditCounts(*expected, {index})) {
 		return {};
 	}
 	{
@@ -2082,7 +2067,7 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 	if (!bytes || stopped()) {
 		return {};
 	}
-	auto scratch = reopenFormCopy(*bytes);
+	auto scratch = transaction(*bytes, canceled);
 	const auto shape = target.subtype == "Square" ? OutlineShape::Rectangle
 	                                              : OutlineShape::Ellipse;
 	if (!scratch.document) {
@@ -2217,13 +2202,8 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 		}
 	}
 	scratch.document->invalidateEdits();
-	scratch.document->m_modified = true;
-	auto saved = scratch.document->serialize(limit, canceled);
-	if (!saved || stopped()) {
-		return {};
-	}
-	auto next = reopenFormCopy(std::move(*saved));
-	if (!next.document || next.document->pageCount() != pageCount() ||
+	auto next = scratch.save();
+	if (!next.document ||
 	    !next.document->checkEditCounts(*counts, {target.page}) ||
 	    neighbors(*next.document) != before) {
 		return {};
@@ -2245,21 +2225,9 @@ Document::resizeShape(const Annotation& expected, ShapeSize size,
 			return {};
 		}
 	}
-	if (!m_outlineBookmarks.empty() &&
-	    (!next.document->outline(canceled) ||
-	     next.document->m_outlineBookmarks.size() !=
-	         m_outlineBookmarks.size())) {
+	if (!scratch.commit(std::move(next.document))) {
 		return {};
 	}
-	if (stopped()) {
-		return {};
-	}
-	m_data.swap(next.document->m_data);
-	std::swap(m_handle, next.document->m_handle);
-	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
-	invalidateEdits();
-	++m_annotationRevision;
-	m_modified = true;
 	return true;
 }
 
@@ -2463,24 +2431,15 @@ std::optional<int> Document::addTextBox(
 	    !canSerializeEdits(canceled)) {
 		return {};
 	}
-	constexpr std::size_t limit = 128 * 1024 * 1024;
-	auto bytes = serialize(limit, canceled);
-	if (!bytes || stopped()) {
-		return {};
-	}
-	auto scratch = reopenFormCopy(std::move(*bytes));
-	if (!scratch.document) {
-		return {};
-	}
-	scratch.document->m_modified = true;
+	auto scratch = transaction(canceled);
 	// i expand object streams before choosing the font name. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp
-	auto canonical = scratch.document->serialize(limit, canceled);
-	if (!canonical || stopped()) {
+	if (!scratch.document || !scratch.canonicalize()) {
 		return {};
 	}
 	const std::string_view tokens(
-	    reinterpret_cast<const char*>(canonical->data()), canonical->size());
+	    reinterpret_cast<const char*>(scratch.document->m_data.data()),
+	    scratch.document->m_data.size());
 	// the rewrite expands object streams and canonicalizes names. i choose
 	// an absent name so existing DR fonts cannot replace this box's font.
 	// strings/streams can cause a conservative collision too. see:
@@ -2502,10 +2461,7 @@ std::optional<int> Document::addTextBox(
 	const std::string appearance = "/" + fontName + " 12 Tf 0 g";
 	const std::u16string defaultAppearance(appearance.begin(),
 	                                       appearance.end());
-	scratch = reopenFormCopy(std::move(*canonical));
-	if (!scratch.document || stopped()) {
-		return {};
-	}
+
 	auto expected = editCounts();
 	if (!expected) {
 		return {};
@@ -2651,14 +2607,8 @@ std::optional<int> Document::addTextBox(
 	if (!proof(*scratch.document)) {
 		return {};
 	}
-	scratch.document->m_modified = true;
-	auto saved = scratch.document->serialize(limit, canceled);
-	if (!saved || stopped()) {
-		return {};
-	}
-	auto next = reopenFormCopy(std::move(*saved));
-	if (!next.document || next.document->pageCount() != pageCount() ||
-	    !proof(*next.document) ||
+	auto next = scratch.save();
+	if (!next.document || !proof(*next.document) ||
 	    !next.document->checkEditCounts(*expected, {index})) {
 		return {};
 	}
@@ -2669,21 +2619,9 @@ std::optional<int> Document::addTextBox(
 	    notes->entries.back().author != utf16ToUtf8(name)) {
 		return {};
 	}
-	if (!m_outlineBookmarks.empty() &&
-	    (!next.document->outline(canceled) ||
-	     next.document->m_outlineBookmarks.size() !=
-	         m_outlineBookmarks.size())) {
+	if (!scratch.commit(std::move(next.document))) {
 		return {};
 	}
-	if (stopped()) {
-		return {};
-	}
-	m_data.swap(next.document->m_data);
-	std::swap(m_handle, next.document->m_handle);
-	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
-	invalidateEdits();
-	++m_annotationRevision;
-	m_modified = true;
 	return added;
 }
 
@@ -2863,7 +2801,7 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 			return {};
 		}
 	}
-	auto scratch = reopenFormCopy(std::move(*bytes));
+	auto scratch = transaction(std::move(*bytes), canceled);
 	if (!scratch.document) {
 		return {};
 	}
@@ -3043,13 +2981,8 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 		}
 	}
 	scratch.document->invalidateEdits();
-	scratch.document->m_modified = true;
-	auto saved = scratch.document->serialize(limit, canceled);
-	if (!saved || stopped()) {
-		return {};
-	}
-	auto next = reopenFormCopy(std::move(*saved));
-	if (!next.document || next.document->pageCount() != pageCount()) {
+	auto next = scratch.save();
+	if (!next.document) {
 		return {};
 	}
 	const auto counts = editCounts();
@@ -3080,21 +3013,9 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
 			return {};
 		}
 	}
-	if (!m_outlineBookmarks.empty() &&
-	    (!next.document->outline(canceled) ||
-	     next.document->m_outlineBookmarks.size() !=
-	         m_outlineBookmarks.size())) {
+	if (!scratch.commit(std::move(next.document))) {
 		return {};
 	}
-	if (stopped()) {
-		return {};
-	}
-	m_data.swap(next.document->m_data);
-	std::swap(m_handle, next.document->m_handle);
-	m_outlineBookmarks.swap(next.document->m_outlineBookmarks);
-	invalidateEdits();
-	++m_annotationRevision;
-	m_modified = true;
 	return true;
 }
 

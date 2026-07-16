@@ -404,6 +404,8 @@ class Document {
 		bool commit(std::unique_ptr<Document> next);
 	};
 	Transaction transaction(const std::function<bool()>& canceled);
+	Transaction transaction(std::vector<std::uint8_t> data,
+	                        const std::function<bool()>& canceled);
 	std::optional<int> writeStamp(int page, const AnnotationBounds& bounds,
 	                              const StampImage& image,
 	                              const std::array<float, 6>& transform,
