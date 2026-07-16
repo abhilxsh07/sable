@@ -324,6 +324,7 @@ class Session {
 	                   std::function<void(NoteResult)> callback,
 	                   std::optional<int> rotation = {});
 	struct State;
+	static void postWrite(State& state, bool changed);
 	std::shared_ptr<State> m_state;
 };
 } // namespace pdf

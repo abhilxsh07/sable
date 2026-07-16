@@ -79,6 +79,15 @@ struct Session::State {
 	std::unique_ptr<Document> m_document;
 };
 
+void Session::postWrite(State& state, bool changed) {
+	if (!changed) {
+		return;
+	}
+	state.m_forms.reset();
+	std::lock_guard lock(state.m_mutex);
+	state.m_annotationRevision = state.m_document->annotationRevision();
+}
+
 struct Session::State::FindJob : std::enable_shared_from_this<FindJob> {
 	std::shared_ptr<State> state;
 	std::uint64_t generation = 0;
@@ -602,12 +611,7 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 				result.index = (state->m_document.get()->*write)(
 				    page, first, second, rotation, revision, canceled);
 				result.changed = result.index.has_value();
-				if (result.changed) {
-					state->m_forms.reset();
-					std::lock_guard lock(state->m_mutex);
-					state->m_annotationRevision =
-					    state->m_document->annotationRevision();
-				}
+				postWrite(*state, result.changed);
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
@@ -668,12 +672,7 @@ bool Session::writeInk(int page, std::uint64_t revision, InkWrite write,
 			if (!canceled()) {
 				result.index = write(*state->m_document, canceled);
 				result.changed = result.index.has_value();
-				if (result.changed) {
-					state->m_forms.reset();
-					std::lock_guard lock(state->m_mutex);
-					state->m_annotationRevision =
-					    state->m_document->annotationRevision();
-				}
+				postWrite(*state, result.changed);
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
@@ -709,12 +708,7 @@ bool Session::addStampAt(int page, AnnotationPoint first,
 				result.index = state->m_document->addStampAt(
 				    page, first, second, rotation, image, revision, canceled);
 				result.changed = result.index.has_value();
-				if (result.changed) {
-					state->m_forms.reset();
-					std::lock_guard lock(state->m_mutex);
-					state->m_annotationRevision =
-					    state->m_document->annotationRevision();
-				}
+				postWrite(*state, result.changed);
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,
@@ -752,12 +746,7 @@ bool Session::resizeShape(Annotation expected, ShapeSize size,
 				if (changed) {
 					result.index = expected.target.index;
 					result.changed = *changed;
-					if (*changed) {
-						state->m_forms.reset();
-						std::lock_guard lock(state->m_mutex);
-						state->m_annotationRevision =
-						    state->m_document->annotationRevision();
-					}
+					postWrite(*state, result.changed);
 				}
 			}
 		} catch (...) {
@@ -824,12 +813,7 @@ bool Session::writeTextBox(int page, AnnotationBounds bounds,
 				                                        author, revision,
 				                                        canceled, layout);
 				result.changed = result.index.has_value();
-				if (result.changed) {
-					state->m_forms.reset();
-					std::lock_guard lock(state->m_mutex);
-					state->m_annotationRevision =
-					    state->m_document->annotationRevision();
-				}
+				postWrite(*state, result.changed);
 			}
 			result.canceled = !result.changed && canceled();
 		} catch (...) {
@@ -926,12 +910,7 @@ bool Session::changeTextBox(Annotation expected, std::u16string contents,
 				    if (changed) {
 					    result.index = expected.target.index;
 					    result.changed = *changed;
-					    if (*changed) {
-						    state->m_forms.reset();
-						    std::lock_guard lock(state->m_mutex);
-						    state->m_annotationRevision =
-						        state->m_document->annotationRevision();
-					    }
+					    postWrite(*state, result.changed);
 				    }
 			    }
 			    result.canceled = !result.index && canceled();
