@@ -75,7 +75,7 @@ void ViewerPage::markSelection(pdf::TextMarkup markup,
 					        }
 					        self->showComments();
 				        } catch (...) {
-					        diagnostics::write(
+					        diagnostics::caught(
 					            diagnostics::Level::Error,
 					            "Couldn't refresh the marked PDF.");
 				        }
@@ -86,6 +86,8 @@ void ViewerPage::markSelection(pdf::TextMarkup markup,
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue text markup");
 	}
 	m_noteBusy = false;
 	showComments();

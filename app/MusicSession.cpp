@@ -161,13 +161,13 @@ void Session::notify() noexcept {
 					    self->m_changed(self->m_snapshot);
 				    }
 			    } catch (...) {
-				    diagnostics::write(diagnostics::Level::Warning,
-				                       "Couldn't update the music pane");
+				    diagnostics::caught(diagnostics::Level::Warning,
+				                        "Couldn't update the music pane");
 			    }
 		    });
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't update the music pane");
+		diagnostics::caught(diagnostics::Level::Warning,
+		                    "Couldn't update the music pane");
 	}
 }
 void Session::refresh(Event event, const Remote& source, std::int64_t when) {

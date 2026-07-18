@@ -165,6 +165,8 @@ void ViewerPage::beginNoteEdit() {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the note editor");
 	}
 	m_noteBusy = false;
 	showComments();
@@ -344,6 +346,8 @@ fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
 					    return;
 				    }
 			    } catch (...) {
+				    diagnostics::caught(diagnostics::Level::Error,
+				                        "Could not queue the shape resize");
 			    }
 			    recover(
 			        L"Couldn't queue this resize. Your draft is still here.");
@@ -357,6 +361,8 @@ fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
 			showComments();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the shape editor");
 		m_noteBusy = false;
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
@@ -526,7 +532,7 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 							}
 							owner->showComments();
 						} catch (...) {
-							diagnostics::write(
+							diagnostics::caught(
 							    diagnostics::Level::Error,
 							    "Couldn't refresh the edited note.");
 						}
@@ -553,6 +559,8 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 					return;
 				}
 			} catch (...) {
+				diagnostics::caught(diagnostics::Level::Error,
+				                    "Could not queue the note edit");
 			}
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
@@ -581,6 +589,8 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 			showComments();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the note editor");
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
 			m_noteDialog = nullptr;

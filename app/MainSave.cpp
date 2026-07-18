@@ -156,8 +156,8 @@ fire_and_forget MainWindow::saveCopy() {
 			    L"and try again.");
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't save a PDF copy.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't save a PDF copy.");
 		try {
 			if (queue) {
 				queue.TryEnqueue([weak, document, cancel] {

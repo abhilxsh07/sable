@@ -133,6 +133,8 @@ void ViewerPage::finishNativeZoom() {
 			resetNativeZoom();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not finish page zoom");
 		dropNativeZoom();
 		showNotice(L"Couldn't finish zooming this page.");
 	}
@@ -182,6 +184,8 @@ void ViewerPage::resetNativeZoom() {
 			m_nativeResetTimeout.Start();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not reset native zoom");
 		dropNativeZoom();
 		showNotice(L"Couldn't finish zooming this page.");
 	}
@@ -229,6 +233,8 @@ void ViewerPage::applyNativeZoom() {
 			m_freezeFrames = 0;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not restore the zoom surface");
 		m_holdCurrent = false;
 		hideFreeze();
 		showNotice(L"Couldn't finish zooming this page.");

@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include <algorithm>
@@ -135,6 +136,8 @@ void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not select a comment");
 	}
 	m_annotationPending = false;
 	showNotice(L"Couldn't select this comment. Try again.");
@@ -216,6 +219,8 @@ void ViewerPage::editAnnotation(pdf::AnnotationTarget target) {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the comment editor");
 	}
 	m_noteBusy = false;
 	showComments();
@@ -257,6 +262,8 @@ void ViewerPage::deleteAnnotation() {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue annotation deletion");
 	}
 	m_noteBusy = false;
 	showComments();

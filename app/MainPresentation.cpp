@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "MainWindow.xaml.h"
 #include <winrt/Windows.System.h>
 
@@ -117,6 +118,8 @@ void MainWindow::onPresentation(const Windows::Foundation::IInspectable&,
 		viewer->reflowViewport();
 		viewer->Scroller().Focus(FocusState::Programmatic);
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not enter presentation mode");
 		endPresentation();
 		viewer->showNotice(L"Couldn't enter presentation mode.");
 	}

@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include <algorithm>
 #include <cmath>
@@ -151,6 +152,8 @@ void ViewerPage::endPresentation() {
 		Scroller().Focus(FocusState::Programmatic);
 		updateVisible();
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not restore the reading layout");
 		showNotice(L"Couldn't restore the reading layout.");
 	}
 }

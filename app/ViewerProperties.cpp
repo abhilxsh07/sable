@@ -83,8 +83,8 @@ fire_and_forget ViewerPage::showProperties() {
 			self->m_propertiesDialog = nullptr;
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't show document properties.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't show document properties.");
 		if (auto self = weak.get()) {
 			if (self->m_propertiesDialog == dialog) {
 				self->m_propertiesDialog = nullptr;
@@ -135,8 +135,8 @@ void ViewerPage::requestProperties() {
 			return;
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't request document properties.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't request document properties.");
 	}
 	m_propertiesPending = false;
 	m_propertiesFailed = true;

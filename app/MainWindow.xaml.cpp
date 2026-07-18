@@ -384,12 +384,16 @@ fire_and_forget MainWindow::pickDocuments() {
 		try {
 			report(error.message().c_str());
 		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not read the PDF picker error");
 			report(L"Couldn't open the PDF picker.");
 		}
 	} catch (const std::exception& error) {
 		OutputDebugStringA(error.what());
 		report(L"Couldn't open the selected PDFs.");
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open selected PDFs");
 		report(L"Couldn't open the selected PDFs: unknown error.");
 	}
 }
@@ -438,12 +442,16 @@ fire_and_forget MainWindow::dropDocuments(
 		try {
 			report(error.message().c_str());
 		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not read the dropped-file error");
 			report(L"Couldn't read the dropped files.");
 		}
 	} catch (const std::exception& error) {
 		OutputDebugStringA(error.what());
 		report(L"Couldn't open the dropped files.");
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open dropped PDFs");
 		report(L"Couldn't open the dropped files: unknown error.");
 	}
 }
@@ -987,8 +995,8 @@ void MainWindow::updateEditMenu() {
 			paste =
 			    Clipboard::GetContent().Contains(StandardDataFormats::Text());
 		} catch (...) {
-			diagnostics::write(diagnostics::Level::Warning,
-			                   "Couldn't inspect clipboard text availability");
+			diagnostics::caught(diagnostics::Level::Warning,
+			                    "Couldn't inspect clipboard text availability");
 		}
 	}
 	PasteItem().IsEnabled(paste);
@@ -1040,8 +1048,8 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 		m_editSelectionStart = box.SelectionStart();
 		m_editSelectionLength = box.SelectionLength();
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't complete the text edit command");
+		diagnostics::caught(diagnostics::Level::Warning,
+		                    "Couldn't complete the text edit command");
 		PickerError().Title(L"Couldn't edit text");
 		PickerError().Message(
 		    L"Couldn't complete the edit command. Try again.");

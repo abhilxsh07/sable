@@ -126,8 +126,8 @@ void ViewerPage::requestAttachments() {
 			return;
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't load the attachments sidebar.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't load the attachments sidebar.");
 	}
 	m_attachmentsPending = false;
 	m_attachmentsFailed = true;

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fstream>
 #include <iterator>
 #include <thread>
+#include <winrt/base.h>
 
 #include "helpers/logging.h"
 #include "pdf_test_files.h"
@@ -74,6 +75,35 @@ TEST(Logging, RotatesWithABoundedBackupCount) {
 	EXPECT_TRUE(std::filesystem::exists(folder.path / "rotate.1.log"));
 	EXPECT_TRUE(std::filesystem::exists(folder.path / "rotate.2.log"));
 	EXPECT_FALSE(std::filesystem::exists(folder.path / "rotate.3.log"));
+}
+
+TEST(Logging, CaughtExceptionsKeepContextAndDetailsWithoutRethrowing) {
+	Folder folder;
+	struct Reset {
+		~Reset() {
+			diagnostics::initialize({}, false);
+		}
+	} reset;
+	ASSERT_TRUE(diagnostics::initialize(folder.path, false));
+	try {
+		throw winrt::hresult_invalid_argument(L"invalid page {draft}");
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error, "Could not place text");
+	}
+	try {
+		throw std::runtime_error("queue stopped");
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Warning,
+		                    "Could not queue edit");
+	}
+	const auto file =
+	    folder.path /
+	    (L"Sable-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+	const auto text = read(file);
+	EXPECT_NE(text.find("Could not place text: "), std::string::npos);
+	EXPECT_NE(text.find("invalid page {draft}"), std::string::npos);
+	EXPECT_NE(text.find("Could not queue edit: "), std::string::npos);
+	EXPECT_NE(text.find("queue stopped"), std::string::npos);
 }
 
 TEST(Logging, StartupPrunesOldLogSetsAndKeepsLockedAndUnrelatedFiles) {

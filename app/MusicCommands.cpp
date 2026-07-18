@@ -96,8 +96,8 @@ winrt::fire_and_forget Session::send(std::weak_ptr<Session> weak,
 			accepted = co_await operation;
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Warning,
-		                   "Couldn't send a music control request");
+		diagnostics::caught(diagnostics::Level::Warning,
+		                    "Couldn't send a music control request");
 	}
 	if (const auto self = weak.lock(); self && !self->m_closed) {
 		std::lock_guard lock(self->m_mutex);

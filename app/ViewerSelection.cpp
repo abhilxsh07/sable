@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include <algorithm>
@@ -563,6 +564,9 @@ void ViewerPage::copySelection() {
 					    Clipboard::SetContent(data);
 					    Clipboard::Flush();
 				    } catch (...) {
+					    diagnostics::caught(
+					        diagnostics::Level::Error,
+					        "Could not copy text to the clipboard");
 					    self->showNotice(
 					        L"Couldn't copy text to the clipboard. Try again.");
 				    }
@@ -570,6 +574,8 @@ void ViewerPage::copySelection() {
 		    }))
 			return;
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the text copy");
 	}
 	m_copying = false;
 	showNotice(L"Couldn't copy the selected text.");

@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include "pdf/surface.h"
@@ -189,6 +190,8 @@ void ViewerPage::startFind() {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not start the PDF search");
 	}
 	m_finding = false;
 	m_findFailed = true;

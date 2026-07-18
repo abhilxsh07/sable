@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include <algorithm>
@@ -117,6 +118,8 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not inspect the form field");
 	}
 	requestAnnotationAt(point);
 }
@@ -422,6 +425,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 					return;
 				}
 			} catch (...) {
+				diagnostics::caught(diagnostics::Level::Error,
+				                    "Could not queue the field edit");
 			}
 			self->m_noteBusy = false;
 			field.IsReadOnly(false);
@@ -446,6 +451,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			showComments();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the field editor");
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
 			m_noteDialog = nullptr;

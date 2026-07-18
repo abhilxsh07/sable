@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <map>
 #include <string>
 #include <vector>
+#include <winrt/base.h>
 
 namespace diagnostics {
 namespace {
@@ -251,6 +252,15 @@ bool initialize(const std::filesystem::path& directory, bool debug) noexcept {
 void write(Level level, std::string_view message) noexcept {
 	if (const auto log = current.load()) {
 		log->write(level, message);
+	}
+}
+
+void caught(Level level, std::string_view context) noexcept {
+	try {
+		write(level, std::string(context) + ": " +
+		                 winrt::to_string(winrt::to_message()));
+	} catch (...) {
+		write(level, context);
 	}
 }
 } // namespace diagnostics

@@ -277,12 +277,16 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 		try {
 			report(error.message().c_str());
 		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not read the password prompt error");
 			report(L"Couldn't open this PDF: password prompt failed.");
 		}
 	} catch (const std::exception& error) {
 		OutputDebugStringA(error.what());
 		report(L"Couldn't open this PDF: password prompt failed.");
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the password prompt");
 		report(L"Couldn't open this PDF: unknown password prompt error.");
 	}
 }
@@ -656,6 +660,8 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 			m_printController->open();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open print preview");
 		if (!m_closed) {
 			showNotice(
 			    L"Couldn't print this PDF. Check the printer and try again.");
@@ -711,6 +717,8 @@ void ViewerPage::printLegacy(void* owner, std::function<void()> done) {
 			showNotice(L"This PDF isn't ready to print yet.");
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue PDF printing");
 		if (!m_closed) {
 			showNotice(
 			    L"Couldn't print this PDF. Check the printer and try again.");
@@ -874,6 +882,8 @@ fire_and_forget ViewerPage::openLink(std::string uri) {
 		}
 #endif
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the external link");
 	}
 	if (auto self = weak.get(); self && !self->m_closed) {
 		self->showNotice(L"Couldn't open this link in your browser.");
@@ -1673,8 +1683,8 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		try {
 			m_documentOpened();
 		} catch (...) {
-			diagnostics::write(diagnostics::Level::Warning,
-			                   "Couldn't add the PDF to Recent");
+			diagnostics::caught(diagnostics::Level::Warning,
+			                    "Couldn't add the PDF to Recent");
 		}
 	}
 }

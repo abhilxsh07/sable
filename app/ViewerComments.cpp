@@ -695,8 +695,8 @@ void ViewerPage::requestComments() {
 			return;
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't load the comments sidebar.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't load the comments sidebar.");
 	}
 	m_commentsPending = false;
 	m_commentScan.fail();

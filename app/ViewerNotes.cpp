@@ -98,6 +98,8 @@ fire_and_forget ViewerPage::pickStamp() {
 			self->showComments();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not pick an image stamp");
 		try {
 			if (const auto self = weak.get();
 			    self && version && self->m_stampPicking &&
@@ -110,8 +112,8 @@ fire_and_forget ViewerPage::pickStamp() {
 				    L"up to 2048 pixels per side and 32 MiB.");
 			}
 		} catch (...) {
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Couldn't report the stamp picker error.");
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Couldn't report the stamp picker error.");
 		}
 	}
 }
@@ -247,6 +249,8 @@ void ViewerPage::placeFillMark(NoteTarget target) {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the fill mark");
 	}
 	m_noteBusy = false;
 	showComments();
@@ -308,6 +312,8 @@ void ViewerPage::placeShape(NoteTarget target) {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the page shape");
 	}
 	m_noteBusy = false;
 	showComments();
@@ -459,6 +465,8 @@ void ViewerPage::finishInkStroke() {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the drawing");
 	}
 	m_noteBusy = false;
 	dropInkStroke();
@@ -792,7 +800,7 @@ ViewerPage::editTextBox(NoteTarget target,
 								        L"Your draft is still here."));
 							    }
 						    } catch (...) {
-							    diagnostics::write(
+							    diagnostics::caught(
 							        diagnostics::Level::Error,
 							        "Couldn't refresh the text box.");
 						    }
@@ -812,6 +820,8 @@ ViewerPage::editTextBox(NoteTarget target,
 					return;
 				}
 			} catch (...) {
+				diagnostics::caught(diagnostics::Level::Error,
+				                    "Could not queue the text box");
 			}
 			recover(L"Couldn't queue this text box. Your draft is still here.");
 		});
@@ -828,6 +838,8 @@ ViewerPage::editTextBox(NoteTarget target,
 			showComments();
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the text box editor");
 		m_noteBusy = false;
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
@@ -905,6 +917,8 @@ fire_and_forget ViewerPage::editNote(std::optional<NoteTarget> target) {
 		           std::u16string(m_noteAuthor.begin(), m_noteAuthor.end()),
 		           target);
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the note editor");
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
 			m_noteDialog = nullptr;
@@ -951,7 +965,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
 						}
 						self->showComments();
 					} catch (...) {
-						diagnostics::write(
+						diagnostics::caught(
 						    diagnostics::Level::Error,
 						    "Couldn't refresh the edited PDF view.");
 					}
@@ -969,6 +983,8 @@ void ViewerPage::submitNote(int page, std::u16string text,
 			showNotice(L"Couldn't queue this note. Try again.");
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the note");
 		m_noteBusy = false;
 		showNotice(L"Couldn't queue this note. Try again.");
 	}

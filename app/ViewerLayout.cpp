@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/surface.h"
 #include "pdf/surface_util.h"
@@ -104,6 +105,8 @@ void ViewerPage::setLayout(helpers::ScrollMode scroll,
 		goToPage(page);
 		updateVisible();
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not change the page layout");
 		m_holdCurrent = oldHold;
 		m_scrollMode = oldScroll;
 		m_spreadMode = oldSpread;
@@ -167,6 +170,8 @@ void ViewerPage::reflowViewport() {
 				}
 			}
 		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not resize the page layout");
 			showNotice(L"Couldn't resize this page layout.");
 		}
 	}

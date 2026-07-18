@@ -129,8 +129,8 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 			saved = helpers::saveAttachment(path.c_str(), source,
 			                                *job->result.bytes);
 		} catch (...) {
-			diagnostics::write(diagnostics::Level::Error,
-			                   "Attachment file write failed.");
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Attachment file write failed.");
 		}
 		co_await ui;
 		if (self = weak.get(); self && !self->m_closed &&
@@ -143,8 +143,8 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 			}
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't save a PDF attachment.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't save a PDF attachment.");
 		try {
 			if (queue) {
 				queue.TryEnqueue([weak, version] {

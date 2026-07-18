@@ -49,6 +49,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 				    pdf->showComments();
 			    }
 		    } catch (...) {
+			    diagnostics::caught(diagnostics::Level::Error,
+			                        "Could not refresh notes after saving");
 		    }
 	    });
 	try {
@@ -118,8 +120,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		        : L"Couldn't save your notes. Choose a writable folder and try "
 		          L"again. Your notes are still open.");
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't save the PDF notes.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't save the PDF notes.");
 		if (!m_closing && !viewer->m_closed) {
 			viewer->showNotice(viewer->m_formsDirty
 			                       ? L"Couldn't save your changes. They are "

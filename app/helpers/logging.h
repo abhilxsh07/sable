@@ -46,4 +46,6 @@ bool environmentEnabled(const wchar_t* name) noexcept;
 std::filesystem::path logDirectory();
 bool initialize(const std::filesystem::path& directory, bool debug) noexcept;
 void write(Level level, std::string_view message) noexcept;
+// i keep the exception detail without interrupting the caller's recovery.
+void caught(Level level, std::string_view context) noexcept;
 } // namespace diagnostics

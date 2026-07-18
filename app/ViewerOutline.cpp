@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "pch.h"
+#include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include <algorithm>
@@ -164,6 +165,8 @@ void ViewerPage::requestOutline() {
 			return;
 		}
 	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not load the document outline");
 	}
 	m_outlinePending = false;
 	m_outlineFailed = true;

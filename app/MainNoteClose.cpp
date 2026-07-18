@@ -102,8 +102,8 @@ fire_and_forget MainWindow::closeTab(TabViewItem tab) {
 			}
 		}
 	} catch (...) {
-		diagnostics::write(diagnostics::Level::Error,
-		                   "Couldn't finish closing the PDF tab.");
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't finish closing the PDF tab.");
 	}
 	m_closePending = false;
 }
