@@ -393,6 +393,9 @@ class Document {
 	friend struct DocumentEditTest;
 	friend struct DocumentFormTest;
 	static constexpr std::size_t EDIT_LIMIT = 128 * 1024 * 1024;
+	const std::vector<std::uint8_t>*
+	canonicalBytes(const std::function<bool()>& canceled) const;
+	void invalidateWriteCopy() const;
 	struct Transaction {
 		Document& source;
 		const std::function<bool()>& canceled;
@@ -428,8 +431,8 @@ class Document {
 	    const std::function<bool(fpdf_annotation_t__*)>& verify,
 	    const std::function<bool()>& canceled);
 	std::optional<std::vector<std::uint8_t>>
-	serializeOutput(std::size_t limit,
-	                const std::function<bool()>& canceled) const;
+	serializeOutput(std::size_t limit, const std::function<bool()>& canceled,
+	                bool rewrite = false) const;
 	std::optional<std::vector<int>> editCounts() const;
 	bool checkEditCounts(const std::vector<int>& expected,
 	                     const std::vector<int>& pages) const;
@@ -472,6 +475,12 @@ class Document {
 	bool matchesTarget(const AnnotationTarget& target) const;
 	mutable std::optional<bool> m_serializable;
 	mutable std::optional<WriteRefusal> m_writeRefusal;
+	// i drop the canonical copy on every content change, note edits too.
+	mutable std::optional<std::vector<std::uint8_t>> m_canonical;
+	mutable bool m_dataCanonical = false;
+	// scratch copies share the count of actual PDFium rewrite attempts.
+	std::shared_ptr<std::size_t> m_rewriteCount =
+	    std::make_shared<std::size_t>(0);
 	mutable std::optional<std::vector<int>> m_editCounts;
 	mutable std::set<int> m_independentPages;
 	mutable std::set<std::pair<int, int>> m_uniqueMarkup;

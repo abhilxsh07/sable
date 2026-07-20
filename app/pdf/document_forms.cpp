@@ -181,6 +181,7 @@ std::optional<bool> Document::updateFormField(
 	    !scratch.canonicalize()) {
 		return {};
 	}
+	scratch.document->invalidateWriteCopy();
 	// a full rewrite expands object streams and writes decoded
 	// dictionary/name tokens. canWrite already refused signatures. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/core/fpdfapi/edit/cpdf_creator.cpp

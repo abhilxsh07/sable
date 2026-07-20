@@ -234,6 +234,7 @@ OpenResult Document::reopenFormCopy(std::vector<std::uint8_t> data) const {
 	}
 	auto copy = openDocument(std::move(data), m_password);
 	if (copy.document) {
+		copy.document->m_rewriteCount = m_rewriteCount;
 		const auto handle = copy.document->m_handle;
 		if (FPDF_GetSecurityHandlerRevision(handle) !=
 		        FPDF_GetSecurityHandlerRevision(m_handle) ||
@@ -262,10 +263,13 @@ Document::transaction(const std::function<bool()>& canceled) {
 	    !canSerializeEdits(stopped)) {
 		return result;
 	}
-	auto bytes = serialize(EDIT_LIMIT, stopped);
+	const auto bytes = canonicalBytes(stopped);
 	if (bytes && !stopped()) {
-		auto opened = reopenFormCopy(std::move(*bytes));
+		auto opened = reopenFormCopy(*bytes);
 		result.document = std::move(opened.document);
+		if (result.document) {
+			result.document->m_dataCanonical = true;
+		}
 	}
 	return result;
 }
@@ -289,14 +293,19 @@ bool Document::Transaction::canonicalize() {
 	if (!document || stopped()) {
 		return false;
 	}
-	document->m_modified = true;
+	if (document->m_dataCanonical) {
+		return true;
+	}
 	const auto stop = [this] { return stopped(); };
-	auto bytes = document->serialize(EDIT_LIMIT, stop);
+	const auto bytes = document->canonicalBytes(stop);
 	if (!bytes || stopped()) {
 		return false;
 	}
-	auto opened = source.reopenFormCopy(std::move(*bytes));
+	auto opened = source.reopenFormCopy(*bytes);
 	document = std::move(opened.document);
+	if (document) {
+		document->m_dataCanonical = true;
+	}
 	return document && !stopped();
 }
 
@@ -306,7 +315,7 @@ OpenResult Document::Transaction::save() {
 	}
 	document->m_modified = true;
 	const auto stop = [this] { return stopped(); };
-	auto bytes = document->serialize(EDIT_LIMIT, stop);
+	auto bytes = document->serializeOutput(EDIT_LIMIT, stop, true);
 	if (!bytes || stopped()) {
 		return {};
 	}
@@ -315,6 +324,7 @@ OpenResult Document::Transaction::save() {
 	    stopped()) {
 		return {};
 	}
+	next.document->m_dataCanonical = true;
 	return next;
 }
 
@@ -331,6 +341,7 @@ bool Document::Transaction::commit(std::unique_ptr<Document> next) {
 	std::swap(source.m_handle, next->m_handle);
 	source.m_outlineBookmarks.swap(next->m_outlineBookmarks);
 	source.invalidateEdits();
+	source.m_dataCanonical = true;
 	++source.m_annotationRevision;
 	source.m_modified = true;
 	return true;
@@ -384,17 +395,7 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	// object streams, for nested signature values, DocMDP and /Perms. see:
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_signature.cpp
 	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_catalog.h
-	constexpr std::size_t limit = 128 * 1024 * 1024;
-	auto bytes = serialize(limit, stopped);
-	if (!bytes || stopped()) {
-		return WriteRefusal::Unavailable;
-	}
-	const auto scratch = reopenFormCopy(std::move(*bytes));
-	if (!scratch.document || stopped()) {
-		return WriteRefusal::Unavailable;
-	}
-	scratch.document->m_modified = true;
-	const auto canonical = scratch.document->serialize(limit, stopped);
+	const auto canonical = canonicalBytes(stopped);
 	if (!canonical || stopped()) {
 		return WriteRefusal::Unavailable;
 	}
@@ -404,6 +405,31 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	                     ? WriteRefusal::Signed
 	                     : WriteRefusal::None;
 	return *m_writeRefusal;
+}
+
+const std::vector<std::uint8_t>*
+Document::canonicalBytes(const std::function<bool()>& canceled) const {
+	if (offThread() || (canceled && canceled())) {
+		return nullptr;
+	}
+	if (m_dataCanonical) {
+		return &m_data;
+	}
+	if (!m_canonical) {
+		auto bytes = serializeOutput(EDIT_LIMIT, canceled, true);
+		if (!bytes || (canceled && canceled())) {
+			return nullptr;
+		}
+		m_canonical = std::move(*bytes);
+	}
+	return &*m_canonical;
+}
+
+void Document::invalidateWriteCopy() const {
+	// the verdict outlives edits: nothing i write adds a signature, DocMDP
+	// or /Perms, and the token reader skips strings and streams.
+	m_canonical.reset();
+	m_dataCanonical = false;
 }
 
 WriteRefusal Document::writeRefusal() const {
@@ -455,6 +481,7 @@ bool Document::checkEditCounts(const std::vector<int>& expected,
 }
 
 void Document::invalidateEdits() {
+	invalidateWriteCopy();
 	m_formDrawing.reset();
 	m_formDrawingRevision = 0;
 	m_serializable.reset();
@@ -557,7 +584,8 @@ Document::serializeForCopy(std::size_t limit,
 
 std::optional<std::vector<std::uint8_t>>
 Document::serializeOutput(std::size_t limit,
-                          const std::function<bool()>& canceled) const {
+                          const std::function<bool()>& canceled,
+                          bool rewrite) const {
 	if (offThread()) {
 		return {};
 	}
@@ -601,15 +629,18 @@ Document::serializeOutput(std::size_t limit,
 	if (writer.stopped()) {
 		return {};
 	}
-	if (!m_modified) {
-		if (m_data.size() > limit) {
+	if (!rewrite && (!m_modified || m_dataCanonical || m_canonical)) {
+		const auto& bytes =
+		    !m_modified || m_dataCanonical ? m_data : *m_canonical;
+		if (bytes.size() > limit) {
 			return {};
 		}
-		writer.bytes = m_data;
+		writer.bytes = bytes;
 	} else {
 		if (!canSerializeEdits([&writer] { return writer.stopped(); })) {
 			return {};
 		}
+		++*m_rewriteCount;
 		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
 			return {};
 		}

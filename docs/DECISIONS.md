@@ -2971,3 +2971,13 @@ I keep each displayed raster's rotation with its pixels. Rotation draws
 those pixels through the new quarter-turn transform until a matching
 raster arrives. A half turn also asks for fresh pixels when its size is
 unchanged. Notes and other edit refreshes keep their revision checks.
+
+## Canonical copies per revision (2026-11-11)
+
+The write guard and the edit transaction now read the same full rewrite.
+I keep it until the document changes, and a verified edit's saved bytes
+serve as the copy for the next edit. The first edit pays two rewrites
+instead of three and each later edit pays one. Note edits drop the copy
+but keep the signature answer, since nothing Sable writes adds a
+signature, DocMDP or /Perms. The copy can hold one extra file's worth of
+memory until the next change.

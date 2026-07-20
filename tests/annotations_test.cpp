@@ -81,6 +81,8 @@ struct DocumentEditTest {
 		                                u"q 1 0 0 rg 40 100 200 60 re f Q")));
 		FPDFPage_CloseAnnot(note);
 		FPDF_ClosePage(page);
+		// raw edits must drop the cached canonical copy, as Document's do.
+		document.invalidateWriteCopy();
 		document.m_modified = true;
 	}
 	static bool freeText(Document& document, const FS_RECTF& rect,
@@ -99,6 +101,7 @@ struct DocumentEditTest {
 		    FPDFAnnot_SetFlags(note, FPDF_ANNOT_FLAG_PRINT);
 		FPDFPage_CloseAnnot(note);
 		FPDF_ClosePage(page);
+		document.invalidateWriteCopy();
 		document.m_modified = true;
 		return result;
 	}
@@ -118,6 +121,7 @@ struct DocumentEditTest {
 			FPDFPage_CloseAnnot(note);
 		}
 		FPDF_ClosePage(page);
+		document.invalidateWriteCopy();
 		document.m_modified = result;
 		return result;
 	}
@@ -202,6 +206,9 @@ struct DocumentEditTest {
 	}
 	static std::size_t pageLoads(const Document& document) {
 		return document.m_editPageLoads;
+	}
+	static std::size_t rewrites(const Document& document) {
+		return *document.m_rewriteCount;
 	}
 	static bool preflight(const Document& document,
 	                      const std::function<bool()>& canceled) {
@@ -3168,6 +3175,145 @@ TEST(Annotations, TextBoxesCommitSavedAppearanceAndKeepSourceBytes) {
 				              pdf::Error::PasswordRequired);
 			    }
 		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, CanonicalCopySharesTheGuardAndSuccessiveWritePreparation) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("notes_allowed.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto count = [&] {
+			    return pdf::DocumentEditTest::rewrites(doc);
+		    };
+		    EXPECT_EQ(count(), 0u);
+		    ASSERT_TRUE(doc.addRectangle(0, {40, 100, 180, 160}, 1));
+		    // one shared canonical preparation and one verified result.
+		    EXPECT_EQ(count(), 2u);
+		    ASSERT_TRUE(doc.addEllipse(0, {40, 180, 180, 240}, 2));
+		    EXPECT_EQ(count(), 3u);
+		    ASSERT_TRUE(
+		        doc.addTextBox(0, {40, 260, 240, 320}, u"Fill text", {}, 3));
+		    EXPECT_EQ(count(), 4u);
+		    const std::vector<pdf::InkStroke> strokes{{{50, 340}, {120, 360}}};
+		    ASSERT_TRUE(doc.addInk(0, strokes, 4));
+		    EXPECT_EQ(count(), 5u);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(count(), 5u);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto rows = saved.document->annotations(0);
+		    ASSERT_TRUE(rows);
+		    ASSERT_EQ(rows->entries.size(), 4u);
+		    EXPECT_EQ(rows->entries[2].contents, "Fill text");
+		    const auto before = doc.render(0, 400, 400);
+		    const auto after = saved.document->render(0, 400, 400);
+		    ASSERT_TRUE(before && after);
+		    EXPECT_EQ(before->pixels, after->pixels);
+		    EXPECT_EQ(annotationBytes("notes_allowed.pdf"), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, WarmCanonicalCopiesStillHonorCancellationAndExactCopies) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = annotationBytes("notes_allowed.pdf");
+		    const auto opened = pdf::openDocument(original);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto count = [&] {
+			    return pdf::DocumentEditTest::rewrites(doc);
+		    };
+		    EXPECT_EQ(doc.canWrite([] { return true; }),
+		              pdf::WriteRefusal::Unavailable);
+		    EXPECT_EQ(count(), 0u);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    EXPECT_EQ(count(), 1u);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    EXPECT_EQ(doc.canWrite([] { return true; }),
+		              pdf::WriteRefusal::Unavailable);
+		    EXPECT_FALSE(doc.addRectangle(0, {40, 100, 180, 160}, 1,
+		                                  [] { return true; }));
+		    EXPECT_EQ(doc.serializeForCopy(1024 * 1024), original);
+		    EXPECT_FALSE(
+		        doc.serializeForCopy(1024 * 1024, [] { return true; }));
+		    EXPECT_EQ(doc.annotationRevision(), 1u);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(count(), 1u);
+	    })
+	    .get();
+}
+
+TEST(Annotations, NoteEditsKeepTheVerdictAndDropTheCanonicalCopy) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto count = [&] {
+			    return pdf::DocumentEditTest::rewrites(doc);
+		    };
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    EXPECT_EQ(count(), 1u);
+		    // in-place note changes reuse the verdict and cost no rewrite.
+		    ASSERT_TRUE(doc.addTextNote(0, 40, 100, u"First"));
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    ASSERT_EQ(doc.updateTextNote(0, 0, u"First", u"Second"), true);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 1);
+		    ASSERT_EQ(doc.removeAnnotation(notes->entries[0].target), true);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::None);
+		    EXPECT_EQ(count(), 1u);
+		    // the dropped copy means Save a copy writes the current notes.
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(count(), 2u);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto empty = saved.document->annotations(0);
+		    ASSERT_TRUE(empty);
+		    EXPECT_TRUE(empty->entries.empty());
+	    })
+	    .get();
+}
+
+TEST(Annotations, AShapeAfterANoteRebuildsTheCanonicalCopyOnce) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto count = [&] {
+			    return pdf::DocumentEditTest::rewrites(doc);
+		    };
+		    ASSERT_TRUE(doc.addTextNote(0, 40, 100, u"Before"));
+		    EXPECT_EQ(count(), 1u);
+		    ASSERT_TRUE(doc.addRectangle(0, {40, 200, 180, 260},
+		                                 doc.annotationRevision()));
+		    // a fresh canonical copy of the note plus the verified result.
+		    EXPECT_EQ(count(), 3u);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(count(), 3u);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto rows = saved.document->annotations(0);
+		    ASSERT_TRUE(rows);
+		    ASSERT_EQ(rows->entries.size(), 2u);
+		    EXPECT_EQ(rows->entries[0].subtype, "Text");
+		    EXPECT_EQ(rows->entries[0].contents, "Before");
+		    EXPECT_EQ(rows->entries[1].subtype, "Square");
 	    })
 	    .get();
 }

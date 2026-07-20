@@ -192,6 +192,7 @@ std::optional<int> Document::appendAnnotation(
 	if (!scratch.document || !scratch.canonicalize()) {
 		return {};
 	}
+	scratch.document->invalidateWriteCopy();
 
 	auto expected = editCounts();
 	if (!expected) {
@@ -840,6 +841,7 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	if (!note) {
 		return {};
 	}
+	invalidateWriteCopy();
 	m_modified = true;
 	// PDFium generates a 20-point Text icon from the rectangle's lower left.
 	// see:
@@ -939,6 +941,7 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 		return false;
 	}
 	const bool wasModified = m_modified;
+	invalidateWriteCopy();
 	m_modified = true;
 	if (!FPDFAnnot_SetStringValue(
 	        note.get(), "Contents",
@@ -1044,6 +1047,7 @@ std::optional<bool> Document::setMarkupComment(int page, int index,
 		return {};
 	}
 	const bool wasModified = m_modified;
+	invalidateWriteCopy();
 	m_modified = true;
 	// i change Contents alone, leaving the quads and appearance untouched.
 	// see:
@@ -1255,6 +1259,7 @@ std::optional<int> Document::markText(TextSelection selection,
 		bool complete = note != nullptr;
 		if (note) {
 			++added;
+			invalidateWriteCopy();
 			m_modified = true;
 			complete = FPDFAnnot_SetRect(note.get(), &target.bounds) &&
 			           FPDFAnnot_SetFlags(note.get(), FPDF_ANNOT_FLAG_PRINT) &&
@@ -1428,6 +1433,7 @@ std::optional<bool> Document::removeAnnotation(const AnnotationTarget& target) {
 		}
 	}
 	++m_annotationRevision;
+	invalidateWriteCopy();
 	m_modified = true;
 	return true;
 }

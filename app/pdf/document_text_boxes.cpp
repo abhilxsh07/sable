@@ -73,6 +73,7 @@ std::optional<int> Document::addTextBox(
 	if (!scratch.document || !scratch.canonicalize()) {
 		return {};
 	}
+	scratch.document->invalidateWriteCopy();
 	const std::string_view tokens(
 	    reinterpret_cast<const char*>(scratch.document->m_data.data()),
 	    scratch.document->m_data.size());
