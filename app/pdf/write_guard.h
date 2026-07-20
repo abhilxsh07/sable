@@ -31,7 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 // why a write is refused. None means the edit may go ahead.
-enum class WriteRefusal { None, Signed, Unavailable };
+enum class WriteRefusal { None, Signed, Unavailable, TooLarge };
 
 namespace detail {
 // i follow signature fields to their values in the rewritten copy. an

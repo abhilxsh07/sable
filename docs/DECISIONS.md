@@ -2981,3 +2981,12 @@ instead of three and each later edit pays one. Note edits drop the copy
 but keep the signature answer, since nothing Sable writes adds a
 signature, DocMDP or /Perms. The copy can hold one extra file's worth of
 memory until the next change.
+
+## Edit size notice and page comments (2026-11-11)
+
+A file over 128 MiB now says why edits are refused: "This PDF is over
+128 MiB, which is too large to edit." I check the size before any
+rewrite, and a rewrite that grows past the limit gives the same answer.
+After an edit on one page, Comments lists that page again and keeps the
+other rows at the new revision. Form edits, highlights and scans that
+reached a row or byte limit still list every page.

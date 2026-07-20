@@ -216,7 +216,7 @@ ViewerPage::placementReply(pdf::Session* session, const wchar_t* failure) {
 			self->m_notesDirty = self->m_notesDirty || result.changed;
 			if (result.changed) {
 				self->Message().IsOpen(false);
-				self->refreshNotes();
+				self->refreshNotes(result.page);
 			} else if (!result.canceled) {
 				self->showNotice(writeNotice(result.refusal, failure));
 			}
@@ -450,7 +450,7 @@ void ViewerPage::finishInkStroke() {
 				            self->m_notesDirty || result.changed;
 				        if (result.changed) {
 					        self->Message().IsOpen(false);
-					        self->refreshNotes();
+					        self->refreshNotes(result.page);
 				        } else if (!result.canceled) {
 					        self->showNotice(writeNotice(
 					            result.refusal, L"Couldn't add this drawing. "
@@ -786,7 +786,7 @@ ViewerPage::editTextBox(NoteTarget target,
 									    dialog.Hide();
 								    }
 								    if (result.changed) {
-									    owner->refreshNotes();
+									    owner->refreshNotes(result.page);
 								    }
 								    owner->showComments();
 							    } else {
@@ -947,7 +947,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
 					self->m_notesDirty = self->m_notesDirty || result.changed;
 					try {
 						if (result.changed) {
-							self->refreshNotes();
+							self->refreshNotes(result.page);
 						}
 						if (result.index) {
 							self->m_noteDraft = {};
@@ -991,7 +991,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
 	showComments();
 }
 
-void ViewerPage::refreshNotes() {
+void ViewerPage::refreshNotes(std::optional<int> edited) {
 	clearAnnotationSelection();
 	// i discard old replies even when their page dimensions still match.
 	++m_renderVersion;
@@ -1008,7 +1008,10 @@ void ViewerPage::refreshNotes() {
 		prepareThumbnail(button, page);
 	}
 	pauseComments();
-	m_commentScan.reset(static_cast<int>(m_sizes.size()));
+	// one edited page keeps the other pages' rows; wider edits list them all.
+	if (!edited || !m_commentScan.refreshPage(*edited)) {
+		m_commentScan.reset(static_cast<int>(m_sizes.size()));
+	}
 	CommentsList().Items().Clear();
 	updateVisible();
 }

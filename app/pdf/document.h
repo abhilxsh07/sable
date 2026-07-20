@@ -478,6 +478,8 @@ class Document {
 	// i drop the canonical copy on every content change, note edits too.
 	mutable std::optional<std::vector<std::uint8_t>> m_canonical;
 	mutable bool m_dataCanonical = false;
+	// set when the last rewrite ran past its limit rather than failing.
+	mutable bool m_overLimit = false;
 	// scratch copies share the count of actual PDFium rewrite attempts.
 	std::shared_ptr<std::size_t> m_rewriteCount =
 	    std::make_shared<std::size_t>(0);

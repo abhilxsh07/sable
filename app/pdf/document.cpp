@@ -386,6 +386,11 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 			return *m_writeRefusal;
 		}
 	}
+	// i refuse an oversized file up front instead of rewriting it first.
+	if (m_data.size() > EDIT_LIMIT) {
+		m_writeRefusal = WriteRefusal::TooLarge;
+		return *m_writeRefusal;
+	}
 	if (!canSerializeEdits(stopped)) {
 		// a file i never rewrite keeps whatever signature it has.
 		return stopped() ? WriteRefusal::Unavailable : WriteRefusal::None;
@@ -396,6 +401,11 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_signature.cpp
 	// https://pdfium.googlesource.com/pdfium/+/2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec/public/fpdf_catalog.h
 	const auto canonical = canonicalBytes(stopped);
+	if (!canonical && m_overLimit && !stopped()) {
+		// expanded object streams can push a smaller file past the limit.
+		m_writeRefusal = WriteRefusal::TooLarge;
+		return *m_writeRefusal;
+	}
 	if (!canonical || stopped()) {
 		return WriteRefusal::Unavailable;
 	}
@@ -607,7 +617,10 @@ Document::serializeOutput(std::size_t limit,
 				return 0;
 			}
 			try {
-				if (size > self.limit - self.bytes.size() || (size && !data)) {
+				if (size > self.limit - self.bytes.size()) {
+					self.overflow = true;
+				}
+				if (self.overflow || (size && !data)) {
 					self.failed = true;
 					return 0;
 				}
@@ -624,7 +637,7 @@ Document::serializeOutput(std::size_t limit,
 		std::size_t limit;
 		const std::function<bool()>& canceled;
 		std::vector<std::uint8_t> bytes;
-		bool failed = false;
+		bool failed = false, overflow = false;
 	} writer(limit, canceled);
 	if (writer.stopped()) {
 		return {};
@@ -641,7 +654,9 @@ Document::serializeOutput(std::size_t limit,
 			return {};
 		}
 		++*m_rewriteCount;
-		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
+		const bool saved = FPDF_SaveAsCopy(m_handle, &writer, 0);
+		m_overLimit = writer.overflow;
+		if (!saved) {
 			return {};
 		}
 	}

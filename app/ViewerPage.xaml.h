@@ -74,9 +74,13 @@ namespace winrt::Sable::implementation {
 // a refused write names its reason when the document gave one.
 inline const wchar_t* writeNotice(pdf::WriteRefusal refusal,
                                   const wchar_t* fallback) {
-	return refusal == pdf::WriteRefusal::Signed
-	           ? L"This PDF is signed; edits would break the signature."
-	           : fallback;
+	if (refusal == pdf::WriteRefusal::Signed) {
+		return L"This PDF is signed; edits would break the signature.";
+	}
+	if (refusal == pdf::WriteRefusal::TooLarge) {
+		return L"This PDF is over 128 MiB, which is too large to edit.";
+	}
+	return fallback;
 }
 struct MainWindow;
 // UI thread only. The session does the PDFium work on the engine thread and
@@ -341,7 +345,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                 std::optional<pdf::TextMarkup> markup = {},
 	                 bool contentsPresent = true,
 	                 std::optional<pdf::AnnotationTarget> target = {});
-	void refreshNotes();
+	void refreshNotes(std::optional<int> edited = {});
 	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
 	     m_notesDirty = false, m_formsDirty = false, m_noteSaving = false;
 	std::uint64_t m_renderVersion = 0;

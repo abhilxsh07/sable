@@ -336,7 +336,7 @@ fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
 							            dialog.Hide();
 						            }
 						            if (result.changed) {
-							            owner->refreshNotes();
+							            owner->refreshNotes(result.page);
 						            }
 						            owner->showComments();
 					            });
@@ -528,7 +528,7 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 								}
 							}
 							if (result.changed) {
-								owner->refreshNotes();
+								owner->refreshNotes(result.page);
 							}
 							owner->showComments();
 						} catch (...) {

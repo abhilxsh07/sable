@@ -210,6 +210,10 @@ struct DocumentEditTest {
 	static std::size_t rewrites(const Document& document) {
 		return *document.m_rewriteCount;
 	}
+	// PDFium already parsed the file, so trailing bytes only change its size.
+	static void pad(Document& document, std::size_t size) {
+		document.m_data.resize(size);
+	}
 	static bool preflight(const Document& document,
 	                      const std::function<bool()>& canceled) {
 		return document.canSerializeEdits(canceled);
@@ -3314,6 +3318,26 @@ TEST(Annotations, AShapeAfterANoteRebuildsTheCanonicalCopyOnce) {
 		    EXPECT_EQ(rows->entries[0].subtype, "Text");
 		    EXPECT_EQ(rows->entries[0].contents, "Before");
 		    EXPECT_EQ(rows->entries[1].subtype, "Square");
+	    })
+	    .get();
+}
+
+TEST(Annotations, FilesOverTheEditLimitAreRefusedWithoutARewrite) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openDocument(annotationBytes("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    pdf::DocumentEditTest::pad(doc, 128 * 1024 * 1024 + 1);
+		    EXPECT_EQ(doc.canWrite({}), pdf::WriteRefusal::TooLarge);
+		    EXPECT_FALSE(doc.addTextNote(0, 40, 100, u"Too big"));
+		    EXPECT_FALSE(doc.addRectangle(0, {40, 100, 180, 160},
+		                                  doc.annotationRevision()));
+		    EXPECT_EQ(doc.writeRefusal(), pdf::WriteRefusal::TooLarge);
+		    EXPECT_EQ(pdf::DocumentEditTest::rewrites(doc), 0u);
+		    EXPECT_FALSE(doc.modified());
 	    })
 	    .get();
 }

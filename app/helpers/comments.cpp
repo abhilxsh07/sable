@@ -155,13 +155,17 @@ void CommentScan::reset(int pages) {
 	m_pages = (std::max)(0, pages);
 	m_next = 0;
 	m_failed = m_limited = m_stopped = false;
+	m_refresh.reset();
 }
 
-bool CommentScan::append(pdf::Annotations snapshot) {
-	if (done() || failed() || snapshot.page != m_next) {
-		return false;
-	}
-	m_limited = m_limited || snapshot.limited;
+namespace {
+std::size_t rowBytes(const CommentRow& row) {
+	return row.subtype.size() + row.author.size() + row.text.size() +
+	       row.target.subtype.size();
+}
+// adds a page's comment rows; false once a row or byte limit stops it.
+bool addRows(pdf::Annotations& snapshot, std::vector<CommentRow>& rows,
+             std::size_t& bytes) {
 	for (auto& entry : snapshot.entries) {
 		if (!isComment(entry)) {
 			continue;
@@ -172,31 +176,97 @@ bool CommentScan::append(pdf::Annotations snapshot) {
 		sanitize(entry.subtype, false);
 		sanitize(entry.author, false);
 		sanitize(entry.contents, true);
-		std::size_t remaining = BYTE_LIMIT - m_bytes;
+		std::size_t remaining = BYTE_LIMIT - bytes;
 		for (const auto* field : {&entry.subtype, &entry.author,
 		                          &entry.contents, &entry.target.subtype}) {
 			if (field->size() > remaining) {
-				m_stopped = true;
-				break;
+				return false;
 			}
 			remaining -= field->size();
 		}
-		if (m_stopped) {
-			break;
-		}
-		m_rows.push_back({snapshot.page, entry.index, std::move(entry.subtype),
-		                  std::move(entry.author), std::move(entry.contents),
-		                  entry.position, std::move(entry.target),
-		                  entry.color});
-		m_bytes = BYTE_LIMIT - remaining;
-		if (m_rows.size() == ROW_LIMIT || m_bytes == BYTE_LIMIT) {
-			m_stopped = true;
-			break;
+		rows.push_back({snapshot.page, entry.index, std::move(entry.subtype),
+		                std::move(entry.author), std::move(entry.contents),
+		                entry.position, std::move(entry.target), entry.color});
+		bytes = BYTE_LIMIT - remaining;
+		if (rows.size() == ROW_LIMIT || bytes == BYTE_LIMIT) {
+			return false;
 		}
 	}
+	return true;
+}
+} // namespace
+
+bool CommentScan::refreshPage(int page) {
+	if (m_failed || m_limited || m_refresh || page < 0 || page >= m_pages) {
+		return false;
+	}
+	// a page the scan hasn't reached yet arrives with the new revision.
+	if (page < m_next) {
+		m_refresh = page;
+	}
+	return true;
+}
+
+bool CommentScan::append(pdf::Annotations snapshot) {
+	if (m_refresh) {
+		return replace(std::move(snapshot));
+	}
+	if (done() || failed() || snapshot.page != m_next) {
+		return false;
+	}
+	m_limited = m_limited || snapshot.limited;
+	m_stopped = !addRows(snapshot, m_rows, m_bytes);
 	m_limited = m_limited || m_stopped;
+	stamp(snapshot.revision);
 	++m_next;
 	return true;
+}
+
+bool CommentScan::replace(pdf::Annotations snapshot) {
+	if (failed() || snapshot.page != *m_refresh) {
+		return false;
+	}
+	const int page = *m_refresh;
+	std::vector<CommentRow> rows;
+	std::size_t bytes = 0;
+	auto row = m_rows.begin();
+	for (; row != m_rows.end() && row->page < page; ++row) {
+		bytes += rowBytes(*row);
+		rows.push_back(*row);
+	}
+	bool fits = !snapshot.limited && addRows(snapshot, rows, bytes);
+	for (; fits && row != m_rows.end(); ++row) {
+		if (row->page == page) {
+			continue;
+		}
+		if (rows.size() + 1 >= ROW_LIMIT ||
+		    rowBytes(*row) >= BYTE_LIMIT - bytes) {
+			fits = false;
+			break;
+		}
+		bytes += rowBytes(*row);
+		rows.push_back(*row);
+	}
+	if (!fits) {
+		// the swap would reach a limit, so i list every page again.
+		reset(m_pages);
+		return true;
+	}
+	m_rows = std::move(rows);
+	m_bytes = bytes;
+	m_refresh.reset();
+	stamp(snapshot.revision);
+	return true;
+}
+
+// a page-local edit leaves the other pages' rows valid at the new revision.
+void CommentScan::stamp(std::uint64_t revision) {
+	if (!revision) {
+		return;
+	}
+	for (auto& row : m_rows) {
+		row.target.revision = revision;
+	}
 }
 
 void CommentScan::fail() {
@@ -208,13 +278,13 @@ void CommentScan::retry() {
 	m_failed = false;
 }
 int CommentScan::nextPage() const {
-	return m_next;
+	return m_refresh.value_or(m_next);
 }
 int CommentScan::pageCount() const {
 	return m_pages;
 }
 bool CommentScan::done() const {
-	return m_stopped || m_next >= m_pages;
+	return !m_refresh && (m_stopped || m_next >= m_pages);
 }
 bool CommentScan::failed() const {
 	return m_failed;
@@ -223,6 +293,8 @@ bool CommentScan::limited() const {
 	return m_limited;
 }
 const std::vector<CommentRow>& CommentScan::rows() const {
-	return m_rows;
+	// i hide the old rows until the edited page's rows replace them.
+	static const std::vector<CommentRow> none;
+	return m_refresh ? none : m_rows;
 }
 } // namespace helpers

@@ -181,6 +181,80 @@ TEST(CommentScan, GlobalByteLimitKeepsWholeUnicodeStrings) {
 }
 } // namespace
 
+TEST(CommentScan, RefreshingOnePageKeepsTheOtherPagesInOrder) {
+	helpers::CommentScan scan(3);
+	ASSERT_TRUE(scan.append({0, {note("Text", "a")}, false, 1}));
+	ASSERT_TRUE(scan.append({1, {note("Text", "b")}, false, 1}));
+	ASSERT_TRUE(scan.append({2, {note("Text", "c")}, false, 1}));
+	ASSERT_TRUE(scan.refreshPage(1));
+	EXPECT_FALSE(scan.done());
+	EXPECT_EQ(scan.nextPage(), 1);
+	EXPECT_TRUE(scan.rows().empty());
+	EXPECT_FALSE(scan.append({0, {note("Text", "x")}, false, 2}));
+	ASSERT_TRUE(
+	    scan.append({1, {note("Text", "b1"), note("Square", "b2")}, false, 2}));
+	EXPECT_TRUE(scan.done());
+	EXPECT_EQ(scan.nextPage(), 3);
+	const auto& rows = scan.rows();
+	ASSERT_EQ(rows.size(), 4u);
+	EXPECT_EQ(rows[0].text, "a");
+	EXPECT_EQ(rows[1].text, "b1");
+	EXPECT_EQ(rows[2].text, "b2");
+	EXPECT_EQ(rows[3].text, "c");
+	for (const auto& row : rows) {
+		EXPECT_EQ(row.target.revision, 2u);
+	}
+	// a removal leaves no rows for that page.
+	ASSERT_TRUE(scan.refreshPage(1));
+	ASSERT_TRUE(scan.append({1, {}, false, 3}));
+	ASSERT_EQ(scan.rows().size(), 2u);
+	EXPECT_EQ(scan.rows()[1].text, "c");
+	EXPECT_EQ(scan.rows()[1].target.revision, 3u);
+}
+
+TEST(CommentScan, PageRefreshFallsBackWhenItCannotSwapRows) {
+	helpers::CommentScan scan(3);
+	EXPECT_FALSE(scan.refreshPage(-1));
+	EXPECT_FALSE(scan.refreshPage(3));
+	ASSERT_TRUE(scan.append({0, {note("Text", "a")}, false, 1}));
+	// an unscanned page needs no swap, and later pages bring the revision.
+	EXPECT_TRUE(scan.refreshPage(2));
+	EXPECT_EQ(scan.nextPage(), 1);
+	ASSERT_TRUE(scan.append({1, {}, false, 2}));
+	EXPECT_EQ(scan.rows()[0].target.revision, 2u);
+	ASSERT_TRUE(scan.refreshPage(0));
+	EXPECT_FALSE(scan.refreshPage(0));
+	scan.fail();
+	EXPECT_TRUE(scan.failed());
+	EXPECT_FALSE(scan.refreshPage(1));
+	scan.retry();
+	ASSERT_TRUE(scan.append({0, {note("Text", "a2")}, false, 3}));
+	EXPECT_EQ(scan.rows()[0].text, "a2");
+	ASSERT_TRUE(scan.append({2, {}, false, 3}));
+	EXPECT_TRUE(scan.done());
+	helpers::CommentScan limited(2);
+	ASSERT_TRUE(limited.append({0, {note()}, true, 1}));
+	EXPECT_FALSE(limited.refreshPage(0));
+}
+
+TEST(CommentScan, ASwapThatReachesTheRowLimitListsEveryPageAgain) {
+	helpers::CommentScan scan(2);
+	pdf::Annotations first{0, {}, false, 1};
+	first.entries.assign(1000, note());
+	pdf::Annotations second{1, {}, false, 1};
+	second.entries.assign(990, note());
+	ASSERT_TRUE(scan.append(first));
+	ASSERT_TRUE(scan.append(second));
+	EXPECT_FALSE(scan.limited());
+	ASSERT_TRUE(scan.refreshPage(0));
+	first.entries.assign(1010, note());
+	first.revision = 2;
+	ASSERT_TRUE(scan.append(first));
+	EXPECT_TRUE(scan.rows().empty());
+	EXPECT_FALSE(scan.done());
+	EXPECT_EQ(scan.nextPage(), 0);
+}
+
 TEST(TextBoxDimension, PositiveCompleteNumbersAndInvalidDrafts) {
 	EXPECT_EQ(helpers::parseTextBoxDimension("200"), 200.f);
 	EXPECT_EQ(helpers::parseTextBoxDimension("  +60.25\t"), 60.25f);

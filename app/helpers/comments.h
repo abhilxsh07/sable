@@ -45,6 +45,8 @@ class CommentScan {
   public:
 	explicit CommentScan(int pages = 0);
 	void reset(int pages);
+	// a page whose rows can be swapped alone; false means reset instead.
+	bool refreshPage(int page);
 	bool append(pdf::Annotations snapshot);
 	void fail();
 	void retry();
@@ -56,7 +58,10 @@ class CommentScan {
 	const std::vector<CommentRow>& rows() const;
 
   private:
+	bool replace(pdf::Annotations snapshot);
+	void stamp(std::uint64_t revision);
 	std::vector<CommentRow> m_rows;
+	std::optional<int> m_refresh;
 	std::size_t m_bytes = 0;
 	int m_pages = 0, m_next = 0;
 	bool m_failed = false, m_limited = false, m_stopped = false;

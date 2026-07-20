@@ -248,7 +248,7 @@ void ViewerPage::deleteAnnotation() {
 				            self->m_notesDirty || result.changed;
 				        if (result.changed) {
 					        self->clearAnnotationSelection();
-					        self->refreshNotes();
+					        self->refreshNotes(result.page);
 				        } else if (!result.canceled) {
 					        self->showNotice(writeNotice(
 					            result.refusal,
