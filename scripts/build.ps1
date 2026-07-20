@@ -23,7 +23,9 @@ param(
 	[ValidateSet("x64", "ARM64")][string]$Platform = "x64",
 	[ValidateRange(1, 1024)][int]$MaxCpu = $(
 		if ($Config -eq "Debug" -and $Platform -eq "ARM64") { 1 } else { 4 }
-	)
+	),
+	# extra MSBuild properties as Name=Value, e.g. SableSurfaceTest=true
+	[string[]]$Property = @()
 )
 $root = Split-Path -Parent $PSScriptRoot
 $sln = Join-Path $root "Sable.sln"
@@ -54,7 +56,8 @@ if (-not (Test-Path $sln)) {
 # the 64-bit host completes WinUI LTO where the 32-bit host fails here.
 $out = & $msbuild $sln -restore "-p:PreferredToolArchitecture=x64" `
 	"-p:RestorePackagesConfig=true" "-m:$MaxCpu" -nodeReuse:false -nologo `
-	-verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" 2>&1
+	-verbosity:minimal "-p:Configuration=$Config" "-p:Platform=$Platform" `
+	@($Property | ForEach-Object { "-p:$_" }) 2>&1
 $code = $LASTEXITCODE
 $diag = $out | ForEach-Object { "$_" } | Where-Object { $_ -match ":\s*(fatal )?(error|warning)( [A-Z]+\d+)?\s*:" } | Select-Object -Unique
 $errors = @($diag | Where-Object { $_ -match ":\s*(fatal )?error( [A-Z]+\d+)?\s*:" }).Count

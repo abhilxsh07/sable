@@ -2990,3 +2990,12 @@ rewrite, and a rewrite that grows past the limit gives the same answer.
 After an edit on one page, Comments lists that page again and keeps the
 other rows at the new revision. Form edits, highlights and scans that
 reached a row or byte limit still list every page.
+
+## Probe runner (2026-11-11)
+
+scripts/probes.ps1 builds the Debug surface check, runs each probe mode
+with SableProbeAutoClose and prints its exit code and first error lines,
+then rebuilds the normal Debug app. Two forced-fault modes must fail, so a
+pass can't come from lost exit codes. Shortcut and the plain surface check
+stay manual because they wait for keys and buttons. build.ps1 takes extra
+MSBuild properties through -Property for this.
