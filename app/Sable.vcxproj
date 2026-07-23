@@ -113,7 +113,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				%(AdditionalOptions) /PDBALTPATH:%_PDB%
 			</AdditionalOptions>
 			<!-- ShellExecuteW, and the open dialog later on -->
-			<AdditionalDependencies>shell32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>shell32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;dwrite.lib;d3d11.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -270,6 +270,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\logging.h" />
 		<ClInclude Include="helpers\music.h" />
 		<ClInclude Include="helpers\layout.h" />
+		<ClInclude Include="helpers\signature.h" />
 		<ClInclude Include="helpers\rotation.h" />
 		<ClInclude Include="helpers\pan.h" />
 		<ClInclude Include="helpers\zoom.h" />
@@ -318,6 +319,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\layout.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\signature.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\properties.cpp">

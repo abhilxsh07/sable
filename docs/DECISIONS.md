@@ -3006,3 +3006,14 @@ Comments > More > Fill & Sign now offers Place text. It uses the text-box
 writer and its dialog, titled "Add text", so the text is black 12 pt
 Helvetica with no border, up to 8 lines and 128 characters, placed where
 I click. Editing, resizing and Delete work as they do for text boxes.
+
+## Typed signatures (2026-11-11)
+
+Place typed signature asks for a name of up to 64 characters and turns it
+into an image stamp. The text-box writer only proves plain 12 pt
+Helvetica, so a script look needs an image. DirectWrite draws the name in
+black on transparent pixels, four per point, in Segoe Script, then Ink
+Free, then italic Segoe UI, whichever Windows has installed; nothing is
+bundled. The stamp is 36 pt tall and up to 216 pt wide, centred on the
+click and kept on the page. The name lasts until the app closes and is
+never written to settings. This links dwrite.lib from the Windows SDK.

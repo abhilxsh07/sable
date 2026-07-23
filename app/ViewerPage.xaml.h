@@ -263,7 +263,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		FillCheck,
 		FillCross,
 		// the text-box writer, reached from Fill & Sign.
-		FillText
+		FillText,
+		// visual signatures: an image stamp of a typed name.
+		TypedSignature
 	};
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool canPickStamp();
@@ -272,6 +274,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool placeNote(winrt::Windows::Foundation::Point point);
 	void placeShape(NoteTarget target);
 	void placeFillMark(NoteTarget target);
+	winrt::fire_and_forget createSignature(PlacementTool tool);
+	void placeSignature(NoteTarget target);
+	// signatures last until the app closes; nothing is saved to settings.
+	static inline std::u16string s_signatureName;
+	std::optional<pdf::StampImage> m_signatureImage;
 	std::function<void(pdf::NoteResult)> placementReply(pdf::Session* session,
 	                                                    const wchar_t* failure);
 	struct ShapeStart {

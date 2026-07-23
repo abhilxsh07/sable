@@ -184,6 +184,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::FillText);
 		}
 	});
+	PlaceTypedSignatureButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->createSignature(PlacementTool::TypedSignature);
+		}
+	});
 	DrawInkButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement(PlacementTool::Ink);
@@ -494,6 +499,9 @@ void ViewerPage::showComments() {
 	}
 	if (m_notePlacing && m_placementTool == PlacementTool::FillText) {
 		NotesState().Text(L"Click a page to place text. Esc cancels.");
+	}
+	if (m_notePlacing && m_placementTool == PlacementTool::TypedSignature) {
+		NotesState().Text(L"Click a page to place the signature. Esc cancels.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);

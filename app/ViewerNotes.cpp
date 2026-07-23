@@ -24,10 +24,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
 #include "helpers/filter.h"
+#include "helpers/rotation.h"
+#include "helpers/signature.h"
 #include <algorithm>
 #include <cmath>
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Windows.UI.Text.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -190,6 +193,10 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 				placeFillMark(target);
 				break;
 			}
+			if (m_placementTool == PlacementTool::TypedSignature) {
+				placeSignature(target);
+				break;
+			}
 			m_notePlacing = false;
 			showComments();
 			if (m_placementTool == PlacementTool::TextBox ||
@@ -256,6 +263,151 @@ void ViewerPage::placeFillMark(NoteTarget target) {
 	m_noteBusy = false;
 	showComments();
 	showNotice(L"Couldn't queue this mark. Try again.");
+}
+
+winrt::fire_and_forget ViewerPage::createSignature(PlacementTool tool) {
+	const auto lifetime = get_strong();
+	try {
+		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
+		    !commentsOpen() || !XamlRoot() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+		    (m_notesAvailable && !m_notesAvailable()) ||
+		    tool != PlacementTool::TypedSignature) {
+			co_return;
+		}
+		cancelNotePlacement();
+		leavePageBox();
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Title(box_value(L"Typed signature"));
+		dialog.PrimaryButtonText(L"Place");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::Primary);
+		StackPanel fields;
+		fields.Spacing(12);
+		fields.MaxWidth(360);
+		TextBlock hint;
+		hint.Text(L"Type your name, then click the page where the signature "
+		          L"goes. Sable keeps it until you close the app.");
+		hint.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(hint);
+		TextBox name;
+		name.Header(box_value(L"Name"));
+		name.MaxLength(static_cast<int32_t>(helpers::signatureNameLimit));
+		name.Text(
+		    hstring(reinterpret_cast<const wchar_t*>(s_signatureName.data()),
+		            static_cast<uint32_t>(s_signatureName.size())));
+		Automation::AutomationProperties::SetName(name, L"Signature name");
+		fields.Children().Append(name);
+		// the preview uses the same installed font as the stamp.
+		const auto font = helpers::signatureFont();
+		TextBlock preview;
+		preview.FontFamily(Media::FontFamily(font.family));
+		preview.FontSize(28);
+		if (font.italic) {
+			preview.FontStyle(Windows::UI::Text::FontStyle::Italic);
+		}
+		preview.MinHeight(48);
+		preview.TextTrimming(TextTrimming::CharacterEllipsis);
+		preview.Text(name.Text());
+		Automation::AutomationProperties::SetName(preview,
+		                                          L"Signature preview");
+		fields.Children().Append(preview);
+		const auto valid = [](const hstring& text) {
+			return helpers::validSignatureName(
+			    {reinterpret_cast<const char16_t*>(text.c_str()), text.size()});
+		};
+		dialog.IsPrimaryButtonEnabled(valid(name.Text()));
+		name.TextChanged(
+		    [prompt = make_weak(dialog), shown = make_weak(preview),
+		     valid](const Windows::Foundation::IInspectable& sender, auto&&) {
+			    const auto text = sender.as<TextBox>().Text();
+			    if (const auto view = shown.get()) {
+				    view.Text(text);
+			    }
+			    if (const auto box = prompt.get()) {
+				    box.IsPrimaryButtonEnabled(valid(text));
+			    }
+		    });
+		dialog.Opened([field = make_weak(name)](auto&&, auto&&) {
+			if (const auto input = field.get()) {
+				input.Focus(FocusState::Programmatic);
+				input.SelectAll();
+			}
+		});
+		dialog.Content(fields);
+		m_noteDialog = dialog;
+		const auto choice = co_await dialog.ShowAsync();
+		if (m_noteDialog == dialog) {
+			m_noteDialog = nullptr;
+		}
+		if (m_closed || choice != ContentDialogResult::Primary) {
+			showComments();
+			co_return;
+		}
+		const auto text = name.Text();
+		const std::u16string typed(
+		    reinterpret_cast<const char16_t*>(text.c_str()), text.size());
+		auto image = helpers::typedSignature(typed);
+		if (!image) {
+			showComments();
+			showNotice(L"Couldn't draw this signature. Try a shorter name.");
+			co_return;
+		}
+		s_signatureName = typed;
+		m_signatureImage = std::move(image);
+		beginNotePlacement(PlacementTool::TypedSignature);
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the signature dialog");
+		if (!m_closed) {
+			showComments();
+			showNotice(L"Couldn't open the signature dialog. Try again.");
+		}
+	}
+}
+
+void ViewerPage::placeSignature(NoteTarget target) {
+	const auto session = m_session.get();
+	const auto revision = session ? session->annotationRevision() : 0;
+	const auto page = static_cast<std::size_t>(target.page);
+	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
+	    m_noteDialog || m_passwordDialog || target.page < 0 ||
+	    page >= m_sizes.size() || !m_signatureImage ||
+	    !m_signatureImage->valid()) {
+		cancelNotePlacement();
+		return;
+	}
+	const auto& image = *m_signatureImage;
+	const auto box = helpers::typedSignatureBox(
+	    static_cast<double>(image.width) / image.height,
+	    helpers::rotatedSize(m_sizes[page], target.rotation),
+	    {target.x, target.y});
+	if (!box) {
+		cancelNotePlacement();
+		showNotice(L"Couldn't fit the signature on this page.");
+		return;
+	}
+	m_notePlacing = false;
+	m_noteBusy = true;
+	try {
+		if (session->addStampAt(
+		        target.page, box->first, box->second, target.rotation, image,
+		        revision,
+		        placementReply(session,
+		                       L"Couldn't add this signature. The page "
+		                       L"may be too small or restrict comments."))) {
+			showComments();
+			return;
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the signature");
+	}
+	m_noteBusy = false;
+	showComments();
+	showNotice(L"Couldn't queue this signature. Try again.");
 }
 
 void ViewerPage::placeShape(NoteTarget target) {

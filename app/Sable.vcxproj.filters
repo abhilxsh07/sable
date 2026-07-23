@@ -85,6 +85,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\layout.h">
 			<Filter>helpers</Filter>
 		</ClInclude>
+		<ClInclude Include="helpers\signature.h">
+			<Filter>helpers</Filter>
+		</ClInclude>
 		<ClInclude Include="helpers\zoom.h">
 			<Filter>helpers</Filter>
 		</ClInclude>
@@ -95,6 +98,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Filter>helpers</Filter>
 		</ClInclude>
 		<ClCompile Include="helpers\layout.cpp">
+			<Filter>helpers</Filter>
+		</ClCompile>
+		<ClCompile Include="helpers\signature.cpp">
 			<Filter>helpers</Filter>
 		</ClCompile>
 		<ClCompile Include="helpers\zoom.cpp">
