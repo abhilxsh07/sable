@@ -179,6 +179,11 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::FillCross);
 		}
 	});
+	PlaceFillTextButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::FillText);
+		}
+	});
 	DrawInkButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement(PlacementTool::Ink);
@@ -486,6 +491,9 @@ void ViewerPage::showComments() {
 		    m_placementTool == PlacementTool::FillCheck
 		        ? L"Click a page to place a check mark. Esc cancels."
 		        : L"Click a page to place a cross. Esc cancels.");
+	}
+	if (m_notePlacing && m_placementTool == PlacementTool::FillText) {
+		NotesState().Text(L"Click a page to place text. Esc cancels.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed
 	                                                    : XVisibility::Visible);

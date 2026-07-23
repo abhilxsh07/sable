@@ -192,7 +192,8 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 			}
 			m_notePlacing = false;
 			showComments();
-			if (m_placementTool == PlacementTool::TextBox) {
+			if (m_placementTool == PlacementTool::TextBox ||
+			    m_placementTool == PlacementTool::FillText) {
 				editTextBox(target);
 			} else {
 				editNote(target);
@@ -495,6 +496,9 @@ ViewerPage::editTextBox(NoteTarget target,
 		}
 		leavePageBox();
 		const auto session = m_session.get();
+		// Fill & Sign's Place text opens the same box under its own title.
+		const bool fillText =
+		    !existing && m_placementTool == PlacementTool::FillText;
 		std::uint64_t revision = existing ? existing->target.revision : 0;
 		if (!existing) {
 			struct Snapshot {
@@ -528,7 +532,9 @@ ViewerPage::editTextBox(NoteTarget target,
 		}
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(existing ? L"Edit text box" : L"Add text box"));
+		dialog.Title(box_value(existing   ? L"Edit text box"
+		                       : fillText ? L"Add text"
+		                                  : L"Add text box"));
 		dialog.PrimaryButtonText(existing ? L"Apply" : L"Add");
 		dialog.CloseButtonText(L"Cancel");
 		dialog.DefaultButton(ContentDialogButton::None);

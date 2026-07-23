@@ -267,6 +267,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										<MenuFlyoutItem
 											x:Name="PlaceCrossButton"
 											Text="Place cross" />
+										<MenuFlyoutItem
+											x:Name="PlaceFillTextButton"
+											Text="Place text" />
 									</MenuFlyoutSubItem>
 									<!-- filled in by setupComments with the ink
 									palette -->

@@ -2999,3 +2999,10 @@ then rebuilds the normal Debug app. Two forced-fault modes must fail, so a
 pass can't come from lost exit codes. Shortcut and the plain surface check
 stay manual because they wait for keys and buttons. build.ps1 takes extra
 MSBuild properties through -Property for this.
+
+## Fill & Sign text (2026-11-11)
+
+Comments > More > Fill & Sign now offers Place text. It uses the text-box
+writer and its dialog, titled "Add text", so the text is black 12 pt
+Helvetica with no border, up to 8 lines and 128 characters, placed where
+I click. Editing, resizing and Delete work as they do for text boxes.

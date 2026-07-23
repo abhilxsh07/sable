@@ -261,7 +261,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		Ink,
 		Stamp,
 		FillCheck,
-		FillCross
+		FillCross,
+		// the text-box writer, reached from Fill & Sign.
+		FillText
 	};
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool canPickStamp();
