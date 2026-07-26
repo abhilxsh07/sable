@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/sliders.h"
 #include "helpers/thumbnails.h"
 #include "helpers/comments.h"
+#include "helpers/signature.h"
 #include "helpers/zoom.h"
 #include "pdf/write_guard.h"
 #include "helpers/rotation.h"
@@ -264,8 +265,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		FillCross,
 		// the text-box writer, reached from Fill & Sign.
 		FillText,
-		// visual signatures: an image stamp of a typed name.
-		TypedSignature
+		// visual signatures: an image stamp of a typed name, or ink.
+		TypedSignature,
+		DrawnSignature
 	};
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	bool canPickStamp();
@@ -275,9 +277,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void placeShape(NoteTarget target);
 	void placeFillMark(NoteTarget target);
 	winrt::fire_and_forget createSignature(PlacementTool tool);
+	winrt::Windows::Foundation::IAsyncAction drawSignature();
 	void placeSignature(NoteTarget target);
 	// signatures last until the app closes; nothing is saved to settings.
 	static inline std::u16string s_signatureName;
+	static inline std::vector<helpers::PadStroke> s_signatureStrokes;
 	std::optional<pdf::StampImage> m_signatureImage;
 	std::function<void(pdf::NoteResult)> placementReply(pdf::Session* session,
 	                                                    const wchar_t* failure);

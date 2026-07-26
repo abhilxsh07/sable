@@ -193,7 +193,8 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 				placeFillMark(target);
 				break;
 			}
-			if (m_placementTool == PlacementTool::TypedSignature) {
+			if (m_placementTool == PlacementTool::TypedSignature ||
+			    m_placementTool == PlacementTool::DrawnSignature) {
 				placeSignature(target);
 				break;
 			}
@@ -273,11 +274,16 @@ winrt::fire_and_forget ViewerPage::createSignature(PlacementTool tool) {
 		    !commentsOpen() || !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable()) ||
-		    tool != PlacementTool::TypedSignature) {
+		    (tool != PlacementTool::TypedSignature &&
+		     tool != PlacementTool::DrawnSignature)) {
 			co_return;
 		}
 		cancelNotePlacement();
 		leavePageBox();
+		if (tool == PlacementTool::DrawnSignature) {
+			co_await drawSignature();
+			co_return;
+		}
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
 		dialog.Title(box_value(L"Typed signature"));
@@ -368,21 +374,194 @@ winrt::fire_and_forget ViewerPage::createSignature(PlacementTool tool) {
 	}
 }
 
+Windows::Foundation::IAsyncAction ViewerPage::drawSignature() {
+	const auto lifetime = get_strong();
+	ContentDialog dialog;
+	dialog.XamlRoot(XamlRoot());
+	dialog.Title(box_value(L"Drawn signature"));
+	dialog.PrimaryButtonText(L"Place");
+	dialog.SecondaryButtonText(L"Clear");
+	dialog.CloseButtonText(L"Cancel");
+	dialog.DefaultButton(ContentDialogButton::Primary);
+	StackPanel fields;
+	fields.Spacing(12);
+	fields.MaxWidth(360);
+	TextBlock hint;
+	hint.Text(L"Draw your signature with the mouse, then click the page "
+	          L"where it goes. Sable keeps it until you close the app.");
+	hint.TextWrapping(TextWrapping::Wrap);
+	fields.Children().Append(hint);
+	// black ink on a white pad, the way it lands on the page.
+	constexpr float WIDE = 360, TALL = 120;
+	Border pad;
+	pad.Width(WIDE);
+	pad.Height(TALL);
+	pad.CornerRadius({4, 4, 4, 4});
+	pad.BorderThickness({1, 1, 1, 1});
+	pad.BorderBrush(Media::SolidColorBrush({0xff, 0x80, 0x80, 0x80}));
+	pad.Background(Media::SolidColorBrush({0xff, 0xff, 0xff, 0xff}));
+	Canvas canvas;
+	pad.Child(canvas);
+	Automation::AutomationProperties::SetName(pad, L"Signature pad");
+	fields.Children().Append(pad);
+	struct Pad {
+		std::vector<helpers::PadStroke> strokes;
+		std::size_t points = 0;
+		Shapes::Polyline line{nullptr};
+	};
+	const auto state = std::make_shared<Pad>();
+	const auto ink = Media::SolidColorBrush({0xff, 0, 0, 0});
+	const auto addLine = [ink](const Canvas& surface) {
+		Shapes::Polyline line;
+		line.Stroke(ink);
+		line.StrokeThickness(2);
+		line.StrokeLineJoin(Media::PenLineJoin::Round);
+		line.StrokeStartLineCap(Media::PenLineCap::Round);
+		line.StrokeEndLineCap(Media::PenLineCap::Round);
+		surface.Children().Append(line);
+		return line;
+	};
+	for (const auto& stroke : s_signatureStrokes) {
+		auto line = addLine(canvas);
+		for (const auto& point : stroke) {
+			line.Points().Append(
+			    {static_cast<float>(point.x), static_cast<float>(point.y)});
+		}
+		state->points += stroke.size();
+	}
+	state->strokes = s_signatureStrokes;
+	dialog.IsPrimaryButtonEnabled(!state->strokes.empty());
+	// the document's ink limits: 256 strokes, 4096 points each, 16384 in all.
+	const auto at =
+	    [surface = make_weak(canvas)](const Input::PointerRoutedEventArgs& args)
+	    -> std::optional<Windows::Foundation::Point> {
+		const auto view = surface.get();
+		if (!view) {
+			return {};
+		}
+		auto point = args.GetCurrentPoint(view).Position();
+		point.X = std::clamp(point.X, 1.f, WIDE - 1);
+		point.Y = std::clamp(point.Y, 1.f, TALL - 1);
+		return point;
+	};
+	pad.PointerPressed([state, at, addLine, surface = make_weak(canvas),
+	                    prompt = make_weak(dialog)](
+	                       const Windows::Foundation::IInspectable& sender,
+	                       const Input::PointerRoutedEventArgs& args) {
+		const auto view = surface.get();
+		const auto point = at(args);
+		if (!view || !point || state->strokes.size() >= 256 ||
+		    state->points >= 16384) {
+			return;
+		}
+		sender.as<UIElement>().CapturePointer(args.Pointer());
+		state->strokes.push_back({{point->X, point->Y}});
+		++state->points;
+		state->line = addLine(view);
+		state->line.Points().Append(*point);
+		if (const auto box = prompt.get()) {
+			box.IsPrimaryButtonEnabled(true);
+		}
+		args.Handled(true);
+	});
+	pad.PointerMoved([state, at](auto&&,
+	                             const Input::PointerRoutedEventArgs& args) {
+		const auto point = at(args);
+		if (!state->line || !point || state->strokes.empty() ||
+		    state->strokes.back().size() >= 4096 || state->points >= 16384) {
+			return;
+		}
+		auto& stroke = state->strokes.back();
+		if (std::abs(point->X - stroke.back().x) < 1 &&
+		    std::abs(point->Y - stroke.back().y) < 1) {
+			return;
+		}
+		stroke.push_back({point->X, point->Y});
+		++state->points;
+		state->line.Points().Append(*point);
+		args.Handled(true);
+	});
+	const auto finish = [state](auto&&, auto&&) { state->line = nullptr; };
+	pad.PointerReleased(finish);
+	pad.PointerCanceled(finish);
+	pad.PointerCaptureLost(finish);
+	dialog.SecondaryButtonClick(
+	    [state, surface = make_weak(canvas)](
+	        const ContentDialog& sender,
+	        const ContentDialogButtonClickEventArgs& args) {
+		    args.Cancel(true);
+		    state->strokes.clear();
+		    state->points = 0;
+		    state->line = nullptr;
+		    if (const auto view = surface.get()) {
+			    view.Children().Clear();
+		    }
+		    sender.IsPrimaryButtonEnabled(false);
+	    });
+	dialog.Content(fields);
+	m_noteDialog = dialog;
+	const auto choice = co_await dialog.ShowAsync();
+	if (m_noteDialog == dialog) {
+		m_noteDialog = nullptr;
+	}
+	if (m_closed || choice != ContentDialogResult::Primary ||
+	    state->strokes.empty()) {
+		showComments();
+		co_return;
+	}
+	s_signatureStrokes = state->strokes;
+	beginNotePlacement(PlacementTool::DrawnSignature);
+}
+
 void ViewerPage::placeSignature(NoteTarget target) {
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
 	const auto page = static_cast<std::size_t>(target.page);
 	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
 	    m_noteDialog || m_passwordDialog || target.page < 0 ||
-	    page >= m_sizes.size() || !m_signatureImage ||
-	    !m_signatureImage->valid()) {
+	    page >= m_sizes.size()) {
+		cancelNotePlacement();
+		return;
+	}
+	const auto displayed = helpers::rotatedSize(m_sizes[page], target.rotation);
+	if (m_placementTool == PlacementTool::DrawnSignature) {
+		auto strokes = helpers::drawnSignatureStrokes(
+		    s_signatureStrokes, displayed, {target.x, target.y});
+		if (strokes.empty()) {
+			cancelNotePlacement();
+			showNotice(L"Couldn't fit the signature on this page.");
+			return;
+		}
+		m_notePlacing = false;
+		m_noteBusy = true;
+		try {
+			// a signature keeps the default black 2 pt line, not the
+			// drawing tool's current style.
+			if (session->addInkAt(
+			        target.page, std::move(strokes), target.rotation, revision,
+			        placementReply(session,
+			                       L"Couldn't add this signature. The page "
+			                       L"may be too small or restrict comments."),
+			        pdf::InkStyle{})) {
+				showComments();
+				return;
+			}
+		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not queue the drawn signature");
+		}
+		m_noteBusy = false;
+		showComments();
+		showNotice(L"Couldn't queue this signature. Try again.");
+		return;
+	}
+	if (!m_signatureImage || !m_signatureImage->valid()) {
 		cancelNotePlacement();
 		return;
 	}
 	const auto& image = *m_signatureImage;
 	const auto box = helpers::typedSignatureBox(
-	    static_cast<double>(image.width) / image.height,
-	    helpers::rotatedSize(m_sizes[page], target.rotation),
+	    static_cast<double>(image.width) / image.height, displayed,
 	    {target.x, target.y});
 	if (!box) {
 		cancelNotePlacement();

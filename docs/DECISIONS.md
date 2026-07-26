@@ -3017,3 +3017,13 @@ Free, then italic Segoe UI, whichever Windows has installed; nothing is
 bundled. The stamp is 36 pt tall and up to 216 pt wide, centred on the
 click and kept on the page. The name lasts until the app closes and is
 never written to settings. This links dwrite.lib from the Windows SDK.
+
+## Drawn signatures (2026-11-11)
+
+Place drawn signature opens a 360 by 120 white pad where I sign with the
+mouse; Clear empties it. The strokes become one printable Ink annotation,
+black and 2 pt like check marks, scaled to fit 150 by 50 pt with their
+shape kept, centred on the click and kept on the page. Ink keeps the
+signature as vectors and reuses the drawing path for Comments, Delete
+and Save a Copy. The pad follows the document's ink limits, and the
+drawing lasts until the app closes.
