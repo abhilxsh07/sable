@@ -18,6 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
+#include <winrt/Windows.Storage.Streams.h>
 
 namespace winrt::Sable::implementation {
 void TabsTest::commentLocationsTick(MainWindow& owner) {
@@ -222,12 +224,19 @@ void TabsTest::annotationActionsTick(MainWindow& owner) {
 		for (unsigned i = 0; i < 5; ++i) {
 			const auto item =
 			    v.m_textHighlight.Items().GetAt(i).as<MenuFlyoutItem>();
-			check(item.Text() == labels[i] && item.Icon() &&
-			          item.Icon()
-			                  .as<FontIcon>()
-			                  .Foreground()
-			                  .as<Media::SolidColorBrush>()
-			                  .Color() == colors[i],
+			// the swatch is a drawn 32 px dot; its centre pixel is the colour.
+			const auto icon = item.Icon().try_as<ImageIcon>();
+			const auto dot =
+			    icon ? icon.Source().try_as<Media::Imaging::WriteableBitmap>()
+			         : nullptr;
+			bool same = false;
+			if (dot && dot.PixelWidth() == 32 && dot.PixelHeight() == 32) {
+				const auto* centre =
+				    dot.PixelBuffer().data() + (16 * 32 + 16) * 4;
+				same = centre[0] == colors[i].B && centre[1] == colors[i].G &&
+				       centre[2] == colors[i].R && centre[3] == 255;
+			}
+			check(item.Text() == labels[i] && same,
 			      "highlight color label or swatch differs");
 		}
 		v.m_textMenu.Opened([this](auto&&, auto&&) { ++annotationMenus; });
