@@ -201,10 +201,10 @@ part of the planned visual signature tool.
 
 ## Fill & Sign tools beyond existing fields
 
-- [ ] Place text independently of an existing form field.
+- [x] Place text independently of an existing form field.
 - [x] Place ticks and crosses as printable Ink annotations.
-- [ ] Create and place a typed visual signature.
-- [ ] Create and place a drawn visual signature.
+- [x] Create and place a typed visual signature.
+- [x] Create and place a drawn visual signature.
 - [x] Save/reopen, print raster and Acrobat checks for check marks and crosses.
 - [ ] Save/reopen and external-reader checks for standalone text and signatures.
 

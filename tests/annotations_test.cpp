@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/engine.h"
 #include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
+#include "signature.h"
 
 namespace pdf {
 struct DocumentEditTest {
@@ -3337,6 +3338,91 @@ TEST(Annotations, FilesOverTheEditLimitAreRefusedWithoutARewrite) {
 		                                  doc.annotationRevision()));
 		    EXPECT_EQ(doc.writeRefusal(), pdf::WriteRefusal::TooLarge);
 		    EXPECT_EQ(pdf::DocumentEditTest::rewrites(doc), 0u);
+		    EXPECT_FALSE(doc.modified());
+	    })
+	    .get();
+}
+
+TEST(Annotations, FillAndSignTextAndSignaturesSurviveSaveAndReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto size = doc.pageSize(0);
+		    ASSERT_TRUE(size);
+		    const helpers::PageSize page{size->width, size->height};
+		    // Place text uses the text-box writer at the click.
+		    ASSERT_TRUE(doc.addTextBoxAt(0, .2, .2, 0, u"Fill text", {},
+		                                 doc.annotationRevision()));
+		    const auto image = helpers::typedSignature(u"Abhilash Kar");
+		    ASSERT_TRUE(image);
+		    const auto box = helpers::typedSignatureBox(
+		        static_cast<double>(image->width) / image->height, page,
+		        {.5, .5});
+		    ASSERT_TRUE(box);
+		    ASSERT_TRUE(doc.addStampAt(0, box->first, box->second, 0, *image,
+		                               doc.annotationRevision()));
+		    const auto strokes = helpers::drawnSignatureStrokes(
+		        {{{10, 10}, {100, 60}, {200, 20}}, {{50, 100}, {300, 90}}},
+		        page, {.5, .8});
+		    ASSERT_FALSE(strokes.empty());
+		    ASSERT_TRUE(doc.addInkAt(0, strokes, 0, doc.annotationRevision()));
+		    const auto bytes = doc.serializeForCopy(64 * 1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto rows = saved.document->annotations(0);
+		    ASSERT_TRUE(rows);
+		    ASSERT_EQ(rows->entries.size(), 3u);
+		    EXPECT_EQ(rows->entries[0].subtype, "FreeText");
+		    EXPECT_EQ(rows->entries[0].contents, "Fill text");
+		    EXPECT_EQ(rows->entries[1].subtype, "Stamp");
+		    EXPECT_EQ(rows->entries[2].subtype, "Ink");
+		    const auto& stamp = rows->entries[1].bounds;
+		    ASSERT_TRUE(stamp);
+		    EXPECT_NEAR(stamp->right - stamp->left,
+		                (box->second.x - box->first.x) * page.width, 1);
+		    EXPECT_NEAR(stamp->top - stamp->bottom,
+		                (box->second.y - box->first.y) * page.height, 1);
+		    const auto& ink = rows->entries[2].bounds;
+		    ASSERT_TRUE(ink);
+		    EXPECT_LE(ink->right - ink->left, 153);
+		    const auto live = doc.render(0, 400, 400);
+		    const auto reopened = saved.document->render(0, 400, 400);
+		    ASSERT_TRUE(live && reopened);
+		    EXPECT_EQ(live->pixels, reopened->pixels);
+		    // the saved copy opens in PDFium and copies back unchanged.
+		    const auto again =
+		        saved.document->serializeForCopy(64 * 1024 * 1024);
+		    ASSERT_TRUE(again);
+		    EXPECT_EQ(*again, *bytes);
+		    const auto third = pdf::openDocument(*again);
+		    ASSERT_TRUE(third.document);
+		    const auto rendered = third.document->render(0, 400, 400);
+		    ASSERT_TRUE(rendered);
+		    EXPECT_EQ(rendered->pixels, reopened->pixels);
+	    })
+	    .get();
+}
+
+TEST(Annotations, FillAndSignRefuseSignedFiles) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("note_signed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto image = helpers::typedSignature(u"Signer");
+		    ASSERT_TRUE(image);
+		    EXPECT_FALSE(doc.addTextBoxAt(0, .2, .2, 0, u"Fill text", {},
+		                                  doc.annotationRevision()));
+		    EXPECT_FALSE(doc.addStampAt(0, {.4, .4}, {.6, .45}, 0, *image,
+		                                doc.annotationRevision()));
+		    EXPECT_FALSE(doc.addInkAt(0, {{{.4, .4}, {.5, .45}}}, 0,
+		                              doc.annotationRevision()));
+		    EXPECT_EQ(doc.writeRefusal(), pdf::WriteRefusal::Signed);
 		    EXPECT_FALSE(doc.modified());
 	    })
 	    .get();

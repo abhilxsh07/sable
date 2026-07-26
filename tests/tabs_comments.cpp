@@ -982,8 +982,64 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		check(v.m_notesDirty && inkOn(0) != rows.end() &&
 		          inkOn(1) == rows.end(),
 		      "removing the cross lost the check mark or kept the cross");
+		invoke(v.PlaceFillTextButton());
+		check(v.m_notePlacing &&
+		          v.m_placementTool == ViewerPage::PlacementTool::FillText &&
+		          v.cancelNotePlacement(),
+		      "Place text did not arm and cancel text placement");
+		invoke(v.PlaceTypedSignatureButton());
+		check(v.m_noteDialog && unbox_value<hstring>(v.m_noteDialog.Title()) ==
+		                            L"Typed signature",
+		      "the typed signature dialog did not open");
+		v.m_noteDialog.Hide();
+		break;
+	case 8:
+		if (v.m_noteDialog) {
+			return;
+		}
+		v.m_signatureImage = helpers::typedSignature(u"Probe Signer");
+		check(v.m_signatureImage.has_value(), "typed signature image failed");
+		v.beginNotePlacement(ViewerPage::PlacementTool::TypedSignature);
+		check(v.m_notePlacing, "typed signature did not arm placement");
+		place(0);
+		break;
+	case 9:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(std::any_of(rows.begin(), rows.end(),
+		                  [](const auto& r) {
+			                  return r.subtype == "Stamp" && r.page == 0;
+		                  }),
+		      "the typed signature did not reach Comments");
+		invoke(v.PlaceDrawnSignatureButton());
+		check(v.m_noteDialog && unbox_value<hstring>(v.m_noteDialog.Title()) ==
+		                            L"Drawn signature",
+		      "the drawn signature dialog did not open");
+		v.m_noteDialog.Hide();
+		break;
+	case 10:
+		if (v.m_noteDialog) {
+			return;
+		}
+		ViewerPage::s_signatureStrokes = {{{20, 20}, {120, 80}, {220, 30}},
+		                                  {{60, 100}, {300, 90}}};
+		v.beginNotePlacement(ViewerPage::PlacementTool::DrawnSignature);
+		check(v.m_notePlacing, "drawn signature did not arm placement");
+		place(0);
+		break;
+	case 11:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(std::count_if(rows.begin(), rows.end(),
+		                    [](const auto& r) {
+			                    return r.subtype == "Ink" && r.page == 0;
+		                    }) == 2,
+		      "the drawn signature did not reach Comments");
 		v.close();
-		status.Text(L"PASS: check mark and cross placement, save and Delete");
+		status.Text(L"PASS: fill marks, text and signatures placement, save "
+		            L"and Delete");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;
