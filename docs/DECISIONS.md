@@ -3027,3 +3027,15 @@ shape kept, centred on the click and kept on the page. Ink keeps the
 signature as vectors and reuses the drawing path for Comments, Delete
 and Save a Copy. The pad follows the document's ink limits, and the
 drawing lasts until the app closes.
+
+## Page edits in the saved PDF (2026-11-11)
+
+Rotating, deleting and moving pages run through the shared transaction:
+the signed-PDF guard, the 128 MiB limit and a scratch copy come first, and
+the result is swapped in only after a rewrite reopens with every page
+where the edit says. I compare each page's sides, rotation, annotation
+count and text length to check that. The transaction now takes the page
+count a page edit expects instead of the source's. A file needs the modify
+or assemble permission, and the last page can't be deleted. PDFium leaves
+form fields and bookmarks that point at a deleted page in place; they
+lose their target rather than being removed.

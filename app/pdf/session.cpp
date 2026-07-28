@@ -1352,6 +1352,68 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 	});
 }
 
+bool Session::editPages(PageEdit edit,
+                        std::function<void(PageEditResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed || !edit.revision ||
+		    edit.revision != state->m_annotationRevision ||
+		    edit.pages.empty()) {
+			return false;
+		}
+	}
+	return state->m_engine.post([state, edit = std::move(edit),
+	                             callback = std::move(callback)] {
+		PageEditResult result;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				auto& document = *state->m_document;
+				switch (edit.kind) {
+				case PageEditKind::Rotate:
+					result.changed = document.rotatePages(
+					    edit.pages, edit.turns, edit.revision, canceled);
+					break;
+				case PageEditKind::Delete:
+					result.changed = document.deletePages(
+					    edit.pages, edit.revision, canceled);
+					break;
+				case PageEditKind::Move:
+					result.changed = document.movePages(
+					    edit.pages, edit.destination, edit.revision, canceled);
+					break;
+				}
+				postWrite(*state, result.changed);
+				result.refusal = document.writeRefusal();
+				// the reader lays the pages out again from this.
+				const int count = result.changed ? document.pageCount() : 0;
+				for (int page = 0; page < count && !canceled(); ++page) {
+					const auto size = document.pageSize(page);
+					if (!size) {
+						result.info.error = Error::Format;
+						break;
+					}
+					result.info.pages.push_back(*size);
+					result.info.labels.push_back(document.pageLabel(page));
+				}
+				result.info.canCopy = document.canCopy();
+				result.info.canAnnotate = document.canAnnotate();
+				result.info.canFillForms = document.canFillForms();
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't change the PDF's pages.");
+		}
+		{
+			std::lock_guard lock(state->m_mutex);
+			result.canceled = state->m_closed;
+			result.revision = state->m_annotationRevision;
+		}
+		callback(std::move(result));
+	});
+}
+
 bool Session::removeAnnotation(AnnotationTarget target,
                                std::function<void(NoteResult)> callback) {
 	return changeAnnotation(std::move(target), {}, std::move(callback));

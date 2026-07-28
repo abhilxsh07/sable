@@ -52,6 +52,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "engine.h"
 
 namespace pdf::detail {
+// what a page edit compares to prove each page landed where it should.
+struct PageMark {
+	float shortSide = 0, longSide = 0;
+	int rotation = 0, annotations = 0, characters = 0;
+	bool operator==(const PageMark&) const = default;
+};
 // the biggest bitmap render() makes: 16384 on a side, 256 MB in all
 inline constexpr int MAX_SIDE = 16384;
 inline constexpr long long MAX_PIXELS = 64LL * 1024 * 1024;

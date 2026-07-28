@@ -320,8 +320,8 @@ OpenResult Document::Transaction::save() {
 		return {};
 	}
 	auto next = source.reopenFormCopy(std::move(*bytes));
-	if (!next.document || next.document->pageCount() != source.pageCount() ||
-	    stopped()) {
+	const int expected = pages >= 0 ? pages : source.pageCount();
+	if (!next.document || next.document->pageCount() != expected || stopped()) {
 		return {};
 	}
 	next.document->m_dataCanonical = true;

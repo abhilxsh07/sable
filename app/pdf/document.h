@@ -164,6 +164,9 @@ struct FormFields {
 };
 
 class Document;
+namespace detail {
+struct PageMark;
+}
 
 struct OpenResult {
 	std::unique_ptr<Document> document; // null unless error is None
@@ -197,6 +200,20 @@ class Document {
 	bool canCopy() const;
 	bool canAnnotate() const;
 	bool canFillForms() const;
+	// page permissions and a form type the page edits can rewrite.
+	bool canAssemble() const;
+	// Page edits run through one transaction against the current revision
+	// and return false when refused. Indices are unique; rotation adds
+	// quarter turns clockwise; a move puts the pages, in their given order,
+	// at destination in the result. Deleting every page is refused.
+	bool rotatePages(const std::vector<int>& pages, int turns,
+	                 std::uint64_t revision,
+	                 const std::function<bool()>& canceled = {});
+	bool deletePages(const std::vector<int>& pages, std::uint64_t revision,
+	                 const std::function<bool()>& canceled = {});
+	bool movePages(const std::vector<int>& pages, int destination,
+	               std::uint64_t revision,
+	               const std::function<bool()>& canceled = {});
 	// Every write path asks this first. Signed covers signature fields,
 	// DocMDP and usage rights; Unavailable means it couldn't be checked.
 	WriteRefusal canWrite(const std::function<bool()>& canceled) const;
@@ -396,11 +413,20 @@ class Document {
 	const std::vector<std::uint8_t>*
 	canonicalBytes(const std::function<bool()>& canceled) const;
 	void invalidateWriteCopy() const;
+	using PageExpectation =
+	    std::function<std::optional<std::vector<detail::PageMark>>(
+	        std::vector<detail::PageMark>)>;
+	bool rewritePages(std::uint64_t revision,
+	                  const std::function<bool()>& canceled,
+	                  const std::function<bool(fpdf_document_t__*)>& apply,
+	                  const PageExpectation& expect);
 	struct Transaction {
 		Document& source;
 		const std::function<bool()>& canceled;
 		std::unique_ptr<Document> document;
 		bool halted = false;
+		// page edits set the count they expect; others keep the source's.
+		int pages = -1;
 		bool stopped();
 		bool canonicalize();
 		OpenResult save();

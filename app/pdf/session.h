@@ -99,6 +99,21 @@ struct TextNoteResult {
 	bool canceled = false;
 	bool contentsPresent = true;
 };
+enum class PageEditKind { Rotate, Delete, Move };
+struct PageEdit {
+	PageEditKind kind = PageEditKind::Rotate;
+	std::vector<int> pages;
+	// quarter turns clockwise for Rotate; the first page's new index for Move.
+	int turns = 1, destination = 0;
+	std::uint64_t revision = 0;
+};
+struct PageEditResult {
+	bool changed = false, canceled = false;
+	WriteRefusal refusal = WriteRefusal::None;
+	// the page sizes and labels after a change.
+	SessionInfo info;
+	std::uint64_t revision = 0;
+};
 struct NoteResult {
 	int page = 0;
 	std::optional<int> index;
@@ -254,6 +269,8 @@ class Session {
 	                         std::uint64_t revision = 0);
 	bool removeAnnotation(AnnotationTarget target,
 	                      std::function<void(NoteResult)> callback);
+	// Rotates, deletes or moves pages of the open document in memory.
+	bool editPages(PageEdit edit, std::function<void(PageEditResult)> callback);
 	bool clearMarkupComment(AnnotationTarget target, CommentContents expected,
 	                        std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
