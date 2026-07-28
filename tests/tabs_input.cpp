@@ -41,8 +41,11 @@ void TabsTest::checkNightRunKeys(MainWindow& owner) {
 	const auto root = owner.RootGrid().XamlRoot();
 	check(game->playfieldFocused(Input::FocusManager::GetFocusedElement(root)),
 	      "the opening shortcut did not focus the playfield");
-	check(game->m_run.phase() == Phase::Ready && owner.routeKey(VK_UP, 0) &&
-	          game->m_run.phase() == Phase::Running,
+	check(game->m_run.phase() == Phase::Ready,
+	      "the game was not ready (phase " +
+	          std::to_string(static_cast<int>(game->m_run.phase())) + ")");
+	check(owner.routeKey(VK_UP, 0), "the up arrow did not reach the game");
+	check(game->m_run.phase() == Phase::Running,
 	      "the game did not start with the keyboard");
 	game->m_next = std::chrono::steady_clock::now();
 	check(owner.routeKey(VK_UP, 0, true), "held jump was not handled");
@@ -98,6 +101,16 @@ void TabsTest::closeNightRun(MainWindow& owner) {
 
 void TabsTest::finishTick(MainWindow& owner) {
 	if (step == 0) {
+		// a window in the background pauses the game, so the game opens
+		// only once the reader holds the foreground.
+		HWND handle{};
+		check_hresult(
+		    owner.get_strong().as<IWindowNative>()->get_WindowHandle(&handle));
+		if (GetForegroundWindow() != handle) {
+			bringToFront(handle);
+			check(ticks < 40, "the reader never took the foreground");
+			return;
+		}
 		openNightRun(owner);
 		++step;
 		return;
@@ -387,7 +400,7 @@ void TabsTest::keyboardInputTick(MainWindow& owner) {
 		check_hresult(owner.get_strong().as<IWindowNative>()->get_WindowHandle(
 		    &inputWindow));
 		owner.Activate();
-		SetForegroundWindow(inputWindow);
+		bringToFront(inputWindow);
 		v.Scroller().Focus(FocusState::Keyboard);
 		break;
 	case 1:

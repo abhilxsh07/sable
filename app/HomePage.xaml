@@ -99,7 +99,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					VerticalScrollMode="Disabled"
 					VerticalScrollBarVisibility="Disabled">
 					<StackPanel Orientation="Horizontal" Spacing="4">
-						<Button Style="{StaticResource SableFlatButtonStyle}"
+						<Button x:Name="OpenButton"
+							Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Open a PDF (Ctrl+O)"
 							Click="onOpen">
 							<StackPanel Orientation="Horizontal" Spacing="10">

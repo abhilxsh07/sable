@@ -57,6 +57,23 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 
 namespace winrt::Sable::implementation {
+// Windows keeps windows started by a background launcher out of the
+// foreground, and the keyboard probes need it. Joining the foreground
+// thread's input queue for one call lets the probe window take it.
+inline void bringToFront(HWND window) {
+	const auto foreground = GetForegroundWindow();
+	const auto mine = GetCurrentThreadId();
+	const auto theirs =
+	    foreground ? GetWindowThreadProcessId(foreground, nullptr) : 0;
+	const bool joined =
+	    theirs && theirs != mine && AttachThreadInput(mine, theirs, TRUE);
+	BringWindowToTop(window);
+	SetForegroundWindow(window);
+	if (joined) {
+		AttachThreadInput(mine, theirs, FALSE);
+	}
+}
+
 struct TabsTest {
 	weak_ref<MainWindow> window;
 	pdf::Engine& engine;

@@ -562,6 +562,14 @@ void TabsTest::tick() {
 			check(helpers::loadSettings(
 			          settingsPath, helpers::versionString()) == uiStore->get(),
 			      "general values were not persisted");
+			// an Obsidian start goes back to Dark first, so the round trip
+			// below begins where a Dark start does.
+			if (appearance::obsidian()) {
+				settings->m_theme.SelectedIndex(0);
+				check(!appearance::obsidian() &&
+				          uiStore->get().general.Theme == "dark",
+				      "an Obsidian start did not return to Dark");
+			}
 			const auto beforeTheme = uiStore->get();
 			const auto originalFill = self->RootGrid()
 			                              .Background()
@@ -713,6 +721,10 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	}
 	auto state =
 	    std::make_shared<Sable::implementation::TabsTest>(*window, engine, app);
+	// the isolated store has to agree with the theme the window started in.
+	if (blackStartup) {
+		state->uiStore->setTheme("obsidian");
+	}
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};

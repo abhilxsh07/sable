@@ -788,6 +788,13 @@ void MainWindow::keepFocus() {
 	if (const auto tab =
 	        Tabs().SelectedItem().try_as<Controls::TabViewItem>()) {
 		tab.Focus(FocusState::Programmatic);
+		return;
+	}
+	// Home has no tab to hold the focus, so its Open button keeps the
+	// shortcuts alive after the last tab closes or on a fresh start.
+	if (Home().Visibility() == Visibility::Visible) {
+		get_self<HomePage>(Home())->OpenButton().Focus(
+		    FocusState::Programmatic);
 	}
 }
 
