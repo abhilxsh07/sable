@@ -164,6 +164,25 @@ struct FormFields {
 };
 
 class Document;
+enum class CombineError {
+	None,
+	Unreadable,
+	Password,
+	TooLarge,
+	Canceled,
+	Failed
+};
+struct CombineResult {
+	std::vector<std::uint8_t> bytes;
+	CombineError error = CombineError::None;
+	// the input that stopped it, for Unreadable, Password and TooLarge.
+	std::size_t file = 0;
+};
+// Every page of the files, in order, as one new PDF of at most limit bytes.
+// Engine thread only; the inputs are only read.
+CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
+                           std::size_t limit = 128 * 1024 * 1024,
+                           const std::function<bool()>& canceled = {});
 namespace detail {
 struct PageMark;
 }
@@ -214,6 +233,17 @@ class Document {
 	bool movePages(const std::vector<int>& pages, int destination,
 	               std::uint64_t revision,
 	               const std::function<bool()>& canceled = {});
+	// Inserts copies of another PDF's pages (all of them when pages is
+	// empty) so the first lands at index. The source bytes are only read.
+	bool insertPages(const std::vector<std::uint8_t>& source,
+	                 const std::vector<int>& pages, int index,
+	                 std::uint64_t revision,
+	                 const std::function<bool()>& canceled = {});
+	// A new PDF holding copies of the pages in the given order, checked by
+	// reopening it. Signed files work too, since nothing here is written.
+	std::optional<std::vector<std::uint8_t>>
+	extractPages(const std::vector<int>& pages,
+	             const std::function<bool()>& canceled = {}) const;
 	// Every write path asks this first. Signed covers signature fields,
 	// DocMDP and usage rights; Unavailable means it couldn't be checked.
 	WriteRefusal canWrite(const std::function<bool()>& canceled) const;

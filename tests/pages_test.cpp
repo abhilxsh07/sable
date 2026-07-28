@@ -202,3 +202,155 @@ TEST(PageEdits, SignedFilesRefuseEveryPageEdit) {
 	    })
 	    .get();
 }
+
+TEST(PageEdits, InsertingCopiesPagesFromAnotherFile) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = readBytes(fixturePath("pages.pdf"));
+		    const auto opened = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(
+		        doc.insertPages(source, {1}, 0, doc.annotationRevision()));
+		    auto pages = savedPages(savedCopy(doc));
+		    ASSERT_EQ(pages.size(), 4u);
+		    EXPECT_EQ(pages[0].text, u"Sable test page 2");
+		    EXPECT_EQ(pages[1].text, u"Sable test page 1");
+		    // every page, appended at the end, keeps its own rotation.
+		    ASSERT_TRUE(
+		        doc.insertPages(source, {}, 4, doc.annotationRevision()));
+		    pages = savedPages(savedCopy(doc));
+		    ASSERT_EQ(pages.size(), 7u);
+		    EXPECT_EQ(pages[6].text, u"page 3");
+		    EXPECT_EQ(pages[6].rotation, 1);
+		    EXPECT_FALSE(
+		        doc.insertPages(source, {3}, 0, doc.annotationRevision()));
+		    EXPECT_FALSE(
+		        doc.insertPages(source, {0}, 8, doc.annotationRevision()));
+		    EXPECT_FALSE(doc.insertPages(readBytes(fixturePath("password.pdf")),
+		                                 {}, 0, doc.annotationRevision()));
+		    EXPECT_EQ(doc.pageCount(), 7);
+		    EXPECT_EQ(readBytes(fixturePath("pages.pdf")), source);
+	    })
+	    .get();
+}
+
+TEST(PageEdits, SignedFilesRefuseInsertsButStillExtract) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto original = readBytes(fixturePath("note_signed.pdf"));
+		    const auto opened = pdf::openFile(fixturePath("note_signed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    EXPECT_FALSE(doc.insertPages(readBytes(fixturePath("pages.pdf")),
+		                                 {0}, 0, doc.annotationRevision()));
+		    EXPECT_EQ(doc.writeRefusal(), pdf::WriteRefusal::Signed);
+		    const auto extracted = doc.extractPages({0});
+		    ASSERT_TRUE(extracted);
+		    EXPECT_EQ(savedPages(*extracted).size(), 1u);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(readBytes(fixturePath("note_signed.pdf")), original);
+	    })
+	    .get();
+}
+
+TEST(PageEdits, ExtractingMakesANewPdfAndLeavesTheDocumentAlone) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto revision = doc.annotationRevision();
+		    const auto bytes = doc.extractPages({2, 0});
+		    ASSERT_TRUE(bytes);
+		    const auto pages = savedPages(*bytes);
+		    ASSERT_EQ(pages.size(), 2u);
+		    EXPECT_EQ(pages[0].text, u"page 3");
+		    EXPECT_EQ(pages[0].rotation, 1);
+		    EXPECT_EQ(pages[1].text, u"Sable test page 1");
+		    // the new PDF opens as a document of its own.
+		    const auto reopened = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(reopened.document);
+		    EXPECT_EQ(reopened.document->pageCount(), 2);
+		    EXPECT_FALSE(doc.modified());
+		    EXPECT_EQ(doc.annotationRevision(), revision);
+		    EXPECT_EQ(doc.pageCount(), 3);
+		    EXPECT_FALSE(doc.extractPages({}));
+		    EXPECT_FALSE(doc.extractPages({3}));
+		    EXPECT_FALSE(doc.extractPages({0, 0}));
+	    })
+	    .get();
+}
+
+TEST(PageEdits, CombiningJoinsFilesInOrder) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto result = pdf::combineFiles(
+		        {fixturePath("pages.pdf"), fixturePath("note_signed.pdf"),
+		         fixturePath("pages.pdf")});
+		    ASSERT_EQ(result.error, pdf::CombineError::None);
+		    const auto pages = savedPages(result.bytes);
+		    const auto opened = pdf::openFile(fixturePath("note_signed.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    const auto middle =
+		        static_cast<std::size_t>(opened.document->pageCount());
+		    ASSERT_EQ(pages.size(), 6u + middle);
+		    EXPECT_EQ(pages[0].text, u"Sable test page 1");
+		    EXPECT_EQ(pages[2].rotation, 1);
+		    EXPECT_EQ(pages[3 + middle].text, u"Sable test page 1");
+		    const auto reopened = pdf::openDocument(result.bytes);
+		    ASSERT_TRUE(reopened.document);
+	    })
+	    .get();
+}
+
+TEST(PageEdits, CombiningReportsTheFileThatStoppedIt) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto missing = pdf::combineFiles(
+		        {fixturePath("pages.pdf"), fixturePath("missing.pdf")});
+		    EXPECT_EQ(missing.error, pdf::CombineError::Unreadable);
+		    EXPECT_EQ(missing.file, 1u);
+		    EXPECT_TRUE(missing.bytes.empty());
+		    const auto locked = pdf::combineFiles(
+		        {fixturePath("password.pdf"), fixturePath("pages.pdf")});
+		    EXPECT_EQ(locked.error, pdf::CombineError::Password);
+		    EXPECT_EQ(locked.file, 0u);
+		    EXPECT_EQ(pdf::combineFiles({}).error, pdf::CombineError::Failed);
+		    EXPECT_EQ(pdf::combineFiles({fixturePath("pages.pdf")}, 1024,
+		                                [] { return true; })
+		                  .error,
+		              pdf::CombineError::TooLarge);
+	    })
+	    .get();
+}
+
+TEST(PageEdits, CombiningPastOneHundredTwentyEightMiBIsRefused) {
+	// a real file just over the limit; PDF readers ignore the padding.
+	const auto padded = std::filesystem::temp_directory_path() /
+	                    "sable combine past the limit.pdf";
+	{
+		auto bytes = readBytes(fixturePath("pages.pdf"));
+		bytes.resize(128 * 1024 * 1024 + 1, '\n');
+		std::ofstream file(padded, std::ios::binary | std::ios::trunc);
+		file.write(reinterpret_cast<const char*>(bytes.data()),
+		           static_cast<std::streamsize>(bytes.size()));
+	}
+	pdf::Engine engine;
+	engine
+	    .run([&padded] {
+		    const auto result =
+		        pdf::combineFiles({fixturePath("pages.pdf"), padded});
+		    EXPECT_EQ(result.error, pdf::CombineError::TooLarge);
+		    EXPECT_EQ(result.file, 1u);
+		    EXPECT_TRUE(result.bytes.empty());
+	    })
+	    .get();
+	std::error_code ignored;
+	std::filesystem::remove(padded, ignored);
+}

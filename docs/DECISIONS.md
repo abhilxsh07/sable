@@ -3039,3 +3039,16 @@ count a page edit expects instead of the source's. A file needs the modify
 or assemble permission, and the last page can't be deleted. PDFium leaves
 form fields and bookmarks that point at a deleted page in place; they
 lose their target rather than being removed.
+
+## Inserting, extracting and combining pages (2026-11-11)
+
+Insert copies another PDF's pages into the open document through the same
+page-edit transaction, so a signed file refuses it; the source file is
+only read and one that needs a password is refused. Extract and Combine
+build a new PDF with FPDF_CreateNewDocument and FPDF_ImportPagesByIndex,
+then reopen it and check every page before handing the bytes back. They
+don't modify anything, so they work on signed files too. Combine refuses
+inputs that already add up to more than 128 MiB before loading any of
+them, and an output that would grow past it. New PDFs are written only
+through the Save a copy picker and the same replace-after-flush file
+helper, which refuses to overwrite a source.

@@ -21,6 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <cstdint>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <mutex>
 #include <utility>
@@ -1352,6 +1355,95 @@ bool Session::updateMarkupComment(int page, int index, TextMarkup markup,
 	});
 }
 
+// the reader lays the pages out again from the sizes and labels.
+void Session::finishPageEdit(State& state, PageEditResult& result,
+                             const std::function<bool()>& canceled) {
+	postWrite(state, result.changed);
+	auto& document = *state.m_document;
+	result.refusal = document.writeRefusal();
+	const int count = result.changed ? document.pageCount() : 0;
+	for (int page = 0; page < count && !canceled(); ++page) {
+		const auto size = document.pageSize(page);
+		if (!size) {
+			result.info.error = Error::Format;
+			break;
+		}
+		result.info.pages.push_back(*size);
+		result.info.labels.push_back(document.pageLabel(page));
+	}
+	result.info.canCopy = document.canCopy();
+	result.info.canAnnotate = document.canAnnotate();
+	result.info.canFillForms = document.canFillForms();
+}
+
+bool Session::insertPages(std::filesystem::path file, std::vector<int> pages,
+                          int index, std::uint64_t revision,
+                          std::function<void(PageEditResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed || !revision ||
+		    revision != state->m_annotationRevision || file.empty()) {
+			return false;
+		}
+	}
+	return state->m_engine.post([state, file = std::move(file),
+	                             pages = std::move(pages), index, revision,
+	                             callback = std::move(callback)] {
+		PageEditResult result;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			std::error_code error;
+			const auto size = std::filesystem::file_size(file, error);
+			if (!canceled() && !error && size > 0 &&
+			    size <= 128 * 1024 * 1024) {
+				std::ifstream stream(file, std::ios::binary);
+				const std::vector<std::uint8_t> bytes(
+				    (std::istreambuf_iterator<char>(stream)), {});
+				result.changed = bytes.size() == size &&
+				                 state->m_document->insertPages(
+				                     bytes, pages, index, revision, canceled);
+				finishPageEdit(*state, result, canceled);
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't insert pages into the PDF.");
+		}
+		{
+			std::lock_guard lock(state->m_mutex);
+			result.canceled = state->m_closed;
+			result.revision = state->m_annotationRevision;
+		}
+		callback(std::move(result));
+	});
+}
+
+bool Session::extractPages(std::vector<int> pages,
+                           std::function<void(ExtractResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed || pages.empty()) {
+			return false;
+		}
+	}
+	return state->m_engine.post([state, pages = std::move(pages),
+	                             callback = std::move(callback)] {
+		ExtractResult result;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				result.bytes = state->m_document->extractPages(pages, canceled);
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't extract pages from the PDF.");
+		}
+		result.canceled = state->closed();
+		callback(std::move(result));
+	});
+}
+
 bool Session::editPages(PageEdit edit,
                         std::function<void(PageEditResult)> callback) {
 	const auto state = m_state;
@@ -1384,22 +1476,7 @@ bool Session::editPages(PageEdit edit,
 					    edit.pages, edit.destination, edit.revision, canceled);
 					break;
 				}
-				postWrite(*state, result.changed);
-				result.refusal = document.writeRefusal();
-				// the reader lays the pages out again from this.
-				const int count = result.changed ? document.pageCount() : 0;
-				for (int page = 0; page < count && !canceled(); ++page) {
-					const auto size = document.pageSize(page);
-					if (!size) {
-						result.info.error = Error::Format;
-						break;
-					}
-					result.info.pages.push_back(*size);
-					result.info.labels.push_back(document.pageLabel(page));
-				}
-				result.info.canCopy = document.canCopy();
-				result.info.canAnnotate = document.canAnnotate();
-				result.info.canFillForms = document.canFillForms();
+				finishPageEdit(*state, result, canceled);
 			}
 		} catch (...) {
 			diagnostics::write(diagnostics::Level::Error,

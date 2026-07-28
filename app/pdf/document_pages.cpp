@@ -21,10 +21,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
+#include <fpdf_ppo.h>
 #include <fpdf_text.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <set>
 
 namespace pdf {
@@ -231,5 +236,227 @@ bool Document::movePages(const std::vector<int>& pages, int destination,
 		    rest.insert(rest.begin() + destination, block.begin(), block.end());
 		    return rest;
 	    });
+}
+namespace {
+struct DocumentCloser {
+	void operator()(fpdf_document_t__* document) const {
+		FPDF_CloseDocument(document);
+	}
+};
+using DocumentPtr = std::unique_ptr<fpdf_document_t__, DocumentCloser>;
+
+// a bounded, cancelable writer for PDFs that don't come from an open file.
+struct BoundedWriter : FPDF_FILEWRITE {
+	BoundedWriter(std::size_t bound, const std::function<bool()>& cancel)
+	    : FPDF_FILEWRITE{1, &write}, limit(bound), canceled(cancel) {}
+	static int write(FPDF_FILEWRITE* base, const void* data,
+	                 unsigned long size) noexcept {
+		auto& self = *static_cast<BoundedWriter*>(base);
+		try {
+			if (self.failed || (self.canceled && self.canceled())) {
+				self.failed = true;
+				return 0;
+			}
+			if (size > self.limit - self.bytes.size()) {
+				self.overflow = self.failed = true;
+				return 0;
+			}
+			if (size && !data) {
+				self.failed = true;
+				return 0;
+			}
+			const auto* first = static_cast<const std::uint8_t*>(data);
+			self.bytes.insert(self.bytes.end(), first, first + size);
+			return 1;
+		} catch (...) {
+			self.failed = true;
+			return 0;
+		}
+	}
+	std::size_t limit;
+	const std::function<bool()>& canceled;
+	std::vector<std::uint8_t> bytes;
+	bool failed = false, overflow = false;
+};
+
+DocumentPtr loadBytes(const std::vector<std::uint8_t>& bytes) {
+	return DocumentPtr(
+	    FPDF_LoadMemDocument64(bytes.data(), bytes.size(), nullptr));
+}
+} // namespace
+
+bool Document::insertPages(const std::vector<std::uint8_t>& source,
+                           const std::vector<int>& pages, int index,
+                           std::uint64_t revision,
+                           const std::function<bool()>& canceled) {
+	const int count = offThread() ? 0 : pageCount();
+	if (source.empty() || source.size() > EDIT_LIMIT || index < 0 ||
+	    index > count) {
+		return false;
+	}
+	const std::function<bool()> stopped = [&canceled] {
+		return canceled && canceled();
+	};
+	// the source is only read; a password-protected one doesn't open.
+	const auto from = loadBytes(source);
+	const auto marks = from ? markPages(from.get(), stopped) : std::nullopt;
+	if (!marks) {
+		return false;
+	}
+	std::vector<int> chosen(pages);
+	if (chosen.empty()) {
+		chosen.resize(marks->size());
+		for (std::size_t page = 0; page < chosen.size(); ++page) {
+			chosen[page] = static_cast<int>(page);
+		}
+	} else if (!validPages(chosen, static_cast<int>(marks->size()))) {
+		return false;
+	}
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/public/fpdf_ppo.h
+	return rewritePages(
+	    revision, canceled,
+	    [&](FPDF_DOCUMENT document) {
+		    return FPDF_ImportPagesByIndex(
+		               document, from.get(), chosen.data(),
+		               static_cast<unsigned long>(chosen.size()), index) != 0;
+	    },
+	    [&](std::vector<PageMark> before)
+	        -> std::optional<std::vector<PageMark>> {
+		    std::vector<PageMark> block;
+		    for (const int page : chosen) {
+			    block.push_back((*marks)[static_cast<std::size_t>(page)]);
+		    }
+		    before.insert(before.begin() + index, block.begin(), block.end());
+		    return before;
+	    });
+}
+
+std::optional<std::vector<std::uint8_t>>
+Document::extractPages(const std::vector<int>& pages,
+                       const std::function<bool()>& canceled) const {
+	const std::function<bool()> stopped = [&canceled] {
+		return canceled && canceled();
+	};
+	// copying pages out needs the copy or assemble permission, but not the
+	// signature guard: the open file and document stay as they are.
+	if (offThread() || !validPages(pages, pageCount()) ||
+	    (!canCopy() && (FPDF_GetDocPermissions(m_handle) & 0x400) == 0) ||
+	    stopped()) {
+		return {};
+	}
+	const auto marks = markPages(m_handle, stopped);
+	DocumentPtr copy(FPDF_CreateNewDocument());
+	if (!marks || !copy ||
+	    !FPDF_ImportPagesByIndex(copy.get(), m_handle, pages.data(),
+	                             static_cast<unsigned long>(pages.size()), 0) ||
+	    stopped()) {
+		return {};
+	}
+	BoundedWriter writer(EDIT_LIMIT, stopped);
+	if (!FPDF_SaveAsCopy(copy.get(), &writer, 0) || writer.failed) {
+		return {};
+	}
+	copy.reset();
+	// the new PDF has to reopen with the chosen pages in the chosen order.
+	std::vector<PageMark> expected;
+	for (const int page : pages) {
+		expected.push_back((*marks)[static_cast<std::size_t>(page)]);
+	}
+	const auto check = loadBytes(writer.bytes);
+	const auto saved = check ? markPages(check.get(), stopped) : std::nullopt;
+	if (!saved || *saved != expected) {
+		return {};
+	}
+	return std::move(writer.bytes);
+}
+
+CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
+                           std::size_t limit,
+                           const std::function<bool()>& canceled) {
+	CombineResult result;
+	const std::function<bool()> stopped = [&canceled] {
+		return canceled && canceled();
+	};
+	const auto fail = [&result](CombineError error, std::size_t file = 0) {
+		result.bytes.clear();
+		result.error = error;
+		result.file = file;
+		return result;
+	};
+	if (offThread() || files.empty()) {
+		return fail(CombineError::Failed);
+	}
+	// inputs already past the limit are refused before any of them loads.
+	std::uintmax_t total = 0;
+	for (std::size_t file = 0; file < files.size(); ++file) {
+		std::error_code error;
+		const auto size = std::filesystem::file_size(files[file], error);
+		if (error) {
+			return fail(CombineError::Unreadable, file);
+		}
+		total += size;
+		if (total > limit) {
+			return fail(CombineError::TooLarge, file);
+		}
+	}
+	DocumentPtr combined(FPDF_CreateNewDocument());
+	if (!combined) {
+		return fail(CombineError::Failed);
+	}
+	// PDFium reads each source while it imports, so they all stay open
+	// until the combined copy is written.
+	std::vector<std::vector<std::uint8_t>> inputs;
+	std::vector<DocumentPtr> sources;
+	std::vector<PageMark> expected;
+	inputs.reserve(files.size());
+	for (std::size_t file = 0; file < files.size(); ++file) {
+		if (stopped()) {
+			return fail(CombineError::Canceled);
+		}
+		std::ifstream stream(files[file], std::ios::binary);
+		std::vector<std::uint8_t> bytes(
+		    (std::istreambuf_iterator<char>(stream)), {});
+		if (!stream && !stream.eof()) {
+			return fail(CombineError::Unreadable, file);
+		}
+		inputs.push_back(std::move(bytes));
+		auto source = loadBytes(inputs.back());
+		if (!source) {
+			return fail(FPDF_GetLastError() == FPDF_ERR_PASSWORD
+			                ? CombineError::Password
+			                : CombineError::Unreadable,
+			            file);
+		}
+		const auto marks = markPages(source.get(), stopped);
+		if (!marks) {
+			return fail(stopped() ? CombineError::Canceled
+			                      : CombineError::Unreadable,
+			            file);
+		}
+		if (!FPDF_ImportPagesByIndex(combined.get(), source.get(), nullptr, 0,
+		                             FPDF_GetPageCount(combined.get()))) {
+			return fail(CombineError::Failed, file);
+		}
+		expected.insert(expected.end(), marks->begin(), marks->end());
+		sources.push_back(std::move(source));
+	}
+	BoundedWriter writer(limit, stopped);
+	const bool saved = FPDF_SaveAsCopy(combined.get(), &writer, 0);
+	if (writer.overflow) {
+		return fail(CombineError::TooLarge);
+	}
+	if (!saved || writer.failed) {
+		return fail(stopped() ? CombineError::Canceled : CombineError::Failed);
+	}
+	combined.reset();
+	sources.clear();
+	const auto check = loadBytes(writer.bytes);
+	const auto pages = check ? markPages(check.get(), stopped) : std::nullopt;
+	if (!pages || *pages != expected) {
+		return fail(CombineError::Failed);
+	}
+	result.bytes = std::move(writer.bytes);
+	return result;
 }
 } // namespace pdf

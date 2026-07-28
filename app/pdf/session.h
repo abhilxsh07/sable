@@ -114,6 +114,10 @@ struct PageEditResult {
 	SessionInfo info;
 	std::uint64_t revision = 0;
 };
+struct ExtractResult {
+	std::optional<std::vector<std::uint8_t>> bytes;
+	bool canceled = false;
+};
 struct NoteResult {
 	int page = 0;
 	std::optional<int> index;
@@ -271,6 +275,13 @@ class Session {
 	                      std::function<void(NoteResult)> callback);
 	// Rotates, deletes or moves pages of the open document in memory.
 	bool editPages(PageEdit edit, std::function<void(PageEditResult)> callback);
+	// Inserts pages (all when pages is empty) from a PDF file at index.
+	bool insertPages(std::filesystem::path file, std::vector<int> pages,
+	                 int index, std::uint64_t revision,
+	                 std::function<void(PageEditResult)> callback);
+	// Copies pages into new PDF bytes; the open document doesn't change.
+	bool extractPages(std::vector<int> pages,
+	                  std::function<void(ExtractResult)> callback);
 	bool clearMarkupComment(AnnotationTarget target, CommentContents expected,
 	                        std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
@@ -342,6 +353,8 @@ class Session {
 	                   std::optional<int> rotation = {});
 	struct State;
 	static void postWrite(State& state, bool changed);
+	static void finishPageEdit(State& state, PageEditResult& result,
+	                           const std::function<bool()>& canceled);
 	std::shared_ptr<State> m_state;
 };
 } // namespace pdf
