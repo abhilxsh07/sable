@@ -176,6 +176,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 #endif
 	void keepFocus();
 	void reopenTab();
+	void openTool(std::wstring_view tool);
 	void selectTabPosition(int index);
 	void moveTab(int index);
 	void beginTabDrag();
@@ -187,6 +188,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	pdf::Engine* m_engine = nullptr;
 	bool m_closing = false;
 	bool m_picking = false;
+	// the tool the next picked PDF opens in, when Home asked for one.
+	std::wstring m_toolNext;
 	bool m_printing = false;
 	// the Shift+Alt+M alerts on screen, oldest first
 	struct Morty {

@@ -133,26 +133,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name=
-								"Organize pages, unavailable">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#26fc515d">
-										<FontIcon Glyph="&#xE8A9;" FontSize="15"
-											Foreground="#fc515d" />
-									</Border>
-									<TextBlock Text="Organize pages"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
+						<Button Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip=
+							"Rotate, delete, reorder and extract pages"
+							Click="onOrganize">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#26fc515d">
+									<FontIcon Glyph="&#xE8A9;" FontSize="15"
+										Foreground="#fc515d" />
+								</Border>
+								<TextBlock Text="Organize pages"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
 						<Border Background="Transparent"
 							ToolTipService.ToolTip="Coming later">
 							<Button

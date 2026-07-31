@@ -49,6 +49,7 @@ $scenarios = @(
 	"InheritedText", "Ink", "Keyboard", "KeyboardInput", "Layout", "Link",
 	"LongGestures", "MarkupComment", "MixedForm", "Multiline", "Music",
 	"NoSpellCheck", "NoteEdit", "NotePlacement", "Notes", "ObsidianStartup",
+	"Organize",
 	"Outline", "Pan", "PasswordForm", "Presentation", "Print", "PrintUi",
 	"Properties", "Radio", "Redraw", "Rotation", "SaveCopy", "Selection",
 	"Settings", "SortedChoice", "Stamp", "StrikeOut", "Underline", "Windows"

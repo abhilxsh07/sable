@@ -1674,6 +1674,9 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			Scroller().Focus(FocusState::Programmatic);
 		}
 		updateVisible();
+		if (!m_pendingTool.empty()) {
+			requestTool(std::exchange(m_pendingTool, {}));
+		}
 	} catch (...) {
 		m_layout.reset();
 		m_surface.reset();

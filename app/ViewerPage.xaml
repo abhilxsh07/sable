@@ -117,6 +117,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
+		<!-- Organize: every page as a tile to select, turn, delete, drag
+			into a new order, insert into or copy out to a new PDF -->
+		<Grid Grid.Row="1" x:Name="OrganizePanel" Grid.ColumnSpan="3"
+			Visibility="Collapsed"
+			Background="{ThemeResource SableViewerBrush}">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="*" />
+			</Grid.RowDefinitions>
+			<StackPanel Orientation="Horizontal" Spacing="4" Margin="12,8">
+				<Button x:Name="OrganizeRotateLeft" Content="Rotate left" />
+				<Button x:Name="OrganizeRotateRight" Content="Rotate right" />
+				<Button x:Name="OrganizeDelete" Content="Delete" />
+				<Button x:Name="OrganizeInsert"
+					Content="Insert from file&#x2026;" />
+				<Button x:Name="OrganizeExtract"
+					Content="Extract selection&#x2026;" />
+				<Button x:Name="OrganizeDone" Content="Done"
+					Style="{StaticResource AccentButtonStyle}" />
+				<TextBlock x:Name="OrganizeStatus" Margin="12,0,0,0"
+					VerticalAlignment="Center" />
+			</StackPanel>
+			<GridView Grid.Row="1" x:Name="OrganizeGrid"
+				SelectionMode="Extended" CanDragItems="True"
+				CanReorderItems="True" AllowDrop="True" Padding="12,0,12,12"
+				AutomationProperties.Name="Pages" />
+		</Grid>
 		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3"
 			Visibility="Collapsed"
 			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"

@@ -296,13 +296,24 @@ void MainWindow::setupOpen() {
 	OpenItem().Click(request);
 	Tabs().AddTabButtonClick(request);
 	Nav().ItemInvoked([weak = get_weak()](auto&&, const auto& args) {
-		if (auto self = weak.get();
-		    self && args.InvokedItemContainer() &&
-		    unbox_value_or<hstring>(args.InvokedItemContainer().Tag(),
-		                            hstring{}) == L"settings") {
+		const auto self = weak.get();
+		if (!self || !args.InvokedItemContainer()) {
+			return;
+		}
+		const auto tag = unbox_value_or<hstring>(
+		    args.InvokedItemContainer().Tag(), hstring{});
+		if (tag == L"settings") {
 			self->onOpenSettings({}, {});
+		} else if (tag == L"organize") {
+			self->openTool(tag);
 		}
 	});
+	get_self<HomePage>(Home())->ToolRequested(
+	    [weak = get_weak()](std::wstring_view tool) {
+		    if (auto self = weak.get()) {
+			    self->openTool(tool);
+		    }
+	    });
 	get_self<HomePage>(Home())->OpenRequested([weak = get_weak()] {
 		if (auto self = weak.get()) {
 			self->pickDocuments();
@@ -379,6 +390,8 @@ fire_and_forget MainWindow::pickDocuments() {
 				self->openDocument(*self->m_engine, file.Path().c_str(),
 				                   std::nullopt);
 			}
+			// a tool waits only for the files picked for it.
+			self->m_toolNext.clear();
 		}
 	} catch (const hresult_error& error) {
 		try {
@@ -471,6 +484,10 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	for (const auto& entry : m_tabs) {
 		if (entry.path == resolved) {
 			Tabs().SelectedItem(entry.tab);
+			if (!m_toolNext.empty()) {
+				get_self<ViewerPage>(entry.viewer)
+				    ->requestTool(std::exchange(m_toolNext, {}));
+			}
 			return;
 		}
 	}
@@ -509,6 +526,10 @@ void MainWindow::openDocument(pdf::Engine& engine,
 		}
 	};
 	get_self<ViewerPage>(viewer)->setValues(m_values);
+	if (!m_toolNext.empty()) {
+		get_self<ViewerPage>(viewer)->requestTool(
+		    std::exchange(m_toolNext, {}));
+	}
 	// a file only goes into Recent once it has actually opened
 	get_self<ViewerPage>(viewer)->onOpened([weak = get_weak(), resolved] {
 		if (const auto self = weak.get(); self && !self->m_closing) {
@@ -796,6 +817,20 @@ void MainWindow::keepFocus() {
 		get_self<HomePage>(Home())->OpenButton().Focus(
 		    FocusState::Programmatic);
 	}
+}
+
+// Organize and Export work on the open PDF. With none open they ask for
+// one and start once it has loaded.
+void MainWindow::openTool(std::wstring_view tool) {
+	if (m_closing) {
+		return;
+	}
+	if (const auto viewer = Viewer()) {
+		get_self<ViewerPage>(viewer)->requestTool(tool);
+		return;
+	}
+	m_toolNext = tool;
+	pickDocuments();
 }
 
 // the history holds paths, not viewers, passwords or old reading positions

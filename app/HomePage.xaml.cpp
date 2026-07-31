@@ -184,6 +184,13 @@ void HomePage::onOpen(const Windows::Foundation::IInspectable&,
 	}
 }
 
+void HomePage::onOrganize(const Windows::Foundation::IInspectable&,
+                          const RoutedEventArgs&) {
+	if (m_toolRequested) {
+		m_toolRequested(L"organize");
+	}
+}
+
 void HomePage::onOpenTapped(const Windows::Foundation::IInspectable& sender,
                             const Input::TappedRoutedEventArgs& args) {
 	args.Handled(true);

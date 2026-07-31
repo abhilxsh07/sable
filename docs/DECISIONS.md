@@ -3052,3 +3052,18 @@ inputs that already add up to more than 128 MiB before loading any of
 them, and an output that would grow past it. New PDFs are written only
 through the Save a copy picker and the same replace-after-flush file
 helper, which refuses to overwrite a source.
+
+## Organize pages (2026-11-12)
+
+Organize lays every page out as a 160 px tile over the reader, with Rotate
+left, Rotate right, Delete, Insert from file..., Extract selection... and
+Done above them. Ctrl and Shift select several tiles, and dragging moves
+them. A drag only becomes an edit when the moved tiles form one block,
+which is what FPDF_MovePages does in one step. Each command changes the
+open document in memory and marks it unsaved, so the edits are kept
+through Save a copy and the usual prompt on close. Inserted pages go
+after the last selected tile, or at the end. Extract writes a new PDF
+through the Save a copy picker and never over the open file. The tiles
+render one at a time, since the session renders one page at a time.
+Home's Organize pages button and the pane's entry open it, asking for a
+PDF first when none is open.

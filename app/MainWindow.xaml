@@ -315,7 +315,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 				<NavigationViewItemHeader Content="Tools" />
-				<NavigationViewItem Content="Organize pages"
+				<NavigationViewItem Content="Organize pages" Tag="organize"
 					SelectsOnInvoked="False">
 					<NavigationViewItem.Icon>
 						<FontIcon Glyph="&#xE8A9;" />

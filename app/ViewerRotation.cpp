@@ -54,64 +54,72 @@ void ViewerPage::rotateView(int turns) {
 	try {
 		const auto rotation =
 		    helpers::quarterTurns(m_rotation + helpers::quarterTurns(turns));
-		auto sizes = m_sizes;
-		for (auto& size : sizes) {
-			size = helpers::rotatedSize(size, rotation);
-		}
-		helpers::ThumbnailStrip strip(sizes);
-		const double zoom =
-		    m_preset == helpers::ZoomPreset::None ? m_zoom : fittedZoom(sizes);
-		auto next = makeLayout(sizes, zoom);
-		const auto extent =
-		    pdf::scaledSurfaceSize(next.width(), next.height(), m_scale);
-		if (!extent) {
+		if (!layOut(rotation, page)) {
 			showNotice(L"This document is too large to rotate at this zoom.");
-			return;
-		}
-		m_holdCurrent = true;
-		m_surface->resize(extent->cx, extent->cy);
-		// commit the geometry and its pixels before calling back into XAML
-		m_layout = std::move(next);
-		m_strip = std::move(strip);
-		m_zoom = zoom;
-		m_rotation = rotation;
-		++m_rotationVersion;
-		const bool resetShape = m_shapeStart.has_value();
-		m_shapeStart.reset();
-		++m_outlineLinkVersion;
-		m_outlineLinkPending = false;
-		m_device.filter->setInput(nullptr);
-		m_failed.clear();
-		m_retriedRenders.clear();
-		m_retriedUploads.clear();
-		m_loggedPlaceholders.clear();
-		m_uploadFailed.clear();
-		settle();
-		cancelSelectionDrag();
-		dropInkStroke();
-		// a square or a half turn needs new pixels too
-		Scroller().Focus(FocusState::Programmatic);
-		Thumbnails().Children().Clear();
-		m_thumbs.clear();
-		m_spareThumbs.clear();
-		m_thumbLoaded.clear();
-		m_hoverThumb.reset();
-		m_thumbCurrent.reset();
-		Thumbnails().Height(m_strip->height());
-		Pages().Width(extent->cx / m_scale);
-		Pages().Height(extent->cy / m_scale);
-		Scroller().UpdateLayout();
-		m_holdCurrent = false;
-		goToPage(page);
-		updateThumbnails();
-		updateVisible();
-		if (resetShape) {
-			showComments();
 		}
 	} catch (...) {
 		m_holdCurrent = false;
 		showNotice(L"Couldn't rotate this view.");
 	}
+}
+
+// lays the pages out again at a rotation, for a turn or changed pages.
+// false when the result is too large to draw; throws on other failures.
+bool ViewerPage::layOut(int rotation, std::size_t page) {
+	auto sizes = m_sizes;
+	for (auto& size : sizes) {
+		size = helpers::rotatedSize(size, rotation);
+	}
+	helpers::ThumbnailStrip strip(sizes);
+	const double zoom =
+	    m_preset == helpers::ZoomPreset::None ? m_zoom : fittedZoom(sizes);
+	auto next = makeLayout(sizes, zoom);
+	const auto extent =
+	    pdf::scaledSurfaceSize(next.width(), next.height(), m_scale);
+	if (!extent) {
+		return false;
+	}
+	m_holdCurrent = true;
+	m_surface->resize(extent->cx, extent->cy);
+	// commit the geometry and its pixels before calling back into XAML
+	m_layout = std::move(next);
+	m_strip = std::move(strip);
+	m_zoom = zoom;
+	m_rotation = rotation;
+	++m_rotationVersion;
+	const bool resetShape = m_shapeStart.has_value();
+	m_shapeStart.reset();
+	++m_outlineLinkVersion;
+	m_outlineLinkPending = false;
+	m_device.filter->setInput(nullptr);
+	m_failed.clear();
+	m_retriedRenders.clear();
+	m_retriedUploads.clear();
+	m_loggedPlaceholders.clear();
+	m_uploadFailed.clear();
+	settle();
+	cancelSelectionDrag();
+	dropInkStroke();
+	// a square or a half turn needs new pixels too
+	Scroller().Focus(FocusState::Programmatic);
+	Thumbnails().Children().Clear();
+	m_thumbs.clear();
+	m_spareThumbs.clear();
+	m_thumbLoaded.clear();
+	m_hoverThumb.reset();
+	m_thumbCurrent.reset();
+	Thumbnails().Height(m_strip->height());
+	Pages().Width(extent->cx / m_scale);
+	Pages().Height(extent->cy / m_scale);
+	Scroller().UpdateLayout();
+	m_holdCurrent = false;
+	goToPage(page);
+	updateThumbnails();
+	updateVisible();
+	if (resetShape) {
+		showComments();
+	}
+	return true;
 }
 
 pdf::TextRect ViewerPage::viewBox(const pdf::TextRect& box) const {

@@ -60,6 +60,8 @@ class Surface;
 struct RenderResult;
 struct NoteResult;
 struct SessionInfo;
+struct PageEdit;
+struct PageEditResult;
 struct FindUpdate;
 struct Link;
 struct LinkDestination;
@@ -114,6 +116,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomOut(int steps = 1);
 	void zoomReset();
 	void rotateView(int turns);
+	// Organize, or another tool asked for from Home, the nav pane or a
+	// file just picked for it.
+	void requestTool(std::wstring_view tool);
 	void setLayout(helpers::ScrollMode scroll, helpers::SpreadMode spread);
 	helpers::ScrollMode scrollMode() const {
 		return m_scrollMode;
@@ -359,6 +364,29 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	                 bool contentsPresent = true,
 	                 std::optional<pdf::AnnotationTarget> target = {});
 	void refreshNotes(std::optional<int> edited = {});
+	bool layOut(int rotation, std::size_t page);
+	bool organizing();
+	void setupOrganize();
+	void openOrganize();
+	void closeOrganize();
+	void fillOrganize();
+	void renderOrganizeTile();
+	void showOrganizeTile(std::size_t page, const pdf::Bitmap& bitmap);
+	std::vector<int> organizeSelection();
+	void showOrganizeState();
+	void reorderPages(std::vector<int> dragged);
+	void organizeEdit(pdf::PageEdit edit);
+	void finishPageEdit(pdf::PageEditResult result);
+	void pagesChanged(pdf::SessionInfo info);
+	winrt::fire_and_forget insertPagesFromFile();
+	winrt::fire_and_forget extractSelectedPages();
+	std::wstring m_pendingTool;
+	bool m_organizeSetup = false, m_organizeBusy = false;
+	bool m_organizeRendering = false;
+	std::size_t m_organizeTile = 0;
+	std::uint64_t m_organizeVersion = 0;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_organizeTimer{
+	    nullptr};
 	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
 	     m_notesDirty = false, m_formsDirty = false, m_noteSaving = false;
 	std::uint64_t m_renderVersion = 0;
