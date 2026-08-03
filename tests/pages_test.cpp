@@ -354,3 +354,36 @@ TEST(PageEdits, CombiningPastOneHundredTwentyEightMiBIsRefused) {
 	std::error_code ignored;
 	std::filesystem::remove(padded, ignored);
 }
+
+TEST(PageEdits, EditedPagesSaveToAFileThatReopens) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = fixturePath("pages.pdf");
+		    const auto original = readBytes(source);
+		    const auto opened = pdf::openFile(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_TRUE(doc.rotatePages({1}, 1, doc.annotationRevision()));
+		    ASSERT_TRUE(doc.movePages({2}, 0, doc.annotationRevision()));
+		    ASSERT_TRUE(doc.deletePages({1}, doc.annotationRevision()));
+		    ASSERT_TRUE(
+		        doc.insertPages(original, {0}, 2, doc.annotationRevision()));
+		    // Save a copy's own path: the file writer, then a fresh open.
+		    const auto saved = std::filesystem::temp_directory_path() /
+		                       "sable organized pages.pdf";
+		    ASSERT_EQ(doc.saveCopy(saved, source), pdf::SaveResult::Saved);
+		    const auto reopened = pdf::openFile(saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto pages = savedPages(readBytes(saved));
+		    ASSERT_EQ(pages.size(), 3u);
+		    EXPECT_EQ(pages[0].text, u"page 3");
+		    EXPECT_EQ(pages[1].text, u"Sable test page 2");
+		    EXPECT_EQ(pages[1].rotation, 1);
+		    EXPECT_EQ(pages[2].text, u"Sable test page 1");
+		    EXPECT_EQ(readBytes(source), original);
+		    std::error_code ignored;
+		    std::filesystem::remove(saved, ignored);
+	    })
+	    .get();
+}

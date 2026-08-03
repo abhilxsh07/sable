@@ -236,16 +236,16 @@ part of the planned visual signature tool.
 
 ## Organize, combine and export
 
-- [ ] Rotate pages in the saved PDF; view rotation already works.
-- [ ] Delete pages.
-- [ ] Reorder pages.
-- [ ] Insert pages.
-- [ ] Extract pages into a new PDF.
-- [ ] Combine multiple PDFs into one.
-- [ ] Export pages as PNG.
-- [ ] Export pages as JPEG.
-- [ ] Export document text to a file; selection copy already works.
-- [ ] Native controls and saved-result checks for these operations.
+- [x] Rotate pages in the saved PDF; view rotation already works.
+- [x] Delete pages.
+- [x] Reorder pages.
+- [x] Insert pages.
+- [x] Extract pages into a new PDF.
+- [x] Combine multiple PDFs into one.
+- [x] Export pages as PNG.
+- [x] Export pages as JPEG.
+- [x] Export document text to a file; selection copy already works.
+- [x] Native controls and saved-result checks for these operations.
 
 ## Build, reliability and distribution
 
