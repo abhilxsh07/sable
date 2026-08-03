@@ -304,7 +304,8 @@ void MainWindow::setupOpen() {
 		    args.InvokedItemContainer().Tag(), hstring{});
 		if (tag == L"settings") {
 			self->onOpenSettings({}, {});
-		} else if (tag == L"organize" || tag == L"combine") {
+		} else if (tag == L"organize" || tag == L"combine" ||
+		           tag == L"export") {
 			self->openTool(tag);
 		}
 	});

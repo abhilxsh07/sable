@@ -1444,6 +1444,74 @@ bool Session::extractPages(std::vector<int> pages,
 	});
 }
 
+bool Session::pageImage(int page, int width, int height,
+                        std::function<void(PageImageResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed || page < 0 ||
+		    width <= 0 || height <= 0) {
+			return false;
+		}
+	}
+	return state->m_engine.post(
+	    [state, page, width, height, callback = std::move(callback)] {
+		    PageImageResult result;
+		    try {
+			    if (!state->closed()) {
+				    result.bitmap = state->m_document->printRaster(
+				        page, width, height, 0, 0, width, height);
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't render a page to export.");
+		    }
+		    result.canceled = state->closed();
+		    callback(std::move(result));
+	    });
+}
+
+bool Session::documentText(std::vector<int> pages,
+                           std::function<void(DocumentTextResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed || pages.empty()) {
+			return false;
+		}
+	}
+	return state->m_engine.post(
+	    [state, pages = std::move(pages), callback = std::move(callback)] {
+		    DocumentTextResult result;
+		    try {
+			    std::string text;
+			    bool whole = true;
+			    for (std::size_t i = 0; i < pages.size() && whole; ++i) {
+				    if (state->closed()) {
+					    whole = false;
+					    break;
+				    }
+				    // the range stops at the page's last character.
+				    const auto part =
+				        state->m_document->textRange(pages[i], 0, 1'000'000);
+				    whole = part.has_value();
+				    if (whole) {
+					    text += i ? "\f" : "";
+					    text += *part;
+				    }
+			    }
+			    if (whole) {
+				    result.text = std::move(text);
+			    }
+		    } catch (...) {
+			    diagnostics::write(diagnostics::Level::Error,
+			                       "Couldn't read the PDF's text to export.");
+		    }
+		    result.canceled = state->closed();
+		    callback(std::move(result));
+	    });
+}
+
 bool Session::editPages(PageEdit edit,
                         std::function<void(PageEditResult)> callback) {
 	const auto state = m_state;

@@ -184,25 +184,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								</StackPanel>
 							</Button>
 						</Border>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name="Export, unavailable">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#26bc8b96">
-										<FontIcon Glyph="&#xEDE1;" FontSize="15"
-											Foreground="#d29fab" />
-									</Border>
-									<TextBlock Text="Export"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
+						<Button Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Save pages as images or the text as a file"
+							Click="onExport">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#26bc8b96">
+									<FontIcon Glyph="&#xEDE1;" FontSize="15"
+										Foreground="#d29fab" />
+								</Border>
+								<TextBlock Text="Export"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
 						<Border Background="Transparent"
 							ToolTipService.ToolTip="Coming later">
 							<Button

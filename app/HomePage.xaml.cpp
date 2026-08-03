@@ -198,6 +198,13 @@ void HomePage::onCombine(const Windows::Foundation::IInspectable&,
 	}
 }
 
+void HomePage::onExport(const Windows::Foundation::IInspectable&,
+                        const RoutedEventArgs&) {
+	if (m_toolRequested) {
+		m_toolRequested(L"export");
+	}
+}
+
 void HomePage::onOpenTapped(const Windows::Foundation::IInspectable& sender,
                             const Input::TappedRoutedEventArgs& args) {
 	args.Handled(true);

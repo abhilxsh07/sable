@@ -18,6 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
+#include <fstream>
+#include <iterator>
 
 namespace winrt::Sable::implementation {
 // pages.pdf: 595 x 842, 792 x 612 and 300 x 200 turned 90 degrees.
@@ -202,6 +204,122 @@ void TabsTest::combineTick(MainWindow& owner) {
 	}
 	default:
 		check(false, "unexpected combine step");
+	}
+	++step;
+	ticks = 0;
+}
+
+// Export: PNG for every page, JPEG for a range, then the text.
+void TabsTest::exportTick(MainWindow& owner) {
+	using namespace Microsoft::UI::Xaml::Automation;
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v) || v.m_exporting) {
+		return;
+	}
+	const auto bytes = [](const std::filesystem::path& path) {
+		std::ifstream file(path, std::ios::binary);
+		return std::string(std::istreambuf_iterator<char>(file), {});
+	};
+	// opens the dialog with a format, pages and range; the next tick
+	// presses Export once its buttons exist.
+	const auto open = [&](int format, const wchar_t* range) {
+		v.exportPages();
+		const auto dialog = v.m_noteDialog;
+		check(dialog && unbox_value<hstring>(dialog.Title()) == L"Export pages",
+		      "Export did not open its dialog");
+		const auto fields = dialog.Content().as<StackPanel>().Children();
+		fields.GetAt(0).as<RadioButtons>().SelectedIndex(format);
+		if (range) {
+			fields.GetAt(1).as<RadioButtons>().SelectedIndex(1);
+			fields.GetAt(2).as<TextBox>().Text(range);
+		}
+	};
+	const auto press = [&] {
+		std::function<Button(DependencyObject)> find;
+		find = [&](const DependencyObject& node) -> Button {
+			if (const auto button = node.try_as<Button>();
+			    button && button.Name() == L"PrimaryButton") {
+				return button;
+			}
+			for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node);
+			     ++i) {
+				if (const auto button =
+				        find(Media::VisualTreeHelper::GetChild(node, i))) {
+					return button;
+				}
+			}
+			return nullptr;
+		};
+		const auto button = v.m_noteDialog ? find(v.m_noteDialog) : nullptr;
+		if (!button) {
+			check(ticks < 40, "Export had no Export button");
+			return false;
+		}
+		Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button)
+		    .GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+		return true;
+	};
+	switch (step) {
+	case 0:
+		notesPath = makeTempDir("export");
+		v.m_exportPicker = [folder = notesPath](bool wantsFolder) {
+			const auto path = wantsFolder ? folder : folder / L"pages text.txt";
+			return attachmentChoice(hstring(path.wstring()), {});
+		};
+		open(0, nullptr);
+		break;
+	case 1:
+	case 3:
+	case 5:
+		if (!press()) {
+			return;
+		}
+		break;
+	case 2:
+		if (v.m_noteDialog) {
+			return;
+		}
+		for (const auto* name :
+		     {L"pages - page 001.png", L"pages - page 002.png",
+		      L"pages - page 003.png"}) {
+			check(bytes(notesPath / name).rfind("\x89PNG", 0) == 0,
+			      "a PNG page is missing or isn't a PNG");
+		}
+		open(1, L"2");
+		break;
+	case 4:
+		if (v.m_noteDialog) {
+			return;
+		}
+		check(bytes(notesPath / L"pages - page 002.jpg").rfind("\xff\xd8", 0) ==
+		              0 &&
+		          !std::filesystem::exists(notesPath / L"pages - page 001.jpg"),
+		      "the JPEG range did not export page 2 alone");
+		open(2, nullptr);
+		break;
+	case 6: {
+		if (v.m_noteDialog) {
+			return;
+		}
+		const auto text = bytes(notesPath / L"pages text.txt");
+		check(text.find("Sable test page 1") != std::string::npos &&
+		          text.find("Sable test page 2") != std::string::npos &&
+		          text.find('\f') != std::string::npos,
+		      "the text export lost a page");
+		v.close();
+		status.Text(L"PASS: Export PNG, JPEG range and text");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	}
+	default:
+		check(false, "unexpected export step");
 	}
 	++step;
 	ticks = 0;

@@ -57,6 +57,8 @@ struct HomePage : HomePageT<HomePage> {
 	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onCombine(const winrt::Windows::Foundation::IInspectable&,
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onExport(const winrt::Windows::Foundation::IInspectable&,
+	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs& args);

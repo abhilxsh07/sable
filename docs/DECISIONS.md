@@ -3078,3 +3078,16 @@ new file, and the same replace-after-flush helper writes it before it
 opens in a new tab. The new file can't replace one of its inputs, and a
 file that needs a password, can't be read or would push the result past
 128 MiB is named in the error.
+
+## Export pages (2026-11-12)
+
+Export pages offers PNG images, JPEG images or Text (.txt), all pages or
+a range like 1-3, 5, and 72, 150 or 300 dpi. The images are the pages as
+they print: original colors, print-visible annotations and no night
+filter, since a filtered export would be an improvement of its own. WIC
+encodes them through Windows.Graphics.Imaging into memory (JPEG at
+quality 0.9), and the Save a copy file helper writes each as "<name> -
+page 001.png" into the chosen folder. A page stays within 12000 px a side
+and 80 megapixels. Text needs the copy permission, follows PDFium's
+reading order and puts a form feed between pages. Signed files export
+like any other, since nothing is written to them.

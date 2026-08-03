@@ -157,6 +157,7 @@ struct TabsTest {
 	bool fillMarksOnly = false;
 	bool organizeOnly = false;
 	bool combineOnly = false;
+	bool exportOnly = false;
 	Windows::Foundation::IAsyncAction stampFixtures{nullptr};
 	std::filesystem::path stampPath;
 	bool notesOnly = false;
@@ -404,6 +405,7 @@ struct TabsTest {
 	void rotationTick(MainWindow& owner);
 	void organizeTick(MainWindow& owner);
 	void combineTick(MainWindow& owner);
+	void exportTick(MainWindow& owner);
 	void tick();
 };
 } // namespace winrt::Sable::implementation

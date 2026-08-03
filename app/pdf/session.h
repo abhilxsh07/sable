@@ -114,6 +114,14 @@ struct PageEditResult {
 	SessionInfo info;
 	std::uint64_t revision = 0;
 };
+struct PageImageResult {
+	std::optional<Bitmap> bitmap;
+	bool canceled = false;
+};
+struct DocumentTextResult {
+	std::optional<std::string> text;
+	bool canceled = false;
+};
 struct ExtractResult {
 	std::optional<std::vector<std::uint8_t>> bytes;
 	bool canceled = false;
@@ -282,6 +290,13 @@ class Session {
 	// Copies pages into new PDF bytes; the open document doesn't change.
 	bool extractPages(std::vector<int> pages,
 	                  std::function<void(ExtractResult)> callback);
+	// An unfiltered page image as it prints, for export.
+	bool pageImage(int page, int width, int height,
+	               std::function<void(PageImageResult)> callback);
+	// The pages' text joined by form feeds; nullopt when copying isn't
+	// allowed.
+	bool documentText(std::vector<int> pages,
+	                  std::function<void(DocumentTextResult)> callback);
 	bool clearMarkupComment(AnnotationTarget target, CommentContents expected,
 	                        std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.

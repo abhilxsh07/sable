@@ -380,6 +380,14 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void pagesChanged(pdf::SessionInfo info);
 	winrt::fire_and_forget insertPagesFromFile();
 	winrt::fire_and_forget extractSelectedPages();
+	winrt::fire_and_forget exportPages();
+	bool m_exporting = false;
+#ifdef SABLE_SURFACE_TEST
+	// a folder when asked for one, else a .txt path
+	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
+	    bool)>
+	    m_exportPicker;
+#endif
 	std::wstring m_pendingTool;
 	bool m_organizeSetup = false, m_organizeBusy = false;
 	bool m_organizeRendering = false;

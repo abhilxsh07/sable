@@ -59,6 +59,8 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 	}
 	if (tool == L"organize") {
 		openOrganize();
+	} else if (tool == L"export") {
+		exportPages();
 	}
 }
 
