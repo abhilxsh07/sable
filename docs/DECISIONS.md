@@ -3067,3 +3067,14 @@ through the Save a copy picker and never over the open file. The tiles
 render one at a time, since the session renders one page at a time.
 Home's Organize pages button and the pane's entry open it, asking for a
 PDF first when none is open.
+
+## Combine files (2026-11-12)
+
+Home's Combine files button and the pane's entry open a Combine files
+dialog: Add files..., Remove, Move up and Move down around a list that can
+also be dragged into order, then Combine and save... once there are two
+or more files. The engine joins them, the Save a copy picker chooses the
+new file, and the same replace-after-flush helper writes it before it
+opens in a new tab. The new file can't replace one of its inputs, and a
+file that needs a password, can't be read or would push the result past
+128 MiB is named in the error.

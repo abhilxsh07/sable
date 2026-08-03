@@ -321,7 +321,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<FontIcon Glyph="&#xE8A9;" />
 					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Combine files"
+				<NavigationViewItem Content="Combine files" Tag="combine"
 					SelectsOnInvoked="False">
 					<NavigationViewItem.Icon>
 						<FontIcon Glyph="&#xE8C8;" />

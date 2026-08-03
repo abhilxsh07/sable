@@ -113,26 +113,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 									VerticalAlignment="Center" />
 							</StackPanel>
 						</Button>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name=
-								"Combine files, unavailable">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#26d773e9">
-										<FontIcon Glyph="&#xE8C8;" FontSize="15"
-											Foreground="#d773e9" />
-									</Border>
-									<TextBlock Text="Combine files"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
+						<Button Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Join several PDFs into one"
+							Click="onCombine">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#26d773e9">
+									<FontIcon Glyph="&#xE8C8;" FontSize="15"
+										Foreground="#d773e9" />
+								</Border>
+								<TextBlock Text="Combine files"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
 						<Button Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip=
 							"Rotate, delete, reorder and extract pages"

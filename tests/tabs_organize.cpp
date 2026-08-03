@@ -112,4 +112,98 @@ void TabsTest::organizeTick(MainWindow& owner) {
 	++step;
 	ticks = 0;
 }
+
+// Combine: two fixtures through the dialog into one saved, opened PDF.
+void TabsTest::combineTick(MainWindow& owner) {
+	using namespace Microsoft::UI::Xaml::Automation;
+	const auto pressPrimary = [&](const ContentDialog& dialog) {
+		std::function<Button(DependencyObject)> find;
+		find = [&](const DependencyObject& node) -> Button {
+			if (const auto button = node.try_as<Button>();
+			    button && button.Name() == L"PrimaryButton") {
+				return button;
+			}
+			for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node);
+			     ++i) {
+				if (const auto button =
+				        find(Media::VisualTreeHelper::GetChild(node, i))) {
+					return button;
+				}
+			}
+			return nullptr;
+		};
+		const auto button = find(dialog);
+		check(button && button.IsEnabled(), "Combine and save is disabled");
+		Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button)
+		    .GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+	};
+	switch (step) {
+	case 0:
+		// the app hands its window the engine at launch; this probe opens
+		// no PDF that would.
+		owner.setEngine(engine);
+		owner.openTool(L"combine");
+		check(owner.m_combining && owner.m_combineDialog,
+		      "Combine files did not open its dialog");
+		break;
+	case 1: {
+		const auto dialog = owner.m_combineDialog;
+		check(static_cast<bool>(dialog), "the Combine dialog closed early");
+		const auto list = dialog.Content()
+		                      .as<StackPanel>()
+		                      .Children()
+		                      .GetAt(1)
+		                      .as<ListView>();
+		for (const auto* name :
+		     {L"tests/fixtures/pages.pdf", L"tests/fixtures/text.pdf"}) {
+			TextBlock row;
+			row.Text(name);
+			row.Tag(
+			    box_value(hstring(std::filesystem::absolute(name).wstring())));
+			list.Items().Append(row);
+		}
+		list.SelectedIndex(1);
+		notesPath = makeTempDir("combine") / L"combined.pdf";
+		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
+			return attachmentChoice(path, {});
+		};
+		pressPrimary(dialog);
+		break;
+	}
+	case 2: {
+		if (owner.m_combining) {
+			check(ticks < 100, "Combine did not finish");
+			return;
+		}
+		check(!owner.PickerError().IsOpen(),
+		      "Combine reported: " + to_string(owner.PickerError().Message()));
+		check(std::filesystem::exists(notesPath),
+		      "the combined PDF was not saved");
+		const auto current = owner.Viewer();
+		check(current &&
+		          get_self<ViewerPage>(current)->m_path ==
+		              std::filesystem::absolute(notesPath).lexically_normal(),
+		      "the combined PDF was not opened");
+		break;
+	}
+	case 3: {
+		const auto current = owner.Viewer();
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v)) {
+			return;
+		}
+		check(v.m_sizes.size() > 3, "the combined PDF lost pages");
+		status.Text(L"PASS: Combine files saved and opened one PDF");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	}
+	default:
+		check(false, "unexpected combine step");
+	}
+	++step;
+	ticks = 0;
+}
 } // namespace winrt::Sable::implementation

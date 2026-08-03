@@ -43,7 +43,7 @@ $modes = [ordered]@{
 }
 $scenarios = @(
 	"AnnotationActions", "AttachmentSave", "Attachments", "CheckBox",
-	"Choice", "ChoiceList", "ClearList", "Comb", "CommentLocations",
+	"Choice", "ChoiceList", "ClearList", "Comb", "Combine", "CommentLocations",
 	"Comments", "DefaultList", "Edit", "EllipsePlacement", "FillMarks",
 	"Filter", "Find", "Finish", "Gestures", "Highlight", "InheritedCheckBox",
 	"InheritedText", "Ink", "Keyboard", "KeyboardInput", "Layout", "Link",

@@ -304,7 +304,7 @@ void MainWindow::setupOpen() {
 		    args.InvokedItemContainer().Tag(), hstring{});
 		if (tag == L"settings") {
 			self->onOpenSettings({}, {});
-		} else if (tag == L"organize") {
+		} else if (tag == L"organize" || tag == L"combine") {
 			self->openTool(tag);
 		}
 	});
@@ -823,6 +823,11 @@ void MainWindow::keepFocus() {
 // one and start once it has loaded.
 void MainWindow::openTool(std::wstring_view tool) {
 	if (m_closing) {
+		return;
+	}
+	// Combine starts from its own list of files.
+	if (tool == L"combine") {
+		combinePdfs();
 		return;
 	}
 	if (const auto viewer = Viewer()) {

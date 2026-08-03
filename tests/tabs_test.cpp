@@ -137,6 +137,10 @@ void TabsTest::tick() {
 			organizeTick(*self);
 			return;
 		}
+		if (combineOnly) {
+			combineTick(*self);
+			return;
+		}
 		if (highlightOnly) {
 			highlightTick(*self);
 			return;
@@ -854,6 +858,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->organizeOnly =
 	    GetEnvironmentVariableW(L"SableOrganizeTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->combineOnly =
+	    GetEnvironmentVariableW(L"SableCombineTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
@@ -915,7 +922,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->panOnly || state->layoutOnly || state->presentationOnly ||
 	    state->saveCopyOnly || state->keyboardOnly ||
 	    state->keyboardInputOnly || state->gesturesOnly ||
-	    state->longGesturesOnly || state->organizeOnly) {
+	    state->longGesturesOnly || state->organizeOnly || state->combineOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1033,7 +1040,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	} else if (state->linksOnly) {
 		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
 	} else if (!state->settingsOnly && !state->windowsOnly &&
-	           !state->finishOnly && !state->musicOnly) {
+	           !state->finishOnly && !state->musicOnly && !state->combineOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
 		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);
