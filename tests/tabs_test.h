@@ -203,6 +203,10 @@ struct TabsTest {
 	int editCuts = 0;
 	int step = 0;
 	int ticks = 0;
+	// set while a tick runs. Starting XAudio2 for Night Run's first sound
+	// waits on another apartment, and that wait lets the timer fire again
+	// inside the running step.
+	bool ticking = false;
 	int dragStarts = 0;
 	int dragFinishes = 0;
 	int dragResult = 0;

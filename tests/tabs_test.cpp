@@ -26,6 +26,16 @@ void TabsTest::tick() {
 		timer.Stop();
 		return;
 	}
+	if (ticking) {
+		return;
+	}
+	ticking = true;
+	const struct Reset {
+		bool& flag;
+		~Reset() {
+			flag = false;
+		}
+	} reset{ticking};
 	try {
 		check(probeCheck());
 		if (shortcuts) {

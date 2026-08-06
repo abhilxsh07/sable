@@ -58,6 +58,8 @@ $scenarios = @(
 foreach ($name in $scenarios) {
 	$modes[$name] = @{ SableTabsTest = "true"; "Sable${name}Test" = "true" }
 }
+# Finish reads the log file for the verbose startup line, which DEBUG turns on
+$modes["Finish"]["DEBUG"] = "1"
 # a forced failure has to come back as a failing exit code, or a pass
 # from this script means nothing.
 $expectFail = @{
