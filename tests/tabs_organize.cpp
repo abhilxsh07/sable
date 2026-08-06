@@ -103,6 +103,18 @@ void TabsTest::organizeTick(MainWindow& owner) {
 	case 5:
 		check(!v.organizing() && v.m_layout && v.m_layout->pages().size() == 2,
 		      "Done did not return to the changed pages");
+		owner.openTool(L"comment");
+		check(v.commentsOpen(), "Comment did not open Comments");
+		v.setCommentsOpen(false);
+		owner.openTool(L"fillsign");
+		check(v.commentsOpen(), "Fill & Sign did not open Comments");
+		break;
+	case 6:
+		if (!v.CommentsMoreButton().Flyout().IsOpen()) {
+			check(ticks < 40, "Fill & Sign did not open its menu");
+			return;
+		}
+		v.CommentsMoreButton().Flyout().Hide();
 		v.close();
 		status.Text(L"PASS: Organize rotate, move, delete and refusal");
 		probePass(owner.get_strong().as<Window>());
@@ -146,6 +158,14 @@ void TabsTest::combineTick(MainWindow& owner) {
 		// the app hands its window the engine at launch; this probe opens
 		// no PDF that would.
 		owner.setEngine(engine);
+		{
+			// Fill & Sign and Comment are real tools now; Read aloud isn't.
+			const auto home = get_self<HomePage>(owner.Home());
+			check(home->FillSignButton().IsEnabled() &&
+			          home->CommentButton().IsEnabled() &&
+			          !home->ReadAloudButton().IsEnabled(),
+			      "Home's tool buttons have the wrong state");
+		}
 		owner.openTool(L"combine");
 		check(owner.m_combining && owner.m_combineDialog,
 		      "Combine files did not open its dialog");

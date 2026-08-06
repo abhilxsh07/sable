@@ -119,6 +119,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// Organize, or another tool asked for from Home, the nav pane or a
 	// file just picked for it.
 	void requestTool(std::wstring_view tool);
+	void openFillSign();
 	void setLayout(helpers::ScrollMode scroll, helpers::SpreadMode spread);
 	helpers::ScrollMode scrollMode() const {
 		return m_scrollMode;

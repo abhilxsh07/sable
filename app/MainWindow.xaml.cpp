@@ -305,7 +305,8 @@ void MainWindow::setupOpen() {
 		if (tag == L"settings") {
 			self->onOpenSettings({}, {});
 		} else if (tag == L"organize" || tag == L"combine" ||
-		           tag == L"export") {
+		           tag == L"export" || tag == L"fillsign" ||
+		           tag == L"comment") {
 			self->openTool(tag);
 		}
 	});
@@ -820,8 +821,8 @@ void MainWindow::keepFocus() {
 	}
 }
 
-// Organize and Export work on the open PDF. With none open they ask for
-// one and start once it has loaded.
+// Organize, Export, Fill & Sign and Comment work on the open PDF. With
+// none open they ask for one and start once it has loaded.
 void MainWindow::openTool(std::wstring_view tool) {
 	if (m_closing) {
 		return;

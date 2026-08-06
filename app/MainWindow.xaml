@@ -327,13 +327,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<FontIcon Glyph="&#xE8C8;" />
 					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Fill &amp; Sign"
+				<NavigationViewItem Content="Fill &amp; Sign" Tag="fillsign"
 					SelectsOnInvoked="False">
 					<NavigationViewItem.Icon>
 						<FontIcon Glyph="&#xE70F;" />
 					</NavigationViewItem.Icon>
 				</NavigationViewItem>
-				<NavigationViewItem Content="Comment" SelectsOnInvoked="False">
+				<NavigationViewItem Content="Comment" Tag="comment"
+					SelectsOnInvoked="False">
 					<NavigationViewItem.Icon>
 						<FontIcon Glyph="&#xE8BD;" />
 					</NavigationViewItem.Icon>

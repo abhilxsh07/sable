@@ -144,46 +144,38 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 									VerticalAlignment="Center" />
 							</StackPanel>
 						</Button>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name=
-								"Fill &amp; Sign, unavailable">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#26c2ad80">
-										<FontIcon Glyph="&#xE70F;" FontSize="15"
-											Foreground="#c2ad80" />
-									</Border>
-									<TextBlock Text="Fill &amp; Sign"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name=
-								"Comment, unavailable">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#2690a582">
-										<FontIcon Glyph="&#xE8BD;" FontSize="15"
-											Foreground="#a3ba94" />
-									</Border>
-									<TextBlock Text="Comment"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
+						<Button x:Name="FillSignButton"
+							Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Sign, add text and check marks"
+							Click="onFillSign">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#26c2ad80">
+									<FontIcon Glyph="&#xE70F;" FontSize="15"
+										Foreground="#c2ad80" />
+								</Border>
+								<TextBlock Text="Fill &amp; Sign"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
+						<Button x:Name="CommentButton"
+							Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Add notes, highlights and drawings"
+							Click="onComment">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#2690a582">
+									<FontIcon Glyph="&#xE8BD;" FontSize="15"
+										Foreground="#a3ba94" />
+								</Border>
+								<TextBlock Text="Comment"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
 						<Button Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Save pages as images or the text as a file"
 							Click="onExport">
@@ -205,7 +197,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								Style="{StaticResource SableFlatButtonStyle}"
 								IsEnabled="False" IsHitTestVisible="False"
 								AutomationProperties.Name=
-								"Read aloud, unavailable">
+								"Read aloud, unavailable"
+								x:Name="ReadAloudButton">
 								<StackPanel Orientation="Horizontal"
 									Spacing="10">
 									<Border Width="30" Height="30"

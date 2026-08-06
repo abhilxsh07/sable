@@ -47,7 +47,8 @@ struct HomePage : HomePageT<HomePage> {
 	}
 	// puts a file that opened at the top of Recent and saves the list
 	void Remember(const std::filesystem::path& path);
-	// the Organize, Combine and Export buttons name their tool.
+	// the tool buttons (Organize, Combine, Fill & Sign, Comment and Export)
+	// name their tool.
 	void ToolRequested(std::function<void(std::wstring_view)> handler) {
 		m_toolRequested = std::move(handler);
 	}
@@ -59,6 +60,10 @@ struct HomePage : HomePageT<HomePage> {
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onExport(const winrt::Windows::Foundation::IInspectable&,
 	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onFillSign(const winrt::Windows::Foundation::IInspectable&,
+	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onComment(const winrt::Windows::Foundation::IInspectable&,
+	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs& args);
