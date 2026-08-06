@@ -20,9 +20,47 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 #include "helpers/attachment_file.h"
 #include "pdf_test_files.h"
+#include <algorithm>
+#include <chrono>
+#include <cwctype>
 #include <fstream>
 #include <iterator>
+#include <thread>
 namespace {
+// .tmp files left in a save folder. ReplaceFileW works through a file
+// named after the backup plus ".tmp" (".SABLE-SAVE...TMP.BAK.tmp") and
+// that entry can still be listed for a moment after the call returns,
+// gone by the time anything opens it. That one isn't mine, so it gets a
+// couple of seconds to disappear; my own temporary file fails at once.
+std::vector<std::filesystem::path>
+leftoverTemporaryFiles(const std::filesystem::path& dir) {
+	namespace fs = std::filesystem;
+	const auto replaceWork = [](const fs::path& path) {
+		auto name = path.filename().wstring();
+		std::transform(name.begin(), name.end(), name.begin(), [](wchar_t c) {
+			return static_cast<wchar_t>(std::towlower(c));
+		});
+		return name.ends_with(L".bak.tmp");
+	};
+	const auto deadline =
+	    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (true) {
+		std::vector<fs::path> found;
+		bool waiting = false;
+		for (const auto& entry : fs::directory_iterator(dir)) {
+			if (entry.path().extension() == ".tmp" ||
+			    entry.path().extension() == ".TMP") {
+				found.push_back(entry.path());
+				waiting = waiting || replaceWork(entry.path());
+			}
+		}
+		if (!waiting || std::chrono::steady_clock::now() > deadline) {
+			return found;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+}
+
 class FileSaveTest : public ::testing::Test {
   protected:
 	const std::filesystem::path dir = makeTempDir("file_save");
@@ -39,9 +77,7 @@ class FileSaveTest : public ::testing::Test {
 		return {std::istreambuf_iterator<char>(in), {}};
 	}
 	void noTemporaryFiles() {
-		for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-			EXPECT_NE(entry.path().extension(), ".tmp");
-		}
+		EXPECT_TRUE(leftoverTemporaryFiles(dir).empty());
 	}
 };
 
@@ -235,9 +271,7 @@ TEST(AttachmentFileTest,
 	EXPECT_TRUE(helpers::saveAttachment(target, source, bytes));
 	EXPECT_EQ(fs::file_size(target), bytes.size());
 	EXPECT_FALSE(helpers::saveAttachment(source, source, bytes));
-	for (const auto& entry : fs::directory_iterator(dir)) {
-		EXPECT_NE(entry.path().extension(), ".tmp");
-	}
+	EXPECT_TRUE(leftoverTemporaryFiles(dir).empty());
 }
 TEST(AttachmentFileTest, RejectsHardLinkAliasesOfTheSource) {
 	namespace fs = std::filesystem;
