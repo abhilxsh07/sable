@@ -331,6 +331,19 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	            std::optional<pdf::Annotation> existing = {});
 	winrt::hstring m_textBoxDraft, m_textBoxAuthor;
 	winrt::fire_and_forget editShape(pdf::Annotation existing);
+	winrt::fire_and_forget editDrawing(pdf::Annotation existing);
+	// a selected drawing or stamp dragged on the page, in Pages coordinates
+	struct AnnotationDrag {
+		pdf::Annotation annotation;
+		winrt::Windows::Foundation::Point start, current;
+		bool queued = false;
+	};
+	std::optional<AnnotationDrag> m_annotationDrag;
+	bool movableAnnotation() const;
+	bool beginAnnotationDrag(winrt::Windows::Foundation::Point point);
+	void extendAnnotationDrag(winrt::Windows::Foundation::Point point);
+	void finishAnnotationDrag(winrt::Windows::Foundation::Point point);
+	void dropAnnotationDrag();
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});

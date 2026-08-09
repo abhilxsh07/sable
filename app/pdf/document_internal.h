@@ -535,6 +535,27 @@ inline std::string utf16ToUtf8(std::u16string_view text) {
 	return utf16ToUtf8(encoded);
 }
 
+// the stroke appearance of a drawing in PDF points: round caps and joins,
+// so a single tap still draws a dot. addInk writes it and the drawing
+// edits rebuild it to prove an existing one is Sable's own.
+inline std::string inkAppearance(const std::vector<InkStroke>& strokes,
+                                 const InkStyle& style) {
+	std::ostringstream stream;
+	stream.imbue(std::locale::classic());
+	stream << std::fixed << std::setprecision(5) << style.color.red / 255.
+	       << ' ' << style.color.green / 255. << ' ' << style.color.blue / 255.
+	       << " RG " << double(style.width) << " w 1 J 1 j";
+	for (const auto& stroke : strokes) {
+		stream << ' ' << stroke.front().x << ' ' << stroke.front().y << " m";
+		for (std::size_t i = stroke.size() == 1 ? 0 : 1; i < stroke.size();
+		     ++i) {
+			stream << ' ' << stroke[i].x << ' ' << stroke[i].y << " l";
+		}
+	}
+	stream << " S";
+	return stream.str();
+}
+
 // the snapshots keep text as UTF-8; nullopt for anything that isn't.
 inline std::optional<std::u16string> utf8ToUtf16(std::string_view text) {
 	std::u16string out;

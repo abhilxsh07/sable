@@ -304,21 +304,7 @@ std::optional<int> Document::addInk(int index,
 	                              static_cast<float>(bottom - width / 2),
 	                              static_cast<float>(right + width / 2),
 	                              static_cast<float>(top + width / 2)};
-	std::ostringstream stream;
-	stream.imbue(std::locale::classic());
-	// round caps and joins also draw a single tap as a dot.
-	stream << std::fixed << std::setprecision(5) << style.color.red / 255.
-	       << ' ' << style.color.green / 255. << ' ' << style.color.blue / 255.
-	       << " RG " << width << " w 1 J 1 j";
-	for (const auto& stroke : strokes) {
-		stream << ' ' << stroke.front().x << ' ' << stroke.front().y << " m";
-		for (std::size_t i = stroke.size() == 1 ? 0 : 1; i < stroke.size();
-		     ++i) {
-			stream << ' ' << stroke[i].x << ' ' << stroke[i].y << " l";
-		}
-	}
-	stream << " S";
-	const auto raw = stream.str();
+	const auto raw = inkAppearance(strokes, style);
 	// C and Border let other editors rebuild the same line. both have to go
 	// in before the appearance: PDFium refuses colors once one exists and
 	// drops it when the border changes.

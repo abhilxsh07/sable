@@ -233,6 +233,13 @@ class Session {
 	                std::function<void(NoteResult)> callback);
 	bool resizeShape(Annotation expected, ShapeSize size,
 	                 std::function<void(NoteResult)> callback);
+	// moves a drawing between two displayed points and sets its color or
+	// width where one is given; result.changed is false for no change.
+	bool editInkAt(Annotation expected, AnnotationPoint from,
+	               AnnotationPoint to, int rotation,
+	               std::optional<AnnotationColor> color,
+	               std::optional<float> width,
+	               std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,
 	                std::u16string author, std::uint64_t revision,
 	                std::function<void(NoteResult)> callback,

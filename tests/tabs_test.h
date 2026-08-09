@@ -154,6 +154,7 @@ struct TabsTest {
 	bool ellipsePlacementOnly = false;
 	bool inkDrawingOnly = false;
 	bool stampOnly = false;
+	bool inkEditOnly = false;
 	bool fillMarksOnly = false;
 	bool organizeOnly = false;
 	bool combineOnly = false;
@@ -394,6 +395,7 @@ struct TabsTest {
 	void fillMarksTick(MainWindow& owner);
 	void stampTick(MainWindow& owner);
 	void inkDrawingTick(MainWindow& owner);
+	void inkEditTick(MainWindow& owner);
 	void notePlacementTick(MainWindow& owner);
 	void notesTick(MainWindow& owner);
 	void commentsTick(MainWindow& owner);

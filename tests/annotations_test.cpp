@@ -4837,3 +4837,64 @@ TEST(Annotations, SystemGlyphsCoverBoxCharactersAndRefuseShapedScripts) {
 	EXPECT_TRUE(run.glyphs[3].path.empty());
 	EXPECT_EQ(pdf::systemGlyphs(u"\u05e9", 12).error, pdf::GlyphError::Script);
 }
+
+TEST(Annotations, DrawingEditsMoveRestyleAndSurviveReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openDocument(annotationBytes("outline.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addTextNote(0, 30, 40, u"Keep note"), 0);
+		    const std::vector<pdf::InkStroke> strokes{{{60, 100}, {110, 100}},
+		                                              {{200, 80}, {200, 180}}};
+		    ASSERT_EQ(doc.addInk(0, strokes, doc.annotationRevision()), 1);
+		    auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    const auto drawing = notes->entries[1];
+		    EXPECT_EQ(doc.editInk(drawing, {0, 0}, {}, {}), false);
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    // off the page, too wide and translucent all refuse
+		    EXPECT_FALSE(doc.editInk(drawing, {10000, 0}, {}, {}));
+		    EXPECT_FALSE(doc.editInk(drawing, {0, 0}, {}, 20.f));
+		    EXPECT_FALSE(doc.editInk(drawing, {0, 0},
+		                             pdf::AnnotationColor{0, 0, 0, 128}, {}));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    ASSERT_EQ(doc.editInk(drawing, {10, -5},
+		                          pdf::AnnotationColor{37, 99, 235, 255}, 4.f),
+		              true);
+		    // the old snapshot no longer matches the drawing
+		    EXPECT_FALSE(doc.editInk(drawing, {1, 1}, {}, {}));
+		    notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2 &&
+		                notes->entries[1].bounds);
+		    const auto& moved = *notes->entries[1].bounds;
+		    EXPECT_FLOAT_EQ(moved.left, 68);
+		    EXPECT_FLOAT_EQ(moved.bottom, 73);
+		    EXPECT_FLOAT_EQ(moved.right, 212);
+		    EXPECT_FLOAT_EQ(moved.top, 177);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const std::vector<pdf::InkStroke> shifted{{{70, 95}, {120, 95}},
+		                                              {{210, 75}, {210, 175}}};
+		    EXPECT_EQ(pdf::DocumentEditTest::inkList(*saved.document, 1),
+		              shifted);
+		    EXPECT_EQ(saved.document->textNote(
+		                  0, 0, saved.document->annotationRevision()),
+		              u"Keep note");
+		    // still Sable's own after the round trip, so it moves back
+		    const auto again = saved.document->annotations(0);
+		    ASSERT_TRUE(again && again->entries.size() == 2);
+		    EXPECT_EQ(saved.document->editInk(
+		                  again->entries[1], {-10, 5},
+		                  pdf::AnnotationColor{0, 0, 0, 255}, 2.f),
+		              true);
+		    EXPECT_EQ(pdf::DocumentEditTest::inkList(*saved.document, 1),
+		              strokes);
+		    EXPECT_TRUE(saved.document->serializeForCopy(1024 * 1024));
+	    })
+	    .get();
+}

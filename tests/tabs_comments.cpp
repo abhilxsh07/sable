@@ -1421,8 +1421,10 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		v.CommentsList().SelectedIndex(static_cast<int>(rows.rend() - dot - 1));
 		v.showComments();
 		check(v.DeleteNoteButton().IsEnabled() &&
-		          !v.EditNoteButton().IsEnabled(),
-		      "drawing row did not offer Delete only");
+		          v.EditNoteButton().IsEnabled() &&
+		          Automation::AutomationProperties::GetName(
+		              v.EditNoteButton()) == L"Edit selected drawing",
+		      "drawing row did not offer Edit drawing and Delete");
 		invoke(v.DeleteNoteButton());
 		break;
 	}

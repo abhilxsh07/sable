@@ -150,7 +150,7 @@ void ViewerPage::showAnnotationMenu(Windows::Foundation::Point point) {
 	const auto weak = get_weak();
 	m_annotationMenu = MenuFlyout();
 	MenuFlyoutItem edit;
-	edit.Text(L"Edit comment");
+	edit.Text(target.subtype == "Ink" ? L"Edit drawing" : L"Edit comment");
 	edit.IsEnabled(canDeleteAnnotation());
 	edit.Click([weak, target](auto&&, auto&&) {
 		if (const auto self = weak.get();
@@ -179,6 +179,11 @@ void ViewerPage::editAnnotation(pdf::AnnotationTarget target) {
 		return;
 	}
 	setCommentsOpen(true);
+	if (target.subtype == "Ink" && m_selectedAnnotation &&
+	    m_selectedAnnotation->target == target) {
+		editDrawing(*m_selectedAnnotation);
+		return;
+	}
 	std::optional<pdf::TextMarkup> markup;
 	if (target.subtype == "Highlight") {
 		markup = pdf::TextMarkup::Highlight;
@@ -284,11 +289,24 @@ void ViewerPage::drawSelectedAnnotation(ID2D1DeviceContext& context,
 	const auto box =
 	    viewBox({bounds.left, bounds.top, bounds.right, bounds.bottom});
 	const auto at = pixels(static_cast<std::size_t>(page));
+	// a drawing being dragged shows its outline where it will land
+	double dx = 0, dy = 0;
+	if (m_annotationDrag && m_layout &&
+	    m_annotationDrag->annotation.target == m_selectedAnnotation->target &&
+	    static_cast<std::size_t>(page) < m_layout->pages().size()) {
+		const auto& shown = m_layout->pages()[page];
+		if (shown.width > 0 && shown.height > 0) {
+			dx = (m_annotationDrag->current.X - m_annotationDrag->start.X) /
+			     shown.width;
+			dy = (m_annotationDrag->current.Y - m_annotationDrag->start.Y) /
+			     shown.height;
+		}
+	}
 	const auto rect =
-	    D2D1::RectF(static_cast<float>(at.x + box.left * at.width),
-	                static_cast<float>(at.y + box.top * at.height),
-	                static_cast<float>(at.x + box.right * at.width),
-	                static_cast<float>(at.y + box.bottom * at.height));
+	    D2D1::RectF(static_cast<float>(at.x + (box.left + dx) * at.width),
+	                static_cast<float>(at.y + (box.top + dy) * at.height),
+	                static_cast<float>(at.x + (box.right + dx) * at.width),
+	                static_cast<float>(at.y + (box.bottom + dy) * at.height));
 	context.DrawRectangle(rect, m_device.annotationBackground.get(),
 	                      static_cast<float>(3 * m_scale));
 	context.DrawRectangle(rect, m_device.annotationOutline.get(),

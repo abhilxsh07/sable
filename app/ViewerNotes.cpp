@@ -148,6 +148,12 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 }
 
 bool ViewerPage::cancelNotePlacement() {
+	// Esc also drops a drawing being dragged, before it's written
+	if (m_annotationDrag && !m_annotationDrag->queued) {
+		dropAnnotationDrag();
+		Pages().ReleasePointerCaptures();
+		return true;
+	}
 	m_shapeStart.reset();
 	m_stampImage.reset();
 	dropInkStroke();

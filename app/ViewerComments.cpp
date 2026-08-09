@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "InkPalette.h"
 #include "pdf/session.h"
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
@@ -35,26 +36,6 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace winrt::Sable::implementation {
-namespace {
-// pen colors that read on white paper. red and yellow are the approved
-// highlight values; the pale highlight green, blue and pink fade as lines.
-struct InkColor {
-	const wchar_t* label;
-	pdf::AnnotationColor color;
-};
-constexpr InkColor INK_COLORS[]{{L"Black", {0, 0, 0, 255}},
-                                {L"Blue", {37, 99, 235, 255}},
-                                {L"Red", {235, 73, 73, 255}},
-                                {L"Green", {31, 157, 85, 255}},
-                                {L"Yellow", {255, 240, 102, 255}}};
-struct InkWidth {
-	const wchar_t* label;
-	float width;
-};
-constexpr InkWidth INK_WIDTHS[]{
-    {L"Thin (1 pt)", 1}, {L"Medium (2 pt)", 2}, {L"Thick (4 pt)", 4}};
-} // namespace
-
 namespace {
 Symbol commentSymbol(std::string_view subtype) {
 	if (subtype == "Text") {
@@ -448,15 +429,19 @@ void ViewerPage::showComments() {
 	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	    (notes[selected].subtype == "Square" ||
 	     notes[selected].subtype == "Circle");
+	const bool selectedInk =
+	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	    notes[selected].subtype == "Ink";
 	Automation::AutomationProperties::SetName(
-	    EditNoteButton(), selectedShape    ? L"Resize selected shape"
+	    EditNoteButton(), selectedInk      ? L"Edit selected drawing"
+	                      : selectedShape  ? L"Resize selected shape"
 	                      : selectedBox    ? L"Edit selected text box"
 	                      : selectedMarkup ? L"Edit selected comment"
 	                                       : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !m_notePlacing &&
-	    (selectedShape || selectedBox || selectedMarkup ||
+	    (selectedShape || selectedInk || selectedBox || selectedMarkup ||
 	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	      notes[selected].subtype == "Text")));
 	DeleteNoteButton().IsEnabled(canDeleteAnnotation());

@@ -3123,3 +3123,33 @@ contents, so a box made with fonts this machine doesn't have reads as
 not editable rather than as broken. /Contents keeps the text and DA is
 unchanged, so another app that rebuilds the appearance from DA may not
 show these characters.
+
+## Editing drawings (2026-11-12)
+
+Clicking a drawing on the page now selects it by its outline box, the way
+highlights are picked by their quads. A selected drawing moves with the
+mouse: a press inside its
+outline (or within 4 DIPs of it) drags the dashed outline, the cursor
+turns into the move arrows, and the release writes the move. Esc or a
+lost capture drops it, and a press that travels less than 3 DIPs moves
+nothing. Edit, from the page menu or the Comments row, opens "Edit
+drawing" with Color and Width, each starting at "Keep current" and
+offering the Drawing style pens. Delete stays as it was. Check marks,
+crosses and drawn signatures are drawings too, so they move and restyle
+the same way. Pen input stays untested here.
+
+Only a drawing Sable could have written is edited: its appearance has
+to be exactly what addInk writes for its InkList, width and color, and
+its Rect has to match. The color is read from the appearance, since
+PDFium won't read /C while one exists, and rebuilding the stream proves
+the reading. Other keys refuse, except the CA of 1 that SetColor adds.
+The old appearance is also rendered on an isolated copy, so an odd BBox
+or Matrix can't move what the edit replaces.
+
+The edit happens in place inside the shared transaction, after the
+signed-PDF guard: the old appearance goes first so the color and border
+can change, then InkList, Rect and the new appearance. The saved copy is
+reopened and the drawing's points, width, Rect and appearance checked,
+along with every other annotation and its appearances. A drawing that
+would end up past the page box refuses. The pen palette moved to
+InkPalette.h so Drawing style and the editor share it.

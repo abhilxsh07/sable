@@ -152,6 +152,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\tests\tabs_print.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
+		<ClCompile Include="..\tests\tabs_annotation_edit.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
 		<ClCompile Include="..\tests\tabs_organize.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
@@ -188,6 +191,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="NightRunAudio.h" />
 		<ClInclude Include="NightRunPane.h" />
 		<ClInclude Include="StampImage.h" />
+		<ClInclude Include="InkPalette.h" />
 		<ClInclude Include="helpers\night_run.h" />
 		<ClInclude Include="MusicPane.h" />
 		<ClInclude Include="App.xaml.h">
@@ -235,6 +239,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="ViewerRotation.cpp" />
 		<ClCompile Include="ViewerOrganize.cpp" />
 		<ClCompile Include="ViewerExport.cpp" />
+		<ClCompile Include="ViewerDrawingEdit.cpp" />
 		<ClCompile Include="ViewerPan.cpp" />
 		<ClCompile Include="ViewerLayout.cpp" />
 		<ClCompile Include="ViewerPresentation.cpp" />
@@ -366,6 +371,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document_text_boxes.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\document_drawings.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\text_box_glyphs.cpp">

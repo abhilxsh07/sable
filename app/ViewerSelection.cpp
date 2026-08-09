@@ -63,6 +63,12 @@ void ViewerPage::setupSelection() {
 				    return;
 			    }
 			    self->Scroller().Focus(FocusState::Programmatic);
+			    // a press on the selected drawing moves it instead
+			    if (self->beginAnnotationDrag(point.Position())) {
+				    self->Pages().CapturePointer(args.Pointer());
+				    args.Handled(true);
+				    return;
+			    }
 			    self->beginSelection(point.Position());
 			    if (self->m_textStart) {
 				    self->Pages().CapturePointer(args.Pointer());
@@ -73,6 +79,10 @@ void ViewerPage::setupSelection() {
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
 		    if (auto self = weak.get(); self && self->m_inkStroke) {
 			    self->extendInkStroke(
+			        args.GetCurrentPoint(self->Pages()).Position());
+			    args.Handled(true);
+		    } else if (self && self->m_annotationDrag) {
+			    self->extendAnnotationDrag(
 			        args.GetCurrentPoint(self->Pages()).Position());
 			    args.Handled(true);
 		    } else if (self && self->m_textPointerDown) {
@@ -89,6 +99,12 @@ void ViewerPage::setupSelection() {
 			    self->finishInkStroke();
 			    self->Pages().ReleasePointerCaptures();
 			    args.Handled(true);
+		    } else if (self && self->m_annotationDrag &&
+		               !self->m_annotationDrag->queued) {
+			    self->finishAnnotationDrag(
+			        args.GetCurrentPoint(self->Pages()).Position());
+			    self->Pages().ReleasePointerCaptures();
+			    args.Handled(true);
 		    } else if (self && self->m_textPointerDown) {
 			    self->extendSelection(
 			        args.GetCurrentPoint(self->Pages()).Position());
@@ -100,6 +116,9 @@ void ViewerPage::setupSelection() {
 	Pages().PointerCaptureLost([weak](auto&&, auto&&) {
 		if (auto self = weak.get(); self && self->m_inkStroke) {
 			self->dropInkStroke();
+		} else if (self && self->m_annotationDrag &&
+		           !self->m_annotationDrag->queued) {
+			self->dropAnnotationDrag();
 		} else if (self && self->m_textPointerDown) {
 			self->cancelSelectionDrag();
 		}
@@ -108,6 +127,9 @@ void ViewerPage::setupSelection() {
 		if (auto self = weak.get()) {
 			if (self->m_inkStroke) {
 				self->dropInkStroke();
+			}
+			if (self->m_annotationDrag && !self->m_annotationDrag->queued) {
+				self->dropAnnotationDrag();
 			}
 			self->cancelSelectionDrag();
 		}

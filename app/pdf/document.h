@@ -295,6 +295,21 @@ class Document {
 	// Resizing keeps the PDF top-left anchor of a proven plain outline.
 	std::optional<bool> resizeShape(const Annotation& expected, ShapeSize size,
 	                                const std::function<bool()>& canceled = {});
+	// Moves a drawing by an offset in PDF points and gives it a new color or
+	// width where one is set. Only drawings stroked the way addInk strokes
+	// them; true when it changed, false when there was nothing to change.
+	std::optional<bool> editInk(const Annotation& expected, InkPoint offset,
+	                            std::optional<AnnotationColor> color,
+	                            std::optional<float> width,
+	                            const std::function<bool()>& canceled = {});
+
+	// the same, moved by the distance between two displayed points
+	std::optional<bool> editInkAt(const Annotation& expected,
+	                              AnnotationPoint from, AnnotationPoint to,
+	                              int rotation,
+	                              std::optional<AnnotationColor> color,
+	                              std::optional<float> width,
+	                              const std::function<bool()>& canceled = {});
 	// corners use the displayed page, including the viewer's rotation.
 	std::optional<int>
 	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,
@@ -465,6 +480,23 @@ class Document {
 	Transaction transaction(const std::function<bool()>& canceled);
 	Transaction transaction(std::vector<std::uint8_t> data,
 	                        const std::function<bool()>& canceled);
+	// every other annotation with all its appearances, so an edit in place
+	// can prove it changed nothing else
+	std::optional<std::vector<std::string>>
+	editNeighbors(const std::vector<int>& counts,
+	              const AnnotationTarget& target,
+	              const std::function<bool()>& canceled) const;
+	std::optional<bool> rewriteInk(const AnnotationTarget& target,
+	                               const AnnotationBounds& bounds,
+	                               const std::u16string& oldAppearance,
+	                               const std::vector<InkStroke>& strokes,
+	                               const InkStyle& style,
+	                               const AnnotationBounds& destination,
+	                               const std::function<bool()>& canceled);
+	// PDF points between two displayed points on a page
+	std::optional<InkPoint> displayedOffset(int page, AnnotationPoint from,
+	                                        AnnotationPoint to,
+	                                        int rotation) const;
 	std::optional<int> writeStamp(int page, const AnnotationBounds& bounds,
 	                              const StampImage& image,
 	                              const std::array<float, 6>& transform,

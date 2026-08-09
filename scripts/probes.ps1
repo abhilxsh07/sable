@@ -47,7 +47,7 @@ $scenarios = @(
 	"Comments", "DefaultList", "Edit", "EllipsePlacement", "Export",
 	"FillMarks",
 	"Filter", "Find", "Finish", "Gestures", "Highlight", "InheritedCheckBox",
-	"InheritedText", "Ink", "Keyboard", "KeyboardInput", "Layout", "Link",
+	"InheritedText", "Ink", "InkEdit", "Keyboard", "KeyboardInput", "Layout", "Link",
 	"LongGestures", "MarkupComment", "MixedForm", "Multiline", "Music",
 	"NoSpellCheck", "NoteEdit", "NotePlacement", "Notes", "ObsidianStartup",
 	"Organize",
