@@ -435,4 +435,253 @@ std::optional<bool> Document::rewriteInk(
 	}
 	return true;
 }
+std::optional<bool>
+Document::editStampAt(const Annotation& expected, AnnotationPoint from,
+                      AnnotationPoint to, int rotation,
+                      std::optional<float> width,
+                      const std::function<bool()>& canceled) {
+	const auto offset =
+	    displayedOffset(expected.target.page, from, to, rotation);
+	if (!offset) {
+		return {};
+	}
+	return editStamp(expected, *offset, width, canceled);
+}
+
+std::optional<bool> Document::editStamp(const Annotation& expected,
+                                        InkPoint offset,
+                                        std::optional<float> width,
+                                        const std::function<bool()>& canceled) {
+	const auto stopped = [&] { return canceled && canceled(); };
+	const auto& target = expected.target;
+	if (offThread() || stopped() || !expected.bounds ||
+	    target.subtype != "Stamp" || expected.subtype != target.subtype ||
+	    expected.index != target.index || !expected.contents.empty() ||
+	    !expected.author.empty() || expected.flags != FPDF_ANNOT_FLAG_PRINT ||
+	    !std::isfinite(offset.x) || !std::isfinite(offset.y) ||
+	    std::abs(offset.x) > 100000.f || std::abs(offset.y) > 100000.f ||
+	    (width &&
+	     !(std::isfinite(*width) && *width >= 8 && *width <= 100000)) ||
+	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
+	    !matchesTarget(target) || !canAnnotate() ||
+	    !canSerializeEdits(canceled) ||
+	    canWrite(canceled) != WriteRefusal::None ||
+	    !provenUnique(target.page, target.index)) {
+		return {};
+	}
+	const auto bounds = *expected.bounds;
+	const auto notes = annotations(target.page, canceled);
+	if (!notes || notes->limited) {
+		return {};
+	}
+	const auto found =
+	    std::find_if(notes->entries.begin(), notes->entries.end(),
+	                 [&](const auto& note) { return note.target == target; });
+	if (found == notes->entries.end() || !found->bounds ||
+	    found->bounds->left != bounds.left ||
+	    found->bounds->bottom != bounds.bottom ||
+	    found->bounds->right != bounds.right ||
+	    found->bounds->top != bounds.top || found->flags != expected.flags ||
+	    !found->contents.empty() || !found->author.empty()) {
+		return {};
+	}
+	// the stamp has to be the one image object addStampAt writes, with its
+	// rect the box around the image's four corners.
+	FS_MATRIX old{};
+	unsigned pixelsWide = 0, pixelsHigh = 0;
+	std::vector<std::uint8_t> pixels;
+	FS_RECTF box{};
+	const auto corners = [](const FS_MATRIX& m) {
+		const double xs[] = {m.e, m.e + m.a, m.e + m.c, m.e + m.a + m.c};
+		const double ys[] = {m.f, m.f + m.b, m.f + m.d, m.f + m.b + m.d};
+		return AnnotationBounds{
+		    static_cast<float>(*std::min_element(std::begin(xs), std::end(xs))),
+		    static_cast<float>(*std::min_element(std::begin(ys), std::end(ys))),
+		    static_cast<float>(*std::max_element(std::begin(xs), std::end(xs))),
+		    static_cast<float>(
+		        *std::max_element(std::begin(ys), std::end(ys)))};
+	};
+	const auto decoded = [](FPDF_PAGEOBJECT object) {
+		std::vector<std::uint8_t> data;
+		const auto size = FPDFImageObj_GetImageDataDecoded(object, nullptr, 0);
+		if (size && size <= 64ul * 1024 * 1024) {
+			data.resize(size);
+			if (FPDFImageObj_GetImageDataDecoded(object, data.data(), size) !=
+			    size) {
+				data.clear();
+			}
+		}
+		return data;
+	};
+	{
+		PagePtr page(FPDF_LoadPage(m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		if (!note || !m_linkedPages ||
+		    !unlinkedAnnotation(m_handle, page.get(), target.index, note.get(),
+		                        *m_linkedPages, m_editPageLoads) ||
+		    !FPDF_GetPageBoundingBox(page.get(), &box)) {
+			return {};
+		}
+		for (const auto* key : {"Contents",
+		                        "T",
+		                        "Subj",
+		                        "NM",
+		                        "M",
+		                        "CreationDate",
+		                        "RC",
+		                        "DS",
+		                        "IC",
+		                        "BS",
+		                        "BE",
+		                        "BM",
+		                        "RD",
+		                        "OC",
+		                        "Rotate",
+		                        "A",
+		                        "AA",
+		                        "IT",
+		                        "AS",
+		                        "IRT",
+		                        "Popup",
+		                        "ExData",
+		                        "StructParent",
+		                        "CA"}) {
+			if (FPDFAnnot_HasKey(note.get(), key)) {
+				return {};
+			}
+		}
+		const auto object = FPDFAnnot_GetObjectCount(note.get()) == 1
+		                        ? FPDFAnnot_GetObject(note.get(), 0)
+		                        : nullptr;
+		if (!object || FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_IMAGE ||
+		    !FPDFImageObj_GetImagePixelSize(object, &pixelsWide, &pixelsHigh) ||
+		    !pixelsWide || !pixelsHigh || pixelsWide > StampImage::maxSide ||
+		    pixelsHigh > StampImage::maxSide ||
+		    !FPDFPageObj_GetMatrix(object, &old)) {
+			return {};
+		}
+		pixels = decoded(object);
+		if (pixels.empty()) {
+			return {};
+		}
+	}
+	// the stamp's appearance keeps the box it was made with, and a viewer
+	// fits that box to the rect, so a new rect alone moves and scales the
+	// image without touching it. the image's top-left corner on the turn
+	// it was placed at stays put.
+	const auto made = corners(old);
+	const double madeWidth = double(made.right) - made.left;
+	const double madeHeight = double(made.top) - made.bottom;
+	const double shown = (double(bounds.right) - bounds.left) / madeWidth;
+	if (!(madeWidth >= 1 && madeHeight >= 1) ||
+	    std::abs(shown * madeHeight - (double(bounds.top) - bounds.bottom)) >
+	        .01) {
+		return {};
+	}
+	const double scale = width ? double(*width) / madeWidth : shown;
+	const double cornerX = double(old.c) + old.e - made.left;
+	const double cornerY = double(old.d) + old.f - made.bottom;
+	const double topX = bounds.left + cornerX * shown + offset.x;
+	const double topY = bounds.bottom + cornerY * shown + offset.y;
+	AnnotationBounds destination{};
+	destination.left = static_cast<float>(topX - cornerX * scale);
+	destination.bottom = static_cast<float>(topY - cornerY * scale);
+	destination.right =
+	    static_cast<float>(destination.left + madeWidth * scale);
+	destination.top =
+	    static_cast<float>(destination.bottom + madeHeight * scale);
+	if (!(destination.left >= box.left && destination.bottom >= box.bottom &&
+	      destination.right <= box.right && destination.top <= box.top) ||
+	    destination.right - destination.left < 1 ||
+	    destination.top - destination.bottom < 1) {
+		return {};
+	}
+	if (destination.left == bounds.left &&
+	    destination.bottom == bounds.bottom &&
+	    destination.right == bounds.right && destination.top == bounds.top) {
+		return false;
+	}
+	constexpr std::size_t limit = 128 * 1024 * 1024;
+	auto bytes = serialize(limit, canceled);
+	if (!bytes || stopped()) {
+		return {};
+	}
+	const auto regenerate = [](FPDF_ANNOTATION note) {
+		const auto object = FPDFAnnot_GetObject(note, 0);
+		return object && FPDFAnnot_UpdateObject(note, object);
+	};
+	{
+		// the stored appearance has to draw what PDFium makes of the image
+		// object, so an odd BBox or Matrix can't hide where the stamp is.
+		auto proof = reopenFormCopy(*bytes);
+		PagePtr page(proof.document
+		                 ? FPDF_LoadPage(proof.document->m_handle, target.page)
+		                 : nullptr);
+		const FS_RECTF rect{bounds.left, bounds.top, bounds.right,
+		                    bounds.bottom};
+		if (!page || !matchesReplacedRendering(page.get(), target.index, rect,
+		                                       regenerate, stopped)) {
+			return {};
+		}
+	}
+	auto scratch = transaction(std::move(*bytes), canceled);
+	const auto counts = editCounts();
+	if (!scratch.document || !counts) {
+		return {};
+	}
+	const auto before =
+	    scratch.document->editNeighbors(*counts, target, canceled);
+	{
+		PagePtr page(FPDF_LoadPage(scratch.document->m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		const auto object = note ? FPDFAnnot_GetObject(note.get(), 0) : nullptr;
+		const FS_RECTF rect{destination.left, destination.top,
+		                    destination.right, destination.bottom};
+		if (!before || !object || !FPDFAnnot_SetRect(note.get(), &rect)) {
+			return {};
+		}
+	}
+	scratch.document->invalidateEdits();
+	auto saved = scratch.save();
+	if (!saved.document ||
+	    !saved.document->checkEditCounts(*counts, {target.page}) ||
+	    saved.document->editNeighbors(*counts, target, canceled) != before) {
+		return {};
+	}
+	{
+		PagePtr page(FPDF_LoadPage(saved.document->m_handle, target.page));
+		AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), target.index)
+		                        : nullptr);
+		FS_RECTF rect{};
+		FS_MATRIX kept{};
+		unsigned keptWide = 0, keptHigh = 0;
+		const auto object = note && FPDFAnnot_GetObjectCount(note.get()) == 1
+		                        ? FPDFAnnot_GetObject(note.get(), 0)
+		                        : nullptr;
+		const auto same = [](float a, float b) {
+			return std::abs(a - b) < .001f;
+		};
+		if (!object || FPDFAnnot_GetSubtype(note.get()) != FPDF_ANNOT_STAMP ||
+		    FPDFAnnot_GetFlags(note.get()) != FPDF_ANNOT_FLAG_PRINT ||
+		    !FPDFAnnot_GetRect(note.get(), &rect) ||
+		    rect.left != destination.left ||
+		    rect.bottom != destination.bottom ||
+		    rect.right != destination.right || rect.top != destination.top ||
+		    FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_IMAGE ||
+		    !FPDFImageObj_GetImagePixelSize(object, &keptWide, &keptHigh) ||
+		    keptWide != pixelsWide || keptHigh != pixelsHigh ||
+		    !FPDFPageObj_GetMatrix(object, &kept) || !same(kept.a, old.a) ||
+		    !same(kept.b, old.b) || !same(kept.c, old.c) ||
+		    !same(kept.d, old.d) || !same(kept.e, old.e) ||
+		    !same(kept.f, old.f) || decoded(object) != pixels) {
+			return {};
+		}
+	}
+	if (!scratch.commit(std::move(saved.document))) {
+		return {};
+	}
+	return true;
+}
 } // namespace pdf

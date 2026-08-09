@@ -4898,3 +4898,83 @@ TEST(Annotations, DrawingEditsMoveRestyleAndSurviveReopen) {
 	    })
 	    .get();
 }
+
+TEST(Annotations, StampsMoveAndResizeKeepingShapeAndTurn) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    // red on the left, blue on the right
+		    const pdf::StampImage image{2, 1, {0, 0, 255, 255, 255, 0, 0, 255}};
+		    const auto source = editableNoteBytes(
+		        "/Contents (Keep)", "Text", {}, "/MediaBox [0 0 400 600]");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    ASSERT_EQ(doc.addStampAt(0, {.125, .25}, {.625, .75}, 0, image, 1),
+		              1);
+		    auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2 &&
+		                notes->entries[1].bounds);
+		    const auto stamp = notes->entries[1];
+		    const auto b = *stamp.bounds;
+		    EXPECT_EQ(doc.editStamp(stamp, {0, 0}, {}), false);
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_FALSE(doc.editStamp(stamp, {1000, 0}, {}));
+		    EXPECT_FALSE(doc.editStamp(stamp, {0, 0}, 4.f));
+		    EXPECT_FALSE(doc.editStamp(stamp, {0, 0}, 5000.f));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    ASSERT_EQ(doc.editStamp(stamp, {20, -30}, 100.f), true);
+		    EXPECT_FALSE(doc.editStamp(stamp, {1, 1}, {}));
+		    notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2 &&
+		                notes->entries[1].bounds);
+		    const auto moved = *notes->entries[1].bounds;
+		    EXPECT_NEAR(moved.left, b.left + 20, .01);
+		    EXPECT_NEAR(moved.top, b.top - 30, .01);
+		    EXPECT_NEAR(moved.right - moved.left, 100, .01);
+		    EXPECT_NEAR(moved.top - moved.bottom, (b.top - b.bottom) / 2, .01);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto pixels = saved.document->render(0, 400, 600, 0);
+		    ASSERT_TRUE(pixels);
+		    const auto sample = [&](double x, double y, int channel) {
+			    return pixels
+			        ->pixels[static_cast<int>(600 - y) * pixels->stride +
+			                 static_cast<int>(x) * 4 + channel];
+		    };
+		    const double row = moved.top - 10;
+		    EXPECT_EQ(sample(moved.left + 25, row, 2), 255);
+		    EXPECT_EQ(sample(moved.left + 25, row, 0), 0);
+		    EXPECT_EQ(sample(moved.left + 75, row, 0), 255);
+		    EXPECT_EQ(sample(moved.left + 75, row, 2), 0);
+		    // placed on a turned view, it keeps that turn when resized
+		    const auto turned = pdf::openDocument(source);
+		    ASSERT_TRUE(turned.document);
+		    auto& t = *turned.document;
+		    ASSERT_EQ(t.addStampAt(0, {.125, .25}, {.625, .75}, 1, image, 1),
+		              1);
+		    auto tn = t.annotations(0);
+		    ASSERT_TRUE(tn && tn->entries.size() == 2 && tn->entries[1].bounds);
+		    const auto tb = *tn->entries[1].bounds;
+		    ASSERT_EQ(
+		        t.editStamp(tn->entries[1], {0, 0}, (tb.right - tb.left) / 2),
+		        true);
+		    tn = t.annotations(0);
+		    ASSERT_TRUE(tn && tn->entries[1].bounds);
+		    const auto half = *tn->entries[1].bounds;
+		    EXPECT_NEAR(half.right - half.left, (tb.right - tb.left) / 2, .01);
+		    EXPECT_NEAR(half.top - half.bottom, (tb.top - tb.bottom) / 2, .01);
+		    const auto again = t.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(again);
+		    const auto reopened = pdf::openDocument(*again);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 2);
+		    EXPECT_EQ(
+		        reopened.document->editStamp(kept->entries[1], {5, 5}, {}),
+		        true);
+	    })
+	    .get();
+}

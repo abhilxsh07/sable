@@ -166,6 +166,8 @@ void TabsTest::tick() {
 				inkDrawingTick(*self);
 			} else if (inkEditOnly) {
 				inkEditTick(*self);
+			} else if (stampEditOnly) {
+				stampEditTick(*self);
 			} else if (stampOnly) {
 				stampTick(*self);
 			} else if (fillMarksOnly) {
@@ -871,6 +873,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->inkEditOnly =
 	    GetEnvironmentVariableW(L"SableInkEditTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->stampEditOnly =
+	    GetEnvironmentVariableW(L"SableStampEditTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->fillMarksOnly =
 	    GetEnvironmentVariableW(L"SableFillMarksTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -886,8 +891,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
 	                   state->noteEditOnly || state->inkDrawingOnly ||
-	                   state->inkEditOnly || state->stampOnly ||
-	                   state->fillMarksOnly;
+	                   state->inkEditOnly || state->stampEditOnly ||
+	                   state->stampOnly || state->fillMarksOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";

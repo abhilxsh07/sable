@@ -302,7 +302,6 @@ class Document {
 	                            std::optional<AnnotationColor> color,
 	                            std::optional<float> width,
 	                            const std::function<bool()>& canceled = {});
-
 	// the same, moved by the distance between two displayed points
 	std::optional<bool> editInkAt(const Annotation& expected,
 	                              AnnotationPoint from, AnnotationPoint to,
@@ -310,6 +309,17 @@ class Document {
 	                              std::optional<AnnotationColor> color,
 	                              std::optional<float> width,
 	                              const std::function<bool()>& canceled = {});
+	// Moves an image stamp by an offset in PDF points and, with a width for
+	// its rect, scales it around its upright top-left corner, keeping its
+	// shape and the turn it was placed at. Only stamps placed the way
+	// addStampAt places them.
+	std::optional<bool> editStamp(const Annotation& expected, InkPoint offset,
+	                              std::optional<float> width,
+	                              const std::function<bool()>& canceled = {});
+	std::optional<bool> editStampAt(const Annotation& expected,
+	                                AnnotationPoint from, AnnotationPoint to,
+	                                int rotation, std::optional<float> width,
+	                                const std::function<bool()>& canceled = {});
 	// corners use the displayed page, including the viewer's rotation.
 	std::optional<int>
 	addRectangleAt(int page, AnnotationPoint first, AnnotationPoint second,

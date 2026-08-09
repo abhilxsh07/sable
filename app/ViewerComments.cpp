@@ -432,8 +432,12 @@ void ViewerPage::showComments() {
 	const bool selectedInk =
 	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	    notes[selected].subtype == "Ink";
+	const bool selectedStamp =
+	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
+	    notes[selected].subtype == "Stamp";
 	Automation::AutomationProperties::SetName(
 	    EditNoteButton(), selectedInk      ? L"Edit selected drawing"
+	                      : selectedStamp  ? L"Resize selected stamp"
 	                      : selectedShape  ? L"Resize selected shape"
 	                      : selectedBox    ? L"Edit selected text box"
 	                      : selectedMarkup ? L"Edit selected comment"
@@ -441,7 +445,8 @@ void ViewerPage::showComments() {
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !m_notePlacing &&
-	    (selectedShape || selectedInk || selectedBox || selectedMarkup ||
+	    (selectedShape || selectedInk || selectedStamp || selectedBox ||
+	     selectedMarkup ||
 	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	      notes[selected].subtype == "Text")));
 	DeleteNoteButton().IsEnabled(canDeleteAnnotation());

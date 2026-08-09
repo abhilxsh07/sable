@@ -240,6 +240,12 @@ class Session {
 	               std::optional<AnnotationColor> color,
 	               std::optional<float> width,
 	               std::function<void(NoteResult)> callback);
+	// moves a stamp between two displayed points and, with a width for its
+	// rect, scales it around its upright top-left corner
+	bool editStampAt(Annotation expected, AnnotationPoint from,
+	                 AnnotationPoint to, int rotation,
+	                 std::optional<float> width,
+	                 std::function<void(NoteResult)> callback);
 	bool addTextBox(int page, AnnotationBounds bounds, std::u16string contents,
 	                std::u16string author, std::uint64_t revision,
 	                std::function<void(NoteResult)> callback,

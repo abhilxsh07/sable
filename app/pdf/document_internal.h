@@ -131,9 +131,12 @@ inline std::optional<BoxProofRegion> boxProofRegion(FPDF_PAGE page,
 
 // i compare the old stream's actual drawing on a throwaway page. its
 // appearance dictionary can affect placement even when the bytes match.
-inline bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
-                                const std::u16string& stream,
-                                const std::function<bool()>& stopped) {
+// renders the annotation alone, swaps in what replace writes and renders it
+// again; true when both match and something was drawn.
+inline bool
+matchesReplacedRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
+                         const std::function<bool(FPDF_ANNOTATION)>& replace,
+                         const std::function<bool()>& stopped) {
 	const auto region = boxProofRegion(page, rect);
 	const int annotations = FPDFPage_GetAnnotCount(page);
 	if (!region || index < 0 || index >= annotations || annotations > 4096) {
@@ -163,9 +166,7 @@ inline bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
 	};
 	const auto before = render();
 	AnnotationPtr note(FPDFPage_GetAnnot(page, 0));
-	if (!before || stopped() ||
-	    !FPDFAnnot_SetAP(note.get(), 0,
-	                     reinterpret_cast<FPDF_WIDESTRING>(stream.c_str()))) {
+	if (!before || stopped() || !note || !replace(note.get())) {
 		return false;
 	}
 	note.reset();
@@ -191,6 +192,19 @@ inline bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
 		      std::any_of(row, row + width * 4, [](auto c) { return c < 255; });
 	}
 	return ink;
+}
+
+inline bool matchesBoxRendering(FPDF_PAGE page, int index, const FS_RECTF& rect,
+                                const std::u16string& stream,
+                                const std::function<bool()>& stopped) {
+	return matchesReplacedRendering(
+	    page, index, rect,
+	    [&](FPDF_ANNOTATION note) {
+		    return FPDFAnnot_SetAP(
+		               note, 0,
+		               reinterpret_cast<FPDF_WIDESTRING>(stream.c_str())) != 0;
+	    },
+	    stopped);
 }
 
 // i only inspect this page; callbacks cannot run actions or start timers.

@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ViewerPage.xaml.h"
 #include "InkPalette.h"
 #include "pdf/session.h"
+#include "helpers/comments.h"
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
@@ -41,7 +42,8 @@ constexpr double DRAG_SLOP = 3, GRAB_MARGIN = 4;
 bool ViewerPage::movableAnnotation() const {
 	return m_selectedAnnotation && m_selectedAnnotation->displayBounds &&
 	       m_selectedAnnotation->bounds &&
-	       m_selectedAnnotation->target.subtype == "Ink";
+	       (m_selectedAnnotation->target.subtype == "Ink" ||
+	        m_selectedAnnotation->target.subtype == "Stamp");
 }
 
 // a press inside the selected drawing's outline starts moving it.
@@ -142,8 +144,11 @@ void ViewerPage::finishAnnotationDrag(Windows::Foundation::Point point) {
 		});
 	};
 	try {
-		if (session->editInkAt(drag.annotation, from, to, key(page).rotation,
-		                       {}, {}, reply)) {
+		if (drag.annotation.target.subtype == "Stamp"
+		        ? session->editStampAt(drag.annotation, from, to,
+		                               key(page).rotation, {}, reply)
+		        : session->editInkAt(drag.annotation, from, to,
+		                             key(page).rotation, {}, {}, reply)) {
 			showComments();
 			return;
 		}
@@ -329,6 +334,191 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 		}
 		if (!m_closed) {
 			showNotice(L"Couldn't open the drawing editor. Try again.");
+			showComments();
+		}
+	}
+}
+
+// Edit opens this for a stamp. The height follows the width, so the image
+// keeps its shape, and its top-left corner stays put; moving is a drag.
+fire_and_forget ViewerPage::editStampSize(pdf::Annotation existing) {
+	const auto lifetime = get_strong();
+	try {
+		if (!existing.bounds || m_closed || !m_session || !m_noteAllowed ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_passwordDialog || !XamlRoot() || !commentsOpen() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
+			co_return;
+		}
+		leavePageBox();
+		const auto session = m_session.get();
+		const auto& bounds = *existing.bounds;
+		const float oldWidth = bounds.right - bounds.left;
+		const float oldHeight = bounds.top - bounds.bottom;
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Title(box_value(L"Resize stamp"));
+		dialog.PrimaryButtonText(L"Apply");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::None);
+		StackPanel fields;
+		fields.Spacing(12);
+		TextBlock location;
+		location.Text(L"Page " + to_hstring(existing.target.page + 1) +
+		              L" \u00b7 72 pt = 1 inch. The height follows the width "
+		              L"to keep the image's shape, and its top-left corner "
+		              L"stays put. Drag the stamp on the page to move it.");
+		location.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(location);
+		TextBox width;
+		width.Header(box_value(L"Width (pt)"));
+		width.MaxLength(64);
+		width.Text(to_hstring(helpers::textBoxDimension(oldWidth)));
+		Automation::AutomationProperties::SetName(width,
+		                                          L"Stamp width in PDF points");
+		fields.Children().Append(width);
+		TextBlock height;
+		const auto showHeight = [height, oldWidth, oldHeight](float value) {
+			height.Text(L"Height: " +
+			            to_hstring(helpers::textBoxDimension(value * oldHeight /
+			                                                 oldWidth)) +
+			            L" pt");
+		};
+		showHeight(oldWidth);
+		fields.Children().Append(height);
+		width.TextChanged([showHeight, oldWidth](const auto& sender, auto&&) {
+			if (const auto parsed = helpers::parseTextBoxDimension(
+			        to_string(sender.template as<TextBox>().Text()),
+			        oldWidth)) {
+				showHeight(*parsed);
+			}
+		});
+		TextBlock error;
+		error.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(error);
+		dialog.Content(fields);
+		dialog.Opened([width](auto&&, auto&&) {
+			width.Focus(FocusState::Programmatic);
+			width.SelectAll();
+		});
+		dialog.Closing(
+		    [weak = get_weak()](const ContentDialog& sender,
+		                        const ContentDialogClosingEventArgs& args) {
+			    if (const auto self = weak.get();
+			        self && self->m_noteBusy && self->m_noteDialog == sender) {
+				    args.Cancel(true);
+			    }
+		    });
+		const auto recover = [weak = get_weak(), session,
+		                      prompt = make_weak(dialog),
+		                      wide = make_weak(width),
+		                      failure = make_weak(error)](hstring message) {
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			if (!self || self->m_closed || self->m_session.get() != session ||
+			    !view || self->m_noteDialog != view) {
+				return;
+			}
+			self->m_noteBusy = false;
+			if (const auto w = wide.get()) {
+				w.IsReadOnly(false);
+			}
+			view.IsPrimaryButtonEnabled(true);
+			if (const auto label = failure.get()) {
+				label.Text(message);
+			}
+			self->showComments();
+		};
+		dialog.PrimaryButtonClick([weak = get_weak(), session, existing,
+		                           oldWidth, prompt = make_weak(dialog),
+		                           wide = make_weak(width),
+		                           failure = make_weak(error), recover](
+		                              auto&&,
+		                              const ContentDialogButtonClickEventArgs&
+		                                  args) {
+			args.Cancel(true);
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			const auto w = wide.get();
+			if (!self || self->m_closed || self->m_noteBusy || !view || !w ||
+			    self->m_session.get() != session ||
+			    self->m_noteDialog != view) {
+				return;
+			}
+			const auto value =
+			    helpers::parseTextBoxDimension(to_string(w.Text()), oldWidth);
+			if (!value || *value < 8) {
+				recover(L"Enter a width of at least 8 PDF points. Use a "
+				        L"decimal point for fractional sizes.");
+				return;
+			}
+			self->m_noteBusy = true;
+			view.IsPrimaryButtonEnabled(false);
+			w.IsReadOnly(true);
+			if (const auto label = failure.get()) {
+				label.Text(L"Resizing stamp\u2026");
+			}
+			try {
+				if (session->editStampAt(
+				        existing, {}, {}, 0, *value,
+				        [weak, session, prompt, recover,
+				         queue = self->DispatcherQueue()](auto result) {
+					        queue.TryEnqueue([weak, session, prompt, recover,
+					                          result] {
+						        const auto owner = weak.get();
+						        if (!owner || owner->m_closed ||
+						            owner->m_session.get() != session) {
+							        return;
+						        }
+						        if (!result.index) {
+							        recover(writeNotice(
+							            result.refusal,
+							            L"Couldn't resize this stamp. It may "
+							            L"not be one Sable placed, be "
+							            L"protected, or reach past the page "
+							            L"at that size."));
+							        return;
+						        }
+						        owner->m_noteBusy = false;
+						        owner->m_notesDirty =
+						            owner->m_notesDirty || result.changed;
+						        if (const auto shown = prompt.get()) {
+							        shown.Hide();
+						        }
+						        if (result.changed) {
+							        owner->clearAnnotationSelection();
+							        owner->refreshNotes(result.page);
+						        }
+						        owner->showComments();
+					        });
+				        })) {
+					self->showComments();
+					return;
+				}
+			} catch (...) {
+				diagnostics::caught(diagnostics::Level::Error,
+				                    "Could not queue the stamp resize");
+			}
+			recover(L"Couldn't queue this resize. Try again.");
+		});
+		m_noteDialog = dialog;
+		co_await dialog.ShowAsync();
+		if (m_noteDialog == dialog) {
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showComments();
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the stamp editor");
+		m_noteBusy = false;
+		if (m_noteDialog) {
+			m_noteDialog.Hide();
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showNotice(L"Couldn't open the stamp editor. Try again.");
 			showComments();
 		}
 	}

@@ -3153,3 +3153,27 @@ reopened and the drawing's points, width, Rect and appearance checked,
 along with every other annotation and its appearances. A drawing that
 would end up past the page box refuses. The pen palette moved to
 InkPalette.h so Drawing style and the editor share it.
+
+## Moving and resizing stamps (2026-11-12)
+
+A click on an image stamp selects it by its box, like a drawing, and a
+drag moves it. Edit opens "Resize stamp" with Width (pt); the height is
+shown and follows the width, so the image keeps its shape, and the
+image's top-left corner on the turn it was placed at stays put.
+Widths under 8 pt refuse.
+
+The edit only changes the stamp's Rect. Its appearance keeps the BBox it
+was made with, and a viewer fits that BBox to the Rect (PDF 1.7, 12.5.5),
+so a new Rect moves and scales the image uniformly without touching it,
+and a stamp placed on a turned view stays upright. I tried rewriting the
+image object's matrix first: PDFium regenerates the stream but keeps the
+old BBox, so the image was scaled twice. With the Rect alone the image
+data, its matrix and its transparency are left exactly as written.
+
+Only Sable's stamps are edited: one image object, no other keys, a Rect
+with the same shape as the image's own box, and an appearance that
+renders the same as the one PDFium would regenerate from the image
+object, checked on an isolated copy. The write goes through the shared
+transaction after the signed-PDF guard, and the saved copy is reopened
+to check the Rect, the unchanged matrix and pixels, and every other
+annotation.

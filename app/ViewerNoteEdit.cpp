@@ -43,7 +43,8 @@ void ViewerPage::beginNoteEdit() {
 	     rows[selected].subtype != "StrikeOut" &&
 	     rows[selected].subtype != "Square" &&
 	     rows[selected].subtype != "Circle" &&
-	     rows[selected].subtype != "Ink")) {
+	     rows[selected].subtype != "Ink" &&
+	     rows[selected].subtype != "Stamp")) {
 		return;
 	}
 	const auto page = rows[selected].page, index = rows[selected].index;
@@ -60,7 +61,8 @@ void ViewerPage::beginNoteEdit() {
 		const auto session = m_session.get();
 		if (rows[selected].subtype == "Square" ||
 		    rows[selected].subtype == "Circle" ||
-		    rows[selected].subtype == "Ink") {
+		    rows[selected].subtype == "Ink" ||
+		    rows[selected].subtype == "Stamp") {
 			const auto target = rows[selected].target;
 			pauseComments();
 			const bool queued = session->annotations(
@@ -82,6 +84,8 @@ void ViewerPage::beginNoteEdit() {
 							    if (note.target == target && note.bounds) {
 								    if (note.subtype == "Ink") {
 									    self->editDrawing(note);
+								    } else if (note.subtype == "Stamp") {
+									    self->editStampSize(note);
 								    } else {
 									    self->editShape(note);
 								    }

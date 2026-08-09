@@ -150,7 +150,9 @@ void ViewerPage::showAnnotationMenu(Windows::Foundation::Point point) {
 	const auto weak = get_weak();
 	m_annotationMenu = MenuFlyout();
 	MenuFlyoutItem edit;
-	edit.Text(target.subtype == "Ink" ? L"Edit drawing" : L"Edit comment");
+	edit.Text(target.subtype == "Ink"     ? L"Edit drawing"
+	          : target.subtype == "Stamp" ? L"Resize stamp"
+	                                      : L"Edit comment");
 	edit.IsEnabled(canDeleteAnnotation());
 	edit.Click([weak, target](auto&&, auto&&) {
 		if (const auto self = weak.get();
@@ -179,10 +181,15 @@ void ViewerPage::editAnnotation(pdf::AnnotationTarget target) {
 		return;
 	}
 	setCommentsOpen(true);
-	if (target.subtype == "Ink" && m_selectedAnnotation &&
-	    m_selectedAnnotation->target == target) {
-		editDrawing(*m_selectedAnnotation);
-		return;
+	if (m_selectedAnnotation && m_selectedAnnotation->target == target) {
+		if (target.subtype == "Ink") {
+			editDrawing(*m_selectedAnnotation);
+			return;
+		}
+		if (target.subtype == "Stamp") {
+			editStampSize(*m_selectedAnnotation);
+			return;
+		}
 	}
 	std::optional<pdf::TextMarkup> markup;
 	if (target.subtype == "Highlight") {

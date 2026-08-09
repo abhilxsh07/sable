@@ -1190,8 +1190,10 @@ void TabsTest::stampTick(MainWindow& owner) {
 		v.CommentsList().SelectedIndex(static_cast<int>(stamp - rows.begin()));
 		v.showComments();
 		check(v.DeleteNoteButton().IsEnabled() &&
-		          !v.EditNoteButton().IsEnabled(),
-		      "stamp did not offer guarded Delete");
+		          v.EditNoteButton().IsEnabled() &&
+		          Automation::AutomationProperties::GetName(
+		              v.EditNoteButton()) == L"Resize selected stamp",
+		      "stamp did not offer Resize and guarded Delete");
 		invoke(v.DeleteNoteButton());
 		break;
 	case 8:

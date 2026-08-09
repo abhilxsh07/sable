@@ -806,6 +806,47 @@ bool Session::editInkAt(Annotation expected, AnnotationPoint from,
 	});
 }
 
+bool Session::editStampAt(Annotation expected, AnnotationPoint from,
+                          AnnotationPoint to, int rotation,
+                          std::optional<float> width,
+                          std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !expected.target.revision ||
+		    expected.target.subtype != "Stamp" || !state->m_ready ||
+		    state->m_closed) {
+			return false;
+		}
+	}
+	return state->m_engine.post([state, from, to, rotation, width,
+	                             expected = std::move(expected),
+	                             callback = std::move(callback)] {
+		NoteResult result;
+		result.page = expected.target.page;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				const auto changed = state->m_document->editStampAt(
+				    expected, from, to, rotation, width, canceled);
+				if (changed) {
+					result.index = expected.target.index;
+					result.changed = *changed;
+					postWrite(*state, result.changed);
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't edit a PDF stamp.");
+		}
+		result.canceled = !result.index && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
+		callback(std::move(result));
+	});
+}
+
 bool Session::addTextBox(int page, AnnotationBounds bounds,
                          std::u16string contents, std::u16string author,
                          std::uint64_t revision,
@@ -1055,53 +1096,54 @@ bool Session::annotationAt(int page, double x, double y,
 			return false;
 		}
 	}
-	return state->m_engine.post(
-	    [state, page, x, y, callback = std::move(callback)] {
-		    AnnotationHitResult result;
-		    try {
-			    if (!state->closed()) {
-				    if (auto notes = state->m_document->annotations(page)) {
-					    for (auto it = notes->entries.rbegin();
-					         it != notes->entries.rend(); ++it) {
-						    // drawings are picked by their outline box
-						    if (it->subtype == "Ink" && it->displayBounds) {
-							    const auto& box = *it->displayBounds;
-							    if (x >= (std::min)(box.left, box.right) &&
-							        x <= (std::max)(box.left, box.right) &&
-							        y >= (std::min)(box.top, box.bottom) &&
-							        y <= (std::max)(box.top, box.bottom)) {
-								    result.annotation = std::move(*it);
-								    break;
-							    }
-							    continue;
-						    }
-						    if (it->subtype != "Highlight" &&
-						        it->subtype != "Underline" &&
-						        it->subtype != "StrikeOut") {
-							    continue;
-						    }
-						    for (const auto& quad : it->displayQuads) {
-							    if (insideQuad(quad, x, y)) {
-								    result.annotation = std::move(*it);
-								    break;
-							    }
-						    }
-						    if (result.annotation) {
-							    break;
-						    }
-					    }
-				    }
-			    }
-		    } catch (...) {
-			    diagnostics::write(diagnostics::Level::Error,
-			                       "Couldn't select a PDF annotation.");
-		    }
-		    result.canceled = state->closed();
-		    if (result.canceled) {
-			    result.annotation.reset();
-		    }
-		    callback(std::move(result));
-	    });
+	return state->m_engine.post([state, page, x, y,
+	                             callback = std::move(callback)] {
+		AnnotationHitResult result;
+		try {
+			if (!state->closed()) {
+				if (auto notes = state->m_document->annotations(page)) {
+					for (auto it = notes->entries.rbegin();
+					     it != notes->entries.rend(); ++it) {
+						// drawings and stamps are picked by their box
+						if ((it->subtype == "Ink" || it->subtype == "Stamp") &&
+						    it->displayBounds) {
+							const auto& box = *it->displayBounds;
+							if (x >= (std::min)(box.left, box.right) &&
+							    x <= (std::max)(box.left, box.right) &&
+							    y >= (std::min)(box.top, box.bottom) &&
+							    y <= (std::max)(box.top, box.bottom)) {
+								result.annotation = std::move(*it);
+								break;
+							}
+							continue;
+						}
+						if (it->subtype != "Highlight" &&
+						    it->subtype != "Underline" &&
+						    it->subtype != "StrikeOut") {
+							continue;
+						}
+						for (const auto& quad : it->displayQuads) {
+							if (insideQuad(quad, x, y)) {
+								result.annotation = std::move(*it);
+								break;
+							}
+						}
+						if (result.annotation) {
+							break;
+						}
+					}
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't select a PDF annotation.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.annotation.reset();
+		}
+		callback(std::move(result));
+	});
 }
 
 bool Session::highlightText(TextSelection selection,

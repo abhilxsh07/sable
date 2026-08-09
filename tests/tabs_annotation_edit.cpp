@@ -182,4 +182,136 @@ void TabsTest::inkEditTick(MainWindow& owner) {
 	++step;
 	ticks = 0;
 }
+
+// StampEdit: place a stamp, pick it on the page, drag it, resize it
+// through Resize stamp, then Delete it.
+void TabsTest::stampEditTick(MainWindow& owner) {
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+	    v.m_annotationPending) {
+		return;
+	}
+	const auto at = [&](double x, double y) {
+		const auto& rect = v.m_layout->pages()[0];
+		return Windows::Foundation::Point{
+		    static_cast<float>(rect.x + x * rect.width),
+		    static_cast<float>(rect.y + y * rect.height)};
+	};
+	const auto stampRows = [&] {
+		const auto& rows = v.m_commentScan.rows();
+		return std::count_if(rows.begin(), rows.end(), [](const auto& row) {
+			return row.page == 0 && row.subtype == "Stamp";
+		});
+	};
+	const auto selectedStamp = [&] {
+		return v.m_selectedAnnotation &&
+		       v.m_selectedAnnotation->target.subtype == "Stamp";
+	};
+	switch (step) {
+	case 0:
+		v.setCommentsOpen(true);
+		v.goToPage(0);
+		v.beginNotePlacement(ViewerPage::PlacementTool::Stamp);
+		// red on the left, blue on the right
+		v.m_stampImage =
+		    pdf::StampImage{2, 1, {0, 0, 255, 255, 255, 0, 0, 255}};
+		check(v.m_notePlacing, "stamp placement didn't arm");
+		v.placeNote(at(.2, .2));
+		v.placeNote(at(.4, .3));
+		break;
+	case 1:
+		if (!v.m_commentScan.done() || stampRows() != 1) {
+			check(ticks < 60, "the stamp didn't reach Comments");
+			return;
+		}
+		check(!v.m_notePlacing, "placing the stamp kept the tool armed");
+		v.requestAnnotationAt(at(.3, .25));
+		break;
+	case 2:
+		check(selectedStamp() && v.movableAnnotation(),
+		      "the stamp wasn't selected on the page");
+		if (v.m_annotationMenu) {
+			v.m_annotationMenu.Hide();
+		}
+		check(v.beginAnnotationDrag(at(.3, .25)), "the stamp wasn't grabbed");
+		v.extendAnnotationDrag(at(.4, .4));
+		v.finishAnnotationDrag(at(.5, .55));
+		check(v.m_noteBusy && v.m_annotationDrag && v.m_annotationDrag->queued,
+		      "the stamp move wasn't queued");
+		break;
+	case 3:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(stampRows() == 1 && !v.m_selectedAnnotation,
+		      "the move lost the stamp");
+		v.requestAnnotationAt(at(.5, .55));
+		break;
+	case 4:
+		check(selectedStamp(), "the stamp isn't where it was dropped");
+		if (v.m_annotationMenu) {
+			v.m_annotationMenu.Hide();
+		}
+		stampEditWidth = v.m_selectedAnnotation->bounds->right -
+		                 v.m_selectedAnnotation->bounds->left;
+		v.editAnnotation(v.m_selectedAnnotation->target);
+		break;
+	case 5: {
+		if (!v.m_noteDialog) {
+			check(ticks < 40, "Resize stamp didn't open");
+			return;
+		}
+		check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Resize stamp",
+		      "the wrong editor opened");
+		const auto fields = v.m_noteDialog.Content().as<StackPanel>();
+		const auto width = fields.Children().GetAt(1).as<TextBox>();
+		const auto height = fields.Children().GetAt(2).as<TextBlock>();
+		width.Text(to_hstring(stampEditWidth / 2));
+		check(std::wstring_view(height.Text()).starts_with(L"Height: "),
+		      "Resize stamp doesn't show the height");
+		const auto button = primaryButton(v.m_noteDialog);
+		check(button && button.IsEnabled(), "Apply is disabled");
+		invokeElement(button);
+		break;
+	}
+	case 6:
+		if (v.m_noteDialog || !v.m_commentScan.done()) {
+			check(ticks < 80, "Resize stamp didn't finish");
+			return;
+		}
+		check(stampRows() == 1, "resizing lost the stamp");
+		// the top-left corner stays, so the stamp is still under it
+		v.requestAnnotationAt(at(.45, .52));
+		break;
+	case 7:
+		check(selectedStamp() &&
+		          std::abs(v.m_selectedAnnotation->bounds->right -
+		                   v.m_selectedAnnotation->bounds->left -
+		                   stampEditWidth / 2) < .1,
+		      "the stamp didn't take the new width");
+		if (v.m_annotationMenu) {
+			v.m_annotationMenu.Hide();
+		}
+		v.deleteAnnotation();
+		break;
+	case 8:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(stampRows() == 0, "Delete kept the edited stamp");
+		v.close();
+		status.Text(L"PASS: stamp select, drag, resize and Delete");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	default:
+		check(false, "unexpected stamp edit step");
+	}
+	++step;
+	ticks = 0;
+}
 } // namespace winrt::Sable::implementation
