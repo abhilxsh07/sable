@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "StampImage.h"
 #include "pdf/session.h"
 #include "pdf/page_filter.h"
+#include "pdf/text_box_glyphs.h"
 #include "helpers/logging.h"
 #include "helpers/filter.h"
 #include "helpers/rotation.h"
@@ -874,9 +875,10 @@ ViewerPage::editTextBox(NoteTarget target,
 		TextBlock location;
 		location.Text(
 		    L"Page " + to_hstring(target.page + 1) +
-		    L" \u00b7 Up to 8 lines and 128 characters. Use English letters, "
-		    L"numbers, spaces and standard punctuation. Press Enter for a "
-		    L"new line. The text must fit inside the box.");
+		    L" \u00b7 Up to 8 lines and 128 characters. Letters, numbers and "
+		    L"symbols from most languages work; right-to-left and complex "
+		    L"scripts aren't supported yet. Press Enter for a new line. The "
+		    L"text must fit inside the box.");
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
 		TextBox author;
@@ -1040,7 +1042,29 @@ ViewerPage::editTextBox(NoteTarget target,
 				}
 				size = pdf::TextBoxSize{*parsedWidth, *parsedHeight};
 			}
-			const auto value = field.Text();
+			// composed form, so an accent typed as a separate mark becomes
+			// the one character a box can draw.
+			// see:
+			// https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-normalizestring
+			auto value = field.Text();
+			if (!value.empty()) {
+				const int codeUnits = static_cast<int>(value.size());
+				std::wstring composed(
+				    (std::max)(NormalizeString(NormalizationC, value.c_str(),
+				                               codeUnits, nullptr, 0),
+				               0),
+				    L'\0');
+				const int length =
+				    composed.empty()
+				        ? 0
+				        : NormalizeString(NormalizationC, value.c_str(),
+				                          codeUnits, composed.data(),
+				                          static_cast<int>(composed.size()));
+				if (length > 0) {
+					composed.resize(length);
+					value = hstring(composed);
+				}
+			}
 			std::u16string replacement;
 			constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
 			replacement.reserve(
@@ -1072,9 +1096,29 @@ ViewerPage::editTextBox(NoteTarget target,
 				problem = L"Use up to 8 lines, including blank lines.";
 				break;
 			case pdf::TextBoxTextError::Characters:
-				problem = L"Use English letters, numbers, spaces and standard "
-				          L"punctuation.";
+				problem = L"Sable can't draw some of these characters yet. "
+				          L"Right-to-left and complex scripts and emoji "
+				          L"aren't supported.";
 				break;
+			}
+			// past ASCII the box is drawn from installed fonts; say which way
+			// that fails here rather than as a generic refusal later.
+			if (!problem && std::any_of(replacement.begin(), replacement.end(),
+			                            [](char16_t c) { return c > 126; })) {
+				switch (pdf::systemGlyphs(replacement, 12).error) {
+				case pdf::GlyphError::None:
+					break;
+				case pdf::GlyphError::Embedding:
+					problem = L"This text needs a font that can't be embedded.";
+					break;
+				case pdf::GlyphError::Script:
+					problem = L"Sable can't draw some of these characters yet.";
+					break;
+				case pdf::GlyphError::Font:
+					problem = L"No installed font can draw some of these "
+					          L"characters.";
+					break;
+				}
 			}
 			if (problem) {
 				if (const auto label = failure.get()) {

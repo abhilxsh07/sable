@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <utility>
 #include "pdf/document.h"
 #include "pdf/engine.h"
+#include "pdf/text_box_glyphs.h"
 #include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
 #include "signature.h"
@@ -3436,8 +3437,9 @@ TEST(Annotations, TextBoxRefusalsLeaveTheLiveDocumentIntact) {
 		    const auto opened = pdf::openDocument(original);
 		    ASSERT_TRUE(opened.document);
 		    auto& doc = *opened.document;
-		    for (const auto* text : {u"", u"first\nsecond", u"Caf\u00e9", u"\t",
-		                             u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
+		    for (const auto* text :
+		         {u"", u"first\nsecond", u"\u05e9\u05dc\u05d5\u05dd", u"\t",
+		          u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
 			    EXPECT_FALSE(
 			        doc.addTextBox(0, {40, 100, 60, 120}, text, {}, 1));
 		    }
@@ -4140,8 +4142,9 @@ TEST(Annotations, TextBoxEditsRefuseUnsupportedSnapshotsAndKeepBytes) {
 		    ASSERT_TRUE(notes);
 		    const auto box = notes->entries[0];
 		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
-		    for (const auto* value : {u"", u"Caf\u00e9", u"first\nsecond",
-		                              u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
+		    for (const auto* value :
+		         {u"", u"\u05e9\u05dc\u05d5\u05dd", u"first\nsecond",
+		          u"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"}) {
 			    EXPECT_FALSE(doc.updateTextBox(box, value));
 			    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
 		    }
@@ -4540,9 +4543,9 @@ TEST(Annotations, MultilineBoxPathsRefuseWrappingAndVerticalOverflow) {
 		        doc, {40, 180, 60, 100}, u"First\nSecond"));
 		    EXPECT_FALSE(pdf::DocumentEditTest::multiline(
 		        doc, {40, 130, 240, 100}, u"First\n\nSecond"));
-		    for (const auto* text :
-		         {u" \n ", u"First\r\nSecond", u"First\ncaf\u00e9",
-		          u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
+		    for (const auto* text : {u" \n ", u"First\r\nSecond",
+		                             u"First\n\u05e9\u05dc\u05d5\u05dd",
+		                             u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
 			    EXPECT_FALSE(pdf::DocumentEditTest::multiline(doc, rect, text));
 		    }
 	    })
@@ -4561,9 +4564,9 @@ TEST(Annotations, ExplicitBoxRowLimitKeepsOriginalBytesOnRefusal) {
 		    const auto revision = doc.annotationRevision();
 		    const auto original = doc.serialize(1024 * 1024);
 		    ASSERT_TRUE(original);
-		    for (const auto* text :
-		         {u" \n ", u"First\r\nSecond", u"First\ncaf\u00e9",
-		          u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
+		    for (const auto* text : {u" \n ", u"First\r\nSecond",
+		                             u"First\n\u05e9\u05dc\u05d5\u05dd",
+		                             u"1\n2\n3\n4\n5\n6\n7\n8\n9"}) {
 			    EXPECT_FALSE(
 			        doc.addTextBox(0, bounds, text, {}, revision, {}, layout));
 			    EXPECT_EQ(doc.annotationRevision(), revision);
@@ -4744,4 +4747,93 @@ TEST(Annotations, ExplicitLineBoxesRefusePagesBeyondTheRenderProofBudget) {
 		    EXPECT_EQ(doc.addTextBox(0, bounds, u"One line", {}, 1), 1);
 	    })
 	    .get();
+}
+
+TEST(Annotations, UnicodeTextBoxesDrawFromWindowsFontsAndSurviveReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = editableNoteBytes(
+		        "/Contents (Keep)", "Text", {}, "/MediaBox [0 0 400 300]");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    const auto utf8 = [](const char8_t* text) {
+			    return std::string(reinterpret_cast<const char*>(text));
+		    };
+		    // one line with accents, Greek and Cyrillic; two with CJK, Hangul,
+		    // an arrow and a currency sign.
+		    ASSERT_EQ(doc.addTextBox(0, {40, 200, 340, 260},
+		                             u"Caf\u00e9 \u03b1\u03b2\u03b3 "
+		                             u"\u0416\u0438\u0437\u043d\u044c",
+		                             u"Author", 1),
+		              1);
+		    ASSERT_EQ(doc.addTextBox(0, {40, 100, 340, 180},
+		                             u"\u65e5\u672c\u8a9e\n"
+		                             u"\ud55c\uad6d\uc5b4 \u2192 \u20ac5",
+		                             {}, 2, {}, layout),
+		              2);
+		    const auto revision = doc.annotationRevision();
+		    for (const auto* text : {u"\u05e9\u05dc\u05d5\u05dd",
+		                             u"\u0645\u0631\u062d\u0628\u0627",
+		                             u"\u0ba4\u0bae\u0bbf\u0bb4\u0bcd",
+		                             u"e\u0301", u"\U0001F600"}) {
+			    EXPECT_FALSE(doc.addTextBox(0, {40, 20, 340, 80}, text, {},
+			                                revision, {}, layout));
+		    }
+		    EXPECT_EQ(doc.annotationRevision(), revision);
+		    const auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[1].contents, utf8(u8"Café αβγ Жизнь"));
+		    EXPECT_EQ(notes->entries[2].contents,
+		              utf8(u8"日本語\n한국어 → €5"));
+		    EXPECT_TRUE(doc.textBox(notes->entries[1].target, {}, layout));
+		    EXPECT_TRUE(doc.textBox(notes->entries[2].target, {}, layout));
+		    ASSERT_EQ(doc.updateTextBox(notes->entries[1],
+		                                u"\u00c5ngstr\u00f6m \u03c9", {},
+		                                layout),
+		              true);
+		    const auto print = doc.printRaster(0, 400, 300, 0, 0, 400, 300);
+		    const auto saved = doc.serializeForCopy(4 * 1024 * 1024);
+		    ASSERT_TRUE(saved && print);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 3);
+		    EXPECT_EQ(kept->entries[0].contents, "Keep");
+		    EXPECT_EQ(kept->entries[1].contents, utf8(u8"Ångström ω"));
+		    EXPECT_EQ(kept->entries[2].contents, utf8(u8"日本語\n한국어 → €5"));
+		    const auto raster =
+		        reopened.document->printRaster(0, 400, 300, 0, 0, 400, 300);
+		    ASSERT_TRUE(raster);
+		    EXPECT_EQ(raster->pixels, print->pixels);
+		    // the boxes still read as Sable's own after the round trip
+		    EXPECT_TRUE(reopened.document->textBox(kept->entries[2].target, {},
+		                                           layout));
+		    EXPECT_EQ(reopened.document->updateTextBox(
+		                  kept->entries[2], u"\u4e2d\u6587", {}, layout),
+		              true);
+	    })
+	    .get();
+}
+
+TEST(Annotations, SystemGlyphsCoverBoxCharactersAndRefuseShapedScripts) {
+	EXPECT_TRUE(pdf::drawableTextBoxCharacter(u'\u00e9'));
+	EXPECT_TRUE(pdf::drawableTextBoxCharacter(u'\u4e2d'));
+	EXPECT_FALSE(pdf::drawableTextBoxCharacter(u'\u0301'));
+	EXPECT_FALSE(pdf::drawableTextBoxCharacter(u'\u05e9'));
+	EXPECT_FALSE(pdf::drawableTextBoxCharacter(u'\u0ba4'));
+	EXPECT_FALSE(pdf::drawableTextBoxCharacter(static_cast<char16_t>(0xd83d)));
+	EXPECT_FALSE(pdf::drawableTextBoxCharacter(u'\n'));
+	const auto run = pdf::systemGlyphs(u"\u00e9 \u4e2d\nA", 12);
+	ASSERT_EQ(run.error, pdf::GlyphError::None);
+	ASSERT_EQ(run.glyphs.size(), 5u);
+	EXPECT_GT(run.glyphs[0].advance, 0);
+	EXPECT_FALSE(run.glyphs[0].path.empty());
+	EXPECT_GT(run.glyphs[1].advance, 0);
+	EXPECT_TRUE(run.glyphs[1].path.empty());
+	EXPECT_FALSE(run.glyphs[2].path.empty());
+	EXPECT_TRUE(run.glyphs[3].path.empty());
+	EXPECT_EQ(pdf::systemGlyphs(u"\u05e9", 12).error, pdf::GlyphError::Script);
 }

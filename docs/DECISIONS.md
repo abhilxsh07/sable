@@ -3091,3 +3091,35 @@ page 001.png" into the chosen folder. A page stays within 12000 px a side
 and 80 megapixels. Text needs the copy permission, follows PDFium's
 reading order and puts a form feed between pages. Signed files export
 like any other, since nothing is written to them.
+
+## Unicode text boxes (2026-11-12)
+
+Text boxes now take letters past ASCII: accented Latin, Greek, Cyrillic,
+punctuation and symbols, CJK and Hangul. Anything with a line break or
+a character past ASCII is drawn as glyph outlines in the appearance,
+the way explicit-line boxes already were. Plain one-line ASCII keeps
+PDFium's Helvetica appearance and its bytes.
+
+The outlines come from the installed Windows fonts through DirectWrite:
+Segoe UI first, then the system fallback for each run, in the user's
+locale. Nothing is bundled and no font goes into the PDF, only paths. I
+still read each font's OS/2 fsType and refuse a font marked Restricted
+License or bitmap-only, since the outlines are its glyph data. I went
+to DirectWrite for the outlines rather than loading the font into
+PDFium: FPDFText_LoadFont reads only the first face of a collection and
+maps characters to CIDs through its generated ToUnicode, and most CJK
+fonts on Windows are collections.
+// see: https://learn.microsoft.com/en-us/typography/opentype/spec/os2
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_edittext.cpp
+
+Characters are drawn one at a time with no shaping, so right-to-left and
+complex scripts (Hebrew, Arabic, Indic including Tamil, Thai), combining
+marks, emoji and anything outside the BMP refuse. The dialog composes
+typed text to NFC first, so an accent typed as a separate mark still
+works. It says which way a refusal went: a script it can't draw, no
+installed font for a character, or a font that doesn't allow embedding.
+A Unicode box is recognised for editing by drawing it again from its
+contents, so a box made with fonts this machine doesn't have reads as
+not editable rather than as broken. /Contents keeps the text and DA is
+unchanged, so another app that rebuilds the appearance from DA may not
+show these characters.

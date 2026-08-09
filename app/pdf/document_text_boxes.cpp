@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document_internal.h"
+#include "text_box_glyphs.h"
 
 namespace pdf {
 using namespace detail;
@@ -35,7 +36,7 @@ TextBoxTextError validateTextBoxText(std::u16string_view text,
 	for (const auto c : text) {
 		if (c == u'\n' && layout == TextBoxLayout::ExplicitLines) {
 			++lines;
-		} else if (c < 32 || c > 126) {
+		} else if (!drawableTextBoxCharacter(c)) {
 			return TextBoxTextError::Characters;
 		} else if (c != u' ') {
 			painted = true;
@@ -117,7 +118,7 @@ std::optional<int> Document::addTextBox(
 		    bounds.right > box.right || bounds.top > box.top) {
 			return {};
 		}
-		if (contents.find(u'\n') != std::u16string_view::npos) {
+		if (needsOutlineAppearance(contents)) {
 			if (!boxProofRegion(page.get(), rect)) {
 				return {};
 			}
@@ -274,9 +275,11 @@ Document::textBox(const AnnotationTarget& target,
 	}
 	for (const auto& note : notes->entries) {
 		if (note.target == target) {
-			const std::u16string text(note.contents.begin(),
-			                          note.contents.end());
-			const auto result = updateTextBox(note, text, canceled, layout);
+			const auto text = utf8ToUtf16(note.contents);
+			if (!text) {
+				return {};
+			}
+			const auto result = updateTextBox(note, *text, canceled, layout);
 			return result && !*result ? std::optional{note} : std::nullopt;
 		}
 	}
@@ -302,13 +305,16 @@ Document::writeTextBox(const Annotation& expected, std::u16string_view contents,
                        TextBoxLayout layout) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& target = expected.target;
-	if (expected.contents.size() > textBoxMaxCharacters) {
+	// UTF-8 can take up to three bytes for one of the box's characters.
+	const auto decoded = expected.contents.size() <= 3 * textBoxMaxCharacters
+	                         ? utf8ToUtf16(expected.contents)
+	                         : std::nullopt;
+	if (!decoded || decoded->size() > textBoxMaxCharacters) {
 		return {};
 	}
-	const std::u16string previous(expected.contents.begin(),
-	                              expected.contents.end());
-	const bool oldLines = previous.find(u'\n') != std::u16string::npos;
-	const bool newLines = contents.find(u'\n') != std::u16string_view::npos;
+	const std::u16string& previous = *decoded;
+	const bool oldLines = needsOutlineAppearance(previous);
+	const bool newLines = needsOutlineAppearance(contents);
 	if (offThread() || stopped() ||
 	    m_annotationRevision == (std::numeric_limits<std::uint64_t>::max)() ||
 	    !canAnnotate() || !expected.bounds || target.subtype != "FreeText" ||

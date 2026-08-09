@@ -127,6 +127,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="pdf\document_internal.h">
 			<Filter>pdf</Filter>
 		</ClInclude>
+		<ClInclude Include="pdf\text_box_glyphs.h">
+			<Filter>pdf</Filter>
+		</ClInclude>
 		<ClInclude Include="pdf\printing.h">
 			<Filter>pdf</Filter>
 		</ClInclude>
@@ -170,6 +173,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Filter>pdf</Filter>
 		</ClCompile>
 		<ClCompile Include="pdf\document_text_boxes.cpp">
+			<Filter>pdf</Filter>
+		</ClCompile>
+		<ClCompile Include="pdf\text_box_glyphs.cpp">
 			<Filter>pdf</Filter>
 		</ClCompile>
 		<ClCompile Include="pdf\document_pages.cpp">

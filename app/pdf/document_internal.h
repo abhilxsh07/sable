@@ -534,4 +534,43 @@ inline std::string utf16ToUtf8(std::u16string_view text) {
 	}
 	return utf16ToUtf8(encoded);
 }
+
+// the snapshots keep text as UTF-8; nullopt for anything that isn't.
+inline std::optional<std::u16string> utf8ToUtf16(std::string_view text) {
+	std::u16string out;
+	for (std::size_t i = 0; i < text.size();) {
+		const auto lead = static_cast<unsigned char>(text[i]);
+		const int extra = lead < 0x80             ? 0
+		                  : (lead & 0xE0) == 0xC0 ? 1
+		                  : (lead & 0xF0) == 0xE0 ? 2
+		                  : (lead & 0xF8) == 0xF0 ? 3
+		                                          : -1;
+		if (extra < 0 || i + extra >= text.size()) {
+			return {};
+		}
+		char32_t point = extra ? lead & (0x3F >> extra) : lead;
+		for (int k = 1; k <= extra; ++k) {
+			const auto next = static_cast<unsigned char>(text[i + k]);
+			if ((next & 0xC0) != 0x80) {
+				return {};
+			}
+			point = (point << 6) | (next & 0x3F);
+		}
+		constexpr char32_t least[] = {0, 0x80, 0x800, 0x10000};
+		if (point < least[extra] || point > 0x10FFFF ||
+		    (point >= 0xD800 && point <= 0xDFFF)) {
+			return {};
+		}
+		if (point >= 0x10000) {
+			out.push_back(
+			    static_cast<char16_t>(0xD800 + ((point - 0x10000) >> 10)));
+			out.push_back(
+			    static_cast<char16_t>(0xDC00 + ((point - 0x10000) & 0x3FF)));
+		} else {
+			out.push_back(static_cast<char16_t>(point));
+		}
+		i += 1 + extra;
+	}
+	return out;
+}
 } // namespace pdf::detail

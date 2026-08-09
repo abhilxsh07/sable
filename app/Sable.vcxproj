@@ -286,6 +286,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\comments.h" />
 		<ClInclude Include="pdf\document.h" />
 		<ClInclude Include="pdf\document_internal.h" />
+		<ClInclude Include="pdf\text_box_glyphs.h" />
 		<ClInclude Include="pdf\properties.h" />
 		<ClInclude Include="pdf\annotations.h" />
 		<ClInclude Include="helpers\properties.h" />
@@ -365,6 +366,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document_text_boxes.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\text_box_glyphs.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document_pages.cpp">

@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "document.h"
+#include "text_box_glyphs.h"
 
 #include <fpdf_annot.h>
 #include <fpdf_edit.h>
@@ -42,7 +43,16 @@ struct MultilineBoxAppearance {
 	int paintedLines = 0;
 };
 
-// i use standard font outlines so SetAP needs no stream font resources.
+// i draw a box as glyph outlines when it has line breaks or anything past
+// ASCII. PDFium's own generator only covers one line of ASCII Helvetica.
+inline bool needsOutlineAppearance(std::u16string_view contents) {
+	return std::any_of(contents.begin(), contents.end(),
+	                   [](char16_t c) { return c == u'\n' || c > 126; });
+}
+
+// i use font outlines so SetAP needs no stream font resources: Helvetica's
+// for ASCII and the installed Windows fonts' for anything else, so nothing
+// is embedded either way.
 // see:
 // https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8086/fpdfsdk/fpdf_edittext.cpp
 // see:
@@ -50,7 +60,7 @@ struct MultilineBoxAppearance {
 inline std::optional<MultilineBoxAppearance>
 multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
                        std::u16string_view contents) {
-	if (contents.find(u'\n') == std::u16string_view::npos ||
+	if (!needsOutlineAppearance(contents) ||
 	    validateTextBoxText(contents, TextBoxLayout::ExplicitLines) !=
 	        TextBoxTextError::None) {
 		return {};
@@ -66,10 +76,17 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 	    rect.top - rect.bottom < 17 + 15 * (lines - 1)) {
 		return {};
 	}
+	constexpr float pointSize = 12;
+	const bool ascii = std::all_of(contents.begin(), contents.end(),
+	                               [](char16_t c) { return c < 128; });
 	using Font = std::remove_pointer_t<FPDF_FONT>;
 	const std::unique_ptr<Font, decltype(&FPDFFont_Close)> font(
-	    FPDFText_LoadStandardFont(document, "Helvetica"), FPDFFont_Close);
-	if (!font) {
+	    ascii ? FPDFText_LoadStandardFont(document, "Helvetica") : nullptr,
+	    FPDFFont_Close);
+	const auto system = ascii ? GlyphRun{} : systemGlyphs(contents, pointSize);
+	if (ascii ? !font
+	          : system.error != GlyphError::None ||
+	                system.glyphs.size() != contents.size()) {
 		return {};
 	}
 	std::ostringstream out;
@@ -81,12 +98,12 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 	    << width - 1 << ' ' << height - 1 << " re " << rect.left + 1.5 << ' '
 	    << rect.bottom + 1.5 << ' ' << width - 3 << ' ' << height - 3
 	    << " re f*\n";
-	constexpr float pointSize = 12;
 	const double start = rect.left + 2.;
 	double x = start, y = rect.top - 13.;
 	int paintedLines = 0;
 	bool painted = false;
-	for (char16_t c : contents) {
+	for (std::size_t at = 0; at < contents.size(); ++at) {
+		const char16_t c = contents[at];
 		if (c == u'\n') {
 			if (painted) {
 				out << "f\n";
@@ -97,57 +114,93 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 			y -= 15;
 			continue;
 		}
-		float advance = 0;
-		if (!FPDFFont_GetGlyphWidth(font.get(), c, pointSize, &advance) ||
-		    !std::isfinite(advance) || advance <= 0 ||
+		double advance = 0;
+		std::vector<GlyphSegment> outline;
+		if (ascii) {
+			float glyphWidth = 0;
+			if (!FPDFFont_GetGlyphWidth(font.get(), c, pointSize,
+			                            &glyphWidth)) {
+				return {};
+			}
+			advance = glyphWidth;
+			if (c != u' ') {
+				const auto path =
+				    FPDFFont_GetGlyphPath(font.get(), c, pointSize);
+				const int count = FPDFGlyphPath_CountGlyphSegments(path);
+				if (count < 2 || count > 256) {
+					return {};
+				}
+				for (int i = 0; i < count; ++i) {
+					const auto segment =
+					    FPDFGlyphPath_GetGlyphPathSegment(path, i);
+					float px = 0, py = 0;
+					if (!FPDFPathSegment_GetPoint(segment, &px, &py)) {
+						return {};
+					}
+					const int type = FPDFPathSegment_GetType(segment);
+					outline.push_back(
+					    {type == FPDF_SEGMENT_BEZIERTO
+					         ? GlyphSegment::Kind::Curve
+					     : type == FPDF_SEGMENT_MOVETO
+					         ? GlyphSegment::Kind::Move
+					     : type == FPDF_SEGMENT_LINETO
+					         ? GlyphSegment::Kind::Line
+					         : GlyphSegment::Kind::Close,
+					     // float products, as the first boxes were written
+					     static_cast<double>(pointSize * px),
+					     static_cast<double>(pointSize * py)});
+					if (outline.back().kind == GlyphSegment::Kind::Close) {
+						return {};
+					}
+					if (FPDFPathSegment_GetClose(segment)) {
+						outline.push_back({GlyphSegment::Kind::Close, 0, 0});
+					}
+				}
+			}
+		} else {
+			advance = system.glyphs[at].advance;
+			outline = system.glyphs[at].path;
+			if (outline.size() > 4096) {
+				return {};
+			}
+		}
+		if (!std::isfinite(advance) || advance <= 0 ||
 		    x + advance > rect.right - 1.) {
 			return {};
 		}
-		if (c != u' ') {
-			const auto path = FPDFFont_GetGlyphPath(font.get(), c, pointSize);
-			const int count = FPDFGlyphPath_CountGlyphSegments(path);
-			if (count < 2 || count > 256) {
+		int curve = 0;
+		for (const auto& segment : outline) {
+			if (segment.kind == GlyphSegment::Kind::Close) {
+				if (curve != 0) {
+					return {};
+				}
+				out << "h\n";
+				continue;
+			}
+			const double gx = x + segment.x, gy = y + segment.y;
+			if (!std::isfinite(gx) || !std::isfinite(gy) ||
+			    gx < rect.left + 1. || gx > rect.right - 1. ||
+			    gy < rect.bottom + 1. || gy > rect.top - 1.) {
 				return {};
 			}
-			int curve = 0;
-			for (int i = 0; i < count; ++i) {
-				const auto segment = FPDFGlyphPath_GetGlyphPathSegment(path, i);
-				float px = 0, py = 0;
-				if (!FPDFPathSegment_GetPoint(segment, &px, &py)) {
-					return {};
+			out << gx << ' ' << gy << ' ';
+			if (segment.kind == GlyphSegment::Kind::Curve) {
+				if (++curve == 3) {
+					out << "c\n";
+					curve = 0;
 				}
-				const double gx = x + pointSize * px, gy = y + pointSize * py;
-				if (!std::isfinite(gx) || !std::isfinite(gy) ||
-				    gx < rect.left + 1. || gx > rect.right - 1. ||
-				    gy < rect.bottom + 1. || gy > rect.top - 1.) {
-					return {};
-				}
-				out << gx << ' ' << gy << ' ';
-				const int type = FPDFPathSegment_GetType(segment);
-				if (type == FPDF_SEGMENT_BEZIERTO) {
-					if (++curve == 3) {
-						out << "c\n";
-						curve = 0;
-					}
-				} else if (curve == 0 && type == FPDF_SEGMENT_MOVETO) {
-					out << "m\n";
-				} else if (curve == 0 && type == FPDF_SEGMENT_LINETO) {
-					out << "l\n";
-				} else {
-					return {};
-				}
-				if (FPDFPathSegment_GetClose(segment)) {
-					if (curve != 0) {
-						return {};
-					}
-					out << "h\n";
-				}
-			}
-			if (curve != 0) {
+			} else if (curve == 0 && segment.kind == GlyphSegment::Kind::Move) {
+				out << "m\n";
+			} else if (curve == 0 && segment.kind == GlyphSegment::Kind::Line) {
+				out << "l\n";
+			} else {
 				return {};
 			}
-			painted = true;
 		}
+		if (curve != 0) {
+			return {};
+		}
+		painted = painted || !outline.empty();
 		x += advance;
 	}
 	if (painted) {
@@ -155,7 +208,7 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 		++paintedLines;
 	}
 	const auto bytes = out.str();
-	if (!paintedLines || bytes.size() >= 256 * 1024) {
+	if (!paintedLines || bytes.size() >= (ascii ? 256 : 1024) * 1024) {
 		return {};
 	}
 	return MultilineBoxAppearance{std::u16string(bytes.begin(), bytes.end()),
