@@ -33,6 +33,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/lines.h"
 #include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
+#include <d2d1.h>
+#include <dwrite.h>
+#include <winrt/base.h>
 #include "signature.h"
 
 namespace pdf {
@@ -4839,6 +4842,311 @@ TEST(Annotations, SystemGlyphsCoverBoxCharactersAndRefuseShapedScripts) {
 	EXPECT_EQ(pdf::systemGlyphs(u"\u05e9", 12).error, pdf::GlyphError::Script);
 }
 
+namespace {
+constexpr const char16_t* hindiWords[] = {
+    u"\u0939\u093f\u0928\u094d\u0926\u0940",
+    u"\u0915\u094d\u0937\u0924\u094d\u0930\u093f\u092f"};
+constexpr const char16_t* bengaliWords[] = {
+    u"\u09ac\u09be\u0982\u09b2\u09be", u"\u0995\u09cd\u09b7\u09ae\u09be",
+    u"\u09b8\u09cd\u09a4\u09cd\u09b0\u09c0"};
+
+std::wstring userLocale() {
+	wchar_t locale[LOCALE_NAME_MAX_LENGTH]{};
+	if (!GetUserDefaultLocaleName(locale, LOCALE_NAME_MAX_LENGTH)) {
+		wcscpy_s(locale, L"en-US");
+	}
+	return locale;
+}
+
+winrt::com_ptr<IDWriteFactory> writeFactory() {
+	winrt::com_ptr<IDWriteFactory> factory;
+	winrt::check_hresult(DWriteCreateFactory(
+	    DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+	    reinterpret_cast<IUnknown**>(factory.put())));
+	return factory;
+}
+
+// DirectWrite's own layout of one line in Segoe UI at 12, as the reference.
+winrt::com_ptr<IDWriteTextLayout> referenceLayout(IDWriteFactory& factory,
+                                                  std::u16string_view text) {
+	winrt::com_ptr<IDWriteTextFormat> format;
+	winrt::check_hresult(factory.CreateTextFormat(
+	    L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+	    DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 12,
+	    userLocale().c_str(), format.put()));
+	const std::wstring wide(text.begin(), text.end());
+	winrt::com_ptr<IDWriteTextLayout> layout;
+	winrt::check_hresult(
+	    factory.CreateTextLayout(wide.c_str(), static_cast<UINT32>(wide.size()),
+	                             format.get(), 10000, 100, layout.put()));
+	return layout;
+}
+
+// what that layout draws, glyph by glyph, collected through a renderer
+// rather than as pixels.
+struct LayoutGlyphs : winrt::implements<LayoutGlyphs, IDWriteTextRenderer> {
+	std::vector<pdf::PlacedGlyph> placed;
+	HRESULT __stdcall IsPixelSnappingDisabled(
+	    void*, BOOL* disabled) noexcept override {
+		*disabled = TRUE;
+		return S_OK;
+	}
+	HRESULT __stdcall GetCurrentTransform(
+	    void*, DWRITE_MATRIX* matrix) noexcept override {
+		*matrix = {1, 0, 0, 1, 0, 0};
+		return S_OK;
+	}
+	HRESULT __stdcall GetPixelsPerDip(void*, FLOAT* pixels) noexcept override {
+		*pixels = 1;
+		return S_OK;
+	}
+	HRESULT __stdcall DrawGlyphRun(void*, FLOAT x, FLOAT, DWRITE_MEASURING_MODE,
+	                               DWRITE_GLYPH_RUN const* run,
+	                               DWRITE_GLYPH_RUN_DESCRIPTION const*,
+	                               IUnknown*) noexcept override {
+		double pen = x;
+		for (UINT32 i = 0; i < run->glyphCount; ++i) {
+			const auto* offset =
+			    run->glyphOffsets ? run->glyphOffsets + i : nullptr;
+			placed.push_back({run->glyphIndices[i],
+			                  pen + (offset ? offset->advanceOffset : 0),
+			                  offset ? offset->ascenderOffset : 0});
+			pen += run->glyphAdvances[i];
+		}
+		return S_OK;
+	}
+	HRESULT __stdcall DrawUnderline(void*, FLOAT, FLOAT,
+	                                DWRITE_UNDERLINE const*,
+	                                IUnknown*) noexcept override {
+		return S_OK;
+	}
+	HRESULT __stdcall DrawStrikethrough(void*, FLOAT, FLOAT,
+	                                    DWRITE_STRIKETHROUGH const*,
+	                                    IUnknown*) noexcept override {
+		return S_OK;
+	}
+	HRESULT __stdcall DrawInlineObject(void*, FLOAT, FLOAT,
+	                                   IDWriteInlineObject*, BOOL, BOOL,
+	                                   IUnknown*) noexcept override {
+		return S_OK;
+	}
+};
+// a white 400 x 300 page at 96 DPI with each line drawn by Direct2D from
+// DirectWrite's layout, its baseline at the given PDF point. Outline
+// rendering, so it is the glyph shapes filled, like the appearance.
+struct ReferenceLine {
+	std::u16string_view text;
+	float x = 0, baseline = 0;
+};
+std::vector<std::uint8_t>
+referencePage(const std::vector<ReferenceLine>& lines) {
+	constexpr int width = 400, height = 300;
+	const auto factory = writeFactory();
+	winrt::com_ptr<ID2D1Factory> d2d;
+	winrt::check_hresult(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
+	                                       __uuidof(ID2D1Factory), nullptr,
+	                                       d2d.put_void()));
+	const auto properties = D2D1::RenderTargetProperties(
+	    D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+	    D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+	    96.f, 96.f);
+	winrt::com_ptr<ID2D1DCRenderTarget> target;
+	winrt::check_hresult(d2d->CreateDCRenderTarget(&properties, target.put()));
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(info.bmiHeader);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	void* bits = nullptr;
+	const HDC dc = CreateCompatibleDC(nullptr);
+	const HBITMAP bitmap =
+	    CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+	std::vector<std::uint8_t> pixels;
+	if (dc && bitmap && bits) {
+		const auto old = SelectObject(dc, bitmap);
+		const RECT area{0, 0, width, height};
+		winrt::check_hresult(target->BindDC(dc, &area));
+		winrt::com_ptr<IDWriteRenderingParams> params;
+		winrt::check_hresult(factory->CreateCustomRenderingParams(
+		    1.8f, 0, 0, DWRITE_PIXEL_GEOMETRY_FLAT,
+		    DWRITE_RENDERING_MODE_OUTLINE, params.put()));
+		winrt::com_ptr<ID2D1SolidColorBrush> ink;
+		winrt::check_hresult(
+		    target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), ink.put()));
+		target->BeginDraw();
+		target->Clear(D2D1::ColorF(1, 1, 1));
+		target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+		target->SetTextRenderingParams(params.get());
+		for (const auto& line : lines) {
+			const auto layout = referenceLayout(*factory, line.text);
+			DWRITE_LINE_METRICS metrics{};
+			UINT32 count = 0;
+			winrt::check_hresult(layout->GetLineMetrics(&metrics, 1, &count));
+			target->DrawTextLayout(
+			    D2D1::Point2F(line.x,
+			                  height - line.baseline - metrics.baseline),
+			    layout.get(), ink.get());
+		}
+		winrt::check_hresult(target->EndDraw());
+		GdiFlush();
+		const auto* start = static_cast<const std::uint8_t*>(bits);
+		pixels.assign(start, start + 4 * width * height);
+		SelectObject(dc, old);
+	}
+	if (bitmap) {
+		DeleteObject(bitmap);
+	}
+	if (dc) {
+		DeleteDC(dc);
+	}
+	return pixels;
+}
+
+// how many dark pixels of one image have a darkish pixel within one pixel in
+// the other, over the box's inside, as a fraction of the dark ones.
+double inkCovered(const std::vector<std::uint8_t>& from, int fromStride,
+                  const std::vector<std::uint8_t>& to, int toStride,
+                  const pdf::AnnotationBounds& box, int& dark) {
+	const auto gray = [](const std::vector<std::uint8_t>& p, int stride, int x,
+	                     int y) {
+		const auto* px = p.data() + y * stride + 4 * x;
+		return (px[0] + px[1] + px[2]) / 3;
+	};
+	dark = 0;
+	int covered = 0;
+	const int left = static_cast<int>(box.left) + 3;
+	const int right = static_cast<int>(box.right) - 3;
+	const int top = 300 - static_cast<int>(box.top) + 3;
+	const int bottom = 300 - static_cast<int>(box.bottom) - 3;
+	for (int y = top; y < bottom; ++y) {
+		for (int x = left; x < right; ++x) {
+			if (gray(from, fromStride, x, y) >= 128) {
+				continue;
+			}
+			++dark;
+			bool nearby = false;
+			for (int dy = -1; dy <= 1 && !nearby; ++dy) {
+				for (int dx = -1; dx <= 1 && !nearby; ++dx) {
+					nearby = gray(to, toStride, x + dx, y + dy) < 200;
+				}
+			}
+			covered += nearby ? 1 : 0;
+		}
+	}
+	return dark ? static_cast<double>(covered) / dark : 0;
+}
+} // namespace
+TEST(Annotations, HindiAndBengaliGlyphsMatchDirectWriteShaping) {
+	const auto factory = writeFactory();
+	std::vector<const char16_t*> words(std::begin(hindiWords),
+	                                   std::end(hindiWords));
+	words.insert(words.end(), std::begin(bengaliWords), std::end(bengaliWords));
+	for (std::size_t w = 0; w < words.size(); ++w) {
+		SCOPED_TRACE(testing::Message() << "word " << w);
+		const std::u16string_view text(words[w]);
+		const auto run = pdf::systemGlyphs(text, 12);
+		ASSERT_EQ(run.error, pdf::GlyphError::None);
+		ASSERT_EQ(run.glyphs.size(), text.size());
+		const auto renderer = winrt::make_self<LayoutGlyphs>();
+		winrt::check_hresult(referenceLayout(*factory, text)
+		                         ->Draw(nullptr, renderer.get(), 0, 0));
+		ASSERT_EQ(run.placed.size(), renderer->placed.size());
+		for (std::size_t i = 0; i < run.placed.size(); ++i) {
+			EXPECT_EQ(run.placed[i].id, renderer->placed[i].id) << i;
+			EXPECT_NEAR(run.placed[i].x, renderer->placed[i].x, .01) << i;
+			EXPECT_NEAR(run.placed[i].y, renderer->placed[i].y, .01) << i;
+		}
+		// a conjunct or matra joins characters into one cluster
+		EXPECT_TRUE(std::any_of(run.glyphs.begin(), run.glyphs.end(),
+		                        [](const auto& g) { return g.continuation; }));
+		EXPECT_FALSE(run.glyphs[0].continuation);
+		EXPECT_FALSE(run.glyphs[0].path.empty());
+	}
+	// Latin around them still works, Tamil and Arabic still refuse
+	EXPECT_EQ(
+	    pdf::systemGlyphs(u"Hindi \u0939\u093f\u0928\u094d\u0926\u0940 2", 12)
+	        .error,
+	    pdf::GlyphError::None);
+	EXPECT_TRUE(pdf::shapedTextBoxCharacter(u'\u0915'));
+	EXPECT_TRUE(pdf::shapedTextBoxCharacter(u'\u09b8'));
+	EXPECT_FALSE(pdf::shapedTextBoxCharacter(u'\u0ba4'));
+	EXPECT_EQ(pdf::systemGlyphs(u"\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", 12).error,
+	          pdf::GlyphError::Script);
+	EXPECT_EQ(pdf::systemGlyphs(u"\u0645\u0631\u062d\u0628\u0627", 12).error,
+	          pdf::GlyphError::Script);
+	// text without them is drawn exactly as before: one glyph per character
+	const auto plain = pdf::systemGlyphs(u"\u00e9 \u4e2d", 12);
+	ASSERT_EQ(plain.error, pdf::GlyphError::None);
+	EXPECT_EQ(plain.placed.size(), 3u);
+	EXPECT_TRUE(std::none_of(plain.glyphs.begin(), plain.glyphs.end(),
+	                         [](const auto& g) { return g.continuation; }));
+}
+
+TEST(Annotations, HindiAndBengaliTextBoxesRenderLikeDirectWriteAfterReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = editableNoteBytes(
+		        "/Contents (Keep)", "Text", {}, "/MediaBox [0 0 400 300]");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    constexpr auto layout = pdf::TextBoxLayout::ExplicitLines;
+		    const pdf::AnnotationBounds hindi{40, 200, 200, 270};
+		    const pdf::AnnotationBounds bengali{40, 60, 200, 160};
+		    const std::u16string hindiText =
+		        std::u16string(hindiWords[0]) + u"\n" + hindiWords[1];
+		    const std::u16string bengaliText = std::u16string(bengaliWords[0]) +
+		                                       u"\n" + bengaliWords[1] + u"\n" +
+		                                       bengaliWords[2];
+		    ASSERT_EQ(doc.addTextBox(0, hindi, hindiText, {},
+		                             doc.annotationRevision(), {}, layout),
+		              1);
+		    ASSERT_EQ(doc.addTextBox(0, bengali, bengaliText, {},
+		                             doc.annotationRevision(), {}, layout),
+		              2);
+		    const auto saved = doc.serializeForCopy(4 * 1024 * 1024);
+		    ASSERT_TRUE(saved);
+		    const auto reopened = pdf::openDocument(*saved);
+		    ASSERT_TRUE(reopened.document);
+		    const auto kept = reopened.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 3);
+		    // still Sable's own, so they stay editable
+		    EXPECT_TRUE(reopened.document->textBox(kept->entries[1].target, {},
+		                                           layout));
+		    EXPECT_TRUE(reopened.document->textBox(kept->entries[2].target, {},
+		                                           layout));
+		    const auto raster =
+		        reopened.document->printRaster(0, 400, 300, 0, 0, 400, 300);
+		    ASSERT_TRUE(raster && raster->width == 400 &&
+		                raster->height == 300);
+		    std::vector<ReferenceLine> lines;
+		    for (int i = 0; i < 2; ++i) {
+			    lines.push_back(
+			        {hindiWords[i], hindi.left + 2, hindi.top - 15 - 18.f * i});
+		    }
+		    for (int i = 0; i < 3; ++i) {
+			    lines.push_back({bengaliWords[i], bengali.left + 2,
+			                     bengali.top - 15 - 18.f * i});
+		    }
+		    const auto reference = referencePage(lines);
+		    ASSERT_EQ(reference.size(), 4u * 400 * 300);
+		    for (const auto& box : {hindi, bengali}) {
+			    int written = 0, drawn = 0;
+			    const double forward =
+			        inkCovered(raster->pixels, raster->stride, reference, 1600,
+			                   box, written);
+			    const double back = inkCovered(reference, 1600, raster->pixels,
+			                                   raster->stride, box, drawn);
+			    EXPECT_GT(written, 100);
+			    EXPECT_GT(drawn, 100);
+			    EXPECT_GE(forward, .97);
+			    EXPECT_GE(back, .97);
+		    }
+	    })
+	    .get();
+}
 TEST(Annotations, DrawingEditsMoveRestyleAndSurviveReopen) {
 	pdf::Engine engine;
 	engine

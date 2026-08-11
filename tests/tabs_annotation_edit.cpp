@@ -450,7 +450,8 @@ void TabsTest::textBoxUnicodeTick(MainWindow& owner) {
 		contents().Text(L"\u05e9\u05dc\u05d5\u05dd");
 		break;
 	case 2:
-	case 4: {
+	case 4:
+	case 7: {
 		// Add follows the text a tick later
 		const auto button = primaryButton(v.m_noteDialog);
 		if (!button || !button.IsEnabled()) {
@@ -483,8 +484,38 @@ void TabsTest::textBoxUnicodeTick(MainWindow& owner) {
 			                                     u8"Café αβγ\n日本語");
 		                      }),
 		      "the Unicode text box didn't reach Comments");
+		invokeElement(v.PlaceTextBoxButton());
+		check(v.placeNote(at(.15, .55)),
+		      "the second text box click wasn't taken");
+		break;
+	case 6:
+		if (!v.m_noteDialog) {
+			check(ticks < 40, "the second text box dialog closed");
+			return;
+		}
+		// Hindi and Bengali are shaped, conjuncts and all
+		contents().Text(L"\u0915\u094d\u0937\u0924\u094d\u0930\u093f\u092f\n"
+		                L"\u09b8\u09cd\u09a4\u09cd\u09b0\u09c0");
+		break;
+	case 8:
+		if (v.m_noteDialog || !v.m_commentScan.done()) {
+			check(ticks < 80, "the Hindi and Bengali box wasn't written");
+			return;
+		}
+		check(std::any_of(
+		          v.m_commentScan.rows().begin(), v.m_commentScan.rows().end(),
+		          [](const auto& row) {
+			          return row.subtype == "FreeText" &&
+			                 row.text ==
+			                     reinterpret_cast<const char*>(
+			                         u8"\u0915\u094d\u0937\u0924\u094d"
+			                         u8"\u0930\u093f\u092f\n\u09b8\u09cd"
+			                         u8"\u09a4\u09cd\u09b0\u09c0");
+		          }),
+		      "the Hindi and Bengali box didn't reach Comments");
 		v.close();
-		status.Text(L"PASS: Unicode text box, NFC and script refusal");
+		status.Text(L"PASS: Unicode text box, NFC, script refusal, Hindi and "
+		            L"Bengali");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

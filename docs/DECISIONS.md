@@ -3210,3 +3210,32 @@ drive the same calls the pointer and dialogs do, not real input, so the
 pen and physical mouse checks stay with me. Each feature also has a
 save-and-reopen test that edits the reopened copy again, which is what
 proves the result is still Sable's own model.
+
+## Hindi and Bengali text boxes (2026-11-12)
+
+Text boxes now take Hindi (Devanagari) and Bengali. A line with either
+script is shaped through DirectWrite before it becomes outlines: the
+line is split into script runs with AnalyzeScript, each run into the
+fonts the system fallback picks (Nirmala UI here), and each piece goes
+through GetGlyphs and GetGlyphPlacements with the script's default
+features. A cluster's glyphs become one outline on its first character,
+with the advances and offsets DirectWrite gave, so conjuncts, reordered
+matras and reph come out joined. The later characters of a cluster draw
+nothing. ZWJ and ZWNJ are allowed with them. The OS/2 fsType check is
+the same as before.
+// see: https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextanalyzer-getglyphs
+// see: https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextanalyzer-getglyphplacements
+
+Nirmala's vowel signs and reph reach past the 12 pt the first boxes left
+above the baseline, so a box with shaped text puts its first baseline
+15 pt below the top and spaces lines 18 pt apart instead of 13 and 15.
+Text without Devanagari or Bengali takes exactly the old path, one glyph
+at a time over the whole text, so existing Unicode boxes keep their
+bytes and stay editable. Spaces and Latin between Hindi words stay
+unshaped. Tamil, other Indic scripts, right-to-left scripts and Thai
+still refuse with the script message.
+
+The tests check the glyph ids and positions against what DirectWrite's
+own text layout draws for the same words, and render the saved, reopened
+boxes in PDFium against a Direct2D render of the same layouts with
+outline rendering.

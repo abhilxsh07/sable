@@ -34,6 +34,15 @@ struct GlyphSegment {
 struct Glyph {
 	double advance = 0;
 	std::vector<GlyphSegment> path;
+	// the later units of a shaped cluster: the cluster's first unit carries
+	// its outline and advance, so these draw nothing.
+	bool continuation = false;
+};
+// a glyph as written: its id in its font and where it sits, in points
+// from the start of its line on the baseline, y up.
+struct PlacedGlyph {
+	std::uint16_t id = 0;
+	double x = 0, y = 0;
 };
 enum class GlyphError {
 	None,
@@ -45,15 +54,24 @@ struct GlyphRun {
 	GlyphError error = GlyphError::None;
 	// one per UTF-16 unit of the text; line breaks get an empty glyph.
 	std::vector<Glyph> glyphs;
+	// every glyph in the order it's drawn, line by line.
+	std::vector<PlacedGlyph> placed;
 };
 
-// Characters a text box can draw without shaping: Latin, Greek, Cyrillic,
-// common punctuation and symbols, CJK and Hangul, all inside the BMP. No
-// combining marks, right-to-left or complex scripts, emoji or controls.
+// Characters a text box can draw: Latin, Greek, Cyrillic, common
+// punctuation and symbols, CJK and Hangul one at a time, plus Devanagari
+// and Bengali (with ZWJ and ZWNJ), which are shaped. All inside the BMP.
+// No other combining marks, right-to-left or other complex scripts, emoji
+// or controls.
 bool drawableTextBoxCharacter(char16_t c);
+// Devanagari, Bengali, ZWJ and ZWNJ: the characters that go through
+// DirectWrite's shaping before they become outlines.
+bool shapedTextBoxCharacter(char16_t c);
 
 // Outlines from the installed Windows fonts, Segoe UI first, then the
-// system fallback for each run. Nothing is bundled or embedded: the
+// system fallback for each run. Text with Devanagari or Bengali is shaped
+// a line at a time, so conjuncts, matras and reph come out joined; text
+// without them is drawn exactly as before. Nothing is bundled or embedded: the
 // outlines go into the appearance as paths, and a font whose OS/2 fsType
 // restricts embedding refuses. Not a PDFium call, so any thread can ask.
 GlyphRun systemGlyphs(std::u16string_view text, float pointSize);

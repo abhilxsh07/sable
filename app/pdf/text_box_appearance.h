@@ -72,8 +72,13 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 	}
 	const int lines = 1 + static_cast<int>(std::count(contents.begin(),
 	                                                  contents.end(), u'\n'));
+	// Nirmala UI's vowel signs and reph reach past 12 pt above the baseline
+	// and its lower matras below it, so shaped text gets more room per line.
+	const bool shaped =
+	    std::any_of(contents.begin(), contents.end(), shapedTextBoxCharacter);
+	const double firstBaseline = shaped ? 15 : 13, pitch = shaped ? 18 : 15;
 	if (rect.right - rect.left <= 4 ||
-	    rect.top - rect.bottom < 17 + 15 * (lines - 1)) {
+	    rect.top - rect.bottom < firstBaseline + 4 + pitch * (lines - 1)) {
 		return {};
 	}
 	constexpr float pointSize = 12;
@@ -99,7 +104,7 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 	    << rect.bottom + 1.5 << ' ' << width - 3 << ' ' << height - 3
 	    << " re f*\n";
 	const double start = rect.left + 2.;
-	double x = start, y = rect.top - 13.;
+	double x = start, y = rect.top - firstBaseline;
 	int paintedLines = 0;
 	bool painted = false;
 	for (std::size_t at = 0; at < contents.size(); ++at) {
@@ -111,7 +116,7 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 			}
 			painted = false;
 			x = start;
-			y -= 15;
+			y -= pitch;
 			continue;
 		}
 		double advance = 0;
@@ -158,6 +163,10 @@ multilineBoxAppearance(FPDF_DOCUMENT document, const FS_RECTF& rect,
 				}
 			}
 		} else {
+			// the rest of a shaped cluster: its first character drew it
+			if (system.glyphs[at].continuation) {
+				continue;
+			}
 			advance = system.glyphs[at].advance;
 			outline = system.glyphs[at].path;
 			if (outline.size() > 4096) {

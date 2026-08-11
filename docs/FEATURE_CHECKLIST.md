@@ -148,7 +148,7 @@ The older test counts in those documents are historical checkpoints.
 - [x] Supported existing text-box editing and bounded resizing.
 - [x] Independent text-box resources, multiple boxes and adding after reopen.
 - [x] Bounded multiline ASCII text boxes with picker and Acrobat checks.
-- [x] Unicode text boxes from installed fonts; RTL and complex scripts refuse.
+- [x] Unicode text boxes from installed fonts, with shaped Hindi and Bengali; RTL and other complex scripts refuse.
 - [x] Freehand mouse drawing, color and width, copy saving and guarded Delete.
 - [x] Move, restyle and delete existing drawings with the mouse.
 - [ ] Pen input for drawing and editing.

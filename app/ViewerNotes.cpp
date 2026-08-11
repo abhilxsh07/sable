@@ -1163,8 +1163,9 @@ ViewerPage::editTextBox(NoteTarget target,
 				break;
 			case pdf::TextBoxTextError::Characters:
 				problem = L"Sable can't draw some of these characters yet. "
-				          L"Right-to-left and complex scripts and emoji "
-				          L"aren't supported.";
+				          L"Right-to-left scripts, emoji and complex "
+				          L"scripts other than Hindi and Bengali aren't "
+				          L"supported.";
 				break;
 			}
 			// past ASCII the box is drawn from installed fonts; say which way
