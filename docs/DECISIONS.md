@@ -3198,3 +3198,15 @@ Being drawings, they list as Drawing in Comments and move, restyle and
 delete with the drawing tools. A Line or Arrow label in the list and a
 resize dialog for them would need the InkList in the snapshot, so they
 wait.
+
+## Annotation edit probes (2026-11-12)
+
+Four probe modes cover the annotation batch from the UI: TextBoxUnicode
+(the text-box dialog with Greek, CJK and an accent typed as a separate
+mark, and a right-to-left refusal), InkEdit (pick, drag, Esc, Edit
+drawing and Delete), StampEdit (pick, drag, Resize stamp and Delete) and
+LineArrow (two-click line and arrow, a too-short click, Delete). They
+drive the same calls the pointer and dialogs do, not real input, so the
+pen and physical mouse checks stay with me. Each feature also has a
+save-and-reopen test that edits the reopened copy again, which is what
+proves the result is still Sable's own model.

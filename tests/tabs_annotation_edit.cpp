@@ -403,4 +403,95 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 	++step;
 	ticks = 0;
 }
+
+// TextBoxUnicode: the text-box dialog takes Greek, CJK and an accent typed
+// as a separate mark, turns away a right-to-left script, and the box
+// reaches Comments with its text.
+void TabsTest::textBoxUnicodeTick(MainWindow& owner) {
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v) || v.m_noteBusy || v.m_commentsPending) {
+		return;
+	}
+	const auto at = [&](double x, double y) {
+		const auto& rect = v.m_layout->pages()[0];
+		return Windows::Foundation::Point{
+		    static_cast<float>(rect.x + x * rect.width),
+		    static_cast<float>(rect.y + y * rect.height)};
+	};
+	// the fields sit in a scroller: location, author, text, then the error
+	const auto fields = [&] {
+		return v.m_noteDialog.Content()
+		    .as<ScrollViewer>()
+		    .Content()
+		    .as<StackPanel>()
+		    .Children();
+	};
+	const auto contents = [&] { return fields().GetAt(2).as<TextBox>(); };
+	const auto error = [&] {
+		const auto children = fields();
+		return children.GetAt(children.Size() - 1).as<TextBlock>();
+	};
+	switch (step) {
+	case 0:
+		v.setCommentsOpen(true);
+		v.goToPage(0);
+		invokeElement(v.PlaceTextBoxButton());
+		check(v.placeNote(at(.15, .15)), "the text box click wasn't taken");
+		break;
+	case 1:
+		if (!v.m_noteDialog) {
+			check(ticks < 40, "the text box dialog closed");
+			return;
+		}
+		contents().Text(L"\u05e9\u05dc\u05d5\u05dd");
+		break;
+	case 2:
+	case 4: {
+		// Add follows the text a tick later
+		const auto button = primaryButton(v.m_noteDialog);
+		if (!button || !button.IsEnabled()) {
+			check(ticks < 20, "Add is disabled");
+			return;
+		}
+		invokeElement(button);
+		break;
+	}
+	case 3:
+		check(v.m_noteDialog && !v.m_noteBusy &&
+		          std::wstring_view(error().Text())
+		              .starts_with(L"Sable can't draw"),
+		      "a right-to-left script wasn't turned away");
+		// "e" and a combining acute compose to one drawable character
+		contents().Text(L"Cafe\u0301 \u03b1\u03b2\u03b3\n\u65e5\u672c\u8a9e");
+		break;
+	case 5:
+		if (v.m_noteDialog || !v.m_commentScan.done()) {
+			check(ticks < 80, "the Unicode text box wasn't written");
+			return;
+		}
+		check(v.m_notesDirty &&
+		          std::any_of(v.m_commentScan.rows().begin(),
+		                      v.m_commentScan.rows().end(),
+		                      [](const auto& row) {
+			                      return row.subtype == "FreeText" &&
+			                             row.text ==
+			                                 reinterpret_cast<const char*>(
+			                                     u8"Café αβγ\n日本語");
+		                      }),
+		      "the Unicode text box didn't reach Comments");
+		v.close();
+		status.Text(L"PASS: Unicode text box, NFC and script refusal");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	default:
+		check(false, "unexpected Unicode text box step");
+	}
+	++step;
+	ticks = 0;
+}
 } // namespace winrt::Sable::implementation

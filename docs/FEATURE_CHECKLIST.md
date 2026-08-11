@@ -148,14 +148,16 @@ The older test counts in those documents are historical checkpoints.
 - [x] Supported existing text-box editing and bounded resizing.
 - [x] Independent text-box resources, multiple boxes and adding after reopen.
 - [x] Bounded multiline ASCII text boxes with picker and Acrobat checks.
-- [ ] Unicode text boxes.
+- [x] Unicode text boxes from installed fonts; RTL and complex scripts refuse.
 - [x] Freehand mouse drawing, color and width, copy saving and guarded Delete.
-- [ ] Pen input and editing existing ink strokes.
+- [x] Move, restyle and delete existing drawings with the mouse.
+- [ ] Pen input for drawing and editing.
 - [x] Outline rectangles and ellipses: placement, guarded Delete and copy saving.
 - [x] Resize supported outline rectangles and ellipses, and save copies.
-- [ ] Broader shape creation and editing.
+- [x] Lines and arrows (saved as drawings): placement, move, restyle, Delete.
+- [ ] Other shapes, Line/Arrow labels in Comments and line resizing.
 - [x] PNG/JPEG image stamp placement, guarded Delete and copy saving.
-- [ ] Move and resize existing stamps.
+- [x] Move and resize existing stamps, keeping their shape and turn.
 - [ ] Full annotation editor suite; existing supported tools are only a subset.
 
 ## Form filling (E01: partial)

@@ -54,7 +54,8 @@ $scenarios = @(
 	"Organize",
 	"Outline", "Pan", "PasswordForm", "Presentation", "Print", "PrintUi",
 	"Properties", "Radio", "Redraw", "Rotation", "SaveCopy", "Selection",
-	"Settings", "SortedChoice", "Stamp", "StampEdit", "StrikeOut", "Underline", "Windows"
+	"Settings", "SortedChoice", "Stamp", "StampEdit", "StrikeOut",
+	"TextBoxUnicode", "Underline", "Windows"
 )
 foreach ($name in $scenarios) {
 	$modes[$name] = @{ SableTabsTest = "true"; "Sable${name}Test" = "true" }

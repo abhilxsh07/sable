@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "pdf/text_box_glyphs.h"
+#include "helpers/lines.h"
 #include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
 #include "signature.h"
@@ -4975,6 +4976,49 @@ TEST(Annotations, StampsMoveAndResizeKeepingShapeAndTurn) {
 		    EXPECT_EQ(
 		        reopened.document->editStamp(kept->entries[1], {5, 5}, {}),
 		        true);
+	    })
+	    .get();
+}
+
+TEST(Annotations, ArrowsSaveAsDrawingsThatEditAfterReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openDocument(editableNoteBytes(
+		        "/Contents (Keep)", "Text", {}, "/MediaBox [0 0 400 300]"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const auto strokes =
+		        helpers::lineStrokes({.25, .5}, {.75, .5}, 400, 300, 2, true);
+		    ASSERT_TRUE(strokes);
+		    ASSERT_EQ(doc.addInkAt(0, *strokes, 0, 1), 1);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const auto ink = pdf::DocumentEditTest::inkList(*saved.document, 1);
+		    ASSERT_EQ(ink.size(), 3u);
+		    ASSERT_EQ(ink[0].size(), 2u);
+		    // the shaft runs across the middle and both heads leave the tip
+		    EXPECT_NEAR(ink[0][0].x, 100, .01);
+		    EXPECT_NEAR(ink[0][1].x, 300, .01);
+		    EXPECT_NEAR(ink[0][0].y, 150, .01);
+		    for (std::size_t i = 1; i < 3; ++i) {
+			    ASSERT_EQ(ink[i].size(), 2u);
+			    EXPECT_NEAR(ink[i][0].x, 300, .01);
+			    EXPECT_NEAR(ink[i][1].x, 300 - 8 * std::cos(3.14159265 / 6),
+			                .01);
+			    EXPECT_NEAR(std::abs(ink[i][1].y - 150), 4, .01);
+		    }
+		    const auto notes = saved.document->annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 2);
+		    EXPECT_EQ(saved.document->editInk(
+		                  notes->entries[1], {-20, 10},
+		                  pdf::AnnotationColor{235, 73, 73, 255}, 4.f),
+		              true);
+		    EXPECT_NEAR(
+		        pdf::DocumentEditTest::inkList(*saved.document, 1)[0][0].x, 80,
+		        .01);
 	    })
 	    .get();
 }

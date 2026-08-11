@@ -157,6 +157,7 @@ struct TabsTest {
 	bool inkEditOnly = false;
 	bool stampEditOnly = false;
 	bool lineArrowOnly = false;
+	bool textBoxUnicodeOnly = false;
 	float stampEditWidth = 0;
 	bool fillMarksOnly = false;
 	bool organizeOnly = false;
@@ -401,6 +402,7 @@ struct TabsTest {
 	void inkEditTick(MainWindow& owner);
 	void stampEditTick(MainWindow& owner);
 	void lineArrowTick(MainWindow& owner);
+	void textBoxUnicodeTick(MainWindow& owner);
 	void notePlacementTick(MainWindow& owner);
 	void notesTick(MainWindow& owner);
 	void commentsTick(MainWindow& owner);
