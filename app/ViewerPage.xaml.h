@@ -265,6 +265,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		TextBox,
 		Rectangle,
 		Ellipse,
+		// two clicks, drawn as ink in the current Drawing style
+		Line,
+		Arrow,
 		Ink,
 		Stamp,
 		FillCheck,
@@ -276,6 +279,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		DrawnSignature
 	};
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
+	void placeLine(NoteTarget first, NoteTarget target, std::uint64_t revision);
 	bool canPickStamp();
 	winrt::fire_and_forget pickStamp();
 	bool cancelNotePlacement();

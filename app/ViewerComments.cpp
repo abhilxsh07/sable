@@ -145,6 +145,16 @@ void ViewerPage::setupComments() {
 			self->beginNotePlacement(PlacementTool::Ellipse);
 		}
 	});
+	PlaceLineButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::Line);
+		}
+	});
+	PlaceArrowButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement(PlacementTool::Arrow);
+		}
+	});
 	PlaceStampButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->pickStamp();
@@ -376,6 +386,15 @@ void ViewerPage::showComments() {
 	                                  m_placementTool == PlacementTool::Ellipse
 	                              ? L"Cancel ellipse placement"
 	                              : L"Place ellipse on page");
+	for (const auto& [button, tool, text] :
+	     {std::tuple{PlaceLineButton(), PlacementTool::Line, L"line"},
+	      std::tuple{PlaceArrowButton(), PlacementTool::Arrow, L"arrow"}}) {
+		button.IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
+		                 !m_noteDialog);
+		button.Text(m_notePlacing && m_placementTool == tool
+		                ? L"Cancel " + hstring(text) + L" placement"
+		                : L"Place " + hstring(text) + L" on page");
+	}
 	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
 	FillMarksMenu().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_noteDialog && !m_passwordDialog);
@@ -480,6 +499,16 @@ void ViewerPage::showComments() {
 		                        L"Esc cancels."
 		                      : L"Click the first corner of the rectangle. "
 		                        L"Esc cancels.");
+	}
+	if (m_notePlacing && (m_placementTool == PlacementTool::Line ||
+	                      m_placementTool == PlacementTool::Arrow)) {
+		const bool arrow = m_placementTool == PlacementTool::Arrow;
+		NotesState().Text(
+		    (m_shapeStart ? (arrow ? L"Click where the arrow points"
+		                           : L"Click where the line ends")
+		                  : (arrow ? L"Click where the arrow starts"
+		                           : L"Click where the line starts")) +
+		    hstring(L" (") + inkStyleName(s_inkStyle) + L"). Esc cancels.");
 	}
 	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
 		NotesState().Text(L"Drag on a page to draw (" +

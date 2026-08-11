@@ -3177,3 +3177,24 @@ object, checked on an isolated copy. The write goes through the shared
 transaction after the signed-PDF guard, and the saved copy is reopened
 to check the Rect, the unchanged matrix and pixels, and every other
 annotation.
+
+## Lines and arrows (2026-11-12)
+
+Comments > More has Place line on page and Place arrow on page after the
+ellipse. Like the outline shapes they take two clicks, the start and the
+end, and Esc or another tool drops a pending start. A second click less
+than 4 pt from the first keeps the start and says to click farther away.
+
+PDFium can't create a Line annotation or set /L and /LE (chromium/8086
+fpdf_annot.h), so both are Ink in the current Drawing style. A line is
+one two-point stroke. An arrow adds two strokes back from the tip, 30
+degrees either side, four pens long, at least 8 pt and never more than a
+third of the line. The points are worked out on the displayed page in
+points, so a turned view or a page that isn't square keeps the angles,
+and they keep half the pen and a little more inside the page. Other apps
+see them as drawings.
+
+Being drawings, they list as Drawing in Comments and move, restyle and
+delete with the drawing tools. A Line or Arrow label in the list and a
+resize dialog for them would need the InkList in the snapshot, so they
+wait.

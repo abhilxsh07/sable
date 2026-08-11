@@ -282,6 +282,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\music.h" />
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="helpers\signature.h" />
+		<ClInclude Include="helpers\lines.h" />
 		<ClInclude Include="helpers\export.h" />
 		<ClInclude Include="helpers\rotation.h" />
 		<ClInclude Include="helpers\pan.h" />
@@ -335,6 +336,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\signature.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\lines.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\export.cpp">

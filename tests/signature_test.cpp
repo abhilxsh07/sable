@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <gtest/gtest.h>
 #include <string>
 #include "signature.h"
+#include "lines.h"
+#include <cmath>
 
 namespace {
 struct Extent {
@@ -128,4 +130,48 @@ TEST(Signature, DrawnStrokesFitTheirBoxAndKeepTheirShape) {
 	        std::vector<helpers::PadStroke>(257, {{1, 1}}), letter, {.5, .5})
 	        .empty());
 	EXPECT_TRUE(helpers::drawnSignatureStrokes({{}}, letter, {.5, .5}).empty());
+}
+
+TEST(LineStrokes, LinesAndArrowsStayOnThePageAndRefuseShortClicks) {
+	// a 400 by 200 pt page, so x and y fractions have different scales
+	EXPECT_FALSE(
+	    helpers::lineStrokes({.5, .5}, {.505, .505}, 400, 200, 2, false));
+	EXPECT_FALSE(helpers::lineStrokes({.1, .1}, {.9, .9}, 2, 2, 2, false));
+	const auto line =
+	    helpers::lineStrokes({.25, .5}, {.75, .5}, 400, 200, 2, false);
+	ASSERT_TRUE(line && line->size() == 1 && (*line)[0].size() == 2);
+	EXPECT_DOUBLE_EQ((*line)[0][0].x, .25);
+	EXPECT_DOUBLE_EQ((*line)[0][1].x, .75);
+	// the head is 8 pt at 2 pt, 30 degrees either side of the shaft
+	const auto arrow =
+	    helpers::lineStrokes({.25, .5}, {.75, .5}, 400, 200, 2, true);
+	ASSERT_TRUE(arrow && arrow->size() == 3);
+	for (std::size_t i = 1; i < 3; ++i) {
+		const auto& head = (*arrow)[i];
+		ASSERT_EQ(head.size(), 2u);
+		EXPECT_DOUBLE_EQ(head[0].x, .75);
+		const double dx = (head[1].x - head[0].x) * 400;
+		const double dy = (head[1].y - head[0].y) * 200;
+		EXPECT_NEAR(std::hypot(dx, dy), 8, 1e-9);
+		EXPECT_NEAR(dx, -8 * std::cos(3.14159265358979 / 6), 1e-9);
+		EXPECT_NEAR(std::abs(dy), 4, 1e-9);
+	}
+	EXPECT_NEAR((*arrow)[1][1].y + (*arrow)[2][1].y, 1, 1e-12);
+	// thick pens get longer heads, short arrows shorter ones
+	const auto thick =
+	    helpers::lineStrokes({.25, .5}, {.75, .5}, 400, 200, 4, true);
+	ASSERT_TRUE(thick);
+	EXPECT_NEAR(((*thick)[1][0].x - (*thick)[1][1].x) * 400,
+	            16 * std::cos(3.14159265358979 / 6), 1e-9);
+	const auto small =
+	    helpers::lineStrokes({.5, .5}, {.53, .5}, 400, 200, 2, true);
+	ASSERT_TRUE(small);
+	EXPECT_NEAR(std::hypot(((*small)[1][1].x - (*small)[1][0].x) * 400,
+	                       ((*small)[1][1].y - (*small)[1][0].y) * 200),
+	            4, 1e-9);
+	// an end off the page is pulled back half the pen and a little more
+	const auto edge =
+	    helpers::lineStrokes({.5, .5}, {1, .5}, 400, 200, 2, false);
+	ASSERT_TRUE(edge);
+	EXPECT_DOUBLE_EQ((*edge)[0][1].x, (400 - 1.5) / 400);
 }

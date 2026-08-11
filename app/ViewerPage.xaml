@@ -282,6 +282,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 										Text="Place rectangle on page" />
 									<MenuFlyoutItem x:Name="PlaceEllipseButton"
 										Text="Place ellipse on page" />
+									<MenuFlyoutItem x:Name="PlaceLineButton"
+										Text="Place line on page" />
+									<MenuFlyoutItem x:Name="PlaceArrowButton"
+										Text="Place arrow on page" />
 									<MenuFlyoutItem x:Name="DrawInkButton"
 										Text="Draw on page" />
 									<MenuFlyoutItem x:Name="PlaceStampButton"

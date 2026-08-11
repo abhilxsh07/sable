@@ -314,4 +314,93 @@ void TabsTest::stampEditTick(MainWindow& owner) {
 	++step;
 	ticks = 0;
 }
+
+// LineArrow: two clicks for a line and an arrow, a too-short click that
+// keeps the start, then the arrow picked on the page and deleted.
+void TabsTest::lineArrowTick(MainWindow& owner) {
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v) || v.m_noteBusy || v.m_commentsPending ||
+	    v.m_annotationPending) {
+		return;
+	}
+	const auto at = [&](double x, double y) {
+		const auto& rect = v.m_layout->pages()[0];
+		return Windows::Foundation::Point{
+		    static_cast<float>(rect.x + x * rect.width),
+		    static_cast<float>(rect.y + y * rect.height)};
+	};
+	const auto inkRows = [&] {
+		const auto& rows = v.m_commentScan.rows();
+		return std::count_if(rows.begin(), rows.end(), [](const auto& row) {
+			return row.page == 0 && row.subtype == "Ink";
+		});
+	};
+	switch (step) {
+	case 0:
+		v.setCommentsOpen(true);
+		v.goToPage(0);
+		invokeElement(v.PlaceLineButton());
+		check(v.m_notePlacing &&
+		          v.m_placementTool == ViewerPage::PlacementTool::Line &&
+		          v.PlaceLineButton().Text() == L"Cancel line placement",
+		      "Place line didn't arm");
+		check(v.cancelNotePlacement() && !v.m_notePlacing,
+		      "Esc kept the line tool");
+		invokeElement(v.PlaceLineButton());
+		v.placeNote(at(.2, .2));
+		check(v.m_shapeStart.has_value(), "the line start wasn't kept");
+		v.placeNote(at(.5, .3));
+		break;
+	case 1:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(inkRows() == 1 && v.m_notesDirty && !v.m_notePlacing,
+		      "the line wasn't written");
+		invokeElement(v.PlaceArrowButton());
+		v.placeNote(at(.3, .6));
+		// a click right next to the start is too short and keeps it
+		v.placeNote(at(.3005, .6));
+		check(v.m_notePlacing && v.m_shapeStart && !v.m_noteBusy,
+		      "a too-short arrow didn't keep its start");
+		v.placeNote(at(.7, .6));
+		break;
+	case 2:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(inkRows() == 2 && !v.m_notePlacing, "the arrow wasn't written");
+		// the arrow's box takes in its head, around its tip
+		v.requestAnnotationAt(at(.69, .6));
+		break;
+	case 3:
+		check(v.m_selectedAnnotation &&
+		          v.m_selectedAnnotation->target.subtype == "Ink" &&
+		          v.canDeleteAnnotation(),
+		      "the arrow couldn't be selected");
+		if (v.m_annotationMenu) {
+			v.m_annotationMenu.Hide();
+		}
+		v.deleteAnnotation();
+		break;
+	case 4:
+		if (!v.m_commentScan.done()) {
+			return;
+		}
+		check(inkRows() == 1, "Delete didn't remove the arrow");
+		v.close();
+		status.Text(L"PASS: line and arrow placement, short click and Delete");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	default:
+		check(false, "unexpected line step");
+	}
+	++step;
+	ticks = 0;
+}
 } // namespace winrt::Sable::implementation

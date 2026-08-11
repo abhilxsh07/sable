@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/text_box_glyphs.h"
 #include "helpers/logging.h"
 #include "helpers/filter.h"
+#include "helpers/lines.h"
 #include "helpers/rotation.h"
 #include "helpers/signature.h"
 #include <algorithm>
@@ -191,6 +192,8 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 			                        key(page).rotation};
 			if (m_placementTool == PlacementTool::Rectangle ||
 			    m_placementTool == PlacementTool::Ellipse ||
+			    m_placementTool == PlacementTool::Line ||
+			    m_placementTool == PlacementTool::Arrow ||
 			    m_placementTool == PlacementTool::Stamp) {
 				placeShape(target);
 				break;
@@ -596,6 +599,58 @@ void ViewerPage::placeSignature(NoteTarget target) {
 	showNotice(L"Couldn't queue this signature. Try again.");
 }
 
+// a line or an arrow is ink in the current Drawing style, so it moves,
+// restyles and deletes like any drawing.
+void ViewerPage::placeLine(NoteTarget first, NoteTarget target,
+                           std::uint64_t revision) {
+	const bool arrow = m_placementTool == PlacementTool::Arrow;
+	const auto session = m_session.get();
+	const auto page = static_cast<std::size_t>(target.page);
+	if (!session || !m_layout || page >= m_layout->pages().size() ||
+	    page >= m_sizes.size()) {
+		cancelNotePlacement();
+		return;
+	}
+	// the displayed page in points: the layout gives its shape on screen
+	// and the PDF size its area.
+	const auto& rect = m_layout->pages()[page];
+	const auto& size = m_sizes[page];
+	const double scale =
+	    rect.width > 0 && rect.height > 0
+	        ? std::sqrt(size.width * size.height / (rect.width * rect.height))
+	        : 0;
+	const auto strokes = helpers::lineStrokes(
+	    {first.x, first.y}, {target.x, target.y}, rect.width * scale,
+	    rect.height * scale, s_inkStyle.width, arrow);
+	if (!strokes) {
+		showNotice(arrow ? L"Click farther from the start to make an arrow."
+		                 : L"Click farther from the start to make a line.");
+		return;
+	}
+	m_shapeStart.reset();
+	m_notePlacing = false;
+	m_noteBusy = true;
+	try {
+		if (session->addInkAt(
+		        target.page, *strokes, first.rotation, revision,
+		        placementReply(session,
+		                       arrow ? L"Couldn't add this arrow. This PDF "
+		                               L"may restrict comments."
+		                             : L"Couldn't add this line. This PDF "
+		                               L"may restrict comments."),
+		        s_inkStyle)) {
+			showComments();
+			return;
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not queue the line");
+	}
+	m_noteBusy = false;
+	showComments();
+	showNotice(arrow ? L"Couldn't queue this arrow. Try again."
+	                 : L"Couldn't queue this line. Try again.");
+}
 void ViewerPage::placeShape(NoteTarget target) {
 	const bool ellipse = m_placementTool == PlacementTool::Ellipse;
 	const bool stamp = m_placementTool == PlacementTool::Stamp;
@@ -620,6 +675,11 @@ void ViewerPage::placeShape(NoteTarget target) {
 	}
 	if (first.page != target.page) {
 		showNotice(L"Choose the opposite corner on the same page.");
+		return;
+	}
+	if (m_placementTool == PlacementTool::Line ||
+	    m_placementTool == PlacementTool::Arrow) {
+		placeLine(first, target, expected);
 		return;
 	}
 	m_shapeStart.reset();
