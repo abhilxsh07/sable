@@ -27,7 +27,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 
 namespace helpers {
-std::string_view commentLabel(std::string_view subtype);
+std::string_view commentLabel(std::string_view subtype,
+                              pdf::LineKind line = pdf::LineKind::None);
 // i use PDF points with an explicit decimal point.
 std::string textBoxDimension(float value);
 std::optional<float> parseTextBoxDimension(std::string_view text,
@@ -38,6 +39,7 @@ struct CommentRow {
 	std::optional<pdf::AnnotationPoint> position;
 	pdf::AnnotationTarget target;
 	std::optional<pdf::AnnotationColor> color;
+	pdf::LineKind line = pdf::LineKind::None;
 };
 
 // i keep at most 2000 rows and 4 MiB of their stored text.

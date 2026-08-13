@@ -337,6 +337,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget editShape(pdf::Annotation existing);
 	winrt::fire_and_forget editDrawing(pdf::Annotation existing);
 	winrt::fire_and_forget editStampSize(pdf::Annotation existing);
+	winrt::fire_and_forget editLineLength(pdf::Annotation existing);
 	// a selected drawing or stamp dragged on the page, in Pages coordinates
 	struct AnnotationDrag {
 		pdf::Annotation annotation;

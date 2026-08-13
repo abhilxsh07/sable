@@ -523,4 +523,180 @@ fire_and_forget ViewerPage::editStampSize(pdf::Annotation existing) {
 		}
 	}
 }
+// the line keeps its start, direction and pen; the arrowhead is drawn
+// again for the new length.
+fire_and_forget ViewerPage::editLineLength(pdf::Annotation existing) {
+	const auto lifetime = get_strong();
+	try {
+		if (existing.line == pdf::LineKind::None || m_closed || !m_session ||
+		    !m_noteAllowed || m_noteBusy || m_noteSaving || m_noteDialog ||
+		    m_notePlacing || m_passwordDialog || !XamlRoot() ||
+		    !commentsOpen() ||
+		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
+			co_return;
+		}
+		leavePageBox();
+		const auto session = m_session.get();
+		const bool arrow = existing.line == pdf::LineKind::Arrow;
+		const float oldLength = existing.lineLength;
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Title(box_value(arrow ? L"Resize arrow" : L"Resize line"));
+		dialog.PrimaryButtonText(L"Apply");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::None);
+		StackPanel fields;
+		fields.Spacing(12);
+		TextBlock location;
+		location.Text(L"Page " + to_hstring(existing.target.page + 1) +
+		              L" \u00b7 72 pt = 1 inch. The start and the direction "
+		              L"stay put" +
+		              (arrow ? L" and the head is drawn again." : L".") +
+		              L" Drag it on the page to move it.");
+		location.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(location);
+		TextBox length;
+		length.Header(box_value(L"Length (pt)"));
+		length.MaxLength(64);
+		length.Text(to_hstring(helpers::textBoxDimension(oldLength)));
+		Automation::AutomationProperties::SetName(
+		    length, arrow ? L"Arrow length in PDF points"
+		                  : L"Line length in PDF points");
+		fields.Children().Append(length);
+		TextBlock error;
+		error.TextWrapping(TextWrapping::Wrap);
+		fields.Children().Append(error);
+		dialog.Content(fields);
+		dialog.Opened([length](auto&&, auto&&) {
+			length.Focus(FocusState::Programmatic);
+			length.SelectAll();
+		});
+		dialog.Closing(
+		    [weak = get_weak()](const ContentDialog& sender,
+		                        const ContentDialogClosingEventArgs& args) {
+			    if (const auto self = weak.get();
+			        self && self->m_noteBusy && self->m_noteDialog == sender) {
+				    args.Cancel(true);
+			    }
+		    });
+		const auto recover = [weak = get_weak(), session,
+		                      prompt = make_weak(dialog),
+		                      field = make_weak(length),
+		                      failure = make_weak(error)](hstring message) {
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			if (!self || self->m_closed || self->m_session.get() != session ||
+			    !view || self->m_noteDialog != view) {
+				return;
+			}
+			self->m_noteBusy = false;
+			if (const auto f = field.get()) {
+				f.IsReadOnly(false);
+			}
+			view.IsPrimaryButtonEnabled(true);
+			if (const auto label = failure.get()) {
+				label.Text(message);
+			}
+			self->showComments();
+		};
+		dialog.PrimaryButtonClick([weak = get_weak(), session, existing,
+		                           oldLength, arrow, prompt = make_weak(dialog),
+		                           field = make_weak(length),
+		                           failure = make_weak(error), recover](
+		                              auto&&,
+		                              const ContentDialogButtonClickEventArgs&
+		                                  args) {
+			args.Cancel(true);
+			const auto self = weak.get();
+			const auto view = prompt.get();
+			const auto f = field.get();
+			if (!self || self->m_closed || self->m_noteBusy || !view || !f ||
+			    self->m_session.get() != session ||
+			    self->m_noteDialog != view) {
+				return;
+			}
+			const auto value =
+			    helpers::parseTextBoxDimension(to_string(f.Text()), oldLength);
+			if (!value || *value < 4) {
+				recover(L"Enter a length of at least 4 PDF points. Use a "
+				        L"decimal point for fractional sizes.");
+				return;
+			}
+			self->m_noteBusy = true;
+			view.IsPrimaryButtonEnabled(false);
+			f.IsReadOnly(true);
+			if (const auto label = failure.get()) {
+				label.Text(arrow ? L"Resizing arrow\u2026"
+				                 : L"Resizing line\u2026");
+			}
+			try {
+				if (session->resizeLine(
+				        existing, *value,
+				        [weak, session, prompt, recover, arrow,
+				         queue = self->DispatcherQueue()](auto result) {
+					        queue.TryEnqueue([weak, session, prompt, recover,
+					                          arrow, result] {
+						        const auto owner = weak.get();
+						        if (!owner || owner->m_closed ||
+						            owner->m_session.get() != session) {
+							        return;
+						        }
+						        if (!result.index) {
+							        recover(writeNotice(
+							            result.refusal,
+							            arrow ? L"Couldn't resize this arrow. "
+							                    L"It may not be one Sable "
+							                    L"drew, be protected, or reach "
+							                    L"past the page at that length."
+							                  : L"Couldn't resize this line. "
+							                    L"It may not be one Sable "
+							                    L"drew, be protected, or reach "
+							                    L"past the page at that "
+							                    L"length."));
+							        return;
+						        }
+						        owner->m_noteBusy = false;
+						        owner->m_notesDirty =
+						            owner->m_notesDirty || result.changed;
+						        if (const auto shown = prompt.get()) {
+							        shown.Hide();
+						        }
+						        if (result.changed) {
+							        owner->clearAnnotationSelection();
+							        owner->refreshNotes(result.page);
+						        }
+						        owner->showComments();
+					        });
+				        })) {
+					self->showComments();
+					return;
+				}
+			} catch (...) {
+				diagnostics::caught(diagnostics::Level::Error,
+				                    "Could not queue the line resize");
+			}
+			recover(L"Couldn't queue this resize. Try again.");
+		});
+		m_noteDialog = dialog;
+		co_await dialog.ShowAsync();
+		if (m_noteDialog == dialog) {
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showComments();
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open the line editor");
+		m_noteBusy = false;
+		if (m_noteDialog) {
+			m_noteDialog.Hide();
+			m_noteDialog = nullptr;
+		}
+		if (!m_closed) {
+			showNotice(L"Couldn't open the line editor. Try again.");
+			showComments();
+		}
+	}
+}
 } // namespace winrt::Sable::implementation

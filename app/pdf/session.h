@@ -223,8 +223,10 @@ class Session {
 	                  std::function<void(NoteResult)> callback);
 	bool addInkAt(int page, std::vector<DisplayedStroke> strokes, int rotation,
 	              std::uint64_t revision,
-	              std::function<void(NoteResult)> callback,
-	              InkStyle style = {});
+	              std::function<void(NoteResult)> callback, InkStyle style = {},
+	              LineKind line = LineKind::None);
+	bool resizeLine(Annotation expected, float length,
+	                std::function<void(NoteResult)> callback);
 	bool addFillMarkAt(int page, AnnotationPoint point, int rotation,
 	                   FillMark mark, std::uint64_t revision,
 	                   std::function<void(NoteResult)> callback);

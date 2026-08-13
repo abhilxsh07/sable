@@ -64,4 +64,68 @@ lineStrokes(pdf::AnnotationPoint from, pdf::AnnotationPoint to, double width,
 	}
 	return strokes;
 }
+pdf::LineKind lineShape(const std::vector<pdf::InkStroke>& strokes) {
+	if (strokes.empty() || strokes[0].size() != 2 ||
+	    strokes[0][0] == strokes[0][1]) {
+		return pdf::LineKind::None;
+	}
+	if (strokes.size() == 1) {
+		return pdf::LineKind::Line;
+	}
+	if (strokes.size() != 3) {
+		return pdf::LineKind::None;
+	}
+	for (std::size_t i = 1; i < 3; ++i) {
+		if (strokes[i].size() != 2 || strokes[i][0] != strokes[0][1]) {
+			return pdf::LineKind::None;
+		}
+	}
+	return pdf::LineKind::Arrow;
+}
+
+std::optional<std::vector<pdf::InkStroke>>
+resizedLine(const std::vector<pdf::InkStroke>& strokes, double length,
+            double pen) {
+	const auto kind = lineShape(strokes);
+	if (kind == pdf::LineKind::None || !std::isfinite(length) || length < 4 ||
+	    !std::isfinite(pen) || pen <= 0) {
+		return {};
+	}
+	const auto start = strokes[0][0], tip = strokes[0][1];
+	const double dx = double(tip.x) - start.x, dy = double(tip.y) - start.y;
+	const double current = std::hypot(dx, dy);
+	if (!std::isfinite(current) || current <= 0) {
+		return {};
+	}
+	const double ux = dx / current, uy = dy / current;
+	const pdf::InkPoint end{static_cast<float>(start.x + ux * length),
+	                        static_cast<float>(start.y + uy * length)};
+	std::vector<pdf::InkStroke> out{{start, end}};
+	if (kind == pdf::LineKind::Arrow) {
+		// lineStrokes' head on the displayed page, where y runs down
+		const double head = (std::min)((std::max)(8., 4 * pen), length / 3);
+		const double vy = -uy;
+		const double c = std::cos(std::numbers::pi / 6);
+		const double s = std::sin(std::numbers::pi / 6);
+		std::vector<pdf::InkPoint> ends;
+		for (const double side : {1., -1.}) {
+			const double hx = -ux * c + side * vy * s;
+			const double hy = -vy * c - side * ux * s;
+			ends.push_back({static_cast<float>(end.x + head * hx),
+			                static_cast<float>(end.y - head * hy)});
+		}
+		// the head strokes keep the order they were written in
+		const double ox = double(strokes[1][1].x) - tip.x;
+		const double oy = double(strokes[1][1].y) - tip.y;
+		const auto along = [&](const pdf::InkPoint& p) {
+			return (p.x - end.x) * ox + (p.y - end.y) * oy;
+		};
+		if (along(ends[1]) > along(ends[0])) {
+			std::swap(ends[0], ends[1]);
+		}
+		out.push_back({end, ends[0]});
+		out.push_back({end, ends[1]});
+	}
+	return out;
+}
 } // namespace helpers

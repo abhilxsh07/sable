@@ -19,8 +19,44 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document_internal.h"
 
+#include "../helpers/lines.h"
+
 namespace pdf {
 using namespace detail;
+
+namespace {
+// a drawing marked as a line or an arrow keeps that label only while its
+// InkList still has the shape addInk wrote.
+void lineSnapshot(FPDF_ANNOTATION note, std::string_view subject,
+                  Annotation& annotation) {
+	const auto kind = subject == "Line"    ? LineKind::Line
+	                  : subject == "Arrow" ? LineKind::Arrow
+	                                       : LineKind::None;
+	const auto count = FPDFAnnot_GetInkListCount(note);
+	if (kind == LineKind::None || count < 1 || count > 3) {
+		return;
+	}
+	std::vector<InkStroke> strokes;
+	for (unsigned long i = 0; i < count; ++i) {
+		FS_POINTF points[2]{};
+		if (FPDFAnnot_GetInkListPath(note, i, nullptr, 0) != 2 ||
+		    FPDFAnnot_GetInkListPath(note, i, points, 2) != 2) {
+			return;
+		}
+		strokes.push_back(
+		    {{points[0].x, points[0].y}, {points[1].x, points[1].y}});
+	}
+	if (helpers::lineShape(strokes) != kind) {
+		return;
+	}
+	const double length = std::hypot(double(strokes[0][1].x) - strokes[0][0].x,
+	                                 double(strokes[0][1].y) - strokes[0][0].y);
+	if (std::isfinite(length)) {
+		annotation.line = kind;
+		annotation.lineLength = static_cast<float>(length);
+	}
+}
+} // namespace
 
 std::optional<int>
 Document::addRectangle(int index, const AnnotationBounds& bounds,
@@ -262,8 +298,15 @@ std::optional<int> Document::addInk(int index,
                                     const std::vector<InkStroke>& strokes,
                                     std::uint64_t revision,
                                     const std::function<bool()>& canceled,
-                                    InkStyle style) {
+                                    InkStyle style, LineKind line) {
 	const auto stopped = [&] { return canceled && canceled(); };
+	if (line != LineKind::None && helpers::lineShape(strokes) != line) {
+		return {};
+	}
+	// a viewer that lists comments by subject shows Line or Arrow
+	const std::u16string subject = line == LineKind::Line    ? u"Line"
+	                               : line == LineKind::Arrow ? u"Arrow"
+	                                                         : u"";
 	if (offThread() || !revision || !currentRevision(revision) ||
 	    revision == (std::numeric_limits<std::uint64_t>::max)() || index < 0 ||
 	    index >= pageCount() || stopped() || !canAnnotate() ||
@@ -312,7 +355,11 @@ std::optional<int> Document::addInk(int index,
 		if (!FPDFAnnot_SetColor(note, FPDFANNOT_COLORTYPE_Color,
 		                        style.color.red, style.color.green,
 		                        style.color.blue, 255) ||
-		    !FPDFAnnot_SetBorder(note, 0, 0, style.width)) {
+		    !FPDFAnnot_SetBorder(note, 0, 0, style.width) ||
+		    (!subject.empty() &&
+		     !FPDFAnnot_SetStringValue(
+		         note, "Subj",
+		         reinterpret_cast<FPDF_WIDESTRING>(subject.c_str())))) {
 			return false;
 		}
 		for (std::size_t i = 0; i < strokes.size(); ++i) {
@@ -333,7 +380,8 @@ std::optional<int> Document::addInk(int index,
 		float horizontal = -1, vertical = -1, border = -1;
 		if (FPDFAnnot_GetInkListCount(note) != strokes.size() ||
 		    !FPDFAnnot_GetBorder(note, &horizontal, &vertical, &border) ||
-		    horizontal != 0 || vertical != 0 || border != style.width) {
+		    horizontal != 0 || vertical != 0 || border != style.width ||
+		    FPDFAnnot_HasKey(note, "Subj") != !subject.empty()) {
 			return false;
 		}
 		for (std::size_t i = 0; i < strokes.size(); ++i) {
@@ -704,7 +752,8 @@ std::optional<int> Document::addStampAt(int index, AnnotationPoint first,
 std::optional<int>
 Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
                    int rotation, std::uint64_t revision,
-                   const std::function<bool()>& canceled, InkStyle style) {
+                   const std::function<bool()>& canceled, InkStyle style,
+                   LineKind line) {
 	if (offThread() || index < 0 || index >= pageCount() || rotation < 0 ||
 	    rotation > 3 || strokes.empty() || strokes.size() > 256 || !revision ||
 	    !currentRevision(revision) || (canceled && canceled())) {
@@ -742,7 +791,7 @@ Document::addInkAt(int index, const std::vector<DisplayedStroke>& strokes,
 		}
 	}
 	page.reset();
-	return addInk(index, converted, revision, canceled, style);
+	return addInk(index, converted, revision, canceled, style, line);
 }
 
 std::optional<int>
@@ -1617,6 +1666,10 @@ Document::annotations(int index, const std::function<bool()>& canceled) const {
 		}
 		annotation.contents = text(handle.get(), "Contents");
 		annotation.author = text(handle.get(), "T");
+		if (annotation.subtype == "Ink" &&
+		    FPDFAnnot_HasKey(handle.get(), "Subj")) {
+			lineSnapshot(handle.get(), text(handle.get(), "Subj"), annotation);
+		}
 		FS_RECTF rect{};
 		if (FPDFAnnot_GetValueType(handle.get(), "Rect") == FPDF_OBJECT_ARRAY &&
 		    FPDFAnnot_GetRect(handle.get(), &rect) &&

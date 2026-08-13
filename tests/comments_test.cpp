@@ -66,6 +66,10 @@ TEST(CommentScan, ReadableLabelsKeepUnknownTypes) {
 	EXPECT_EQ(helpers::commentLabel("Square"), "Rectangle");
 	EXPECT_EQ(helpers::commentLabel("Circle"), "Ellipse");
 	EXPECT_EQ(helpers::commentLabel("Ink"), "Drawing");
+	EXPECT_EQ(helpers::commentLabel("Ink", pdf::LineKind::Line), "Line");
+	EXPECT_EQ(helpers::commentLabel("Ink", pdf::LineKind::Arrow), "Arrow");
+	EXPECT_EQ(helpers::commentLabel("Square", pdf::LineKind::Line),
+	          "Rectangle");
 	EXPECT_EQ(helpers::commentLabel("FileAttachment"), "Attachment");
 	EXPECT_EQ(helpers::commentLabel("PolyLine"), "Polyline");
 	EXPECT_EQ(helpers::commentLabel("Highlight"), "Highlight");

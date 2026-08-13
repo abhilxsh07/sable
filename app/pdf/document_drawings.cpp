@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "document_internal.h"
 
+#include "../helpers/lines.h"
+
 #include <cstdio>
 
 namespace pdf {
@@ -170,10 +172,13 @@ std::optional<bool> Document::editInk(const Annotation& expected,
                                       InkPoint offset,
                                       std::optional<AnnotationColor> color,
                                       std::optional<float> width,
-                                      const std::function<bool()>& canceled) {
+                                      const std::function<bool()>& canceled,
+                                      std::optional<float> lineLength) {
 	const auto stopped = [&] { return canceled && canceled(); };
 	const auto& target = expected.target;
 	if (offThread() || stopped() || !expected.bounds ||
+	    (lineLength && (expected.line == LineKind::None || offset.x != 0 ||
+	                    offset.y != 0 || !std::isfinite(*lineLength))) ||
 	    target.subtype != "Ink" || expected.subtype != target.subtype ||
 	    expected.index != target.index || !expected.contents.empty() ||
 	    !expected.author.empty() || expected.flags != FPDF_ANNOT_FLAG_PRINT ||
@@ -218,14 +223,14 @@ std::optional<bool> Document::editInk(const Annotation& expected,
 		    !FPDF_GetPageBoundingBox(page.get(), &box)) {
 			return {};
 		}
-		for (const auto* key : {"Contents", "T",           "Subj",
-		                        "NM",       "M",           "CreationDate",
-		                        "RC",       "DS",          "IC",
-		                        "BS",       "BE",          "BM",
-		                        "RD",       "OC",          "Rotate",
-		                        "A",        "AA",          "IT",
-		                        "AS",       "IRT",         "Popup",
-		                        "ExData",   "StructParent"}) {
+		// Subj is allowed only as the Line or Arrow addInk writes, checked
+		// against the strokes below.
+		for (const auto* key :
+		     {"Contents", "T",           "NM", "M",      "CreationDate",
+		      "RC",       "DS",          "IC", "BS",     "BE",
+		      "BM",       "RD",          "OC", "Rotate", "A",
+		      "AA",       "IT",          "AS", "IRT",    "Popup",
+		      "ExData",   "StructParent"}) {
 			if (FPDFAnnot_HasKey(note.get(), key)) {
 				return {};
 			}
@@ -258,6 +263,26 @@ std::optional<bool> Document::editInk(const Annotation& expected,
 			for (const auto& point : path) {
 				stroke.push_back({point.x, point.y});
 			}
+		}
+		if (FPDFAnnot_HasKey(note.get(), "Subj")) {
+			const auto size =
+			    FPDFAnnot_GetStringValue(note.get(), "Subj", nullptr, 0);
+			std::vector<FPDF_WCHAR> subject(size / sizeof(FPDF_WCHAR) + 1);
+			if (size < 2 || size > 64 ||
+			    FPDFAnnot_GetStringValue(note.get(), "Subj", subject.data(),
+			                             size) != size) {
+				return {};
+			}
+			const std::u16string value(subject.begin(),
+			                           subject.begin() + size / 2 - 1);
+			const auto kind = value == u"Line"    ? LineKind::Line
+			                  : value == u"Arrow" ? LineKind::Arrow
+			                                      : LineKind::None;
+			if (kind == LineKind::None || helpers::lineShape(strokes) != kind) {
+				return {};
+			}
+		} else if (lineLength) {
+			return {};
 		}
 		float horizontal = -1, vertical = -1, border = -1;
 		const auto normal = appearanceText(note.get(), 0);
@@ -303,6 +328,13 @@ std::optional<bool> Document::editInk(const Annotation& expected,
 		style.width = *width;
 	}
 	auto moved = strokes;
+	if (lineLength) {
+		auto resized = helpers::resizedLine(strokes, *lineLength, style.width);
+		if (!resized) {
+			return {};
+		}
+		moved = std::move(*resized);
+	}
 	for (auto& stroke : moved) {
 		for (auto& point : stroke) {
 			point.x += offset.x;
@@ -434,6 +466,11 @@ std::optional<bool> Document::rewriteInk(
 		return {};
 	}
 	return true;
+}
+std::optional<bool>
+Document::resizeLine(const Annotation& expected, float length,
+                     const std::function<bool()>& canceled) {
+	return editInk(expected, {0, 0}, {}, {}, canceled, length);
 }
 std::optional<bool>
 Document::editStampAt(const Annotation& expected, AnnotationPoint from,

@@ -3239,3 +3239,23 @@ The tests check the glyph ids and positions against what DirectWrite's
 own text layout draws for the same words, and render the saved, reopened
 boxes in PDFium against a Direct2D render of the same layouts with
 outline rendering.
+
+## Line and Arrow labels, and resizing them (2026-11-12)
+
+Lines and arrows are still Ink, but addInk now writes /Subj (Line) or
+/Subj (Arrow) on them. A drawing is read as a line or an arrow only when
+that subject matches its InkList: one two-point stroke for a line, or
+that plus two two-point strokes starting at its tip for an arrow. Then
+Comments lists it as Line or Arrow and the snapshot carries its length.
+Anything else, including lines drawn before this, stays a Drawing.
+Acrobat shows the subject as the comment's title; readers that ignore
+/Subj still show an ink drawing, as before.
+
+The page menu on a line or arrow adds Resize line or Resize arrow, with
+Length (pt). The start and direction stay put and an arrow's head is
+drawn again for the new length with the same rule as placing one: four
+pens, at least 8 pt, at most a third of the line, its two strokes in the
+order they were written. Under 4 pt refuses. The write goes through the
+drawing editor's proof, the signed-PDF guard and the shared transaction,
+so it only touches drawings Sable wrote; that proof now accepts the Line
+or Arrow subject when the strokes have the matching shape.

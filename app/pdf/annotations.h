@@ -86,6 +86,9 @@ struct InkStyle {
 enum class HighlightColor { Yellow, Green, LightBlue, Pink, Red };
 enum class OutlineShape { Rectangle, Ellipse };
 enum class FillMark { Check, Cross };
+// A drawing Sable wrote as a line or an arrow: /Subj says which and the
+// InkList has the shape addInk gave it.
+enum class LineKind { None, Line, Arrow };
 
 // These snapshots own their text and can outlive the document and engine.
 struct Annotation {
@@ -99,6 +102,9 @@ struct Annotation {
 	std::string subtype, contents, author;
 	std::optional<AnnotationBounds> bounds;
 	std::optional<AnnotationPoint> position;
+	LineKind line = LineKind::None;
+	// a line's length from its start to its tip, in points
+	float lineLength = 0;
 };
 struct Annotations {
 	int page = 0;

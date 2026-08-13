@@ -155,7 +155,8 @@ The older test counts in those documents are historical checkpoints.
 - [x] Outline rectangles and ellipses: placement, guarded Delete and copy saving.
 - [x] Resize supported outline rectangles and ellipses, and save copies.
 - [x] Lines and arrows (saved as drawings): placement, move, restyle, Delete.
-- [ ] Other shapes, Line/Arrow labels in Comments and line resizing.
+- [x] Line/Arrow labels in Comments and line resizing.
+- [ ] Other shapes (polygons, clouds, callouts).
 - [x] PNG/JPEG image stamp placement, guarded Delete and copy saving.
 - [x] Move and resize existing stamps, keeping their shape and turn.
 - [ ] Full annotation editor suite; existing supported tools are only a subset.

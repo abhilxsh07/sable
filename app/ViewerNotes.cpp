@@ -638,7 +638,8 @@ void ViewerPage::placeLine(NoteTarget first, NoteTarget target,
 		                               L"may restrict comments."
 		                             : L"Couldn't add this line. This PDF "
 		                               L"may restrict comments."),
-		        s_inkStyle)) {
+		        s_inkStyle,
+		        arrow ? pdf::LineKind::Arrow : pdf::LineKind::Line)) {
 			showComments();
 			return;
 		}

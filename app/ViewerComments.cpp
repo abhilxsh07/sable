@@ -585,8 +585,9 @@ void ViewerPage::showComments() {
 		detail.Spacing(4);
 		Grid::SetColumn(detail, 1);
 		TextBlock heading;
-		heading.Text(L"Page " + to_hstring(entry.page + 1) + L" \u00b7 " +
-		             to_hstring(helpers::commentLabel(entry.subtype)));
+		heading.Text(
+		    L"Page " + to_hstring(entry.page + 1) + L" \u00b7 " +
+		    to_hstring(helpers::commentLabel(entry.subtype, entry.line)));
 		heading.FontSize(12);
 		heading.TextWrapping(TextWrapping::Wrap);
 		detail.Children().Append(heading);

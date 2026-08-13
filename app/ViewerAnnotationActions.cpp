@@ -161,6 +161,23 @@ void ViewerPage::showAnnotationMenu(Windows::Foundation::Point point) {
 		}
 	});
 	m_annotationMenu.Items().Append(edit);
+	if (m_selectedAnnotation->line != pdf::LineKind::None) {
+		MenuFlyoutItem resize;
+		resize.Text(m_selectedAnnotation->line == pdf::LineKind::Arrow
+		                ? L"Resize arrow"
+		                : L"Resize line");
+		resize.IsEnabled(canDeleteAnnotation());
+		resize.Click([weak, target](auto&&, auto&&) {
+			if (const auto self = weak.get();
+			    self && self->annotationTarget() == target &&
+			    self->m_selectedAnnotation &&
+			    self->m_selectedAnnotation->target == target) {
+				self->setCommentsOpen(true);
+				self->editLineLength(*self->m_selectedAnnotation);
+			}
+		});
+		m_annotationMenu.Items().Append(resize);
+	}
 	MenuFlyoutItem remove;
 	remove.Text(L"Delete");
 	remove.KeyboardAcceleratorTextOverride(L"Del");

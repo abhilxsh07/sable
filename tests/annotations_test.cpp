@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "pdf/text_box_glyphs.h"
+#include "helpers/comments.h"
 #include "helpers/lines.h"
 #include "pdf/text_box_appearance.h"
 #include "pdf_test_files.h"
@@ -5327,6 +5328,96 @@ TEST(Annotations, ArrowsSaveAsDrawingsThatEditAfterReopen) {
 		    EXPECT_NEAR(
 		        pdf::DocumentEditTest::inkList(*saved.document, 1)[0][0].x, 80,
 		        .01);
+	    })
+	    .get();
+}
+
+TEST(Annotations, LabelledLinesAndArrowsResizeAndSurviveReopen) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openDocument(annotationBytes("outline.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& doc = *opened.document;
+		    const std::vector<pdf::InkStroke> line{{{100, 100}, {160, 180}}};
+		    const auto arrowStrokes =
+		        helpers::resizedLine(line, 100, 2); // a line, no head
+		    ASSERT_TRUE(arrowStrokes && arrowStrokes->size() == 1);
+		    // an arrow: the line and two strokes back from its tip
+		    std::vector<pdf::InkStroke> arrow{{{60, 200}, {200, 200}},
+		                                      {{200, 200}, {193, 204}},
+		                                      {{200, 200}, {193, 196}}};
+		    EXPECT_EQ(helpers::lineShape(line), pdf::LineKind::Line);
+		    EXPECT_EQ(helpers::lineShape(arrow), pdf::LineKind::Arrow);
+		    EXPECT_EQ(helpers::lineShape({{{1, 1}, {2, 2}, {3, 3}}}),
+		              pdf::LineKind::None);
+		    // a mismatched label is refused before anything is written
+		    EXPECT_FALSE(doc.addInk(0, line, doc.annotationRevision(), {}, {},
+		                            pdf::LineKind::Arrow));
+		    ASSERT_EQ(doc.addInk(0, line, doc.annotationRevision(), {}, {},
+		                         pdf::LineKind::Line),
+		              0);
+		    ASSERT_EQ(doc.addInk(0, arrow, doc.annotationRevision(), {}, {},
+		                         pdf::LineKind::Arrow),
+		              1);
+		    ASSERT_EQ(doc.addInk(0, line, doc.annotationRevision()), 2);
+		    auto notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    EXPECT_EQ(notes->entries[0].line, pdf::LineKind::Line);
+		    EXPECT_FLOAT_EQ(notes->entries[0].lineLength, 100);
+		    EXPECT_EQ(notes->entries[1].line, pdf::LineKind::Arrow);
+		    EXPECT_EQ(notes->entries[2].line, pdf::LineKind::None);
+		    EXPECT_EQ(helpers::commentLabel("Ink", notes->entries[0].line),
+		              "Line");
+		    EXPECT_EQ(helpers::commentLabel("Ink", notes->entries[1].line),
+		              "Arrow");
+		    EXPECT_EQ(helpers::commentLabel("Ink", notes->entries[2].line),
+		              "Drawing");
+		    // too short, and a drawing that isn't labelled, both refuse
+		    const auto raw = pdf::DocumentEditTest::rawBytes(doc);
+		    EXPECT_FALSE(doc.resizeLine(notes->entries[0], 3));
+		    EXPECT_FALSE(doc.resizeLine(notes->entries[2], 50));
+		    EXPECT_EQ(pdf::DocumentEditTest::rawBytes(doc), raw);
+		    EXPECT_EQ(doc.resizeLine(notes->entries[0], 100), false);
+		    ASSERT_EQ(doc.resizeLine(notes->entries[0], 50), true);
+		    notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    ASSERT_EQ(doc.resizeLine(notes->entries[1], 70), true);
+		    // a labelled arrow still moves and restyles as a drawing
+		    notes = doc.annotations(0);
+		    ASSERT_TRUE(notes && notes->entries.size() == 3);
+		    ASSERT_EQ(doc.editInk(notes->entries[1], {5, 5},
+		                          pdf::AnnotationColor{37, 99, 235, 255}, {}),
+		              true);
+		    const auto bytes = doc.serializeForCopy(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    const std::vector<pdf::InkStroke> shorter{{{100, 100}, {130, 140}}};
+		    EXPECT_EQ(pdf::DocumentEditTest::inkList(*saved.document, 0),
+		              shorter);
+		    auto expected = *helpers::resizedLine(arrow, 70, 2);
+		    for (auto& stroke : expected) {
+			    for (auto& point : stroke) {
+				    point.x += 5;
+				    point.y += 5;
+			    }
+		    }
+		    EXPECT_EQ(pdf::DocumentEditTest::inkList(*saved.document, 1),
+		              expected);
+		    EXPECT_EQ(helpers::lineShape(expected), pdf::LineKind::Arrow);
+		    EXPECT_FLOAT_EQ(expected[0][1].x - expected[0][0].x, 70);
+		    const auto kept = saved.document->annotations(0);
+		    ASSERT_TRUE(kept && kept->entries.size() == 3);
+		    EXPECT_EQ(kept->entries[0].line, pdf::LineKind::Line);
+		    EXPECT_FLOAT_EQ(kept->entries[0].lineLength, 50);
+		    EXPECT_EQ(kept->entries[1].line, pdf::LineKind::Arrow);
+		    EXPECT_NEAR(kept->entries[1].lineLength, 70, .001);
+		    // the head keeps its sides: the first head stroke still turns
+		    // the same way from the tip
+		    const auto& head = expected[1][1];
+		    EXPECT_GT(head.y, expected[0][1].y);
 	    })
 	    .get();
 }

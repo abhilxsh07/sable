@@ -118,7 +118,13 @@ std::optional<float> parseTextBoxDimension(std::string_view text,
 	           : std::nullopt;
 }
 
-std::string_view commentLabel(std::string_view subtype) {
+std::string_view commentLabel(std::string_view subtype, pdf::LineKind line) {
+	if (subtype == "Ink" && line == pdf::LineKind::Line) {
+		return "Line";
+	}
+	if (subtype == "Ink" && line == pdf::LineKind::Arrow) {
+		return "Arrow";
+	}
 	if (subtype == "Text") {
 		return "Note";
 	}
@@ -186,7 +192,8 @@ bool addRows(pdf::Annotations& snapshot, std::vector<CommentRow>& rows,
 		}
 		rows.push_back({snapshot.page, entry.index, std::move(entry.subtype),
 		                std::move(entry.author), std::move(entry.contents),
-		                entry.position, std::move(entry.target), entry.color});
+		                entry.position, std::move(entry.target), entry.color,
+		                entry.line});
 		bytes = BYTE_LIMIT - remaining;
 		if (rows.size() == ROW_LIMIT || bytes == BYTE_LIMIT) {
 			return false;

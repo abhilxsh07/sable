@@ -361,6 +361,12 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		}
 		check(inkRows() == 1 && v.m_notesDirty && !v.m_notePlacing,
 		      "the line wasn't written");
+		check(std::any_of(v.m_commentScan.rows().begin(),
+		                  v.m_commentScan.rows().end(),
+		                  [](const auto& row) {
+			                  return row.line == pdf::LineKind::Line;
+		                  }),
+		      "the line isn't labelled Line in Comments");
 		invokeElement(v.PlaceArrowButton());
 		v.placeNote(at(.3, .6));
 		// a click right next to the start is too short and keeps it
@@ -377,23 +383,79 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		// the arrow's box takes in its head, around its tip
 		v.requestAnnotationAt(at(.69, .6));
 		break;
-	case 3:
+	case 3: {
 		check(v.m_selectedAnnotation &&
 		          v.m_selectedAnnotation->target.subtype == "Ink" &&
+		          v.m_selectedAnnotation->line == pdf::LineKind::Arrow &&
 		          v.canDeleteAnnotation(),
 		      "the arrow couldn't be selected");
+		bool offered = false;
+		if (v.m_annotationMenu) {
+			for (const auto& item : v.m_annotationMenu.Items()) {
+				if (const auto entry = item.try_as<MenuFlyoutItem>()) {
+					offered = offered || entry.Text() == L"Resize arrow";
+				}
+			}
+			v.m_annotationMenu.Hide();
+		}
+		check(offered, "the page menu doesn't offer Resize arrow");
+		v.editLineLength(*v.m_selectedAnnotation);
+		break;
+	}
+	case 4: {
+		if (!v.m_noteDialog) {
+			check(ticks < 40, "Resize arrow didn't open");
+			return;
+		}
+		check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Resize arrow",
+		      "the resize dialog has the wrong title");
+		v.m_noteDialog.Content()
+		    .as<StackPanel>()
+		    .Children()
+		    .GetAt(1)
+		    .as<TextBox>()
+		    .Text(L"60");
+		const auto button = primaryButton(v.m_noteDialog);
+		if (!button || !button.IsEnabled()) {
+			check(ticks < 20, "Apply is disabled");
+			return;
+		}
+		invokeElement(button);
+		break;
+	}
+	case 5:
+		if (v.m_noteDialog || !v.m_commentScan.done()) {
+			check(ticks < 80, "Resize arrow didn't finish");
+			return;
+		}
+		check(inkRows() == 2 && std::any_of(v.m_commentScan.rows().begin(),
+		                                    v.m_commentScan.rows().end(),
+		                                    [](const auto& row) {
+			                                    return row.line ==
+			                                           pdf::LineKind::Arrow;
+		                                    }),
+		      "the resized arrow isn't labelled Arrow");
+		// its start stayed put, so it's still under the first click
+		v.requestAnnotationAt(at(.31, .6));
+		break;
+	case 6:
+		check(v.m_selectedAnnotation &&
+		          v.m_selectedAnnotation->line == pdf::LineKind::Arrow &&
+		          std::abs(v.m_selectedAnnotation->lineLength - 60) < .01,
+		      "the arrow isn't 60 pt long after Resize arrow");
 		if (v.m_annotationMenu) {
 			v.m_annotationMenu.Hide();
 		}
 		v.deleteAnnotation();
 		break;
-	case 4:
+	case 7:
 		if (!v.m_commentScan.done()) {
 			return;
 		}
 		check(inkRows() == 1, "Delete didn't remove the arrow");
 		v.close();
-		status.Text(L"PASS: line and arrow placement, short click and Delete");
+		status.Text(L"PASS: line and arrow placement, labels, Resize arrow, "
+		            L"short click and Delete");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

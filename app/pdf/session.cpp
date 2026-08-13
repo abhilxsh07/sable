@@ -632,16 +632,55 @@ bool Session::writeOutlineShape(int page, AnnotationPoint first,
 
 bool Session::addInkAt(int page, std::vector<DisplayedStroke> strokes,
                        int rotation, std::uint64_t revision,
-                       std::function<void(NoteResult)> callback,
-                       InkStyle style) {
+                       std::function<void(NoteResult)> callback, InkStyle style,
+                       LineKind line) {
 	return writeInk(
 	    page, revision,
-	    [page, strokes = std::move(strokes), rotation, revision,
-	     style](Document& doc, const auto& canceled) {
+	    [page, strokes = std::move(strokes), rotation, revision, style,
+	     line](Document& doc, const auto& canceled) {
 		    return doc.addInkAt(page, strokes, rotation, revision, canceled,
-		                        style);
+		                        style, line);
 	    },
 	    std::move(callback));
+}
+
+bool Session::resizeLine(Annotation expected, float length,
+                         std::function<void(NoteResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !expected.target.revision ||
+		    expected.target.subtype != "Ink" ||
+		    expected.line == LineKind::None || !state->m_ready ||
+		    state->m_closed) {
+			return false;
+		}
+	}
+	return state->m_engine.post([state, length, expected = std::move(expected),
+	                             callback = std::move(callback)] {
+		NoteResult result;
+		result.page = expected.target.page;
+		const auto canceled = [state] { return state->closed(); };
+		try {
+			if (!canceled()) {
+				const auto changed =
+				    state->m_document->resizeLine(expected, length, canceled);
+				if (changed) {
+					result.index = expected.target.index;
+					result.changed = *changed;
+					postWrite(*state, result.changed);
+				}
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't resize a PDF line.");
+		}
+		result.canceled = !result.index && canceled();
+		if (!result.changed && state->m_document) {
+			result.refusal = state->m_document->writeRefusal();
+		}
+		callback(std::move(result));
+	});
 }
 
 bool Session::addFillMarkAt(int page, AnnotationPoint point, int rotation,

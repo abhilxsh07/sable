@@ -291,7 +291,8 @@ class Document {
 	std::optional<int> addInk(int page, const std::vector<InkStroke>& strokes,
 	                          std::uint64_t revision,
 	                          const std::function<bool()>& canceled = {},
-	                          InkStyle style = {});
+	                          InkStyle style = {},
+	                          LineKind line = LineKind::None);
 	// Resizing keeps the PDF top-left anchor of a proven plain outline.
 	std::optional<bool> resizeShape(const Annotation& expected, ShapeSize size,
 	                                const std::function<bool()>& canceled = {});
@@ -301,7 +302,12 @@ class Document {
 	std::optional<bool> editInk(const Annotation& expected, InkPoint offset,
 	                            std::optional<AnnotationColor> color,
 	                            std::optional<float> width,
-	                            const std::function<bool()>& canceled = {});
+	                            const std::function<bool()>& canceled = {},
+	                            std::optional<float> lineLength = {});
+	// a proven line or arrow drawn again at a new length from its start,
+	// its head and style kept. Under 4 pt or past the page refuses.
+	std::optional<bool> resizeLine(const Annotation& expected, float length,
+	                               const std::function<bool()>& canceled = {});
 	// the same, moved by the distance between two displayed points
 	std::optional<bool> editInkAt(const Annotation& expected,
 	                              AnnotationPoint from, AnnotationPoint to,
@@ -339,7 +345,8 @@ class Document {
 	                            const std::vector<DisplayedStroke>& strokes,
 	                            int rotation, std::uint64_t revision,
 	                            const std::function<bool()>& canceled = {},
-	                            InkStyle style = {});
+	                            InkStyle style = {},
+	                            LineKind line = LineKind::None);
 	std::optional<int>
 	addFillMarkAt(int page, AnnotationPoint point, int rotation, FillMark mark,
 	              std::uint64_t revision,
