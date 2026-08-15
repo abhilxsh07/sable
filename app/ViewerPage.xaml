@@ -117,6 +117,50 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
+		<!-- Read Aloud: an outline around the page being read, and the bar
+			that plays, pauses, stops and turns its pages -->
+		<Canvas Grid.Row="1" x:Name="ReadAloudFrame" IsHitTestVisible="False"
+			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
+			<Rectangle x:Name="ReadAloudOutline" StrokeThickness="3"
+				RadiusX="2" RadiusY="2"
+				Stroke="{ThemeResource AccentFillColorDefaultBrush}" />
+		</Canvas>
+		<Border Grid.Row="1" x:Name="ReadAloudBar" Visibility="Collapsed"
+			HorizontalAlignment="Center" VerticalAlignment="Bottom"
+			Margin="16,0,16,16" Padding="6" CornerRadius="8"
+			Background="{ThemeResource SablePaneBrush}"
+			AutomationProperties.Name="Read aloud">
+			<StackPanel Orientation="Horizontal" Spacing="4">
+				<Button x:Name="ReadAloudPrevious"
+					ToolTipService.ToolTip="Previous page"
+					AutomationProperties.Name="Read the previous page">
+					<FontIcon Glyph="&#xE892;" FontSize="14" />
+				</Button>
+				<Button x:Name="ReadAloudPlay" ToolTipService.ToolTip="Pause"
+					AutomationProperties.Name="Pause">
+					<FontIcon x:Name="ReadAloudPlayIcon" Glyph="&#xE769;"
+						FontSize="14" />
+				</Button>
+				<Button x:Name="ReadAloudStop"
+					ToolTipService.ToolTip="Stop reading"
+					AutomationProperties.Name="Stop reading">
+					<FontIcon Glyph="&#xE71A;" FontSize="14" />
+				</Button>
+				<Button x:Name="ReadAloudNext" ToolTipService.ToolTip="Next page"
+					AutomationProperties.Name="Read the next page">
+					<FontIcon Glyph="&#xE893;" FontSize="14" />
+				</Button>
+				<TextBlock x:Name="ReadAloudPosition" VerticalAlignment="Center"
+					Margin="8,0" FontSize="12"
+					AutomationProperties.LiveSetting="Polite" />
+				<ComboBox x:Name="ReadAloudVoice" Width="190"
+					PlaceholderText="Voice" ToolTipService.ToolTip="Voice"
+					AutomationProperties.Name="Voice" />
+				<ComboBox x:Name="ReadAloudSpeed" Width="84"
+					ToolTipService.ToolTip="Speed"
+					AutomationProperties.Name="Speed" />
+			</StackPanel>
+		</Border>
 		<!-- Organize: every page as a tile to select, turn, delete, drag
 			into a new order, insert into or copy out to a new PDF -->
 		<Grid Grid.Row="1" x:Name="OrganizePanel" Grid.ColumnSpan="3"

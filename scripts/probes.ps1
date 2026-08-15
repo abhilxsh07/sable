@@ -53,7 +53,8 @@ $scenarios = @(
 	"NoSpellCheck", "NoteEdit", "NotePlacement", "Notes", "ObsidianStartup",
 	"Organize",
 	"Outline", "Pan", "PasswordForm", "Presentation", "Print", "PrintUi",
-	"Properties", "Radio", "Redraw", "Rotation", "SaveCopy", "Selection",
+	"Properties", "Radio", "ReadAloud", "Redraw", "Rotation", "SaveCopy",
+	"Selection",
 	"Settings", "SortedChoice", "Stamp", "StampEdit", "StrikeOut",
 	"TextBoxUnicode", "Underline", "Windows"
 )

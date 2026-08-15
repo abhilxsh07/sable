@@ -159,11 +159,11 @@ void TabsTest::combineTick(MainWindow& owner) {
 		// no PDF that would.
 		owner.setEngine(engine);
 		{
-			// Fill & Sign and Comment are real tools now; Read aloud isn't.
+			// Fill & Sign, Comment and Read aloud are all real tools now
 			const auto home = get_self<HomePage>(owner.Home());
 			check(home->FillSignButton().IsEnabled() &&
 			          home->CommentButton().IsEnabled() &&
-			          !home->ReadAloudButton().IsEnabled(),
+			          home->ReadAloudButton().IsEnabled(),
 			      "Home's tool buttons have the wrong state");
 		}
 		owner.openTool(L"combine");
@@ -340,6 +340,93 @@ void TabsTest::exportTick(MainWindow& owner) {
 	}
 	default:
 		check(false, "unexpected export step");
+	}
+	++step;
+	ticks = 0;
+}
+// ReadAloud: Home's tool starts on the current page with the bar and the
+// page outline, Next and the end of a page move on and the view follows,
+// Pause and Play flip, and Stop puts it all away. The probe build reads the
+// words instead of speaking them.
+void TabsTest::readAloudTick(MainWindow& owner) {
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v)) {
+		return;
+	}
+	const auto visible = [](const UIElement& element) {
+		return element.Visibility() == Visibility::Visible;
+	};
+	const auto invoke = [](const Button& button) {
+		using namespace Microsoft::UI::Xaml::Automation;
+		Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button)
+		    .GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+	};
+	switch (step) {
+	case 0:
+		check(v.m_sizes.size() >= 3, "the probe needs three pages");
+		owner.openTool(L"readaloud");
+		check(v.readingAloud() && v.m_readAloudSilent &&
+		          visible(v.ReadAloudBar()) && v.m_readAloudPage == 0u,
+		      "Read aloud didn't start on the first page");
+		break;
+	case 1:
+		if (v.m_readAloudPending) {
+			check(ticks < 40, "the first page's text didn't come");
+			return;
+		}
+		check(!v.m_readAloudWords.empty() &&
+		          v.ReadAloudPosition().Text() ==
+		              L"Reading page 1 of " + to_hstring(v.m_sizes.size()) &&
+		          visible(v.ReadAloudFrame()) &&
+		          !v.ReadAloudPrevious().IsEnabled(),
+		      "the first page isn't being read");
+		invoke(v.ReadAloudNext());
+		break;
+	case 2:
+		if (v.m_readAloudPending) {
+			check(ticks < 40, "the second page's text didn't come");
+			return;
+		}
+		check(v.m_readAloudPage == 1u && v.ReadAloudPrevious().IsEnabled() &&
+		          std::wstring_view(v.ReadAloudPosition().Text())
+		              .starts_with(L"Reading page 2"),
+		      "Next didn't move Read aloud to page 2");
+		invoke(v.ReadAloudPlay());
+		check(v.m_readAloudPaused &&
+		          unbox_value<hstring>(
+		              ToolTipService::GetToolTip(v.ReadAloudPlay())) == L"Play",
+		      "Pause didn't pause");
+		// a paused page doesn't move on when it would have ended
+		v.readAloudEnded();
+		check(v.m_readAloudPage == 1u, "a paused page moved on");
+		invoke(v.ReadAloudPlay());
+		check(!v.m_readAloudPaused, "Play didn't carry on");
+		v.readAloudEnded();
+		check(v.m_readAloudPage == 2u, "the end of a page didn't move on");
+		break;
+	case 3:
+		if (v.m_readAloudPending || v.m_current != 2u) {
+			check(ticks < 60, "the view didn't follow Read aloud to page 3");
+			return;
+		}
+		invoke(v.ReadAloudStop());
+		check(!v.readingAloud() && !visible(v.ReadAloudBar()) &&
+		          !visible(v.ReadAloudFrame()),
+		      "Stop didn't put Read aloud away");
+		v.close();
+		status.Text(L"PASS: Read aloud start, Next, Pause, Play, page end "
+		            L"and Stop");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	default:
+		check(false, "unexpected Read aloud step");
 	}
 	++step;
 	ticks = 0;

@@ -53,7 +53,7 @@ The older test counts in those documents are historical checkpoints.
 - [x] Edit and resize supported existing boxes and add bounded multiline text.
 - [x] Add verified mouse drawing, outline shapes and image stamp placement
   to Comments.
-- [ ] Continue with page organizing, combine/export and Read Aloud.
+- [x] Continue with page organizing, combine/export and Read Aloud.
 
 ## App, files and tabs
 
@@ -106,7 +106,7 @@ The older test counts in those documents are historical checkpoints.
 - [ ] Full physical keyboard/clipboard and presentation input pass.
 - [ ] Touch/pen behavior, mixed-DPI monitor moves and actual GPU loss.
 - [ ] PDF layer visibility controls (V14), deferred by the pinned API.
-- [ ] Read Aloud with Windows voices, navigation and playback controls.
+- [x] Read Aloud with Windows voices, navigation and playback controls.
 
 ## Appearance, settings and shell layout
 

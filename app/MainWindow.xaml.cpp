@@ -169,6 +169,11 @@ MainWindow::MainWindow() : MainWindow(windowSettings()) {}
 
 MainWindow::MainWindow(helpers::NightPDFSettings settings)
     : m_settings(std::move(settings)) {
+	// Read Aloud's voice and speed, next to config.json like night-run.json
+	const auto config = configFile();
+	ViewerPage::s_readAloudFile =
+	    config.empty() ? std::filesystem::path{}
+	                   : config.parent_path() / L"read-aloud.json";
 	setupWindow();
 }
 
@@ -306,7 +311,7 @@ void MainWindow::setupOpen() {
 			self->onOpenSettings({}, {});
 		} else if (tag == L"organize" || tag == L"combine" ||
 		           tag == L"export" || tag == L"fillsign" ||
-		           tag == L"comment") {
+		           tag == L"comment" || tag == L"readaloud") {
 			self->openTool(tag);
 		}
 	});

@@ -47,6 +47,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/rotation.h"
 #include "helpers/pan.h"
 #include <winrt/Microsoft.UI.Input.h>
+#include <winrt/Windows.Media.Core.h>
+#include <winrt/Windows.Media.Playback.h>
+#include <winrt/Windows.Media.SpeechSynthesis.h>
 #include "pdf/page_cache.h"
 #include "pdf/text.h"
 #include "pdf/search.h"
@@ -409,6 +412,41 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    m_exportPicker;
 #endif
 	std::wstring m_pendingTool;
+	// Read Aloud: one page at a time through Windows' voices
+	void startReadAloud();
+	void readAloudPage(std::size_t page);
+	void speakReadAloud(std::uint64_t generation, std::size_t page,
+	                    std::optional<std::string> text);
+	winrt::fire_and_forget synthesizeReadAloud(std::uint64_t generation,
+	                                           winrt::hstring text);
+	void readAloudEnded();
+	void pauseReadAloud();
+	void resumeReadAloud();
+	void stopReadAloud();
+	void stepReadAloud(int delta);
+	void chooseReadAloud();
+	void updateReadAloudBar();
+	void updateReadAloudFrame();
+	bool readingAloud() const;
+	void setupReadAloud();
+	winrt::Windows::Media::SpeechSynthesis::SpeechSynthesizer m_speech{nullptr};
+	winrt::Windows::Media::Playback::MediaPlayer m_speechPlayer{nullptr};
+	winrt::Windows::Media::Playback::MediaPlayer::MediaEnded_revoker
+	    m_speechEnded;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker
+	    m_readAloudViewChanged;
+	std::vector<winrt::Windows::Media::SpeechSynthesis::VoiceInformation>
+	    m_readAloudVoices;
+	std::optional<std::size_t> m_readAloudPage;
+	std::uint64_t m_readAloudGeneration = 0;
+	std::int64_t m_readAloudVisibility = 0;
+	bool m_readAloudPaused = false, m_readAloudPending = false;
+	bool m_readAloudSetup = false, m_readAloudFilling = false;
+	// the probes read the words a page gave instead of hearing them
+	bool m_readAloudSilent = false;
+	std::string m_readAloudWords;
+	// read-aloud.json next to config.json; MainWindow sets it
+	static inline std::filesystem::path s_readAloudFile;
 	bool m_organizeSetup = false, m_organizeBusy = false;
 	bool m_organizeRendering = false;
 	std::size_t m_organizeTile = 0;

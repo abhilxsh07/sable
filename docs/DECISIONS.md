@@ -3259,3 +3259,29 @@ order they were written. Under 4 pt refuses. The write goes through the
 drawing editor's proof, the signed-PDF guard and the shared transaction,
 so it only touches drawings Sable wrote; that proof now accepts the Line
 or Arrow subject when the strokes have the matching shape.
+
+## Read Aloud (2026-11-12)
+
+Read aloud on Home and in the nav rail, and the readaloud tool, start
+reading at the page in view. Each page's text comes from PDFium on its
+thread through the same documentText call Export uses, flattened into
+one run (line breaks become spaces, words hyphenated across a line are
+joined). Windows' SpeechSynthesizer turns it into a stream and a
+MediaPlayer plays it, so Pause and Play pick up mid-sentence. When a
+page ends the next one starts and the view goes to it; a page without
+text is skipped with a notice, and the last page ends with one. No
+dependency was added: both are Windows APIs.
+// see: https://learn.microsoft.com/en-us/uwp/api/windows.media.speechsynthesis.speechsynthesizer
+
+The bar sits at the bottom of the document: Previous page, Play/Pause,
+Stop reading, Next page, "Reading page N of M", Voice (every installed
+Windows voice) and Speed (0.5x to 2x). An accent outline around the
+page being read follows scrolling and zoom. Switching to another tab
+pauses; closing the tab stops. A machine without voices gets a notice
+pointing at Windows' speech settings.
+
+The voice and speed persist in read-aloud.json next to config.json,
+following night-run.json, so config.json keeps the shape NightPDF
+wrote. A missing or bad file gives Windows' default voice at 1x, and a
+saved speed snaps to one the bar offers. The ReadAloud probe runs with
+speech turned off and checks the text it would have spoken.

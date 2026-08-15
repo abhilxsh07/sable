@@ -57,7 +57,9 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 		m_pendingTool = tool;
 		return;
 	}
-	if (tool == L"organize") {
+	if (tool == L"readaloud") {
+		startReadAloud();
+	} else if (tool == L"organize") {
 		openOrganize();
 	} else if (tool == L"export") {
 		exportPages();

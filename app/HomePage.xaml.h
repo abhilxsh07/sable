@@ -64,6 +64,8 @@ struct HomePage : HomePageT<HomePage> {
 	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onComment(const winrt::Windows::Foundation::IInspectable&,
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onReadAloud(const winrt::Windows::Foundation::IInspectable&,
+	                 const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenTapped(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs& args);

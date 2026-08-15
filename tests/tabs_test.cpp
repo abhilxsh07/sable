@@ -155,6 +155,10 @@ void TabsTest::tick() {
 			exportTick(*self);
 			return;
 		}
+		if (readAloudOnly) {
+			readAloudTick(*self);
+			return;
+		}
 		if (highlightOnly) {
 			highlightTick(*self);
 			return;
@@ -897,6 +901,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->exportOnly = GetEnvironmentVariableW(L"SableExportTest", mode, 8) &&
 	                    std::wstring_view(mode) == L"true";
+	state->readAloudOnly =
+	    GetEnvironmentVariableW(L"SableReadAloudTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	state->notesOnly = state->notesOnly || state->notePlacementOnly ||
@@ -961,7 +968,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    state->saveCopyOnly || state->keyboardOnly ||
 	    state->keyboardInputOnly || state->gesturesOnly ||
 	    state->longGesturesOnly || state->organizeOnly || state->combineOnly ||
-	    state->exportOnly) {
+	    state->exportOnly || state->readAloudOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1069,7 +1076,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	           state->presentationOnly || state->keyboardOnly ||
 	           state->keyboardInputOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
-	} else if (state->organizeOnly || state->exportOnly) {
+	} else if (state->organizeOnly || state->exportOnly ||
+	           state->readAloudOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 	} else if (state->editOnly || state->saveCopyOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);

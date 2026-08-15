@@ -219,6 +219,13 @@ void HomePage::onComment(const Windows::Foundation::IInspectable&,
 	}
 }
 
+void HomePage::onReadAloud(const Windows::Foundation::IInspectable&,
+                           const RoutedEventArgs&) {
+	if (m_toolRequested) {
+		m_toolRequested(L"readaloud");
+	}
+}
+
 void HomePage::onOpenTapped(const Windows::Foundation::IInspectable& sender,
                             const Input::TappedRoutedEventArgs& args) {
 	args.Handled(true);

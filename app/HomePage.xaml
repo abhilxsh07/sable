@@ -191,27 +191,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 									VerticalAlignment="Center" />
 							</StackPanel>
 						</Button>
-						<Border Background="Transparent"
-							ToolTipService.ToolTip="Coming later">
-							<Button
-								Style="{StaticResource SableFlatButtonStyle}"
-								IsEnabled="False" IsHitTestVisible="False"
-								AutomationProperties.Name=
-								"Read aloud, unavailable"
-								x:Name="ReadAloudButton">
-								<StackPanel Orientation="Horizontal"
-									Spacing="10">
-									<Border Width="30" Height="30"
-										CornerRadius="6" Background="#268fb8de">
-										<FontIcon Glyph="&#xE767;" FontSize="15"
-											Foreground="#8fb8de" />
-									</Border>
-									<TextBlock Text="Read aloud"
-										FontWeight="SemiBold"
-										VerticalAlignment="Center" />
-								</StackPanel>
-							</Button>
-						</Border>
+						<Button x:Name="ReadAloudButton"
+							Style="{StaticResource SableFlatButtonStyle}"
+							ToolTipService.ToolTip="Listen to the PDF with a Windows voice"
+							Click="onReadAloud">
+							<StackPanel Orientation="Horizontal"
+								Spacing="10">
+								<Border Width="30" Height="30"
+									CornerRadius="6" Background="#268fb8de">
+									<FontIcon Glyph="&#xE767;" FontSize="15"
+										Foreground="#8fb8de" />
+								</Border>
+								<TextBlock Text="Read aloud"
+									FontWeight="SemiBold"
+									VerticalAlignment="Center" />
+							</StackPanel>
+						</Button>
 					</StackPanel>
 				</ScrollViewer>
 			</Border>

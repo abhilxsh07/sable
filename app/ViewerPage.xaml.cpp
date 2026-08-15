@@ -293,6 +293,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 
 void ViewerPage::close() {
 	clearAnnotationSelection();
+	stopReadAloud();
 	if (m_presentationTimer) {
 		m_presentationTimer.Stop();
 	}
