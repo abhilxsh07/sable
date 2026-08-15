@@ -38,6 +38,67 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="2"
 			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
 			IsHitTestVisible="False" />
+		<!-- the command bar: All tools on the left; find, save and print on
+			the right with the rest in More. Only a document has one. -->
+		<StackPanel Grid.ColumnSpan="3" x:Name="TopBars">
+		<Grid x:Name="DocumentBar" Height="40" Padding="8,0" ColumnSpacing="4"
+			Background="{ThemeResource SableTitleBarBrush}"
+			BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="0,0,0,1">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto" />
+				<ColumnDefinition Width="*" />
+				<ColumnDefinition Width="Auto" />
+			</Grid.ColumnDefinitions>
+			<ToggleButton x:Name="AllToolsButton" VerticalAlignment="Center"
+				ToolTipService.ToolTip="All tools"
+				AutomationProperties.Name="All tools">
+				<StackPanel Orientation="Horizontal" Spacing="8">
+					<FontIcon Glyph="&#xE71D;" FontSize="14" />
+					<TextBlock Text="All tools" />
+				</StackPanel>
+			</ToggleButton>
+			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2"
+				VerticalAlignment="Center">
+				<Button x:Name="BarFindButton"
+					ToolTipService.ToolTip="Find (Ctrl+F)"
+					AutomationProperties.Name="Find">
+					<FontIcon Glyph="&#xE721;" FontSize="14" />
+				</Button>
+				<Button x:Name="BarSaveButton"
+					ToolTipService.ToolTip="Save a copy (Ctrl+S)"
+					AutomationProperties.Name="Save a copy">
+					<FontIcon Glyph="&#xE74E;" FontSize="14" />
+				</Button>
+				<Button x:Name="BarPrintButton"
+					ToolTipService.ToolTip="Print (Ctrl+P)"
+					AutomationProperties.Name="Print">
+					<FontIcon Glyph="&#xE749;" FontSize="14" />
+				</Button>
+				<Button x:Name="BarMoreButton" ToolTipService.ToolTip="More"
+					AutomationProperties.Name="More">
+					<FontIcon Glyph="&#xE712;" FontSize="14" />
+					<Button.Flyout>
+						<MenuFlyout Placement="BottomEdgeAlignedRight">
+							<MenuFlyoutItem x:Name="BarPropertiesItem"
+								Text="Document properties" />
+							<MenuFlyoutItem x:Name="BarRotateClockwiseItem"
+								Text="Rotate Clockwise"
+								KeyboardAcceleratorTextOverride="R" />
+							<MenuFlyoutItem x:Name="BarRotateCounterItem"
+								Text="Rotate Counterclockwise"
+								KeyboardAcceleratorTextOverride="Shift+R" />
+							<MenuFlyoutItem x:Name="BarPresentationItem"
+								Text="Presentation mode"
+								KeyboardAcceleratorTextOverride="Ctrl+Alt+P" />
+							<MenuFlyoutSeparator />
+							<ToggleMenuFlyoutItem x:Name="BarQuickToolsItem"
+								Text="Show quick tools" IsChecked="True" />
+						</MenuFlyout>
+					</Button.Flyout>
+				</Button>
+			</StackPanel>
+		</Grid>
   <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed"
 	Padding="8"
    Background="{ThemeResource SablePaneBrush}" CornerRadius="8">
@@ -90,6 +151,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     </Grid>
    </StackPanel>
   </Border>
+		</StackPanel>
 		<!-- the surface is sized in physical pixels and the Image in DIPs, so
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
@@ -117,7 +179,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
-		<!-- Read Aloud: an outline around the page being read, and the bar
+		<!-- All tools: every tool in one list, grouped, over the left of
+			the pages -->
+		<Border Grid.Row="1" x:Name="AllToolsPanel" Width="230"
+			HorizontalAlignment="Left" Visibility="Collapsed"
+			Background="{ThemeResource SablePaneBrush}"
+			BorderBrush="{ThemeResource SableDividerBrush}"
+			BorderThickness="0,0,1,0">
+			<ScrollViewer>
+				<StackPanel x:Name="AllToolsList" Padding="12" Spacing="2" />
+			</ScrollViewer>
+		</Border>
+		<!-- the quick tools you reach for constantly, floating by the pages -->
+		<Border Grid.Row="1" x:Name="QuickTools" HorizontalAlignment="Left"
+			VerticalAlignment="Center" Margin="12,0,0,0" Padding="4"
+			CornerRadius="8" Background="{ThemeResource SablePaneBrush}"
+			AutomationProperties.Name="Quick tools">
+			<StackPanel x:Name="QuickToolsList" Spacing="2" />
+		</Border>		<!-- Read Aloud: an outline around the page being read, and the bar
 			that plays, pauses, stops and turns its pages -->
 		<Canvas Grid.Row="1" x:Name="ReadAloudFrame" IsHitTestVisible="False"
 			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">

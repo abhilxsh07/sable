@@ -431,4 +431,125 @@ void TabsTest::readAloudTick(MainWindow& owner) {
 	++step;
 	ticks = 0;
 }
+// ToolSurfaces: the command bar, the All tools panel and the quick-tools
+// strip start the tools they list, show which one is on, and step aside
+// for each other.
+void TabsTest::toolSurfacesTick(MainWindow& owner) {
+	const auto current = owner.Viewer();
+	if (!current) {
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (!ready(v) || v.m_noteBusy) {
+		return;
+	}
+	const auto visible = [](const UIElement& element) {
+		return element.Visibility() == Visibility::Visible;
+	};
+	const auto invoke = [](const auto& button) {
+		using namespace Microsoft::UI::Xaml::Automation;
+		const auto peer =
+		    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button);
+		if (const auto toggle =
+		        peer.GetPattern(Peers::PatternInterface::Toggle)) {
+			toggle.as<Provider::IToggleProvider>().Toggle();
+		} else {
+			peer.GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		}
+	};
+
+	const auto quick = [&](std::wstring_view tool) {
+		for (const auto& [button, name] : v.m_quickToolButtons) {
+			if (name == tool) {
+				return button;
+			}
+		}
+		return Primitives::ToggleButton{nullptr};
+	};
+	const auto panelButton = [&](std::wstring_view label) {
+		for (const auto& child : v.AllToolsList().Children()) {
+			if (const auto button = child.try_as<Button>();
+			    button &&
+			    Automation::AutomationProperties::GetName(button) == label) {
+				return button;
+			}
+		}
+		return Button{nullptr};
+	};
+	const auto checked = [](const Primitives::ToggleButton& button) {
+		const auto state = button.IsChecked();
+		return state && state.Value();
+	};
+	switch (step) {
+	case 0: {
+		check(visible(v.DocumentBar()) && visible(v.QuickTools()) &&
+		          !visible(v.AllToolsPanel()) &&
+		          v.m_quickToolButtons.size() == 8u,
+		      "the command bar or quick tools are missing");
+		invoke(v.AllToolsButton());
+		int buttons = 0;
+		for (const auto& child : v.AllToolsList().Children()) {
+			buttons += child.try_as<Button>() ? 1 : 0;
+		}
+		check(visible(v.AllToolsPanel()) && buttons == 7 &&
+		          v.QuickTools().Margin().Left > 200,
+		      "All tools didn't open with every tool");
+		invoke(quick(L"hand"));
+		check(v.m_cursorTool == ViewerPage::CursorTool::Hand &&
+		          checked(quick(L"hand")) && !checked(quick(L"select")),
+		      "the hand quick tool didn't take over");
+		invoke(quick(L"select"));
+		check(v.m_cursorTool == ViewerPage::CursorTool::Select &&
+		          checked(quick(L"select")),
+		      "the select quick tool didn't come back");
+		invoke(quick(L"note"));
+		check(v.m_notePlacing &&
+		          v.m_placementTool == ViewerPage::PlacementTool::Note &&
+		          checked(quick(L"note")),
+		      "the sticky note quick tool didn't arm");
+		invoke(quick(L"note"));
+		check(!v.m_notePlacing && !checked(quick(L"note")),
+		      "a second press didn't cancel the note");
+		invoke(quick(L"highlight"));
+		check(!v.m_noteBusy, "Highlight with nothing selected did something");
+		invoke(panelButton(L"Organize pages"));
+		check(v.organizing(), "All tools didn't open Organize pages");
+		invoke(v.OrganizeDone());
+		break;
+	}
+	case 1:
+		if (v.organizing()) {
+			check(ticks < 40, "Organize didn't close");
+			return;
+		}
+		invoke(panelButton(L"Read aloud"));
+		check(v.readingAloud() && checked(quick(L"readaloud")),
+		      "All tools didn't start Read aloud");
+		v.stopReadAloud();
+		v.updateQuickTools();
+		check(!checked(quick(L"readaloud")), "Read aloud stayed checked");
+		invoke(v.BarFindButton());
+		check(visible(v.FindBar()), "the command bar's Find didn't open");
+		v.closeFind();
+		invoke(v.AllToolsButton());
+		check(!visible(v.AllToolsPanel()) && v.QuickTools().Margin().Left < 20,
+		      "All tools didn't close");
+		// the menu item toggles like a check box
+		invoke(v.BarQuickToolsItem());
+		check(!visible(v.QuickTools()), "Hide quick tools didn't hide them");
+		invoke(v.BarQuickToolsItem());
+		check(visible(v.QuickTools()), "quick tools didn't come back");
+		v.close();
+		status.Text(L"PASS: command bar, All tools panel and quick tools");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
+		return;
+	default:
+		check(false, "unexpected tool surfaces step");
+	}
+	++step;
+	ticks = 0;
+}
 } // namespace winrt::Sable::implementation

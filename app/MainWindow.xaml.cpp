@@ -521,6 +521,12 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
 	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
 	const auto pdf = get_self<ViewerPage>(viewer);
+	// the command bar's save, print and the rest are this window's
+	pdf->m_commandRequested = [weak = get_weak()](std::wstring_view command) {
+		if (const auto self = weak.get()) {
+			self->viewerCommand(command);
+		}
+	};
 	pdf->m_notesAvailable = [weak = get_weak()] {
 		const auto self = weak.get();
 		return self && !self->m_closing && !self->m_closePending;
@@ -828,6 +834,23 @@ void MainWindow::keepFocus() {
 
 // Organize, Export, Fill & Sign and Comment work on the open PDF. With
 // none open they ask for one and start once it has loaded.
+void MainWindow::viewerCommand(std::wstring_view command) {
+	if (m_closing) {
+		return;
+	}
+	if (command == L"save") {
+		onSaveCopy(nullptr, nullptr);
+	} else if (command == L"print") {
+		onPrint(nullptr, nullptr);
+	} else if (command == L"properties") {
+		onDocumentProperties(nullptr, nullptr);
+	} else if (command == L"presentation") {
+		onPresentation(nullptr, nullptr);
+	} else if (command == L"combine") {
+		openTool(L"combine");
+	}
+}
+
 void MainWindow::openTool(std::wstring_view tool) {
 	if (m_closing) {
 		return;

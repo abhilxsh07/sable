@@ -45,6 +45,7 @@ void ViewerPage::setCursorTool(CursorTool tool) {
 	cancelSelectionDrag();
 	m_cursorTool = tool;
 	updatePanCursor();
+	updateQuickTools();
 }
 void ViewerPage::updatePanCursor() {
 	if (!m_closed && m_cursorTool == CursorTool::Hand &&

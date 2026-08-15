@@ -235,6 +235,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="ViewerReadAloud.cpp" />
+		<ClCompile Include="ViewerTools.cpp" />
 		<ClCompile Include="MusicMetadata.cpp" />
 		<ClCompile Include="MusicCommands.cpp" />
 		<ClCompile Include="MusicPane.cpp" />

@@ -124,8 +124,8 @@ The older test counts in those documents are historical checkpoints.
 - [x] Shortcut capture, primary/secondary bindings, cancel, clear and Save.
 - [x] Configured shortcuts after restart, with text-field focus guards.
 - [x] Native/sampled checks for narrow Settings and visible control bounds.
-- [ ] Complete the document command bar and grouped All tools panel.
-- [ ] Complete the quick-tools strip as its tools become available.
+- [x] Complete the document command bar and grouped All tools panel.
+- [x] Complete the quick-tools strip as its tools become available.
 - [ ] Full keyboard-only, Narrator and high-contrast accessibility pass.
 
 ## Comments and annotations (E02: partial)

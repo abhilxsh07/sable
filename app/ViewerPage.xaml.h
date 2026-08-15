@@ -412,6 +412,20 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    m_exportPicker;
 #endif
 	std::wstring m_pendingTool;
+	// the command bar, the All tools panel and the quick-tools strip
+	void setupToolSurfaces();
+	void setAllToolsOpen(bool open);
+	void runTool(std::wstring_view tool);
+	void updateQuickTools();
+	// save, print, properties, presentation and combine belong to the window
+	std::function<void(std::wstring_view)> m_commandRequested;
+	std::vector<std::pair<
+	    winrt::Microsoft::UI::Xaml::Controls::Primitives::ToggleButton,
+	    std::wstring>>
+	    m_quickToolButtons;
+	bool m_toolSurfacesSetup = false, m_syncingQuickTools = false;
+	// shown or hidden for every tab until the app closes
+	static inline bool s_quickTools = true;
 	// Read Aloud: one page at a time through Windows' voices
 	void startReadAloud();
 	void readAloudPage(std::size_t page);

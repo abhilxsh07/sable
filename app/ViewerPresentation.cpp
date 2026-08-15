@@ -71,6 +71,9 @@ bool ViewerPage::beginPresentation(std::function<void()> exit) {
 	OutlinePanel().Visibility(XVisibility::Collapsed);
 	AttachmentPanel().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
+	DocumentBar().Visibility(XVisibility::Collapsed);
+	AllToolsPanel().Visibility(XVisibility::Collapsed);
+	QuickTools().Visibility(XVisibility::Collapsed);
 	PresentationBackdrop().Visibility(XVisibility::Visible);
 	Pages().VerticalAlignment(VerticalAlignment::Center);
 	Scroller().HorizontalScrollMode(ScrollMode::Disabled);
@@ -123,6 +126,11 @@ void ViewerPage::endPresentation() {
 	OutlinePanel().Visibility(saved->outline);
 	AttachmentPanel().Visibility(saved->attachments);
 	Rail().Visibility(XVisibility::Visible);
+	DocumentBar().Visibility(XVisibility::Visible);
+	{
+		const auto checked = AllToolsButton().IsChecked();
+		setAllToolsOpen(checked && checked.Value());
+	}
 	PresentationBackdrop().Visibility(XVisibility::Collapsed);
 	PresentationControls().Visibility(XVisibility::Collapsed);
 	Pages().VerticalAlignment(VerticalAlignment::Top);

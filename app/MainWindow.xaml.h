@@ -177,6 +177,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void keepFocus();
 	void reopenTab();
 	void openTool(std::wstring_view tool);
+	void viewerCommand(std::wstring_view command);
 	winrt::fire_and_forget combinePdfs();
 	bool m_combining = false;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_combineDialog{

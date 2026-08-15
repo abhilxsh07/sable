@@ -355,6 +355,7 @@ void ViewerPage::showComments() {
 	if (m_closed) {
 		return;
 	}
+	updateQuickTools();
 	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
 	    Rail().Visibility() != XVisibility::Visible) {
 		m_shapeStart.reset();

@@ -3285,3 +3285,29 @@ following night-run.json, so config.json keeps the shape NightPDF
 wrote. A missing or bad file gives Windows' default voice at 1x, and a
 saved speed snaps to one the bar offers. The ReadAloud probe runs with
 speech turned off and checks the text it would have spoken.
+
+## Command bar, All tools and quick tools (2026-11-12)
+
+Every document now has DESIGN.md's command bar: a 40 px row above the
+pages with All tools on the left and Find (Ctrl+F), Save a copy (Ctrl+S),
+Print (Ctrl+P) and More on the right. More has Document properties,
+Rotate Clockwise and Counterclockwise, Presentation mode and Show quick
+tools. Everything calls what the Menu already calls, with the Menu's
+shortcuts shown; no keybinding was added or changed. The bar, the panel
+and the strip all step out of the way in presentation mode.
+
+All tools opens a 230 px panel over the left of the pages, listing every
+tool that exists in groups: Pages (Organize pages, Combine files),
+Comment & sign (Comment, Fill & Sign), Export, and Read (Read aloud,
+Find). It overlays the pages rather than narrowing them, so opening it
+doesn't move the reading position.
+
+The quick-tools strip floats at the left of the pages: Text selection,
+Hand tool, Sticky note, Highlight, Draw, Text box, Fill & Sign and Read
+aloud. The cursor tools and the placing tools show as checked while
+they're on, and a second press on a placing tool cancels it. Highlight
+marks the current text selection, or says to select text first. The
+strip moves aside when the panel opens. Show quick tools hides or shows
+it for every tab until Sable closes; it isn't saved, so config.json keeps
+NightPDF's shape. The toggles act on Checked and Unchecked rather than
+Click, so keyboard and UI Automation toggles work too.

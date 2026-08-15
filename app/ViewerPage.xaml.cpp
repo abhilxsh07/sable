@@ -1590,6 +1590,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		setupOutline();
 		setupAttachments();
 		setupComments();
+		setupToolSurfaces();
 		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
 			if (auto self = weak.get()) {
 				self->watchScale();
