@@ -267,7 +267,8 @@ part of the planned visual signature tool.
 - [ ] Long-duration leak/resource and real device-loss/sleep/resume checks.
 - [x] Explain the recurring Font Capture errors: Acrobat's own helper,
   reproduced with Adobe's template PDF (READER_CHECKS.md).
-- [ ] Distribution license review for actual PDFium and runtime binaries.
+- [x] Shipped-DLL inventory and PDFium terms (D10 closed 10 Nov).
+- [ ] Owner review of the Microsoft runtime terms beside GPL-2.0-only.
 - [ ] Installer/signing/file-association decisions and implementation.
 - [ ] Update delivery and startup checking.
 - [ ] Public alpha sign-off/publication after release checks.

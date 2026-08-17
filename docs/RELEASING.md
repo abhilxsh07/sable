@@ -126,22 +126,20 @@ it in the release notes. Do not count simulated checks as physical passes.
 
 ## License review before sharing binaries
 
-The package now carries Sable's GPL-2.0-only license, PDFium's downloaded
+The package carries Sable's GPL-2.0-only license, PDFium's downloaded
 notices, font/license texts and the actual restored runtime package terms.
-Two recorded questions still need review:
+THIRD_PARTY_NOTICES.md maps every shipped DLL to its component and terms.
+Re-check that table against a fresh package whenever a dependency changes.
 
-- `licenses/pdfium/pdfium.txt` contains BSD-3-Clause and Apache-2.0 text.
-  Determine which terms apply to the actual pinned binary and whether the
-  proposed combined distribution is compatible with Sable's license.
-- The NuGet Windows App SDK/WinUI runtime texts include Microsoft Software
-  License Terms with distribution requirements and restrictions. Review
-  those actual texts, not just the source repository's MIT file.
-
-Have the intended distribution reviewed by someone qualified to assess
-those terms. Keep the result and any required changes in DECISIONS.md. Do
-not relicense Sable, remove notices or assume that the former Electron
-app's distribution settles this question. Packaging is complete when it
-preserves the supplied texts; distribution clearance is a separate decision.
+PDFium's Apache-2.0 text (D10) was accepted on 10 November. One question
+is still open: the Windows App SDK packages' Microsoft Software License
+Terms (sections 2 and 3, summarized in THIRD_PARTY_NOTICES.md) next to
+Sable's GPL-2.0-only license. Have the intended distribution reviewed by
+someone qualified to assess those terms and keep the result in
+DECISIONS.md. Do not relicense Sable, remove notices or assume that the
+former Electron app's distribution settles this question. Packaging is
+complete when it preserves the supplied texts; distribution clearance is a
+separate decision.
 
 ## Create and review the draft
 
