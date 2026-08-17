@@ -223,7 +223,7 @@ part of the planned visual signature tool.
 - [x] Desktop preview orientation, range controls and cancellation.
 - [x] Complete PDF output selected through the real modern print dialog.
 - [ ] Physical printer output, copies and collation.
-- [ ] Complete real overwrite/read-only destination and hard-link coverage.
+- [x] Complete real overwrite/read-only destination and hard-link coverage.
 
 ## Music (implemented; real-player QA open)
 

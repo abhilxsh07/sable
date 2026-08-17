@@ -3324,3 +3324,16 @@ box don't expose UI Automation patterns. Set through Win32 messages it
 saves normally, and the output was a one-page PDF from the driver. There
 is no owner for Sable to hand over, so I changed nothing; the check is
 recorded in READER_CHECKS.md.
+
+## Read-only and hard-linked save destinations (2026-11-12)
+
+New tests pin down how saves treat awkward destinations, with no change
+to the code. A read-only file isn't overwritten: the save fails, the
+file keeps its bytes and its read-only flag, and no temporary or backup
+file is left beside it. Clearing the flag stays the user's call. A
+destination that is one name of a hard-linked file gets the new PDF
+under that name; ReplaceFileW gives it a new file, so the file's other
+names keep the old bytes, as when Explorer replaces a file. The source
+PDF and its own hard links are still refused as destinations. An
+ordinary overwrite keeps the old file's attributes and creation time,
+along with the named streams and permissions already covered.

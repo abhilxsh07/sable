@@ -167,6 +167,69 @@ TEST_F(FileSaveTest, ReplacingAnExistingFileKeepsItsNamedStream) {
 	          2);
 }
 
+TEST_F(FileSaveTest, OverwritingAnExistingFileKeepsItsAttributesAndBirth) {
+	const auto source = dir / "source.pdf", target = dir / L"saved \u03a9.pdf";
+	write(source, "source");
+	write(target, "an older and longer copy of the file");
+	ASSERT_TRUE(SetFileAttributesW(target.c_str(), FILE_ATTRIBUTE_HIDDEN));
+	WIN32_FILE_ATTRIBUTE_DATA before{};
+	ASSERT_TRUE(
+	    GetFileAttributesExW(target.c_str(), GetFileExInfoStandard, &before));
+	const std::vector<std::uint8_t> bytes{'%', 'P', 'D', 'F'};
+	ASSERT_EQ(helpers::saveFile(target, source, bytes),
+	          helpers::FileSaveResult::Saved);
+	EXPECT_EQ(read(target), bytes);
+	WIN32_FILE_ATTRIBUTE_DATA after{};
+	ASSERT_TRUE(
+	    GetFileAttributesExW(target.c_str(), GetFileExInfoStandard, &after));
+	// ReplaceFileW keeps the replaced file's attributes and creation time
+	EXPECT_TRUE(after.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN);
+	EXPECT_EQ(CompareFileTime(&before.ftCreationTime, &after.ftCreationTime),
+	          0);
+	EXPECT_EQ(read(source).size(), 6u);
+	noTemporaryFiles();
+}
+
+TEST_F(FileSaveTest, ReadOnlyDestinationRefusesAndStaysAsItWas) {
+	const auto source = dir / "source.pdf", target = dir / "locked.pdf";
+	write(source, "source");
+	write(target, "previous");
+	const auto original = read(target);
+	ASSERT_TRUE(SetFileAttributesW(target.c_str(), FILE_ATTRIBUTE_READONLY));
+	EXPECT_EQ(helpers::saveFile(target, source, {1, 2, 3}),
+	          helpers::FileSaveResult::Failed);
+	EXPECT_EQ(read(target), original);
+	EXPECT_TRUE(GetFileAttributesW(target.c_str()) & FILE_ATTRIBUTE_READONLY);
+	noTemporaryFiles();
+	EXPECT_EQ(std::distance(std::filesystem::directory_iterator(dir),
+	                        std::filesystem::directory_iterator{}),
+	          2);
+	SetFileAttributesW(target.c_str(), FILE_ATTRIBUTE_NORMAL);
+}
+
+TEST_F(FileSaveTest, HardLinkedDestinationGetsTheNewFileAndItsOtherNamesDont) {
+	const auto source = dir / "source.pdf", target = dir / "copy.pdf";
+	const auto other = dir / "other name.pdf";
+	write(source, "source");
+	write(target, "previous");
+	std::error_code ec;
+	std::filesystem::create_hard_link(target, other, ec);
+	if (ec) {
+		GTEST_SKIP() << "Hard-link creation is unavailable: " << ec.message();
+	}
+	const auto original = read(target);
+	const std::vector<std::uint8_t> bytes{4, 5, 6};
+	ASSERT_EQ(helpers::saveFile(target, source, bytes),
+	          helpers::FileSaveResult::Saved);
+	// the chosen name gets the new PDF, the way Explorer replaces a file;
+	// the other link keeps the old bytes and becomes a file of its own
+	EXPECT_EQ(read(target), bytes);
+	EXPECT_EQ(read(other), original);
+	EXPECT_EQ(std::filesystem::hard_link_count(target, ec), 1u);
+	EXPECT_EQ(std::filesystem::hard_link_count(other, ec), 1u);
+	EXPECT_EQ(read(source).size(), 6u);
+	noTemporaryFiles();
+}
 TEST_F(FileSaveTest, PrunesAbandonedTempsBesideTheTarget) {
 	const auto stale = dir / L".sable-save.sable-4294967292-1-0.tmp";
 	const auto source = dir / L".sable-save.sable-4294967292-1-1.tmp";
