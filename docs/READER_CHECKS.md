@@ -333,6 +333,21 @@ This corrects the synthetic fixture; the writer guards are unchanged.
 Font Capture still reports an application error with the corrected file,
 so that machine/application issue remains separate from the visible fields.
 
+The Font Capture error is Acrobat's, not Sable's. On 12 Nov, Acrobat
+opened Adobe's own DocTemplates\ENU\template1.pdf, a file Sable never
+touched, and the same "Font Capture: Windows - Application Error" box
+appeared within 30 seconds (instruction at 0x69C02202 reading
+0xFFFFFFFFFFFFFFFF). The box comes from one of Acrobat's background
+compute-only helper processes, which Acrobat restarts; the open document
+stays usable. The Application event log has no entry for it, and the
+earlier 0xc06d007e runs came from the same helper. The fonts in the
+unedited mixed fixture (standard Helvetica only) and in its Sable-saved
+copy (Helvetica plus PDFium's non-embedded ArialUnicodeMS appearance font)
+don't matter: the Adobe file fails the same way. Treat the box as a
+local Acrobat issue. Dismiss it and carry on with the appearance check.
+Notes, fixtures and the font listing script are in
+D:\NightPdf\batch-scratch\fontcap.
+
 Open tests/fixtures/attachments.pdf and use Ctrl+S. Cancel once, then save to
 a new name. The original tab and reading state should remain open. Compare
 the file hashes to check the copy is exact:

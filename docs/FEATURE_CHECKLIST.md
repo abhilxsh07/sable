@@ -265,7 +265,8 @@ part of the planned visual signature tool.
 - [ ] Clean Windows PC/VM without development runtimes.
 - [ ] Actual Windows on ARM execution.
 - [ ] Long-duration leak/resource and real device-loss/sleep/resume checks.
-- [ ] Resolve or explain recurring external-reader Font Capture errors.
+- [x] Explain the recurring Font Capture errors: Acrobat's own helper,
+  reproduced with Adobe's template PDF (READER_CHECKS.md).
 - [ ] Distribution license review for actual PDFium and runtime binaries.
 - [ ] Installer/signing/file-association decisions and implementation.
 - [ ] Update delivery and startup checking.
