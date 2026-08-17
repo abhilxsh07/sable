@@ -3311,3 +3311,16 @@ strip moves aside when the panel opens. Show quick tools hides or shows
 it for every tab until Sable closes; it isn't saved, so config.json keeps
 NightPDF's shape. The toggles act on Checked and Unchecked rather than
 Click, so keyboard and UI Automation toggles work too.
+
+## Print to PDF through the dialog (2026-11-12)
+
+The earlier note that Save had "unavailable geometry and a window-owner
+mismatch" was the Microsoft Print to PDF driver's own Save Print Output
+As dialog, not Sable. Sable gives the modern print UI its reader window
+through IPrintManagerInterop, and the job target is owned by Windows.
+The driver then opens its file dialog on Sable's UI thread with no owner
+window, at the top left of the screen, and its Save button and file name
+box don't expose UI Automation patterns. Set through Win32 messages it
+saves normally, and the output was a one-page PDF from the driver. There
+is no owner for Sable to hand over, so I changed nothing; the check is
+recorded in READER_CHECKS.md.

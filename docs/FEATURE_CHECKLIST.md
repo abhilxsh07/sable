@@ -221,7 +221,7 @@ part of the planned visual signature tool.
 - [x] Print layout, paper sizes, ranges, rotation and cancellation logic.
 - [x] Microsoft PDF-driver output, reopened pages and pixel checks.
 - [x] Desktop preview orientation, range controls and cancellation.
-- [ ] Complete PDF output selected through the real modern print dialog.
+- [x] Complete PDF output selected through the real modern print dialog.
 - [ ] Physical printer output, copies and collation.
 - [ ] Complete real overwrite/read-only destination and hard-link coverage.
 

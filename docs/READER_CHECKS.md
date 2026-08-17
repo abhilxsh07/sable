@@ -364,6 +364,20 @@ activate Save because of unavailable geometry and a window-owner mismatch.
 The pages.pdf dialog also accepted range 2-3 and landscape. No PDF was
 created; completed output and its range/orientation results remain open.
 
+The 12 Nov pass completed the output. Sable opened print.pdf, its command
+bar's Print opened the modern dialog with Microsoft Print to PDF, and
+Print opened the driver's Save Print Output As dialog. That dialog runs
+on Sable's UI thread but has no owner window, sits at the top left of the
+screen at 960 x 540, and its Save button and file name box aren't
+reachable through UI Automation patterns, which is what stopped the
+earlier runs. Setting the file name with WM_SETTEXT and pressing Save
+with BM_CLICK wrote a one-page PDF to a new temp folder, produced by
+"Microsoft: Print To PDF". The owner comes from the driver, not from
+Sable: the modern path hands Windows the reader's HWND through
+IPrintManagerInterop, and the job target is the system's, so there is no
+owner for Sable to pass. Range and orientation through the dialog, and
+physical printers, remain open.
+
 The 19 Oct reliability pass isolated two causes of the earlier crashes. A
 retained print renderer could release empty session state through a destroyed
 engine. That state now releases without touching the old engine. Separately,
