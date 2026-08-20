@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/settings.h"
 #include "Appearance.h"
 #include <array>
+#include <filesystem>
 #include <memory>
 #include <vector>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
@@ -35,6 +36,8 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	open(const winrt::Microsoft::UI::Xaml::Window& owner,
 	     helpers::SettingsStore& store, const std::filesystem::path& icon);
 	winrt::Microsoft::UI::Xaml::Window window{nullptr};
+	// update-check.json; MainWindow sets it next to config.json
+	static inline std::filesystem::path s_updateCheckFile;
 
   private:
 #ifdef SABLE_SURFACE_TEST
@@ -79,5 +82,7 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_general;
 	winrt::Microsoft::UI::Xaml::Controls::InfoBar m_error;
 	std::array<winrt::Microsoft::UI::Xaml::Controls::CheckBox, 2> m_checks;
+	winrt::Microsoft::UI::Xaml::Controls::CheckBox m_updateCheck;
+	void saveUpdateCheck();
 	std::vector<winrt::Microsoft::UI::Xaml::Controls::Button> m_sections;
 };

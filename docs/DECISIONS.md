@@ -3359,3 +3359,21 @@ Sable.exe already works. File associations come with an installer, .pdf
 only (§15 D7).
 
 This settles §15 D8 for the alpha only.
+
+## Startup update check (2026-11-12)
+
+NightPDF called electron-updater on every new window. Sable checks once
+per start and only tells you: one HTTPS GET to GitHub's release list for
+abhilxsh07/sable, off the UI thread, with a "Sable/<version>" user agent.
+GitHub sees the IP address and that header. No ID, settings or file
+names are sent. Drafts never count. Prereleases count only while the
+installed build is a prerelease. Only this repository's releases/tag/<tag>
+page can be opened. A newer release shows an InfoBar at the top right of
+the window with a Release page link; nothing is downloaded. Failures,
+including the 404 GitHub gives while the repository is private, are only
+logged at Info.
+
+It's on by default, like NightPDF. Settings > General has a "Check for
+updates" box. The choice lives in update-check.json beside config.json,
+like read-aloud.json, so config.json keeps NightPDF's keys (I11). Unit
+tests use canned responses, and probe builds never make the call.

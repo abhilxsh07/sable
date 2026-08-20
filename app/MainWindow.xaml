@@ -370,6 +370,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<InfoBar x:Name="PickerError" Grid.Row="1" VerticalAlignment="Top"
 			Severity="Error" IsOpen="False" IsClosable="True"
 			Title="Couldn't open the file dialog" />
+		<!-- the startup update check (MainUpdateCheck.cpp) -->
+		<InfoBar x:Name="UpdateNotice" Grid.Row="1" VerticalAlignment="Top"
+			HorizontalAlignment="Right" MaxWidth="420" Margin="0,12,16,0"
+			Severity="Informational" IsOpen="False" IsClosable="True">
+			<InfoBar.ActionButton>
+				<HyperlinkButton x:Name="UpdatePage" Content="Release page" />
+			</InfoBar.ActionButton>
+		</InfoBar>
 		<!-- Shift+Alt+M. Every press adds an alert on top, and they fade out
 			oldest first. No background, so clicks go through to the page. -->
 		<StackPanel x:Name="MortyStack" Grid.Row="1" VerticalAlignment="Top"

@@ -174,6 +174,10 @@ MainWindow::MainWindow(helpers::NightPDFSettings settings)
 	ViewerPage::s_readAloudFile =
 	    config.empty() ? std::filesystem::path{}
 	                   : config.parent_path() / L"read-aloud.json";
+	// the update check's on/off choice, beside them
+	::SettingsWindow::s_updateCheckFile =
+	    config.empty() ? std::filesystem::path{}
+	                   : config.parent_path() / L"update-check.json";
 	setupWindow();
 }
 
@@ -189,6 +193,7 @@ void MainWindow::InitializeComponent() {
 	setupOpen();
 	setupEdit();
 	setupMusic();
+	checkForUpdates();
 	Activated([weak = get_weak()](auto&&, const WindowActivatedEventArgs& e) {
 		const auto self = weak.get();
 		if (!self) {

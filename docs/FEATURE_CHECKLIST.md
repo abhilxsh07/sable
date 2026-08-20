@@ -272,7 +272,8 @@ part of the planned visual signature tool.
 - [x] Installer/signing/file-association decisions for the alpha: ZIP
   only, unsigned, no associations.
 - [ ] Installer, signing and .pdf association for a later release.
-- [ ] Update delivery and startup checking.
+- [x] Startup update check (notify only, opt-out in Settings).
+- [ ] Update delivery through an installer/updater.
 - [ ] Public alpha sign-off/publication after release checks.
 
 ## Optional backlog, separate from the approved tool list
@@ -292,7 +293,7 @@ An unchecked idea is not a commitment to change NightPDF behavior.
 - [x] Recent/Starred home, the implemented part of I09.
 - [ ] Recent-files menu/taskbar Jump List, the remaining part of I09.
 - [ ] Per-tab night-filter overrides (I10).
-- [ ] Update-check opt-out preference (I11).
+- [x] Update-check opt-out preference (I11).
 - [x] Modern unfiltered print implementation, the implemented part of I12.
 - [ ] Optional filtered print output, the separate part of I12.
 - [ ] Import an existing Electron NightPDF settings file (I13).

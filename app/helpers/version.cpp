@@ -40,4 +40,7 @@ std::string versionString() {
 	       " PDFium: " + SABLE_PDFIUM_VERSION +
 	       " WindowsAppSDK: " + SABLE_WINAPPSDK_VERSION;
 }
+std::string appVersion() {
+	return SABLE_VERSION;
+}
 } // namespace helpers

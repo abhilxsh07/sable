@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "SettingsWindow.h"
+#include "helpers/update_check.h"
 #include "helpers/version.h"
 
 #include <microsoft.ui.xaml.window.h>
@@ -310,6 +311,20 @@ void SettingsWindow::save(const CheckBox& box) {
 	box.IsChecked(key == "MaximizeOnOpen"
 	                  ? m_store.get().general.MaximizeOnOpen
 	                  : m_store.get().general.DisplayThumbs);
+	m_error.Severity(InfoBarSeverity::Error);
+	m_error.Title(L"Couldn't save settings");
+	m_error.Message(L"The setting was restored. Check that the settings "
+	                L"folder is writable and try again.");
+	m_error.IsOpen(true);
+}
+
+void SettingsWindow::saveUpdateCheck() {
+	const bool enabled = m_updateCheck.IsChecked().Value();
+	if (helpers::saveUpdateCheck(s_updateCheckFile, {enabled})) {
+		m_error.IsOpen(false);
+		return;
+	}
+	m_updateCheck.IsChecked(!enabled);
 	m_error.Severity(InfoBarSeverity::Error);
 	m_error.Title(L"Couldn't save settings");
 	m_error.Message(L"The setting was restored. Check that the settings "

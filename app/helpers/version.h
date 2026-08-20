@@ -26,4 +26,6 @@ namespace helpers {
 // idea as NightPDF's "NightPDF: ... PDF.js: ... Electron: ...". Shown on the
 // settings window's version page and by --version.
 std::string versionString();
+// just Sable's own version, "v1.0.0-alpha.1", for the update check
+std::string appVersion();
 } // namespace helpers

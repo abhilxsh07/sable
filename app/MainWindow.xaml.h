@@ -130,6 +130,9 @@ struct MainWindow : MainWindowT<MainWindow> {
 	winrt::Sable::ViewerPage Viewer();
 	winrt::fire_and_forget pickDocuments();
 	winrt::fire_and_forget saveCopy();
+	// MainUpdateCheck.cpp
+	winrt::fire_and_forget checkForUpdates();
+	void showUpdate(const winrt::hstring& tag, const winrt::hstring& page);
 	std::shared_ptr<std::atomic_bool> m_saveCopyCancel;
 	winrt::weak_ref<winrt::Sable::ViewerPage> m_saveCopyViewer;
 #ifdef SABLE_SURFACE_TEST

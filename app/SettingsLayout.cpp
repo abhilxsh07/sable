@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "SettingsWindow.h"
+#include "helpers/update_check.h"
 #include "helpers/version.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
@@ -197,6 +198,40 @@ Grid SettingsWindow::buildLayout() {
 			}
 		});
 		row.Children().Append(box);
+		m_general.Children().Append(card(row));
+	}
+	// update-check.json, not config.json, so NightPDF's keys stay as they are
+	{
+		Grid row;
+		row.ColumnSpacing(16);
+		row.ColumnDefinitions().Append(ColumnDefinition());
+		ColumnDefinition control;
+		control.Width({1, GridUnitType::Auto});
+		row.ColumnDefinitions().Append(control);
+		StackPanel text;
+		text.Spacing(5);
+		auto name = label(L"Check for updates", 14);
+		name.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
+		text.Children().Append(name);
+		text.Children().Append(
+		    label(L"Ask GitHub for a newer Sable each time it starts. Nothing "
+		          L"is downloaded.",
+		          12, 0xa7a7ae));
+		row.Children().Append(text);
+		m_updateCheck.MinWidth(0);
+		m_updateCheck.Width(32);
+		m_updateCheck.VerticalAlignment(VerticalAlignment::Center);
+		m_updateCheck.IsChecked(
+		    helpers::loadUpdateCheck(s_updateCheckFile).enabled);
+		Automation::AutomationProperties::SetName(m_updateCheck,
+		                                          L"Check for updates");
+		Grid::SetColumn(m_updateCheck, 1);
+		m_updateCheck.Click([weak](auto&&, auto&&) {
+			if (auto self = weak.lock()) {
+				self->saveUpdateCheck();
+			}
+		});
+		row.Children().Append(m_updateCheck);
 		m_general.Children().Append(card(row));
 	}
 	StackPanel themeCard;
