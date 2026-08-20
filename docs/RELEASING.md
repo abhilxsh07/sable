@@ -1,8 +1,8 @@
 # Releasing Sable
 
-The first distribution is a portable alpha ZIP for each architecture. This
-does not choose an installer or update framework. Those remain separate
-decisions. The release workflow creates a draft prerelease; publication is
+The first distribution is a portable alpha ZIP for each architecture,
+unsigned and without file associations (DECISIONS.md, 12 November). An
+installer and signing are for a later release. The release workflow creates a draft prerelease; publication is
 an owner step after the checks below.
 
 ## Prepare the source

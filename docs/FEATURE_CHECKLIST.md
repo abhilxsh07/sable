@@ -269,7 +269,9 @@ part of the planned visual signature tool.
   reproduced with Adobe's template PDF (READER_CHECKS.md).
 - [x] Shipped-DLL inventory and PDFium terms (D10 closed 10 Nov).
 - [ ] Owner review of the Microsoft runtime terms beside GPL-2.0-only.
-- [ ] Installer/signing/file-association decisions and implementation.
+- [x] Installer/signing/file-association decisions for the alpha: ZIP
+  only, unsigned, no associations.
+- [ ] Installer, signing and .pdf association for a later release.
 - [ ] Update delivery and startup checking.
 - [ ] Public alpha sign-off/publication after release checks.
 

@@ -3337,3 +3337,25 @@ names keep the old bytes, as when Explorer replaces a file. The source
 PDF and its own hard links are still refused as destinations. An
 ordinary overwrite keeps the old file's attributes and creation time,
 along with the named streams and permissions already covered.
+
+## Installer, signing and file associations for the alpha (2026-11-12)
+
+The alpha ships as the portable ZIP only. MSIX would make Sable a packaged
+app, moving its settings and logs and needing a trusted signature before
+it installs at all. Velopack is still the likely installer and updater
+for a beta, once signing is settled. It stays the pre-approved choice
+from §13 but isn't added now.
+
+The alpha is unsigned. Windows SmartScreen shows "Windows protected your
+PC" for it, and a downloaded ZIP may need Unblock in its properties. The
+release notes say so. For later releases I'll apply to SignPath
+Foundation's free signing for open-source projects; Azure Artifact
+Signing's individual validation isn't open everywhere, and a bought
+certificate costs a few hundred dollars a year.
+
+Sable doesn't register file associations. Portable folders get moved, and
+a registered path would go stale. Open with, Choose another app, then
+Sable.exe already works. File associations come with an installer, .pdf
+only (§15 D7).
+
+This settles §15 D8 for the alpha only.
