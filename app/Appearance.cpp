@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "Appearance.h"
 #include <algorithm>
+#include <winrt/Windows.UI.ViewManagement.h>
 #include <vector>
 #include <map>
 
@@ -46,6 +47,36 @@ std::vector<Surface> surfaces;
 std::map<unsigned, SolidColorBrush> programmatic;
 std::vector<AcrylicSurface> acrylics;
 std::vector<std::weak_ptr<std::function<void()>>> observers;
+// code-made text colours, recoloured for contrast themes
+std::vector<Surface> texts;
+std::map<unsigned, SolidColorBrush> programmaticText;
+Windows::UI::ViewManagement::AccessibilitySettings accessibility{nullptr};
+event_token contrastChanged{};
+
+Windows::UI::Color
+systemColor(Windows::UI::ViewManagement::UIElementType type) {
+	return Windows::UI::ViewManagement::UISettings().UIElementColor(type);
+}
+
+// Contrast themes switch XAML to the HighContrast dictionaries in
+// styles/Theme.xaml by themselves; this only follows for code-made brushes.
+void watchContrast() {
+	try {
+		accessibility = Windows::UI::ViewManagement::AccessibilitySettings();
+		const auto queue =
+		    Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
+		contrastChanged =
+		    accessibility.HighContrastChanged([queue](auto&&, auto&&) {
+			    queue.TryEnqueue([] {
+				    if (initialized) {
+					    apply(active);
+				    }
+			    });
+		    });
+	} catch (...) {
+		accessibility = nullptr;
+	}
+}
 constexpr Windows::UI::Color black{255, 0, 0, 0};
 
 Windows::Foundation::IInspectable
@@ -148,6 +179,7 @@ void initialize(bool trueBlack) {
 	if (!initialized) {
 		initialized = true;
 		collectResources();
+		watchContrast();
 		apply(trueBlack);
 	}
 }
@@ -157,15 +189,25 @@ void apply(bool trueBlack) {
 		return;
 	}
 	active = trueBlack;
+	using Windows::UI::ViewManagement::UIElementType;
+	const bool contrast = highContrast();
+	const auto window = contrast ? systemColor(UIElementType::Window) : black;
+	const auto windowText =
+	    contrast ? systemColor(UIElementType::WindowText) : black;
 	for (const auto& item : surfaces) {
 		if (const auto brush = item.brush) {
-			brush.Color(active ? black : item.dark);
+			brush.Color(contrast ? window : active ? black : item.dark);
 		}
 	}
 	for (const auto& item : acrylics) {
 		if (const auto brush = item.brush) {
-			brush.FallbackColor(active ? black : item.fallback);
-			brush.AlwaysUseFallback(active || item.alwaysFallback);
+			brush.FallbackColor(contrast || active ? window : item.fallback);
+			brush.AlwaysUseFallback(contrast || active || item.alwaysFallback);
+		}
+	}
+	for (const auto& item : texts) {
+		if (const auto brush = item.brush) {
+			brush.Color(contrast ? windowText : item.dark);
 		}
 	}
 	std::erase_if(observers, [](const auto& item) { return item.expired(); });
@@ -184,6 +226,12 @@ Subscription observe(std::function<void()> changed) {
 }
 void shutdown() {
 	observers.clear();
+	if (accessibility) {
+		accessibility.HighContrastChanged(contrastChanged);
+		accessibility = nullptr;
+	}
+	texts.clear();
+	programmaticText.clear();
 	surfaces.clear();
 	acrylics.clear();
 	programmatic.clear();
@@ -198,9 +246,37 @@ SolidColorBrush surface(unsigned darkRgb) {
 	const Windows::UI::Color dark{255, static_cast<uint8_t>(darkRgb >> 16),
 	                              static_cast<uint8_t>(darkRgb >> 8),
 	                              static_cast<uint8_t>(darkRgb)};
-	SolidColorBrush brush(active ? black : dark);
+	SolidColorBrush brush(
+	    highContrast()
+	        ? systemColor(Windows::UI::ViewManagement::UIElementType::Window)
+	    : active ? black
+	             : dark);
 	surfaces.push_back({brush, dark});
 	programmatic.emplace(darkRgb, brush);
 	return brush;
+}
+SolidColorBrush text(unsigned rgb) {
+	if (const auto found = programmaticText.find(rgb);
+	    found != programmaticText.end()) {
+		return found->second;
+	}
+	const Windows::UI::Color normal{255, static_cast<uint8_t>(rgb >> 16),
+	                                static_cast<uint8_t>(rgb >> 8),
+	                                static_cast<uint8_t>(rgb)};
+	SolidColorBrush brush(
+	    highContrast()
+	        ? systemColor(
+	              Windows::UI::ViewManagement::UIElementType::WindowText)
+	        : normal);
+	texts.push_back({brush, normal});
+	programmaticText.emplace(rgb, brush);
+	return brush;
+}
+bool highContrast() {
+	try {
+		return accessibility && accessibility.HighContrast();
+	} catch (...) {
+		return false;
+	}
 }
 } // namespace appearance

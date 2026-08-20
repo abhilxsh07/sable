@@ -475,33 +475,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Border.Resources>
-				<!-- a disabled button stays flat, only its icon dims -->
-				<SolidColorBrush x:Key="ButtonBackgroundDisabled"
-					Color="Transparent" />
-				<SolidColorBrush x:Key="ButtonBorderBrushDisabled"
-					Color="Transparent" />
-				<!-- an open panel's button is lit, not accent coloured -->
-				<SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
-					Color="#33FFFFFF" />
-				<SolidColorBrush
-					x:Key="ToggleButtonBackgroundCheckedPointerOver"
-					Color="#40FFFFFF" />
-				<SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed"
-					Color="#26FFFFFF" />
-				<SolidColorBrush x:Key="ToggleButtonForegroundChecked"
-					Color="#E8E8E8" />
-				<SolidColorBrush
-					x:Key="ToggleButtonForegroundCheckedPointerOver"
-					Color="#E8E8E8" />
-				<SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"
-					Color="#E8E8E8" />
-				<SolidColorBrush x:Key="ToggleButtonBorderBrushChecked"
-					Color="Transparent" />
-				<SolidColorBrush
-					x:Key="ToggleButtonBorderBrushCheckedPointerOver"
-					Color="Transparent" />
-				<SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed"
-					Color="Transparent" />
+				<ResourceDictionary>
+					<!-- contrast themes keep WinUI's own button colours -->
+					<ResourceDictionary.ThemeDictionaries>
+						<ResourceDictionary x:Key="Default">
+							<!-- a disabled button stays flat, only its icon dims -->
+							<SolidColorBrush x:Key="ButtonBackgroundDisabled"
+								Color="Transparent" />
+							<SolidColorBrush x:Key="ButtonBorderBrushDisabled"
+								Color="Transparent" />
+							<!-- an open panel's button is lit, not accent coloured -->
+							<SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
+								Color="#33FFFFFF" />
+							<SolidColorBrush
+								x:Key="ToggleButtonBackgroundCheckedPointerOver"
+								Color="#40FFFFFF" />
+							<SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed"
+								Color="#26FFFFFF" />
+							<SolidColorBrush x:Key="ToggleButtonForegroundChecked"
+								Color="#E8E8E8" />
+							<SolidColorBrush
+								x:Key="ToggleButtonForegroundCheckedPointerOver"
+								Color="#E8E8E8" />
+							<SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"
+								Color="#E8E8E8" />
+							<SolidColorBrush x:Key="ToggleButtonBorderBrushChecked"
+								Color="Transparent" />
+							<SolidColorBrush
+								x:Key="ToggleButtonBorderBrushCheckedPointerOver"
+								Color="Transparent" />
+							<SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed"
+								Color="Transparent" />
+						</ResourceDictionary>
+						<ResourceDictionary x:Key="HighContrast" />
+					</ResourceDictionary.ThemeDictionaries>
+				</ResourceDictionary>
 			</Border.Resources>
 			<Grid>
 				<!-- the panels, starting with pdfjs-thumbs-button -->
@@ -624,8 +632,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Border x:Name="PresentationControls" Grid.RowSpan="2"
 			Grid.ColumnSpan="3"
 			Visibility="Collapsed" VerticalAlignment="Bottom"
-			HorizontalAlignment="Center" Background="#000000"
-			BorderBrush="#404040" BorderThickness="1" CornerRadius="8"
+			HorizontalAlignment="Center"
+			Background="{ThemeResource SablePresentationBarBrush}"
+			BorderBrush="{ThemeResource SablePresentationBorderBrush}"
+			BorderThickness="1" CornerRadius="8"
 			Padding="8" Margin="12">
 			<StackPanel Orientation="Horizontal" Spacing="8">
 				<Button x:Name="PresentationPrevious"

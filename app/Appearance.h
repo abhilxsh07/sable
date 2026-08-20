@@ -32,4 +32,9 @@ void apply(bool trueBlack);
 void shutdown();
 Subscription observe(std::function<void()> changed);
 winrt::Microsoft::UI::Xaml::Media::SolidColorBrush surface(unsigned darkRgb);
+// A shared text brush. Under a Windows contrast theme it takes the theme's
+// window text colour, as surface brushes take its window colour.
+winrt::Microsoft::UI::Xaml::Media::SolidColorBrush text(unsigned rgb);
+// whether a Windows contrast theme is on; changes re-run apply()
+bool highContrast();
 } // namespace appearance

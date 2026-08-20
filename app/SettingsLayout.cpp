@@ -46,7 +46,7 @@ TextBlock label(const hstring& value, double size = 13,
 	TextBlock text;
 	text.Text(value);
 	text.FontSize(size);
-	text.Foreground(brush(color));
+	text.Foreground(appearance::text(color));
 	text.TextWrapping(TextWrapping::Wrap);
 	return text;
 }

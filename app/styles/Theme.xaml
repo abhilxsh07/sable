@@ -25,7 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
 	<ResourceDictionary.ThemeDictionaries>
-		<!-- the app is always dark (App.xaml), so Default is the only one -->
+		<!-- the app is always dark (App.xaml); Default is that dark look and
+			HighContrast below follows a Windows contrast theme -->
 		<ResourceDictionary x:Key="Default">
 			<SolidColorBrush x:Key="SableTitleBarBrush" Color="#1a1a1a" />
 			<SolidColorBrush x:Key="SablePaneBrush" Color="#1e1e1e" />
@@ -63,6 +64,114 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<GradientStop Offset="0.683" Color="#d773e9" />
 				<GradientStop Offset="1" Color="#fc515d" />
 			</LinearGradientBrush>
+			<!-- the gradient and the fixed control colours, kept here so the
+				contrast theme can swap them -->
+			<LinearGradientBrush x:Key="SableAccentGradient"
+				StartPoint="0,0.5" EndPoint="1,0.5">
+				<GradientStop Offset="0" Color="#29c0ea" />
+				<GradientStop Offset="0.683" Color="#d773e9" />
+				<GradientStop Offset="1" Color="#fc515d" />
+			</LinearGradientBrush>
+			<SolidColorBrush x:Key="SableAccentForegroundBrush" Color="#ffffff" />
+			<SolidColorBrush x:Key="SablePresetBorderBrush" Color="#1e1e1e" />
+			<SolidColorBrush x:Key="SablePresetHoverBorderBrush"
+				Color="#797979" />
+			<SolidColorBrush x:Key="SableMusicPlayForegroundBrush"
+				Color="#202020" />
+			<SolidColorBrush x:Key="SableMusicHoverBrush" Color="#15FFFFFF" />
+			<SolidColorBrush x:Key="SableMusicPressedBrush" Color="#25FFFFFF" />
+			<SolidColorBrush x:Key="SableMusicSeekBrush" Color="#33FFFFFF" />
+			<SolidColorBrush x:Key="SableSettingsBorderBrush" Color="#3b3b3f" />
+			<SolidColorBrush x:Key="SableSettingsTextBrush" Color="#eeeeef" />
+			<SolidColorBrush x:Key="SableShortcutBorderBrush" Color="#38383d" />
+			<SolidColorBrush x:Key="SableSettingsPrimaryBrush" Color="#eeeeef" />
+			<SolidColorBrush x:Key="SableSettingsPrimaryTextBrush"
+				Color="#202023" />
+			<SolidColorBrush x:Key="SableHomeTitleBrush" Color="#cccccc" />
+			<SolidColorBrush x:Key="SableHomeHintBrush" Color="#bbbbbb" />
+			<SolidColorBrush x:Key="SablePresentationBarBrush" Color="#000000" />
+			<SolidColorBrush x:Key="SablePresentationBorderBrush"
+				Color="#404040" />
+		</ResourceDictionary>
+		<!-- Windows contrast themes. Every Sable colour becomes one of the
+			theme's system colours, so the user's choice wins. The pages keep
+			the night filter the user picked. -->
+		<ResourceDictionary x:Key="HighContrast">
+			<SolidColorBrush x:Key="SableTitleBarBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SablePaneBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SableContentBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SableViewerBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SableSettingsButtonBrush"
+				Color="{ThemeResource SystemColorButtonFaceColor}" />
+			<SolidColorBrush x:Key="SableSettingsShortcutBrush"
+				Color="{ThemeResource SystemColorButtonFaceColor}" />
+			<SolidColorBrush x:Key="SablePopupBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SableCardBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SableCardHoverBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableCardPressedBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableCardBorderBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableDividerBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableTextBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableTextSecondaryBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableTextTertiaryBrush"
+				Color="{ThemeResource SystemColorGrayTextColor}" />
+			<SolidColorBrush x:Key="SableAccentForegroundBrush"
+				Color="{ThemeResource SystemColorHighlightTextColor}" />
+			<SolidColorBrush x:Key="SablePresetBorderBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SablePresetHoverBorderBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableMusicPlayForegroundBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableMusicHoverBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableMusicPressedBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableMusicSeekBrush"
+				Color="{ThemeResource SystemColorGrayTextColor}" />
+			<SolidColorBrush x:Key="SableSettingsBorderBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableShortcutBorderBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableSettingsTextBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableSettingsPrimaryBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableSettingsPrimaryTextBrush"
+				Color="{ThemeResource SystemColorHighlightTextColor}" />
+			<SolidColorBrush x:Key="SableAccentGradient"
+				Color="{ThemeResource SystemColorHighlightColor}" />
+			<SolidColorBrush x:Key="SableHomeTitleBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableHomeHintBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SablePresentationBarBrush"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="SablePresentationBorderBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="NavigationViewExpandedPaneBackground"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="NavigationViewDefaultPaneBackground"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="NavigationViewContentBackground"
+				Color="{ThemeResource SystemColorWindowColor}" />
+			<SolidColorBrush x:Key="NavigationViewContentGridBorderBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush
+				x:Key="NavigationViewSelectionIndicatorForeground"
+				Color="{ThemeResource SystemColorHighlightColor}" />
 		</ResourceDictionary>
 	</ResourceDictionary.ThemeDictionaries>
 
@@ -88,22 +197,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<Color x:Key="SableViolet">#d773e9</Color>
 	<Color x:Key="SableCoral">#fc515d</Color>
 
-	<!-- left to right version of the splash gradient, for buttons -->
-	<LinearGradientBrush x:Key="SableAccentGradient" StartPoint="0,0.5"
-		EndPoint="1,0.5">
-		<GradientStop Offset="0" Color="#29c0ea" />
-		<GradientStop Offset="0.683" Color="#d773e9" />
-		<GradientStop Offset="1" Color="#fc515d" />
-	</LinearGradientBrush>
+	<!-- SableAccentGradient, the left to right version of the splash
+		gradient for buttons, is in the theme dictionaries above -->
 
 	<CornerRadius x:Key="SableCardCornerRadius">8</CornerRadius>
 
 	<!-- the big "Open a PDF" button: the gradient, white text, a light wash
 		on hover -->
 	<Style x:Key="SableAccentButtonStyle" TargetType="Button">
-		<Setter Property="Foreground" Value="#ffffff" />
+		<Setter Property="Foreground"
+			Value="{ThemeResource SableAccentForegroundBrush}" />
 		<Setter Property="Background"
-			Value="{StaticResource SableAccentGradient}" />
+			Value="{ThemeResource SableAccentGradient}" />
 		<Setter Property="Padding" Value="22,9" />
 		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="FontSize" Value="14" />
@@ -163,7 +268,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Padding" Value="8,4" />
 		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="BorderThickness" Value="2" />
-		<Setter Property="BorderBrush" Value="#1e1e1e" />
+		<Setter Property="BorderBrush"
+			Value="{ThemeResource SablePresetBorderBrush}" />
 		<Setter Property="UseSystemFocusVisuals" Value="True" />
 		<Setter Property="Template">
 			<Setter.Value>
@@ -179,13 +285,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
 										<Setter Target="Chip.BorderBrush"
-											Value="#797979" />
+											Value="{ThemeResource SablePresetHoverBorderBrush}" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
 										<Setter Target="Chip.BorderBrush"
-											Value="#797979" />
+											Value="{ThemeResource SablePresetHoverBorderBrush}" />
 									</VisualState.Setters>
 								</VisualState>
 							</VisualStateGroup>
@@ -281,7 +387,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Height" Value="44" />
 		<Setter Property="CornerRadius" Value="22" />
 		<Setter Property="Background" Value="White" />
-		<Setter Property="Foreground" Value="#202020" />
+		<Setter Property="Foreground"
+			Value="{ThemeResource SableMusicPlayForegroundBrush}" />
 	</Style>
 	<Style x:Key="SableMusicToggleStyle" TargetType="ToggleButton">
 		<Setter Property="Width" Value="36" />
@@ -299,13 +406,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<VisualState x:Name="PointerOver">
 									<VisualState.Setters>
 										<Setter Target="Hover.Background"
-											Value="#15FFFFFF" />
+											Value="{ThemeResource SableMusicHoverBrush}" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Pressed">
 									<VisualState.Setters>
 										<Setter Target="Hover.Background"
-											Value="#25FFFFFF" />
+											Value="{ThemeResource SableMusicPressedBrush}" />
 									</VisualState.Setters>
 								</VisualState>
 								<VisualState x:Name="Disabled">
@@ -346,7 +453,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 	<!-- retain Slider's native input/automation with its horizontal parts -->
 	<Style x:Key="SableMusicSeekStyle" TargetType="Slider">
-		<Setter Property="Background" Value="#33FFFFFF" />
+		<Setter Property="Background"
+			Value="{ThemeResource SableMusicSeekBrush}" />
 		<Setter Property="Height" Value="24" />
 		<Setter Property="UseSystemFocusVisuals" Value="True" />
 		<Setter Property="IsFocusEngagementEnabled" Value="True" />
@@ -420,9 +528,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="CornerRadius" Value="8" />
 		<Setter Property="Background"
 			Value="{ThemeResource SableSettingsButtonBrush}" />
-		<Setter Property="BorderBrush" Value="#3b3b3f" />
+		<Setter Property="BorderBrush"
+			Value="{ThemeResource SableSettingsBorderBrush}" />
 		<Setter Property="BorderThickness" Value="1" />
-		<Setter Property="Foreground" Value="#eeeeef" />
+		<Setter Property="Foreground"
+			Value="{ThemeResource SableSettingsTextBrush}" />
 		<Setter Property="FontSize" Value="13" />
 		<Setter Property="MinHeight" Value="36" />
 		<Setter Property="Padding" Value="12,8" />
@@ -498,7 +608,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		BasedOn="{StaticResource SableSettingsButtonStyle}">
 		<Setter Property="Background"
 			Value="{ThemeResource SableSettingsShortcutBrush}" />
-		<Setter Property="BorderBrush" Value="#38383d" />
+		<Setter Property="BorderBrush"
+			Value="{ThemeResource SableShortcutBorderBrush}" />
 		<Setter Property="Padding" Value="10,7" />
 		<Setter Property="MinWidth" Value="0" />
 		<Setter Property="MinHeight" Value="32" />
@@ -516,8 +627,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</Style>
 	<Style x:Key="SableSettingsPrimaryStyle" TargetType="Button"
 		BasedOn="{StaticResource SableSettingsButtonStyle}">
-		<Setter Property="Background" Value="#eeeeef" />
-		<Setter Property="Foreground" Value="#202023" />
+		<Setter Property="Background"
+			Value="{ThemeResource SableSettingsPrimaryBrush}" />
+		<Setter Property="Foreground"
+			Value="{ThemeResource SableSettingsPrimaryTextBrush}" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Padding" Value="18,8" />
 	</Style>

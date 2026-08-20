@@ -247,11 +247,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								Width="76" HorizontalAlignment="Center" />
 							<TextBlock Text="Drop PDF here" FontSize="20"
 								FontWeight="Bold"
-								Foreground="#cccccc" Margin="0,16,0,0"
+								Foreground="{ThemeResource SableHomeTitleBrush}"
+								Margin="0,16,0,0"
 								HorizontalAlignment="Center" />
 							<TextBlock Text="Open File with CTRL+O"
 								FontSize="14" FontWeight="SemiBold"
-								Foreground="#bbbbbb" Margin="0,6,0,0"
+								Foreground="{ThemeResource SableHomeHintBrush}"
+								Margin="0,6,0,0"
 								HorizontalAlignment="Center" />
 							<Button
 								Style="{StaticResource SableAccentButtonStyle}"
