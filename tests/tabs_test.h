@@ -165,6 +165,8 @@ struct TabsTest {
 	bool exportOnly = false;
 	bool readAloudOnly = false;
 	bool toolSurfacesOnly = false;
+	bool accessibilityOnly = false;
+	int findings = 0;
 	Windows::Foundation::IAsyncAction stampFixtures{nullptr};
 	std::filesystem::path stampPath;
 	bool notesOnly = false;
@@ -423,6 +425,9 @@ struct TabsTest {
 	void exportTick(MainWindow& owner);
 	void readAloudTick(MainWindow& owner);
 	void toolSurfacesTick(MainWindow& owner);
+	void accessibilityTick(MainWindow& owner);
+	int auditSurface(const UIElement& root, const std::wstring& surface,
+	                 bool walkTabs);
 	void tick();
 };
 } // namespace winrt::Sable::implementation

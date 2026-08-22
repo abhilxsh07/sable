@@ -102,6 +102,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="OpenButton"
 							Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Open a PDF (Ctrl+O)"
+							AutomationProperties.Name="Open"
 							Click="onOpen">
 							<StackPanel Orientation="Horizontal" Spacing="10">
 								<Border Width="30" Height="30" CornerRadius="6"
@@ -115,6 +116,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</Button>
 						<Button Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Join several PDFs into one"
+							AutomationProperties.Name="Combine files"
 							Click="onCombine">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
@@ -131,6 +133,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip=
 							"Rotate, delete, reorder and extract pages"
+							AutomationProperties.Name="Organize pages"
 							Click="onOrganize">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
@@ -147,6 +150,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="FillSignButton"
 							Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Sign, add text and check marks"
+							AutomationProperties.Name="Fill &amp; Sign"
 							Click="onFillSign">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
@@ -163,6 +167,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="CommentButton"
 							Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Add notes, highlights and drawings"
+							AutomationProperties.Name="Comment"
 							Click="onComment">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
@@ -178,6 +183,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</Button>
 						<Button Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Save pages as images or the text as a file"
+							AutomationProperties.Name="Export"
 							Click="onExport">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
@@ -194,6 +200,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="ReadAloudButton"
 							Style="{StaticResource SableFlatButtonStyle}"
 							ToolTipService.ToolTip="Listen to the PDF with a Windows voice"
+							AutomationProperties.Name="Read aloud"
 							Click="onReadAloud">
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">

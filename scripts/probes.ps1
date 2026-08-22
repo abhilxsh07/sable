@@ -42,7 +42,7 @@ $modes = [ordered]@{
 	"Tabs" = @{ SableTabsTest = "true" }
 }
 $scenarios = @(
-	"AnnotationActions", "AttachmentSave", "Attachments", "CheckBox",
+	"Accessibility", "AnnotationActions", "AttachmentSave", "Attachments", "CheckBox",
 	"Choice", "ChoiceList", "ClearList", "Comb", "Combine", "CommentLocations",
 	"Comments", "DefaultList", "Edit", "EllipsePlacement", "Export",
 	"FillMarks",
