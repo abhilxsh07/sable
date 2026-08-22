@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
 #include "../app/pch.h"
+#include <winrt/Microsoft.UI.Xaml.Automation.Peers.h>
 #include "../app/pdf/session.h"
 #include "../app/App.xaml.h"
 #include "../app/SettingsWindow.h"
@@ -167,6 +168,7 @@ struct TabsTest {
 	bool toolSurfacesOnly = false;
 	bool accessibilityOnly = false;
 	int findings = 0;
+	Microsoft::UI::Xaml::Automation::Peers::AutomationPeer pagePeer{nullptr};
 	Windows::Foundation::IAsyncAction stampFixtures{nullptr};
 	std::filesystem::path stampPath;
 	bool notesOnly = false;

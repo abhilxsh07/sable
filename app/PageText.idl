@@ -1,0 +1,41 @@
+/*
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+namespace Sable
+{
+	// Holds the page image and gives screen readers the current page's text
+	// through a UI Automation text pattern. The Image itself is sealed, so
+	// it can't make its own automation peer.
+	runtimeclass PageTextHost : Microsoft.UI.Xaml.Controls.Grid
+	{
+		PageTextHost();
+		// "Page 3 of 10", the name Narrator reads for the document
+		String PageName;
+		// the page's text as PDFium extracts it
+		String PageText;
+	}
+
+	[default_interface]
+	runtimeclass PageTextPeer :
+		Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer,
+		Microsoft.UI.Xaml.Automation.Provider.ITextProvider
+	{
+		PageTextPeer(PageTextHost owner);
+	}
+}

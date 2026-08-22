@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "Appearance.h"
 
 #include "ViewerPage.g.h"
+// the pages' screen-reader host, which XamlTypeInfo needs through here
+#include "PageText.h"
 
 #include <d2d1_1.h>
 
@@ -722,6 +724,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::optional<int> m_startPage;
 	// pdf.js's current page (0-based) and the labels it would have shown
 	std::size_t m_current = 0;
+	// ViewerPageText.cpp: the page whose text the screen-reader host has
+	std::optional<std::size_t> m_pageTextPage;
+	void updatePageText();
 	std::vector<std::string> m_labels;
 	// what the page box was last set to, so only an edit goes anywhere
 	winrt::hstring m_pageBoxText;

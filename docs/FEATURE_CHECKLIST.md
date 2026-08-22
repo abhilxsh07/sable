@@ -126,7 +126,10 @@ The older test counts in those documents are historical checkpoints.
 - [x] Native/sampled checks for narrow Settings and visible control bounds.
 - [x] Complete the document command bar and grouped All tools panel.
 - [x] Complete the quick-tools strip as its tools become available.
-- [ ] Full keyboard-only, Narrator and high-contrast accessibility pass.
+- [x] High-contrast theme dictionaries and code-made brushes.
+- [x] Names and Tab reach on every tool surface (Accessibility probe).
+- [x] Page text exposed to Narrator through a UI Automation text pattern.
+- [ ] Narrator listen-through and contrast-theme look on real hardware.
 
 ## Comments and annotations (E02: partial)
 

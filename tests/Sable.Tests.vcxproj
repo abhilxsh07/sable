@@ -99,6 +99,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="night_run_test.cpp" />
 		<ClCompile Include="read_aloud_test.cpp" />
 		<ClCompile Include="update_check_test.cpp" />
+		<ClCompile Include="text_range_test.cpp" />
 		<ClCompile Include="text_test.cpp" />
 		<ClCompile Include="search_test.cpp" />
 		<ClCompile Include="layout_test.cpp" />
@@ -160,6 +161,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\app\helpers\read_aloud.cpp" />
 		<ClInclude Include="..\app\helpers\update_check.h" />
 		<ClCompile Include="..\app\helpers\update_check.cpp" />
+		<ClInclude Include="..\app\helpers\text_range.h" />
+		<ClCompile Include="..\app\helpers\text_range.cpp" />
 		<ClCompile Include="..\app\helpers\logging.cpp" />
 		<ClCompile Include="..\app\helpers\version.cpp" />
 		<ClInclude Include="..\app\helpers\layout.h" />

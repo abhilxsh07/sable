@@ -163,8 +163,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			HorizontalScrollBarVisibility="Auto"
 			VerticalScrollBarVisibility="Auto"
 			IsTabStop="True" UseSystemFocusVisuals="False">
-			<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
-				HorizontalAlignment="Center" VerticalAlignment="Top" />
+			<!-- the host gives screen readers the current page's text -->
+			<local:PageTextHost x:Name="PageReader"
+				HorizontalAlignment="Center" VerticalAlignment="Top">
+				<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
+					HorizontalAlignment="Center" VerticalAlignment="Top" />
+			</local:PageTextHost>
 		</ScrollViewer>
 		<!-- the gesture's last view, kept over the pages while the scroller's
 			zoom resets and they're laid out again at the new zoom -->

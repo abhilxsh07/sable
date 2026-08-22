@@ -448,6 +448,8 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 	}
 	const auto page = (std::min)(m_current, sizes.size() - 1);
 	m_sizes = std::move(sizes);
+	// the same page number can now hold another page's text
+	m_pageTextPage.reset();
 	m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 	closeFind();
 	clearTextSelection();

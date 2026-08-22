@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.Peers.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.Provider.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.Text.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <fstream>
 #include <set>
@@ -214,17 +216,51 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 		switch (step) {
 		case 1:
 			findings += auditSurface(current, L"Viewer", true);
+			// asking for the peer is what a screen reader does first; the
+			// page text follows on the PDFium thread
+			pagePeer =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        v.PageReader());
 			v.openOrganize();
 			break;
-		case 2:
+		case 2: {
 			if (!v.organizing()) {
 				check(ticks < 60, "Organize didn't open");
 				return;
 			}
+			check(pagePeer.GetAutomationControlType() ==
+			              Peers::AutomationControlType::Document &&
+			          std::wstring_view(pagePeer.GetName())
+			              .starts_with(L"Page 1 of "),
+			      "the page isn't a UI Automation document named Page 1: " +
+			          to_string(pagePeer.GetName()));
+			const auto text = pagePeer.GetPattern(Peers::PatternInterface::Text)
+			                      .as<Provider::ITextProvider>();
+			const auto range = text.DocumentRange();
+			if (range.GetText(-1).empty()) {
+				check(ticks < 60, "the page text never reached UI Automation");
+				return;
+			}
+			check(range.GetText(-1) == L"Alpha beta\nSecond line",
+			      "UI Automation read: " + to_string(range.GetText(-1)));
+			const auto line = range.Clone();
+			line.MoveEndpointByRange(Text::TextPatternRangeEndpoint::End, line,
+			                         Text::TextPatternRangeEndpoint::Start);
+			line.ExpandToEnclosingUnit(Text::TextUnit::Line);
+			check(line.GetText(-1) == L"Alpha beta\n",
+			      "the first line read as: " + to_string(line.GetText(-1)));
+			check(line.Move(Text::TextUnit::Word, 2) == 2 &&
+			          line.GetText(-1) == L"Second ",
+			      "moving two words read: " + to_string(line.GetText(-1)));
+			const auto found = range.FindText(L"SECOND", false, true);
+			check(found && found.GetText(-1) == L"Second",
+			      "FindText didn't find Second");
+			pagePeer = nullptr;
 			findings += auditSurface(current, L"Organize", true);
 			v.closeOrganize();
 			v.requestTool(L"comment");
 			break;
+		}
 		case 3:
 			check(v.commentsOpen(), "Comments didn't open");
 			findings += auditSurface(current, L"Comments", true);

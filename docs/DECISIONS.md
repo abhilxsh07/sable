@@ -3377,3 +3377,27 @@ It's on by default, like NightPDF. Settings > General has a "Check for
 updates" box. The choice lives in update-check.json beside config.json,
 like read-aloud.json, so config.json keeps NightPDF's keys (I11). Unit
 tests use canned responses, and probe builds never make the call.
+
+## Accessibility pass (2026-11-12)
+
+Windows contrast themes switch Sable to a HighContrast theme dictionary.
+Every Sable colour, the accent gradient and the fixed control colours map
+to the theme's system colours. Code-made surface and text brushes follow
+the same switch. The pages keep the night filter the user picked, because
+that filter is the reason to use Sable. The preset chips keep their
+colours because they preview the filter. Home's tool-card tints and the
+music pane's code-set colours aren't converted yet.
+
+The Accessibility probe checks every tool surface for unnamed or
+unfocusable controls and for anything Tab can't reach. Home's tool
+buttons now carry their labels as automation names. Nothing else needed
+fixing. No access keys or shortcuts were added, so the keybinds stay
+NightPDF's.
+
+Screen readers see the current page as a UI Automation document named
+"Page N of M", with a text pattern over the page's text. The Image can't
+make its own peer, so a small Grid (PageTextHost) holds it. Text is
+fetched on the PDFium thread only after a UI Automation client asks for
+the peer. Ranges move by character, word, line, paragraph and page and
+support FindText. Selection, text attributes and on-screen character
+boxes aren't reported yet. A page that forbids copying gives no text.

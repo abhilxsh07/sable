@@ -1039,6 +1039,7 @@ void ViewerPage::showPosition() {
 		}
 		scrollThumbnailIntoView();
 	}
+	updatePageText();
 }
 
 // app.js webViewerPageNumberChanged, for an edited page box: go there if
