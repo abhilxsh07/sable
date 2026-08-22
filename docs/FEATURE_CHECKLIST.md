@@ -263,7 +263,8 @@ part of the planned visual signature tool.
 - [x] Portable x64/ARM64/source packaging and integrity/architecture checks.
 - [x] Extracted x64 startup/close smoke checks from paths with spaces.
 - [x] Draft-release workflow and bundled license/notice inventory.
-- [ ] Fresh Release validation and packages for the eventual release commit.
+- [x] Fresh Release x64/ARM64 validation and local packages at 847eaee.
+- [ ] The same from the tagged release commit.
 - [ ] First hosted release-workflow run and artifact review.
 - [ ] Clean Windows PC/VM without development runtimes.
 - [ ] Actual Windows on ARM execution.
