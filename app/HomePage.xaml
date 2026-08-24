@@ -106,9 +106,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							Click="onOpen">
 							<StackPanel Orientation="Horizontal" Spacing="10">
 								<Border Width="30" Height="30" CornerRadius="6"
-									Background="#2629c0ea">
+									Background="{ThemeResource SableToolOpenTileBrush}">
 									<FontIcon Glyph="&#xE8E5;" FontSize="15"
-										Foreground="#29c0ea" />
+										Foreground="{ThemeResource SableToolOpenIconBrush}" />
 								</Border>
 								<TextBlock Text="Open" FontWeight="SemiBold"
 									VerticalAlignment="Center" />
@@ -121,9 +121,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#26d773e9">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolCombineTileBrush}">
 									<FontIcon Glyph="&#xE8C8;" FontSize="15"
-										Foreground="#d773e9" />
+										Foreground="{ThemeResource SableToolCombineIconBrush}" />
 								</Border>
 								<TextBlock Text="Combine files"
 									FontWeight="SemiBold"
@@ -138,9 +139,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#26fc515d">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolOrganizeTileBrush}">
 									<FontIcon Glyph="&#xE8A9;" FontSize="15"
-										Foreground="#fc515d" />
+										Foreground="{ThemeResource SableToolOrganizeIconBrush}" />
 								</Border>
 								<TextBlock Text="Organize pages"
 									FontWeight="SemiBold"
@@ -155,9 +157,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#26c2ad80">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolFillSignTileBrush}">
 									<FontIcon Glyph="&#xE70F;" FontSize="15"
-										Foreground="#c2ad80" />
+										Foreground="{ThemeResource SableToolFillSignIconBrush}" />
 								</Border>
 								<TextBlock Text="Fill &amp; Sign"
 									FontWeight="SemiBold"
@@ -172,9 +175,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#2690a582">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolCommentTileBrush}">
 									<FontIcon Glyph="&#xE8BD;" FontSize="15"
-										Foreground="#a3ba94" />
+										Foreground="{ThemeResource SableToolCommentIconBrush}" />
 								</Border>
 								<TextBlock Text="Comment"
 									FontWeight="SemiBold"
@@ -188,9 +192,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#26bc8b96">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolExportTileBrush}">
 									<FontIcon Glyph="&#xEDE1;" FontSize="15"
-										Foreground="#d29fab" />
+										Foreground="{ThemeResource SableToolExportIconBrush}" />
 								</Border>
 								<TextBlock Text="Export"
 									FontWeight="SemiBold"
@@ -205,9 +210,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<StackPanel Orientation="Horizontal"
 								Spacing="10">
 								<Border Width="30" Height="30"
-									CornerRadius="6" Background="#268fb8de">
+									CornerRadius="6"
+									Background="{ThemeResource SableToolReadAloudTileBrush}">
 									<FontIcon Glyph="&#xE767;" FontSize="15"
-										Foreground="#8fb8de" />
+										Foreground="{ThemeResource SableToolReadAloudIconBrush}" />
 								</Border>
 								<TextBlock Text="Read aloud"
 									FontWeight="SemiBold"
@@ -237,17 +243,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					Padding="14">
 					<Grid>
 						<Rectangle RadiusX="6" RadiusY="6" StrokeThickness="1.5"
-							StrokeDashArray="4 4">
-							<Rectangle.Stroke>
-								<LinearGradientBrush StartPoint="0.52,1"
-									EndPoint="0.48,0">
-									<GradientStop Offset="0" Color="#29c0ea" />
-									<GradientStop Offset="0.683" Color="#d773e9"
-										/>
-									<GradientStop Offset="1" Color="#fc515d" />
-								</LinearGradientBrush>
-							</Rectangle.Stroke>
-						</Rectangle>
+							StrokeDashArray="4 4"
+							Stroke="{ThemeResource SableDropCardStrokeBrush}" />
 						<StackPanel HorizontalAlignment="Center"
 							VerticalAlignment="Center">
 							<Image Source="ms-appx:///assets/icon2.png"
@@ -282,7 +279,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<StackPanel Spacing="10">
 							<StackPanel Orientation="Horizontal" Spacing="10">
 								<FontIcon Glyph="&#xE708;" FontSize="17"
-									Foreground="#d773e9" />
+									Foreground=
+									"{ThemeResource SableNightModeIconBrush}" />
 								<TextBlock Text="Night mode" FontSize="16"
 									FontWeight="SemiBold" />
 							</StackPanel>
@@ -299,23 +297,19 @@ sample page, once a PDF is open they sit in the title bar." />
 								<Button x:Name="DefaultPreset" Tag="default"
 									Content="Default" Click="onPresetClick"
 									Style=
-									"{StaticResource SablePresetButtonStyle}"
-									Background="#1e2024" Foreground="#fbfbff" />
+									"{StaticResource SablePresetButtonStyle}" />
 								<Button x:Name="SepiaPreset" Tag="sepia"
 									Content="Sepia" Click="onPresetClick"
 									Style=
-									"{StaticResource SablePresetButtonStyle}"
-									Background="#9e9174" Foreground="#40392d" />
+									"{StaticResource SablePresetButtonStyle}" />
 								<Button x:Name="RedeyePreset" Tag="redeye"
 									Content="Redeye" Click="onPresetClick"
 									Style=
-									"{StaticResource SablePresetButtonStyle}"
-									Background="#36272b" Foreground="#bc8b96" />
+									"{StaticResource SablePresetButtonStyle}" />
 								<Button x:Name="CustomPreset" Tag="custom"
 									Content="Custom" Click="onPresetClick"
 									Style=
 									"{StaticResource SablePresetButtonStyle}"
-									Background="#c1c1c1" Foreground="#232323"
 									Padding="3.5,4" />
 							</StackPanel>
 							<TextBlock x:Name="PresetDetails"

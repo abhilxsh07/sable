@@ -20,6 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "Appearance.h"
 #include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <string_view>
+#include <utility>
 #include <winrt/Windows.UI.ViewManagement.h>
 #include <vector>
 #include <map>
@@ -50,6 +54,14 @@ std::vector<std::weak_ptr<std::function<void()>>> observers;
 // code-made text colours, recoloured for contrast themes
 std::vector<Surface> texts;
 std::map<unsigned, SolidColorBrush> programmaticText;
+// code-made brushes that take a chosen system colour under contrast themes
+struct Themed {
+	SolidColorBrush brush{nullptr};
+	Windows::UI::Color normal;
+	Windows::UI::ViewManagement::UIElementType contrast;
+};
+std::vector<Themed> themedBrushes;
+std::map<std::pair<std::uint32_t, int>, SolidColorBrush> themedCache;
 Windows::UI::ViewManagement::AccessibilitySettings accessibility{nullptr};
 event_token contrastChanged{};
 
@@ -210,6 +222,11 @@ void apply(bool trueBlack) {
 			brush.Color(contrast ? windowText : item.dark);
 		}
 	}
+	for (const auto& item : themedBrushes) {
+		if (const auto brush = item.brush) {
+			brush.Color(contrast ? systemColor(item.contrast) : item.normal);
+		}
+	}
 	std::erase_if(observers, [](const auto& item) { return item.expired(); });
 	const auto snapshot = observers;
 	for (const auto& item : snapshot) {
@@ -232,6 +249,8 @@ void shutdown() {
 	}
 	texts.clear();
 	programmaticText.clear();
+	themedBrushes.clear();
+	themedCache.clear();
 	surfaces.clear();
 	acrylics.clear();
 	programmatic.clear();
@@ -271,6 +290,55 @@ SolidColorBrush text(unsigned rgb) {
 	texts.push_back({brush, normal});
 	programmaticText.emplace(rgb, brush);
 	return brush;
+}
+SolidColorBrush themed(Windows::UI::Color normal,
+                       Windows::UI::ViewManagement::UIElementType contrast) {
+	const std::pair key{(std::uint32_t{normal.A} << 24) |
+	                        (std::uint32_t{normal.R} << 16) |
+	                        (std::uint32_t{normal.G} << 8) | normal.B,
+	                    static_cast<int>(contrast)};
+	if (const auto found = themedCache.find(key); found != themedCache.end()) {
+		return found->second;
+	}
+	SolidColorBrush brush(highContrast() ? systemColor(contrast) : normal);
+	themedBrushes.push_back({brush, normal, contrast});
+	themedCache.emplace(key, brush);
+	return brush;
+}
+SolidColorBrush themed(unsigned rgb,
+                       Windows::UI::ViewManagement::UIElementType contrast) {
+	return themed(Windows::UI::Color{255, static_cast<uint8_t>(rgb >> 16),
+	                                 static_cast<uint8_t>(rgb >> 8),
+	                                 static_cast<uint8_t>(rgb)},
+	              contrast);
+}
+void presetChip(const Controls::Button& chip, bool selected) {
+	using Windows::UI::ViewManagement::UIElementType;
+	// NightPDF's preset button colours: background, then text
+	struct Look {
+		std::wstring_view tag;
+		unsigned background, foreground;
+	};
+	static constexpr Look looks[]{{L"default", 0x1e2024, 0xfbfbff},
+	                              {L"sepia", 0x9e9174, 0x40392d},
+	                              {L"redeye", 0x36272b, 0xbc8b96},
+	                              {L"custom", 0xc1c1c1, 0x232323}};
+	const auto tag = unbox_value_or<hstring>(chip.Tag(), hstring{});
+	const auto look =
+	    std::ranges::find(looks, std::wstring_view{tag}, &Look::tag);
+	if (look == std::end(looks)) {
+		return;
+	}
+	chip.Background(themed(look->background, selected
+	                                             ? UIElementType::Highlight
+	                                             : UIElementType::ButtonFace));
+	chip.Foreground(themed(look->foreground, selected
+	                                             ? UIElementType::HighlightText
+	                                             : UIElementType::ButtonText));
+	// the active one gets the hover border, like .button.active
+	chip.BorderBrush(themed(selected ? 0x797979u : 0x1e1e1eu,
+	                        selected ? UIElementType::Highlight
+	                                 : UIElementType::ButtonText));
 }
 bool highContrast() {
 	try {

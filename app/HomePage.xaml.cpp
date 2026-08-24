@@ -89,16 +89,6 @@ std::wstring lowered(std::wstring_view text) {
 	return out;
 }
 
-Windows::UI::Color rgb(std::uint32_t hex) {
-	return {255, static_cast<std::uint8_t>(hex >> 16),
-	        static_cast<std::uint8_t>(hex >> 8),
-	        static_cast<std::uint8_t>(hex)};
-}
-
-SolidColorBrush brush(std::uint32_t hex) {
-	return SolidColorBrush(rgb(hex));
-}
-
 void setColour(const ResourceDictionary& resources, const wchar_t* key,
                helpers::Rgb8 colour) {
 	auto found = resources.TryLookup(box_value(hstring{key}));
@@ -111,7 +101,7 @@ TextBlock cell(const hstring& text, int column) {
 	TextBlock block;
 	block.Text(text);
 	block.FontSize(13);
-	block.Foreground(brush(0xa6a6a6));
+	block.Foreground(appearance::text(0xa6a6a6));
 	block.VerticalAlignment(XVerticalAlignment::Center);
 	block.TextTrimming(TextTrimming::CharacterEllipsis);
 	block.Margin({0, 0, 16, 0});
@@ -277,11 +267,10 @@ void HomePage::showPreset(const std::string& preset) {
 	setColour(resources, L"PreviewHillBrush",
 	          helpers::applyFilter(m_values, {79, 138, 70}));
 
-	// the active one gets the hover border, like .button.active
 	for (const Button& chip :
 	     {DefaultPreset(), SepiaPreset(), RedeyePreset(), CustomPreset()}) {
 		const auto tag = unbox_value_or<hstring>(chip.Tag(), hstring{});
-		chip.BorderBrush(brush(to_string(tag) == preset ? 0x797979 : 0x1e1e1e));
+		appearance::presetChip(chip, to_string(tag) == preset);
 	}
 
 	// "Darkness 7% · Grayscale 95% · ..." in the slider order
@@ -399,14 +388,16 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	page.Height(38);
 	page.CornerRadius({3, 3, 3, 3});
 	page.Background(appearance::surface(0x2d2d2d));
-	page.BorderBrush(brush(0x3d3d3d));
+	page.BorderBrush(appearance::themed(
+	    0x3d3d3d, Windows::UI::ViewManagement::UIElementType::WindowText));
 	page.BorderThickness({1, 1, 1, 1});
 	page.HorizontalAlignment(XHorizontalAlignment::Left);
 	TextBlock badge;
 	badge.Text(L"PDF");
 	badge.FontSize(9);
 	badge.FontWeight(Microsoft::UI::Text::FontWeights::Bold());
-	badge.Foreground(brush(0xfc515d));
+	badge.Foreground(appearance::themed(
+	    0xfc515d, Windows::UI::ViewManagement::UIElementType::Highlight));
 	badge.HorizontalAlignment(XHorizontalAlignment::Center);
 	badge.VerticalAlignment(XVerticalAlignment::Bottom);
 	badge.Margin({0, 0, 0, 5});
@@ -420,12 +411,12 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	TextBlock name;
 	name.Text(to_hstring(file.name));
 	name.FontSize(14);
-	name.Foreground(brush(0xe8e8e8));
+	name.Foreground(appearance::text(0xe8e8e8));
 	name.TextTrimming(TextTrimming::CharacterEllipsis);
 	TextBlock kind;
 	kind.Text(L"PDF");
 	kind.FontSize(11);
-	kind.Foreground(brush(0x7a7a7a));
+	kind.Foreground(appearance::text(0x7a7a7a));
 	title.Children().Append(name);
 	title.Children().Append(kind);
 	row.Children().Append(title);
@@ -451,7 +442,12 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	FontIcon icon;
 	icon.Glyph(file.starred ? L"" : L"");
 	icon.FontSize(15);
-	icon.Foreground(brush(file.starred ? 0xd773e9 : 0x7a7a7a));
+	icon.Foreground(
+	    file.starred
+	        ? appearance::themed(
+	              0xd773e9,
+	              Windows::UI::ViewManagement::UIElementType::Highlight)
+	        : appearance::text(0x7a7a7a));
 	star.Content(icon);
 	const hstring label = file.starred ? L"Unstar" : L"Star";
 	ToolTipService::SetToolTip(star, box_value(label));

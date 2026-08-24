@@ -81,7 +81,9 @@ void Pane::layout() {
 	m_playingDot.Width(4);
 	m_playingDot.Height(4);
 	m_playingDot.CornerRadius({2, 2, 2, 2});
-	m_playingDot.Background(Media::SolidColorBrush({255, 41, 192, 234}));
+	m_playingDot.Background(appearance::themed(
+	    {255, 41, 192, 234},
+	    Windows::UI::ViewManagement::UIElementType::Highlight));
 	m_playingDot.HorizontalAlignment(HorizontalAlignment::Right);
 	m_playingDot.VerticalAlignment(VerticalAlignment::Bottom);
 	m_playingDot.Margin({0, 0, -4, -3});
@@ -115,7 +117,9 @@ void Pane::layout() {
 	m_surface.Width(340);
 	m_surface.CornerRadius({12, 12, 12, 12});
 	m_surface.BorderThickness({1, 1, 1, 1});
-	m_surface.BorderBrush(Media::SolidColorBrush({26, 255, 255, 255}));
+	m_surface.BorderBrush(appearance::themed(
+	    {26, 255, 255, 255},
+	    Windows::UI::ViewManagement::UIElementType::WindowText));
 	m_surface.Background(m_background);
 	m_surface.RequestedTheme(ElementTheme::Dark);
 	m_surface.RenderTransform(m_slide);
@@ -146,7 +150,9 @@ void Pane::layout() {
 	cover.Width(96);
 	cover.Height(96);
 	cover.CornerRadius({8, 8, 8, 8});
-	cover.Background(Media::SolidColorBrush({20, 255, 255, 255}));
+	cover.Background(appearance::themed(
+	    {20, 255, 255, 255},
+	    Windows::UI::ViewManagement::UIElementType::ButtonFace));
 	Grid artwork;
 	artwork.CornerRadius({8, 8, 8, 8});
 	roundedClip(artwork, 8);
@@ -211,13 +217,19 @@ void Pane::layout() {
 	m_play.Style(style(L"SableMusicPlayStyle"));
 	for (const auto key :
 	     {L"ButtonBackgroundPointerOver", L"ButtonBackgroundPressed"}) {
-		m_play.Resources().Insert(box_value(key),
-		                          Media::SolidColorBrush({255, 220, 220, 220}));
+		m_play.Resources().Insert(
+		    box_value(key),
+		    appearance::themed(
+		        0xdcdcdc,
+		        Windows::UI::ViewManagement::UIElementType::Highlight));
 	}
 	for (const auto key :
 	     {L"ButtonForegroundPointerOver", L"ButtonForegroundPressed"}) {
-		m_play.Resources().Insert(box_value(key),
-		                          Media::SolidColorBrush({255, 32, 32, 32}));
+		m_play.Resources().Insert(
+		    box_value(key),
+		    appearance::themed(
+		        0x202020,
+		        Windows::UI::ViewManagement::UIElementType::HighlightText));
 	}
 	m_playIcon = icon(L"\uE768");
 	m_playIcon.FontSize(20);

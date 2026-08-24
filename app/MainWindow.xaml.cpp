@@ -188,6 +188,7 @@ void MainWindow::InitializeComponent() {
 	appearance::initialize(m_settings.general.Theme == "obsidian");
 	setupTitleBar();
 	setupSliders();
+	paintPresetChips();
 	setupPresentation();
 	setupTabKeys();
 	setupOpen();
@@ -1616,19 +1617,21 @@ void MainWindow::onPresetClick(const Windows::Foundation::IInspectable& sender,
 		                            m_values);
 		refreshSliders();
 		updateFilter();
-		for (const auto& chip :
-		     {DefaultPreset(), SepiaPreset(), RedeyePreset(), CustomPreset()}) {
-			const bool active =
-			    unbox_value<hstring>(chip.Tag()) == to_hstring(preset);
-			const std::uint8_t shade = active ? 0x79 : 0x1e;
-			chip.BorderBrush(
-			    Media::SolidColorBrush({255, shade, shade, shade}));
-			Automation::AutomationProperties::SetItemStatus(
-			    chip, active ? L"Selected" : L"");
-		}
+		paintPresetChips();
 	}
 	if (wasActive || preset == "custom") {
 		toggleConfigurator();
+	}
+}
+
+void MainWindow::paintPresetChips() {
+	for (const auto& chip :
+	     {DefaultPreset(), SepiaPreset(), RedeyePreset(), CustomPreset()}) {
+		const bool active =
+		    unbox_value<hstring>(chip.Tag()) == to_hstring(m_preset);
+		appearance::presetChip(chip, active);
+		Automation::AutomationProperties::SetItemStatus(
+		    chip, active ? L"Selected" : L"");
 	}
 }
 

@@ -233,6 +233,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();
+	void paintPresetChips();
 	void updateFilter();
 	void toggleConfigurator();
 	void alignConfigurator();

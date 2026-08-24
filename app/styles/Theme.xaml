@@ -81,6 +81,40 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<SolidColorBrush x:Key="SableMusicHoverBrush" Color="#15FFFFFF" />
 			<SolidColorBrush x:Key="SableMusicPressedBrush" Color="#25FFFFFF" />
 			<SolidColorBrush x:Key="SableMusicSeekBrush" Color="#33FFFFFF" />
+			<!-- Home's tool tiles: the icon colour on a 15% wash of a tint -->
+			<SolidColorBrush x:Key="SableToolOpenTileBrush" Color="#2629c0ea" />
+			<SolidColorBrush x:Key="SableToolOpenIconBrush" Color="#29c0ea" />
+			<SolidColorBrush x:Key="SableToolCombineTileBrush"
+				Color="#26d773e9" />
+			<SolidColorBrush x:Key="SableToolCombineIconBrush"
+				Color="#d773e9" />
+			<SolidColorBrush x:Key="SableToolOrganizeTileBrush"
+				Color="#26fc515d" />
+			<SolidColorBrush x:Key="SableToolOrganizeIconBrush"
+				Color="#fc515d" />
+			<SolidColorBrush x:Key="SableToolFillSignTileBrush"
+				Color="#26c2ad80" />
+			<SolidColorBrush x:Key="SableToolFillSignIconBrush"
+				Color="#c2ad80" />
+			<SolidColorBrush x:Key="SableToolCommentTileBrush"
+				Color="#2690a582" />
+			<SolidColorBrush x:Key="SableToolCommentIconBrush"
+				Color="#a3ba94" />
+			<SolidColorBrush x:Key="SableToolExportTileBrush"
+				Color="#26bc8b96" />
+			<SolidColorBrush x:Key="SableToolExportIconBrush" Color="#d29fab" />
+			<SolidColorBrush x:Key="SableToolReadAloudTileBrush"
+				Color="#268fb8de" />
+			<SolidColorBrush x:Key="SableToolReadAloudIconBrush"
+				Color="#8fb8de" />
+			<SolidColorBrush x:Key="SableNightModeIconBrush" Color="#d773e9" />
+			<!-- the drop card's dashed border: gradient3.svg, bottom to top -->
+			<LinearGradientBrush x:Key="SableDropCardStrokeBrush"
+				StartPoint="0.52,1" EndPoint="0.48,0">
+				<GradientStop Offset="0" Color="#29c0ea" />
+				<GradientStop Offset="0.683" Color="#d773e9" />
+				<GradientStop Offset="1" Color="#fc515d" />
+			</LinearGradientBrush>
 			<SolidColorBrush x:Key="SableSettingsBorderBrush" Color="#3b3b3f" />
 			<SolidColorBrush x:Key="SableSettingsTextBrush" Color="#eeeeef" />
 			<SolidColorBrush x:Key="SableShortcutBorderBrush" Color="#38383d" />
@@ -141,6 +175,39 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				Color="{ThemeResource SystemColorHighlightColor}" />
 			<SolidColorBrush x:Key="SableMusicSeekBrush"
 				Color="{ThemeResource SystemColorGrayTextColor}" />
+			<!-- Home's tool tiles, night mode icon and drop card border -->
+			<SolidColorBrush x:Key="SableToolOpenTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolOpenIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolCombineTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolCombineIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolOrganizeTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolOrganizeIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolFillSignTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolFillSignIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolCommentTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolCommentIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolExportTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolExportIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableToolReadAloudTileBrush"
+				Color="Transparent" />
+			<SolidColorBrush x:Key="SableToolReadAloudIconBrush"
+				Color="{ThemeResource SystemColorButtonTextColor}" />
+			<SolidColorBrush x:Key="SableNightModeIconBrush"
+				Color="{ThemeResource SystemColorWindowTextColor}" />
+			<SolidColorBrush x:Key="SableDropCardStrokeBrush"
+				Color="{ThemeResource SystemColorHighlightColor}" />
 			<SolidColorBrush x:Key="SableSettingsBorderBrush"
 				Color="{ThemeResource SystemColorButtonTextColor}" />
 			<SolidColorBrush x:Key="SableShortcutBorderBrush"

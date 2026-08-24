@@ -3401,3 +3401,20 @@ fetched on the PDFium thread only after a UI Automation client asks for
 the peer. Ranges move by character, word, line, paragraph and page and
 support FindText. Selection, text attributes and on-screen character
 boxes aren't reported yet. A page that forbids copying gives no text.
+
+## Contrast themes on the chips, Home tools and music pane (2026-11-12)
+
+Under a Windows contrast theme the filter preset chips now take button
+colours: button face with button text, and the selected chip the theme's
+highlight with highlight text. This replaces the line in "Accessibility
+pass" that kept their own colours. Each chip's label already names its
+preset, and a contrast theme asks for its own colours everywhere.
+
+Home's tool tiles drop their tint and draw the icon in button text. The
+night mode icon uses window text and the drop card's dashed border the
+highlight. Recent files use window text, with the PDF badge and a
+starred file's star in the highlight. The music pane uses the window
+colour instead of the album-art tint, window text for its border, button
+face for an empty cover, and the highlight for the playing dot and the
+play button's hover and press. The sample page on Home keeps the chosen
+filter, like the pages. Without a contrast theme nothing changes.

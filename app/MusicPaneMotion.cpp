@@ -76,11 +76,11 @@ void Pane::tint(Tint color) {
 		return;
 	}
 	m_tint = color;
-	m_surface.Background(
-	    appearance::obsidian()
-	        ? Media::Brush(Media::SolidColorBrush({255, 0, 0, 0}))
-	        : Media::Brush(m_background));
-	if (appearance::obsidian()) {
+	// Obsidian and contrast themes get a plain window colour, not the art's
+	const bool plain = appearance::obsidian() || appearance::highContrast();
+	m_surface.Background(plain ? Media::Brush(appearance::surface(0x000000))
+	                           : Media::Brush(m_background));
+	if (plain) {
 		m_transition.Stop();
 		m_transition.Children().Clear();
 		m_gradientTop.Color({0, 0, 0, 0});

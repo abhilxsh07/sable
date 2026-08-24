@@ -273,21 +273,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<Button x:Name="DefaultPreset" Tag="default"
 							Content="Default" Click="onPresetClick"
 							AutomationProperties.ItemStatus="Selected"
-							Style="{StaticResource SablePresetButtonStyle}"
-							Background="#1e2024" Foreground="#fbfbff"
-							BorderBrush="#797979" />
+							Style="{StaticResource SablePresetButtonStyle}" />
 						<Button x:Name="SepiaPreset" Tag="sepia" Content="Sepia"
 							Click="onPresetClick"
-							Style="{StaticResource SablePresetButtonStyle}"
-							Background="#9e9174" Foreground="#40392d" />
+							Style="{StaticResource SablePresetButtonStyle}" />
 						<Button x:Name="RedeyePreset" Tag="redeye"
 							Content="Redeye" Click="onPresetClick"
-							Style="{StaticResource SablePresetButtonStyle}"
-							Background="#36272b" Foreground="#bc8b96" />
+							Style="{StaticResource SablePresetButtonStyle}" />
 						<Button x:Name="CustomPreset" Tag="custom"
 							Content="Custom" Click="onPresetClick"
 							Style="{StaticResource SablePresetButtonStyle}"
-							Background="#c1c1c1" Foreground="#232323"
 							Padding="3.5,4" />
 					</StackPanel>
 				</StackPanel>
