@@ -3418,3 +3418,53 @@ colour instead of the album-art tint, window text for its border, button
 face for an empty cover, and the highlight for the playing dot and the
 play button's hover and press. The sample page on Home keeps the chosen
 filter, like the pages. Without a contrast theme nothing changes.
+
+## pdf.js review of navigation and layout (2026-11-12)
+
+A reviewer compared the pdf.js-cited code in helpers/navigation.*,
+helpers/layout.*, ViewerKeyboard.cpp and ViewerPage.xaml.cpp with the
+pinned pdf.js v4.2.67 files they cite. Four parts follow pdf.js statement
+by statement:
+
+- `pageLabels` (navigation.cpp:117-137) mirrors app.js
+  `_initializePageLabels` (1564-1597): the same counting loop and checks.
+- `currentPage` (navigation.cpp:177-231) mirrors ui_utils.js
+  `getVisibleElements` (540-590) and the current-page choice in
+  pdf_viewer.js (1606-1630): the same hidden-share sums, percentage and
+  sort.
+- `navAction` (navigation.cpp:233-336) mirrors app.js `webViewerKeyDown`
+  (2925-3166): the same key groups, page-fit gate and order of checks.
+- The focus return at the end of ViewerKeyboard.cpp (about 198-222)
+  restructures app.js's `ensureViewerFocused` cases (3184-3200) but keeps
+  its key list; I count it with the others to be safe.
+
+Each now has a behaviour-only description outside the repo
+(D:\NightPdf\pdfjs-behavior-page-labels.md, -current-page.md,
+-nav-keys.md, -viewer-focus.md). A later session rewrites them from those
+descriptions alone, as the zoom code was. Nothing was changed here.
+
+The rest matches behaviour with its own structure: `pageText`,
+`pageName`, `pageFromText` and its number parsing, the key mapping and
+Space scrolling in ViewerKeyboard.cpp, all of layout.cpp (pdf.js lays
+pages out in CSS), `renderSize`, the password dialog, the zoom reset,
+`scrollToPage`, the page box commit, thumbnail scrolling, the start
+page and the loading placeholder. Three values are plain constants: the
+viewer background rgb(42,42,46), the 2^25 pixel canvas cap and the
+400 ms zoom delay.
+
+UI strings that come from pdf.js's en-US viewer.ftl: "of {pagesCount}"
+and "({pageNumber} of {pagesCount})" (navigation.cpp:149-152); "Enter the
+password to open this PDF file." and "Invalid password. Please try
+again." (ViewerPage.xaml.cpp:233-234); "Page {page}" and "Thumbnail of
+Page {page}" (ViewerPage.xaml.cpp:1341-1343); "Previous Page", "Next
+Page", "Automatic Zoom", "Actual Size", "Page Fit", "Page Width", "Show
+Thumbnails", "Thumbnails", "Document Outline", "Show Attachments",
+"Attachments" and "Find in document…" (ViewerPage.xaml); "Phrase not
+found" (ViewerFind.cpp:292); "Zoom In", "Zoom Out", "Rotate Clockwise",
+"Rotate Counterclockwise" (MainWindow.xaml); and the page size names
+"Letter", "Legal", "portrait" and "landscape" (helpers/properties.cpp).
+Single common words (OK, Cancel, Close, Print, Tools, Open File and the
+editor colour names) also appear in the file, but they are ordinary UI
+words and aren't counted as taken. Short interface strings are facts
+about what NightPDF showed; whether they need any notice stays an
+owner call.
