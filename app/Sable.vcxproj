@@ -47,11 +47,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<UseWinUI>true</UseWinUI>
 		<EnableMsixTooling>true</EnableMsixTooling>
 		<!-- NightPDF shipped as a plain folder/installer, not a Store package,
-			so no MSIX here. Self-contained so the Windows App SDK runtime
-			ships next to the exe and nothing has to be installed first. -->
+			so no MSIX here. Framework-dependent: people install Microsoft's
+			Windows App Runtime themselves (DECISIONS, 12 November).
+			RuntimeCheck.cpp starts it instead of the SDK's auto-initializer,
+			so a missing runtime gets Sable's own message. -->
 		<WindowsPackageType>None</WindowsPackageType>
 		<AppxPackage>false</AppxPackage>
-		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+		<WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
 		<!-- vcpkg (VS's own) for the header-only libs helpers/ uses. Static
 			triplet because the app links the CRT statically (hybrid CRT). -->
 		<VcpkgEnableManifest>true</VcpkgEnableManifest>
@@ -231,6 +234,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="SettingsWindow.cpp" />
 		<ClCompile Include="SettingsLayout.cpp" />
 		<ClCompile Include="Appearance.cpp" />
+		<ClCompile Include="RuntimeCheck.cpp" />
 		<ClCompile Include="MusicSession.cpp" />
 		<ClCompile Include="NightRunAudio.cpp" />
 		<ClCompile Include="NightRunPane.cpp" />

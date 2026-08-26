@@ -3468,3 +3468,26 @@ editor colour names) also appear in the file, but they are ordinary UI
 words and aren't counted as taken. Short interface strings are facts
 about what NightPDF showed; whether they need any notice stays an
 owner call.
+
+## Framework-dependent ZIP for the alpha (2026-11-12)
+
+The portable ZIP no longer carries Microsoft's Windows App SDK runtime.
+Sable is built framework-dependent, and people install Microsoft's
+Windows App Runtime themselves, from Microsoft's downloads page, for
+their architecture. The installer doesn't need administrator rights; it
+falls back to installing for the current user. The x64 ZIP shrinks from
+30.1 MB (292 files) to 6.1 MB (60 files).
+
+Sable starts the runtime itself (RuntimeCheck.cpp) instead of the SDK's
+auto-initializer. If no matching runtime is installed, Sable says which
+version and architecture it needs and offers to open Microsoft's download
+page, then exits. That also happens for --help and --version, because the
+check runs before anything else. With the runtime installed, the command
+line works as before.
+
+Only Microsoft's small bootstrapper DLL (and the metadata files the build
+copies) still ship beside Sable's GPL-2.0-only code, so the open question
+about the Microsoft Software License Terms is narrower but not settled.
+The package script refuses a build folder that still holds self-contained
+runtime DLLs. The unit tests don't use the Windows App SDK, so they
+don't change.

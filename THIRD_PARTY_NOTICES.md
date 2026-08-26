@@ -8,7 +8,7 @@ Sable is GPL-2.0-only and uses the components below. Pinned versions are in
 | [NightPDF](https://github.com/Lunarequest/NightPDF) | what Sable is ported from (icons and artwork included) | GPL-2.0-only |
 | [PDFium](https://pdfium.googlesource.com/pdfium/), built by [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) | PDF engine (`pdfium.dll`) | BSD-3-Clause; the downloaded `licenses/pdfium.txt` also contains Apache-2.0 text (see below) |
 | bblanchon/pdfium-binaries build scripts | where the binaries come from, not shipped | MIT |
-| [Windows App SDK / WinUI 3](https://github.com/microsoft/WindowsAppSDK) | UI and bundled runtime | Source repository: MIT. Restored binary packages also supply Microsoft Software License Terms; the actual package texts are bundled. |
+| [Windows App SDK / WinUI 3](https://github.com/microsoft/WindowsAppSDK) | UI; the runtime is installed separately from Microsoft, only its bootstrapper ships | Source repository: MIT. Restored binary packages also supply Microsoft Software License Terms; the actual package texts are bundled. |
 | [C++/WinRT](https://github.com/microsoft/cppwinrt) | WinRT projection | MIT |
 | [WIL](https://github.com/microsoft/wil) | Windows helpers | MIT |
 | [nlohmann/json](https://github.com/nlohmann/json) | settings file | MIT |
@@ -27,26 +27,27 @@ restored runtime and projection packages.
 
 ## What the portable package ships
 
-Checked against a fresh Release x64 package on 12 November 2026 (the ARM64
-package has the same names). Sable.exe links the Visual C++ runtime
-statically and uses the Universal CRT that comes with Windows, so no
-`vcruntime140`/`msvcp140` DLLs are shipped.
+Checked against a fresh framework-dependent Release x64 package on 12
+November 2026 (60 files; the ARM64 package has the same names). Sable.exe
+links the Visual C++ runtime statically and uses the Universal CRT that
+comes with Windows, so no `vcruntime140`/`msvcp140` DLLs are shipped.
+Microsoft's Windows App Runtime isn't in the package: people install it
+from Microsoft, under Microsoft's terms, and Sable loads it through the
+bootstrapper below.
 
 | Files | Component | Terms in the package |
 |---|---|---|
 | `Sable.exe`, `Sable.pri`, `Sable.winmd`, `*.xbf`, `styles/`, `assets/` | Sable, with NightPDF's icons and artwork | `LICENSE` (GPL-2.0-only) |
 | `assets/fonts/Manrope-VF.ttf` | Manrope | `assets/fonts/OFL.txt` |
 | `pdfium.dll` | PDFium and the libraries built into it | `licenses/pdfium/*`, `licenses/pdfium-binaries/LICENSE` |
-| `Microsoft.WindowsAppRuntime.dll`, `Microsoft.WindowsAppRuntime.Bootstrap.dll`, `MRM.dll`, `Microsoft.Windows.ApplicationModel.Resources.dll`, `PushNotificationsLongRunningTask.ProxyStub.dll`, `RestartAgent.exe`, `Microsoft.WindowsAppRuntime.pri`, `Microsoft.Windows.*.winmd`, `Microsoft.Foundation.winmd`, `Microsoft.Graphics.winmd`, `Microsoft.Security.Authentication.OAuth.winmd` | Windows App SDK Foundation (with the Runtime and Base packages' notices) | `licenses/nuget/Microsoft.WindowsAppSDK.Foundation.*`, `...Runtime.*`, `...Base.*` |
-| `Microsoft.ui.xaml.dll`, `Microsoft.UI.Xaml.*.dll`, `Microsoft.ui.xaml.resources.*.dll`, `Microsoft.UI.Xaml.Controls.pri`, `Microsoft.UI.pri`, `Microsoft.UI.Xaml/`, `Microsoft.UI.Xaml.winmd`, `WinUIEdit.dll`, the language folders | WinUI 3 | `licenses/nuget/Microsoft.WindowsAppSDK.WinUI.*` |
-| `CoreMessagingXP.dll`, `DwmSceneI.dll`, `dcompi.dll`, `dwmcorei.dll`, `wuceffectsi.dll`, `marshal.dll`, `Microsoft.DirectManipulation.dll`, `Microsoft.Graphics.Display.dll`, `Microsoft.InputStateManager.dll`, `Microsoft.Internal.FrameworkUdk.dll`, `Microsoft.UI.dll`, `Microsoft.UI.Composition.OSSupport.dll`, `Microsoft.UI.Designer.dll`, `Microsoft.UI.Input.dll`, `Microsoft.UI.Windowing*.dll`, `Microsoft.UI.winmd`, `Microsoft.UI.Text.winmd` | Windows App SDK InteractiveExperiences | `licenses/nuget/Microsoft.WindowsAppSDK.InteractiveExperiences.*` |
-| `DWriteCore.dll` | Windows App SDK DWrite | `licenses/nuget/Microsoft.WindowsAppSDK.DWrite.*` |
+| `Microsoft.WindowsAppRuntime.Bootstrap.dll` | Windows App SDK Foundation (bootstrapper) | `licenses/nuget/Microsoft.WindowsAppSDK.Foundation.*` |
 | `Microsoft.Web.WebView2.Core.winmd` (metadata only, no WebView2 DLLs) | WebView2 | `licenses/nuget/Microsoft.Web.WebView2.*` |
 | compiled into Sable.exe | C++/WinRT, WIL, nlohmann/json, spdlog, fmt | `licenses/nuget/Microsoft.Windows.CppWinRT.*`, `licenses/nuget/Microsoft.Windows.ImplementationLibrary.*`, `licenses/{nlohmann-json,spdlog,fmt}/copyright` |
 
-The six Windows App SDK `license.txt` files are the same text. The AI, ML,
-Search and Widgets parts and the WebView2 runtime were removed on 11
-November and are not in the package.
+The six Windows App SDK `license.txt` files are the same text; they stay
+in the package because the bootstrapper and the build use those packages.
+The AI, ML, Search and Widgets parts and the WebView2 runtime were removed
+on 11 November, and the self-contained runtime DLLs on 12 November.
 
 ## PDFium and Apache-2.0 (D10, closed)
 
@@ -78,6 +79,8 @@ handing out the ZIP:
   it.
 - Section 2 says the runtime may send usage data to Microsoft.
 
-Whether a GPL-2.0-only program can ship these files beside it under those
-terms, and what notice Sable's users need, is an owner decision that is
-still open. Packaging the texts doesn't settle it.
+Since 12 November the package ships only the bootstrapper DLL under these
+terms; the runtime itself comes from Microsoft. Whether a GPL-2.0-only
+program can ship that DLL beside it, and what notice Sable's users need,
+is an owner decision that is still open. Packaging the texts doesn't
+settle it.

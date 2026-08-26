@@ -50,7 +50,8 @@ class PackageTests(unittest.TestCase):
         binary[:2] = b"MZ"
         struct.pack_into("<I", binary, 0x3C, 128)
         struct.pack_into("<4sH", binary, 128, b"PE\0\0", machine)
-        for name in ("Sable.exe", "pdfium.dll", "Microsoft.ui.xaml.dll"):
+        for name in ("Sable.exe", "pdfium.dll",
+                     "Microsoft.WindowsAppRuntime.Bootstrap.dll"):
             self.write(f"build/{name}", binary)
         for name in ("Sable.pri", "App.xbf", "MainWindow.xbf", "HomePage.xbf",
                      "ViewerPage.xbf", "assets/fonts/Manrope-VF.ttf",
@@ -91,7 +92,14 @@ class PackageTests(unittest.TestCase):
             files = package.runtime_files(directory, "x64")
         self.assertNotIn("Microsoft.Web.WebView2.Core.dll", files)
         self.assertNotIn("runtimes/win-x64/native/WebView2Loader.dll", files)
-        self.assertIn("Microsoft.ui.xaml.dll", files)
+        self.assertIn("Microsoft.WindowsAppRuntime.Bootstrap.dll", files)
+
+    def test_runtime_refuses_self_contained_leftovers(self):
+        directory = self.runtime()
+        self.write("build/Microsoft.ui.xaml.dll")
+        with patch.object(package, "ROOT", self.root):
+            with self.assertRaises(ValueError):
+                package.runtime_files(directory, "x64")
 
     def test_source_snapshot_excludes_untracked_files(self):
         self.write("source.txt", b"staged source")

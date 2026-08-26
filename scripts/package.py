@@ -35,6 +35,13 @@ MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
 DEVELOPMENT = {".pdb", ".obj", ".lib", ".exp", ".ilk", ".iobj", ".ipdb"}
 # WinUI needs WebView2 metadata at build time. The reader has no web view.
 WEBVIEW_RUNTIME = {"microsoft.web.webview2.core.dll", "webview2loader.dll"}
+# Sable is framework-dependent: people install Microsoft's Windows App
+# Runtime themselves. Any of these in the build output is left over from a
+# self-contained build, so the package refuses it.
+FRAMEWORK_RUNTIME = {"microsoft.ui.xaml.dll", "microsoft.ui.xaml.controls.dll",
+                     "microsoft.windowsappruntime.dll", "microsoft.ui.dll",
+                     "microsoft.internal.frameworkudk.dll", "dwritecore.dll",
+                     "winuiedit.dll", "coremessagingxp.dll", "mrm.dll"}
 
 
 def git(*args):
@@ -76,14 +83,19 @@ def runtime_files(directory, platform):
                 or path.name.lower() in WEBVIEW_RUNTIME
                 or path.name.lower().startswith(("sable.tests", "gtest"))):
             continue
+        if path.name.lower() in FRAMEWORK_RUNTIME:
+            raise ValueError(f"self-contained runtime file: {name} "
+                             "(build into a fresh folder)")
         files[name] = path
-    required = ["Sable.exe", "Sable.pri", "pdfium.dll", "Microsoft.ui.xaml.dll",
+    required = ["Sable.exe", "Sable.pri", "pdfium.dll",
+                "Microsoft.WindowsAppRuntime.Bootstrap.dll",
                 "App.xbf", "MainWindow.xbf", "HomePage.xbf", "ViewerPage.xbf",
                 "assets/fonts/Manrope-VF.ttf", "assets/fonts/OFL.txt"]
     for name in required:
         if name not in files:
             raise ValueError(f"missing runtime file: {name}")
-    for name in ("Sable.exe", "pdfium.dll", "Microsoft.ui.xaml.dll"):
+    for name in ("Sable.exe", "pdfium.dll",
+                 "Microsoft.WindowsAppRuntime.Bootstrap.dll"):
         try:
             with files[name].open("rb") as stream:
                 if stream.read(2) != b"MZ":
@@ -99,6 +111,15 @@ def runtime_files(directory, platform):
     if digest(files["pdfium.dll"]) != digest(pinned):
         raise ValueError("the output PDFium DLL differs from the pinned input")
     return files
+
+
+def runtime_version():
+    """The Windows App Runtime major.minor Sable is built against."""
+    props = (ROOT / "Directory.Build.props").read_text(encoding="utf-8")
+    found = re.search(r"<SableWinAppSdkVersion>(\d+)\.(\d+)\.", props)
+    if not found:
+        raise ValueError("SableWinAppSdkVersion is missing")
+    return f"{found[1]}.{found[2]}"
 
 
 def notices(platform):
@@ -293,10 +314,15 @@ def main():
                 "sourceCommit": commit, "sourceSnapshotSha256": tree,
                 "uncommittedChanges": dirty, "localCandidate": local,
                 "tag": args.tag,
-                "pdfium": (ROOT / ".pdfium_version").read_text().strip()}
+                "pdfium": (ROOT / ".pdfium_version").read_text().strip(),
+                "windowsAppRuntime": f"{runtime_version()} or newer, "
+                                     "installed separately"}
     readme = (f"Sable {version} ({args.platform})\n\n"
-              "Extract the entire folder before running Sable.exe. Keep all\n"
-              "runtime, assets, styles and locale files beside the app.\n"
+              "Extract the entire folder before running Sable.exe. Keep the\n"
+              "DLLs, assets, styles and locale files beside the app.\n"
+              f"Sable needs Microsoft's Windows App Runtime {runtime_version()}\n"
+              f"or newer for {args.platform}. If it's missing, Sable offers\n"
+              "Microsoft's download page.\n"
               "This portable preview has no installer or automatic updates.\n"
               "Settings and logs use Sable's usual application-data folders.\n"
               "Read RELEASE_NOTES.md and THIRD_PARTY_NOTICES.md "

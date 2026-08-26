@@ -86,9 +86,17 @@ working directory. It only closes the process it starts, and restores its
 temporary diagnostic environment changes. It cannot prove that a second
 machine has everything it needs.
 
-On a clean Windows PC or VM without Visual Studio or a separately installed
-Windows App SDK runtime, extract the ZIP and repeat opening, rendering,
-Find/copy, Save a Copy, Settings and print preview. Use a standard account.
+The ZIP is framework-dependent (DECISIONS.md, 12 November): it needs
+Microsoft's Windows App Runtime, which the build PC already has, so the
+smoke check can't show what happens without it.
+
+On a clean Windows PC or VM without Visual Studio or any Windows App
+Runtime, use a standard account and extract the ZIP. Run Sable.exe first
+without the runtime: it should say which runtime version and architecture
+it needs and offer Microsoft's download page, then exit. Record the exact
+message. Install that runtime from the page as the standard user, then
+repeat opening, rendering, Find/copy, Save a Copy, Settings and print
+preview.
 Record Windows version/build, architecture, package hash and result. Do not
 turn off Windows protections to make the check pass. If Windows blocks an
 unsigned build, record the exact message; signing/distribution is an owner
@@ -127,7 +135,9 @@ it in the release notes. Do not count simulated checks as physical passes.
 ## License review before sharing binaries
 
 The package carries Sable's GPL-2.0-only license, PDFium's downloaded
-notices, font/license texts and the actual restored runtime package terms.
+notices, font/license texts and the actual restored package terms. It no
+longer ships Microsoft's runtime, only its bootstrapper DLL; people install
+the runtime from Microsoft under Microsoft's terms.
 THIRD_PARTY_NOTICES.md maps every shipped DLL to its component and terms.
 Re-check that table against a fresh package whenever a dependency changes.
 
