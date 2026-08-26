@@ -60,8 +60,12 @@ using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 // Windows keeps windows started by a background launcher out of the
 // foreground, and the keyboard probes need it. Joining the foreground
-// thread's input queue for one call lets the probe window take it.
-inline void bringToFront(HWND window) {
+// thread's input queue for one call lets the probe window take it. A
+// window that can't be joined (another session's, or a higher integrity
+// level's, like a system error box) refuses that; then one zero-distance
+// mouse move makes this process the one with the last input, which
+// Windows also lets take the foreground.
+inline bool bringToFront(HWND window) {
 	const auto foreground = GetForegroundWindow();
 	const auto mine = GetCurrentThreadId();
 	const auto theirs =
@@ -73,6 +77,39 @@ inline void bringToFront(HWND window) {
 	if (joined) {
 		AttachThreadInput(mine, theirs, FALSE);
 	}
+	if (GetForegroundWindow() != window) {
+		INPUT nudge{};
+		nudge.type = INPUT_MOUSE;
+		nudge.mi.dwFlags = MOUSEEVENTF_MOVE;
+		SendInput(1, &nudge, sizeof(nudge));
+		SetForegroundWindow(window);
+	}
+	return GetForegroundWindow() == window;
+}
+
+// the window holding the foreground, for a probe that couldn't take it
+inline std::string foregroundOwner() {
+	const auto foreground = GetForegroundWindow();
+	if (!foreground) {
+		return "no window";
+	}
+	char name[256]{};
+	GetClassNameA(foreground, name, static_cast<int>(std::size(name)));
+	DWORD process = 0;
+	GetWindowThreadProcessId(foreground, &process);
+	std::string image = "a process Sable can't open";
+	if (const auto handle =
+	        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process)) {
+		wchar_t path[MAX_PATH]{};
+		DWORD size = MAX_PATH;
+		if (QueryFullProcessImageNameW(handle, 0, path, &size)) {
+			const std::wstring_view full(path, size);
+			image = to_string(full.substr(full.find_last_of(L'\\') + 1));
+		}
+		CloseHandle(handle);
+	}
+	return std::string(name) + " window of " + image + " (process " +
+	       std::to_string(process) + ")";
 }
 
 struct TabsTest {

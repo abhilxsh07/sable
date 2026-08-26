@@ -106,9 +106,11 @@ void TabsTest::finishTick(MainWindow& owner) {
 		HWND handle{};
 		check_hresult(
 		    owner.get_strong().as<IWindowNative>()->get_WindowHandle(&handle));
-		if (GetForegroundWindow() != handle) {
-			bringToFront(handle);
-			check(ticks < 40, "the reader never took the foreground");
+		if (!bringToFront(handle)) {
+			if (ticks >= 40) {
+				check(false, "the reader never took the foreground from the " +
+				                 foregroundOwner());
+			}
 			return;
 		}
 		openNightRun(owner);
