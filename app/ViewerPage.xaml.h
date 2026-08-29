@@ -398,13 +398,15 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void openOrganize();
 	void closeOrganize();
 	void fillOrganize();
+	void sizeOrganizeTile(std::size_t page);
 	void renderOrganizeTile();
 	void showOrganizeTile(std::size_t page, const pdf::Bitmap& bitmap);
 	std::vector<int> organizeSelection();
 	void showOrganizeState();
 	void reorderPages(std::vector<int> dragged);
 	void organizeEdit(pdf::PageEdit edit);
-	void finishPageEdit(pdf::PageEditResult result);
+	void finishPageEdit(pdf::PageEditResult result,
+	                    std::vector<int> rotated = {});
 	void pagesChanged(pdf::SessionInfo info);
 	winrt::fire_and_forget insertPagesFromFile();
 	winrt::fire_and_forget extractSelectedPages();

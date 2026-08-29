@@ -113,6 +113,27 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(v.m_notesDirty && sized(0, 842, 595) && sized(1, 792, 612) &&
 		          sized(2, 300, 200) && v.OrganizeGrid().Items().Size() == 3,
 		      "Rotate right did not turn the selected pages");
+		check(v.organizeSelection() == std::vector<int>({0, 2}) &&
+		          v.OrganizeRotateRight().IsEnabled(),
+		      "rotation lost the selected pages");
+		{
+			// the first page is landscape now; it mustn't size the other cells.
+			v.OrganizeGrid().UpdateLayout();
+			double height = 0;
+			for (uint32_t page = 0; page < 3; ++page) {
+				const auto tile =
+				    v.OrganizeGrid().Items().GetAt(page).as<StackPanel>();
+				const auto cell = v.OrganizeGrid()
+				                      .ContainerFromIndex(page)
+				                      .as<FrameworkElement>();
+				check(tile.ActualHeight() > 256 &&
+				          cell.ActualHeight() >= tile.ActualHeight(),
+				      "a mixed-size Organize tile was clipped");
+				check(page == 0 || cell.ActualHeight() == height,
+				      "Organize cells changed size with the page shape");
+				height = cell.ActualHeight();
+			}
+		}
 		{
 			// what the grid does after a drag: the last tile goes first.
 			auto items = v.OrganizeGrid().Items();

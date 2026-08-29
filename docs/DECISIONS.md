@@ -3508,3 +3508,10 @@ The grid moves its tiles before the PDF changes. If an edit can't start,
 can't be queued or is cancelled, I rebuild it from the document's page
 order. A failed drag mustn't leave the next Rotate or Delete aimed at
 another page.
+
+## Organize tile geometry and rotation (2026-11-12)
+
+Every tile reserves the same cell for its page and caption. The page
+keeps its shape and sits in the centre, so a landscape first page can't
+crop the next portrait page. Rotation updates the selected tiles in
+place and only renders the images it cleared; selection stays put.

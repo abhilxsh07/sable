@@ -210,16 +210,18 @@ void ViewerPage::fillOrganize() {
 	auto items = OrganizeGrid().Items();
 	items.Clear();
 	for (std::size_t page = 0; page < m_sizes.size(); ++page) {
-		const auto& size = m_sizes[page];
-		const double tall =
-		    size.width > 0 ? TILE * size.height / size.width : TILE;
 		StackPanel tile;
+		tile.Width(TILE + 8);
+		tile.Height(TALLEST + 34);
 		tile.Spacing(6);
 		tile.Padding({4, 4, 4, 4});
 		tile.Tag(box_value(static_cast<int>(page)));
+		Grid cell;
+		cell.Width(TILE);
+		cell.Height(TALLEST);
 		Border frame;
-		frame.Width(tall > TALLEST ? TALLEST * size.width / size.height : TILE);
-		frame.Height((std::min)(tall, TALLEST));
+		frame.HorizontalAlignment(HorizontalAlignment::Center);
+		frame.VerticalAlignment(VerticalAlignment::Center);
 		frame.Background(Media::SolidColorBrush({0xff, 0xff, 0xff, 0xff}));
 		Image image;
 		image.Stretch(Media::Stretch::Uniform);
@@ -228,10 +230,12 @@ void ViewerPage::fillOrganize() {
 		const auto name = L"Page " + to_hstring(page + 1);
 		caption.Text(name);
 		caption.HorizontalAlignment(HorizontalAlignment::Center);
-		tile.Children().Append(frame);
+		cell.Children().Append(frame);
+		tile.Children().Append(cell);
 		tile.Children().Append(caption);
 		Automation::AutomationProperties::SetName(tile, name);
 		items.Append(tile);
+		sizeOrganizeTile(page);
 	}
 	m_organizeTile = 0;
 	m_organizeRendering = false;
@@ -239,9 +243,42 @@ void ViewerPage::fillOrganize() {
 	showOrganizeState();
 }
 
+void ViewerPage::sizeOrganizeTile(std::size_t page) {
+	const auto& size = m_sizes.at(page);
+	const double tall = size.width > 0 ? TILE * size.height / size.width : TILE;
+	const auto frame = OrganizeGrid()
+	                       .Items()
+	                       .GetAt(static_cast<uint32_t>(page))
+	                       .as<StackPanel>()
+	                       .Children()
+	                       .GetAt(0)
+	                       .as<Grid>()
+	                       .Children()
+	                       .GetAt(0)
+	                       .as<Border>();
+	frame.Width(tall > TALLEST ? TALLEST * size.width / size.height : TILE);
+	frame.Height((std::min)(tall, TALLEST));
+	frame.Child().as<Image>().Source(nullptr);
+}
+
 void ViewerPage::renderOrganizeTile() {
 	if (m_closed || !m_session || !organizing() || m_organizeRendering) {
 		return;
+	}
+	const auto items = OrganizeGrid().Items();
+	while (m_organizeTile < items.Size() &&
+	       items.GetAt(static_cast<uint32_t>(m_organizeTile))
+	           .as<StackPanel>()
+	           .Children()
+	           .GetAt(0)
+	           .as<Grid>()
+	           .Children()
+	           .GetAt(0)
+	           .as<Border>()
+	           .Child()
+	           .as<Image>()
+	           .Source()) {
+		++m_organizeTile;
 	}
 	if (m_organizeTile >= m_sizes.size()) {
 		m_organizeTimer.Stop();
@@ -305,6 +342,9 @@ void ViewerPage::showOrganizeTile(std::size_t page, const pdf::Bitmap& bitmap) {
 	pixels.Invalidate();
 	items.GetAt(static_cast<uint32_t>(page))
 	    .as<StackPanel>()
+	    .Children()
+	    .GetAt(0)
+	    .as<Grid>()
 	    .Children()
 	    .GetAt(0)
 	    .as<Border>()
@@ -398,6 +438,9 @@ void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 		return;
 	}
 	edit.revision = m_session->annotationRevision();
+	const auto rotated = edit.kind == pdf::PageEditKind::Rotate
+	                         ? edit.pages
+	                         : std::vector<int>{};
 	m_organizeBusy = true;
 	showOrganizeState();
 	const auto session = m_session.get();
@@ -405,13 +448,13 @@ void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 	try {
 		queued = session->editPages(
 		    std::move(edit), [weak = get_weak(), queue = DispatcherQueue(),
-		                      session](pdf::PageEditResult result) {
+		                      session, rotated](pdf::PageEditResult result) {
 			    auto shared =
 			        std::make_shared<pdf::PageEditResult>(std::move(result));
-			    queue.TryEnqueue([weak, shared, session] {
+			    queue.TryEnqueue([weak, shared, session, rotated] {
 				    if (const auto self = weak.get();
 				        self && self->m_session.get() == session) {
-					    self->finishPageEdit(std::move(*shared));
+					    self->finishPageEdit(std::move(*shared), rotated);
 				    }
 			    });
 		    });
@@ -429,7 +472,8 @@ void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 	}
 }
 
-void ViewerPage::finishPageEdit(pdf::PageEditResult result) {
+void ViewerPage::finishPageEdit(pdf::PageEditResult result,
+                                std::vector<int> rotated) {
 	m_organizeBusy = false;
 	if (m_closed) {
 		return;
@@ -452,7 +496,18 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result) {
 	m_notesDirty = true;
 	pagesChanged(std::move(result.info));
 	if (organizing()) {
-		fillOrganize();
+		if (rotated.empty()) {
+			fillOrganize();
+		} else {
+			++m_organizeVersion;
+			m_organizeRendering = false;
+			for (const int page : rotated) {
+				sizeOrganizeTile(static_cast<std::size_t>(page));
+			}
+			m_organizeTile = 0;
+			m_organizeTimer.Start();
+			showOrganizeState();
+		}
 	}
 }
 
