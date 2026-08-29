@@ -177,7 +177,8 @@ void ViewerPage::setupOrganize() {
 
 void ViewerPage::openOrganize() {
 	if (m_closed || !m_layout || !m_session || m_presentation || m_noteDialog ||
-	    m_passwordDialog) {
+	    m_passwordDialog || m_propertiesDialog || pageOperationBusy() ||
+	    m_noteBusy || m_noteSaving) {
 		return;
 	}
 	setupOrganize();
@@ -328,7 +329,7 @@ std::vector<int> ViewerPage::organizeSelection() {
 
 void ViewerPage::showOrganizeState() {
 	const auto selected = organizeSelection().size();
-	const bool idle = !m_organizeBusy;
+	const bool idle = !pageOperationBusy() && !m_noteBusy && !m_noteSaving;
 	OrganizeRotateLeft().IsEnabled(idle && selected);
 	OrganizeRotateRight().IsEnabled(idle && selected);
 	OrganizeDelete().IsEnabled(idle && selected);
@@ -387,7 +388,8 @@ void ViewerPage::reorderPages(std::vector<int> dragged) {
 }
 
 void ViewerPage::organizeEdit(pdf::PageEdit edit) {
-	if (m_closed || !m_session || m_organizeBusy) {
+	if (m_closed || !m_session || pageOperationBusy() || m_noteBusy ||
+	    m_noteSaving) {
 		return;
 	}
 	edit.revision = m_session->annotationRevision();
@@ -475,14 +477,16 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 fire_and_forget ViewerPage::insertPagesFromFile() {
 	const auto lifetime = get_strong();
 	try {
-		if (m_closed || !m_session || m_organizeBusy || !XamlRoot()) {
+		if (m_closed || !m_session || pageOperationBusy() || m_noteBusy ||
+		    m_noteSaving || !XamlRoot()) {
 			co_return;
 		}
 		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
 		    XamlRoot().ContentIslandEnvironment().AppWindowId());
 		picker.FileTypeFilter().Append(L".pdf");
 		const auto file = co_await picker.PickSingleFileAsync();
-		if (!file || m_closed || !m_session || m_organizeBusy) {
+		if (!file || m_closed || !m_session || pageOperationBusy() ||
+		    m_noteBusy || m_noteSaving) {
 			co_return;
 		}
 		// new pages go after the last selected tile, or at the end.
@@ -535,11 +539,17 @@ fire_and_forget ViewerPage::extractSelectedPages() {
 	const auto lifetime = get_strong();
 	try {
 		auto pages = organizeSelection();
-		if (m_closed || !m_session || m_organizeBusy || pages.empty() ||
-		    !XamlRoot()) {
+		if (m_closed || !m_session || pageOperationBusy() || m_noteBusy ||
+		    m_noteSaving || pages.empty() || !XamlRoot()) {
 			co_return;
 		}
 		m_organizeBusy = true;
+		const auto finish = std::shared_ptr<void>(nullptr, [lifetime](void*) {
+			lifetime->m_organizeBusy = false;
+			if (!lifetime->m_closed) {
+				lifetime->showOrganizeState();
+			}
+		});
 		showOrganizeState();
 		struct Reply {
 			handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
@@ -557,8 +567,6 @@ fire_and_forget ViewerPage::extractSelectedPages() {
 			co_await resume_on_signal(reply->ready.get());
 		}
 		co_await ui;
-		m_organizeBusy = false;
-		showOrganizeState();
 		if (m_closed || reply->result.canceled) {
 			co_return;
 		}

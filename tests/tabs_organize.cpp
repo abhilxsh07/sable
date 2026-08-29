@@ -52,6 +52,32 @@ void TabsTest::organizeTick(MainWindow& owner) {
 	};
 	switch (step) {
 	case 0:
+		v.m_exporting = true;
+		v.openOrganize();
+		check(!v.organizing(), "Organize opened during Export");
+		{
+			const auto close = owner.confirmNotes(current);
+			check(close.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !close.GetResults(),
+			      "close was allowed during Export");
+		}
+		v.m_exporting = false;
+		v.m_organizeBusy = true;
+		v.exportPages();
+		check(!v.m_noteDialog, "Export opened during a page edit");
+		{
+			const auto close = owner.confirmNotes(current);
+			check(close.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !close.GetResults(),
+			      "close was allowed during a page edit");
+		}
+		v.m_organizeBusy = false;
+		v.m_noteSaving = true;
+		v.openOrganize();
+		check(!v.organizing(), "Organize opened during a save");
+		v.m_noteSaving = false;
 		owner.openTool(L"organize");
 		check(v.organizing() && v.OrganizeGrid().Items().Size() == 3,
 		      "Organize did not show a tile per page");

@@ -95,6 +95,11 @@ fire_and_forget ViewerPage::exportPages() {
 		    m_noteDialog || m_passwordDialog || !XamlRoot()) {
 			co_return;
 		}
+		if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving ||
+		    m_propertiesDialog) {
+			showNotice(L"Finish the page or note operation before exporting.");
+			co_return;
+		}
 		const int count = static_cast<int>(m_sizes.size());
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
@@ -169,7 +174,8 @@ fire_and_forget ViewerPage::exportPages() {
 		if (m_noteDialog == dialog) {
 			m_noteDialog = nullptr;
 		}
-		if (m_closed || choice != ContentDialogResult::Primary) {
+		if (m_closed || choice != ContentDialogResult::Primary ||
+		    organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
 			co_return;
 		}
 		std::vector<int> pages;

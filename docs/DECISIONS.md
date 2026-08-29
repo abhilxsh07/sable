@@ -3491,3 +3491,13 @@ about the Microsoft Software License Terms is narrower but not settled.
 The package script refuses a build folder that still holds self-contained
 runtime DLLs. The unit tests don't use the Windows App SDK, so they
 don't change.
+
+## Page operations and closing (2026-11-12)
+
+I'm keeping Export and Organize exclusive, as in the audit's approved
+plan. Page operations also hold off save and close, including a clean
+tab and the window's close button. Extract keeps that hold through its
+destination picker and write. A plain Save a copy holds the same edit
+lock as a notes save, so pages can't change behind its picker.
+Closing a clean tab still cancels a plain copy and ignores a late picker
+result, as before.

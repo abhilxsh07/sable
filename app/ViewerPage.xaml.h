@@ -391,6 +391,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void refreshNotes(std::optional<int> edited = {});
 	bool layOut(int rotation, std::size_t page);
 	bool organizing();
+	bool pageOperationBusy() const {
+		return m_organizeBusy || m_exporting;
+	}
 	void setupOrganize();
 	void openOrganize();
 	void closeOrganize();

@@ -1380,13 +1380,14 @@ void MainWindow::setupWindow() {
 		if (const auto self = weak.get(); self && !self->m_allowNoteClose) {
 			const bool needsReview =
 			    self->m_notesSaving ||
-			    std::any_of(self->m_tabs.begin(), self->m_tabs.end(),
-			                [](const auto& entry) {
-				                const auto pdf =
-				                    get_self<ViewerPage>(entry.viewer);
-				                return pdf->m_notesDirty || pdf->m_noteBusy ||
-				                       pdf->m_noteDialog || pdf->m_notePlacing;
-			                });
+			    std::any_of(
+			        self->m_tabs.begin(), self->m_tabs.end(),
+			        [](const auto& entry) {
+				        const auto pdf = get_self<ViewerPage>(entry.viewer);
+				        return pdf->m_notesDirty || pdf->m_noteBusy ||
+				               pdf->m_noteDialog || pdf->m_notePlacing ||
+				               pdf->m_noteSaving || pdf->pageOperationBusy();
+			        });
 			if (needsReview || self->m_closePending) {
 				args.Cancel(true);
 				self->closeWithNotes();

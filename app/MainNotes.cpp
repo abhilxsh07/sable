@@ -34,7 +34,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 	const auto viewer = get_self<ViewerPage>(document);
 	if (m_closing || m_notesSaving || viewer->m_closed || !viewer->m_session ||
 	    !viewer->m_notesDirty || viewer->m_noteBusy || viewer->m_noteDialog ||
-	    viewer->m_notePlacing) {
+	    viewer->m_notePlacing || viewer->m_noteSaving ||
+	    viewer->pageOperationBusy()) {
 		co_return false;
 	}
 	m_notesSaving = true;

@@ -67,6 +67,11 @@ fire_and_forget MainWindow::saveCopy() {
 				viewer->showNotice(L"This PDF isn't ready to save yet.");
 				co_return;
 			}
+			if (viewer->pageOperationBusy()) {
+				viewer->showNotice(
+				    L"Wait for the page operation to finish before saving.");
+				co_return;
+			}
 			if (m_notesSaving || viewer->m_noteBusy || viewer->m_noteSaving ||
 			    viewer->m_noteDialog || viewer->m_notePlacing) {
 				viewer->showNotice(L"Finish the open dialog or note operation "
@@ -85,8 +90,17 @@ fire_and_forget MainWindow::saveCopy() {
 		cancel = std::make_shared<std::atomic_bool>(false);
 		m_saveCopyCancel = cancel;
 		SaveCopyItem().IsEnabled(false);
-		finish.notify = [weak, queue, cancel] {
-			queue.TryEnqueue([weak, cancel] {
+		finish.notify = [weak, queue, cancel, document] {
+			queue.TryEnqueue([weak, cancel, document] {
+				if (const auto viewer = document.get()) {
+					viewer->m_noteSaving = false;
+					if (!viewer->m_closed) {
+						viewer->updateQuickTools();
+						if (viewer->organizing()) {
+							viewer->showOrganizeState();
+						}
+					}
+				}
 				if (const auto self = weak.get();
 				    self && !self->m_closing &&
 				    self->m_saveCopyCancel == cancel) {
@@ -96,6 +110,13 @@ fire_and_forget MainWindow::saveCopy() {
 				}
 			});
 		};
+		if (const auto viewer = document.get()) {
+			viewer->m_noteSaving = true;
+			viewer->updateQuickTools();
+			if (viewer->organizing()) {
+				viewer->showOrganizeState();
+			}
+		}
 		const apartment_context ui;
 		const auto name = to_hstring(helpers::attachmentFilename(
 		    to_string(source.stem().wstring()) + " copy.pdf"));
