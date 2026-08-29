@@ -390,6 +390,11 @@ void ViewerPage::reorderPages(std::vector<int> dragged) {
 void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 	if (m_closed || !m_session || pageOperationBusy() || m_noteBusy ||
 	    m_noteSaving) {
+		if (!m_closed && organizing() && edit.kind == pdf::PageEditKind::Move) {
+			fillOrganize();
+			showNotice(L"Couldn't move those pages. Try again when the "
+			           L"operation finishes.");
+		}
 		return;
 	}
 	edit.revision = m_session->annotationRevision();
@@ -416,6 +421,9 @@ void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 	}
 	if (!queued) {
 		m_organizeBusy = false;
+		if (organizing()) {
+			fillOrganize();
+		}
 		showOrganizeState();
 		showNotice(L"Couldn't change these pages. Try again.");
 	}
@@ -423,7 +431,13 @@ void ViewerPage::organizeEdit(pdf::PageEdit edit) {
 
 void ViewerPage::finishPageEdit(pdf::PageEditResult result) {
 	m_organizeBusy = false;
-	if (m_closed || result.canceled) {
+	if (m_closed) {
+		return;
+	}
+	if (result.canceled) {
+		if (organizing()) {
+			fillOrganize();
+		}
 		return;
 	}
 	if (!result.changed || result.info.pages.empty()) {

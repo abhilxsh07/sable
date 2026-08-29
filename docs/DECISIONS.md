@@ -3501,3 +3501,10 @@ destination picker and write. A plain Save a copy holds the same edit
 lock as a notes save, so pages can't change behind its picker.
 Closing a clean tab still cancels a plain copy and ignores a late picker
 result, as before.
+
+## Refused page moves (2026-11-12)
+
+The grid moves its tiles before the PDF changes. If an edit can't start,
+can't be queued or is cancelled, I rebuild it from the document's page
+order. A failed drag mustn't leave the next Rotate or Delete aimed at
+another page.

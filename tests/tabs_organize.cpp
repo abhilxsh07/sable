@@ -90,6 +90,20 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(v.OrganizeStatus().Text() == L"3 pages" &&
 		          !v.OrganizeDelete().IsEnabled(),
 		      "Organize state without a selection");
+		{
+			// a drop can finish after another operation took the edit lock.
+			auto items = v.OrganizeGrid().Items();
+			const auto last = items.GetAt(2);
+			items.RemoveAt(2);
+			items.InsertAt(0, last);
+			v.m_noteSaving = true;
+			v.reorderPages({2});
+			v.m_noteSaving = false;
+			check(unbox_value<int>(
+			          items.GetAt(0).as<FrameworkElement>().Tag()) == 0,
+			      "a refused reorder left the tiles ahead of the PDF");
+			v.showOrganizeState();
+		}
 		select({0, 2});
 		check(v.OrganizeStatus().Text() == L"3 pages · 2 selected",
 		      "Organize did not count the selection");
