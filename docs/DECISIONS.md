@@ -3535,3 +3535,10 @@ the same refusal checks as its button and Esc returns to reading.
 GridView keeps its native arrows, Home, End and Space. Reader bindings
 are held off; save, print, open, tab switching and closing still belong
 to the window. NightPDF's bindings are unchanged in reading mode.
+
+## Names for unsaved page edits (2026-11-12)
+
+I track page edits separately from notes. Rotate, Delete, Move and Insert
+use "Save your changes?", "Save changes" and an "edited.pdf" copy name,
+as form edits already do. Note-only documents keep their existing
+wording. Both kinds of dirty state clear only after a successful save.

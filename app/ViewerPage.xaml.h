@@ -482,7 +482,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_organizeTimer{
 	    nullptr};
 	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
-	     m_notesDirty = false, m_formsDirty = false, m_noteSaving = false;
+	     m_notesDirty = false, m_formsDirty = false, m_pagesDirty = false,
+	     m_noteSaving = false;
 	std::uint64_t m_renderVersion = 0;
 	winrt::hstring m_noteDraft, m_noteAuthor;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_noteDialog{nullptr};

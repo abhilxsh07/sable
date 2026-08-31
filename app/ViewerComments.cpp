@@ -425,8 +425,8 @@ void ViewerPage::showComments() {
 	}
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_notePlacing);
-	SaveNotesButton().Content(
-	    box_value(m_formsDirty ? L"Save changes" : L"Save notes"));
+	SaveNotesButton().Content(box_value(
+	    m_formsDirty || m_pagesDirty ? L"Save changes" : L"Save notes"));
 	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
 	                            !m_notePlacing);
 	const auto selected = CommentsList().SelectedIndex();

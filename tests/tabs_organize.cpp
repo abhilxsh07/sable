@@ -162,7 +162,7 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		          sized(2, 300, 200) && v.OrganizeGrid().Items().Size() == 3,
 		      "Rotate right did not turn the selected pages");
 		check(v.organizeSelection() == std::vector<int>({0, 2}) &&
-		          v.OrganizeRotateRight().IsEnabled(),
+		          v.OrganizeRotateRight().IsEnabled() && v.m_pagesDirty,
 		      "rotation lost the selected pages");
 		{
 			// the first page is landscape now; it mustn't size the other cells.
@@ -218,6 +218,22 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		      "Done did not restore the reader surfaces");
 		v.closeFind();
 		v.setAllToolsOpen(false);
+		owner.m_notesChoice = [this, &v] {
+			check(v.m_noteDialog &&
+			          unbox_value<hstring>(v.m_noteDialog.Title()) ==
+			              L"Save your changes?" &&
+			          v.m_noteDialog.PrimaryButtonText() == L"Save changes",
+			      "page edits were described as notes at close");
+			return notesChoice(ContentDialogResult::None);
+		};
+		{
+			const auto close = owner.confirmNotes(current);
+			check(close.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !close.GetResults() && v.m_pagesDirty,
+			      "cancelling close discarded the page edit state");
+		}
+		owner.m_notesChoice = {};
 		owner.openTool(L"comment");
 		check(v.commentsOpen(), "Comment did not open Comments");
 		v.setCommentsOpen(false);
@@ -229,6 +245,9 @@ void TabsTest::organizeTick(MainWindow& owner) {
 			check(ticks < 40, "Fill & Sign did not open its menu");
 			return;
 		}
+		check(unbox_value<hstring>(v.SaveNotesButton().Content()) ==
+		          L"Save changes",
+		      "Comments described page edits as notes");
 		v.CommentsMoreButton().Flyout().Hide();
 		v.close();
 		status.Text(L"PASS: Organize rotate, move, delete and refusal");

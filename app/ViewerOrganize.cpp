@@ -576,6 +576,7 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 		return;
 	}
 	m_notesDirty = true;
+	m_pagesDirty = true;
 	pagesChanged(std::move(result.info));
 	if (organizing()) {
 		if (rotated.empty()) {

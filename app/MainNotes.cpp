@@ -60,7 +60,8 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		const auto session = viewer->m_session.get();
 		const auto name = to_hstring(helpers::attachmentFilename(
 		    to_string(source.stem().wstring()) +
-		    (viewer->m_formsDirty ? " edited.pdf" : " notes.pdf")));
+		    (viewer->m_formsDirty || viewer->m_pagesDirty ? " edited.pdf"
+		                                                  : " notes.pdf")));
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
 		if (m_notesPicker) {
@@ -104,18 +105,19 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		}
 		if (job->result == pdf::SaveResult::Saved) {
 			// edits are locked until this save's UI continuation completes.
-			const bool forms = viewer->m_formsDirty;
+			const bool changes = viewer->m_formsDirty || viewer->m_pagesDirty;
 			viewer->m_formsDirty = false;
+			viewer->m_pagesDirty = false;
 			viewer->m_notesDirty = false;
-			viewer->showNotice(forms ? L"Saved a copy with your changes."
-			                         : L"Saved a copy with your notes.",
+			viewer->showNotice(changes ? L"Saved a copy with your changes."
+			                           : L"Saved a copy with your notes.",
 			                   InfoBarSeverity::Success);
 			co_return true;
 		}
 		viewer->showNotice(
 		    job->result == pdf::SaveResult::Source
 		        ? L"Choose a different name or folder to keep the original PDF."
-		    : viewer->m_formsDirty
+		    : viewer->m_formsDirty || viewer->m_pagesDirty
 		        ? L"Couldn't save your changes. Choose a writable folder "
 		          L"and try again. Your changes are still open."
 		        : L"Couldn't save your notes. Choose a writable folder and try "
@@ -124,7 +126,7 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Couldn't save the PDF notes.");
 		if (!m_closing && !viewer->m_closed) {
-			viewer->showNotice(viewer->m_formsDirty
+			viewer->showNotice(viewer->m_formsDirty || viewer->m_pagesDirty
 			                       ? L"Couldn't save your changes. They are "
 			                         L"still open; try another folder."
 			                       : L"Couldn't save your notes. Your notes "
