@@ -191,7 +191,7 @@ void ViewerPage::setupToolSurfaces() {
 }
 
 void ViewerPage::setAllToolsOpen(bool open) {
-	if (m_closed) {
+	if (m_closed || (open && organizing())) {
 		return;
 	}
 	const auto checked = AllToolsButton().IsChecked();
@@ -255,7 +255,7 @@ void ViewerPage::updateQuickTools() {
 	if (m_closed || !m_toolSurfacesSetup) {
 		return;
 	}
-	QuickTools().Visibility(s_quickTools && !m_presentation
+	QuickTools().Visibility(s_quickTools && !m_presentation && !organizing()
 	                            ? Visibility::Visible
 	                            : Visibility::Collapsed);
 	m_syncingQuickTools = true;

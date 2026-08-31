@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
@@ -55,6 +56,10 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 	// a tool picked before the PDF finished opening waits for it.
 	if (!m_layout) {
 		m_pendingTool = tool;
+		return;
+	}
+	if (organizing() && tool != L"organize") {
+		showNotice(L"Finish Organize before opening another tool.");
 		return;
 	}
 	if (tool == L"readaloud") {
@@ -98,7 +103,7 @@ void ViewerPage::openFillSign() {
 }
 
 bool ViewerPage::organizing() {
-	return OrganizePanel().Visibility() == XVisibility::Visible;
+	return m_organizeView.has_value();
 }
 
 void ViewerPage::setupOrganize() {
@@ -181,11 +186,40 @@ void ViewerPage::openOrganize() {
 	    m_noteBusy || m_noteSaving) {
 		return;
 	}
+	if (organizing()) {
+		OrganizeGrid().Focus(FocusState::Programmatic);
+		return;
+	}
 	setupOrganize();
+	m_organizeView =
+	    OrganizeView{thumbnailsOpen(),
+	                 outlineOpen(),
+	                 attachmentsOpen(),
+	                 commentsOpen(),
+	                 AllToolsPanel().Visibility() == XVisibility::Visible,
+	                 findOpen(),
+	                 readingAloud() && !m_readAloudPaused};
 	cancelNotePlacement();
 	clearAnnotationSelection();
 	clearTextSelection();
+	closeFind();
+	pauseReadAloud();
+	ReadAloudBar().Visibility(XVisibility::Collapsed);
+	ReadAloudFrame().Visibility(XVisibility::Collapsed);
+	setAllToolsOpen(false);
+	setThumbnailsOpen(false);
+	setOutlineOpen(false);
+	setAttachmentsOpen(false);
+	setCommentsOpen(false);
+	for (const auto& button :
+	     {ThumbnailsButton(), OutlineButton(), AttachmentButton(),
+	      CommentsButton(), AllToolsButton()}) {
+		button.IsEnabled(false);
+	}
+	BarFindButton().IsEnabled(false);
+	Scroller().IsEnabled(false);
 	OrganizePanel().Visibility(XVisibility::Visible);
+	updateQuickTools();
 	fillOrganize();
 	OrganizeGrid().Focus(FocusState::Programmatic);
 }
@@ -196,13 +230,36 @@ void ViewerPage::closeOrganize() {
 	}
 	m_organizeTimer.Stop();
 	++m_organizeVersion;
+	const auto previous = *std::exchange(m_organizeView, std::nullopt);
 	OrganizePanel().Visibility(XVisibility::Collapsed);
 	OrganizeGrid().Items().Clear();
+	Scroller().IsEnabled(true);
+	for (const auto& button :
+	     {ThumbnailsButton(), OutlineButton(), AttachmentButton(),
+	      CommentsButton(), AllToolsButton()}) {
+		button.IsEnabled(true);
+	}
+	BarFindButton().IsEnabled(true);
+	setThumbnailsOpen(previous.thumbnails);
+	setOutlineOpen(previous.outline);
+	setAttachmentsOpen(previous.attachments);
+	setCommentsOpen(previous.comments);
+	setAllToolsOpen(previous.launcher);
+	if (previous.find) {
+		openFind();
+	}
+	if (readingAloud()) {
+		ReadAloudBar().Visibility(XVisibility::Visible);
+		if (previous.resumeReadAloud) {
+			resumeReadAloud();
+		}
+		updateReadAloudFrame();
+	}
 	// tiles took the render queue, so pages it turned away get a new try.
 	m_failed.clear();
 	m_retriedRenders.clear();
 	updateVisible();
-	Scroller().Focus(FocusState::Programmatic);
+	takeFocus();
 }
 
 void ViewerPage::fillOrganize() {

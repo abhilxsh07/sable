@@ -469,6 +469,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// read-aloud.json next to config.json; MainWindow sets it
 	static inline std::filesystem::path s_readAloudFile;
 	bool m_organizeSetup = false, m_organizeBusy = false;
+	struct OrganizeView {
+		bool thumbnails, outline, attachments, comments;
+		bool launcher, find, resumeReadAloud;
+	};
+	std::optional<OrganizeView> m_organizeView;
 	bool m_organizeRendering = false;
 	std::size_t m_organizeTile = 0;
 	std::uint64_t m_organizeVersion = 0;

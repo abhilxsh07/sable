@@ -78,6 +78,9 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		v.openOrganize();
 		check(!v.organizing(), "Organize opened during a save");
 		v.m_noteSaving = false;
+		v.setThumbnailsOpen(true);
+		v.setAllToolsOpen(true);
+		v.openFind();
 		owner.openTool(L"organize");
 		check(v.organizing() && v.OrganizeGrid().Items().Size() == 3,
 		      "Organize did not show a tile per page");
@@ -87,6 +90,35 @@ void TabsTest::organizeTick(MainWindow& owner) {
 			check(ticks < 100, "Organize tiles did not render");
 			return;
 		}
+		check(!v.thumbnailsOpen() && !v.findOpen() &&
+		          v.AllToolsPanel().Visibility() == Visibility::Collapsed &&
+		          v.QuickTools().Visibility() == Visibility::Collapsed &&
+		          !v.ThumbnailsButton().IsEnabled() &&
+		          !v.AllToolsButton().IsEnabled(),
+		      "reader surfaces stayed active under Organize");
+		owner.m_presenter.Restore();
+		for (const auto& size : {Windows::Graphics::SizeInt32{1920, 1080},
+		                         Windows::Graphics::SizeInt32{1366, 768},
+		                         Windows::Graphics::SizeInt32{1024, 768}}) {
+			owner.AppWindow().Resize(size);
+			owner.RootGrid().UpdateLayout();
+			v.UpdateLayout();
+			const auto bounds = [&](const FrameworkElement& element) {
+				return element.TransformToVisual(v).TransformBounds(
+				    {0, 0, static_cast<float>(element.ActualWidth()),
+				     static_cast<float>(element.ActualHeight())});
+			};
+			const auto grid = bounds(v.OrganizePanel());
+			const auto rail = bounds(v.Rail());
+			check(grid.Width > 0 && grid.X >= 0 &&
+			          grid.X + grid.Width <= rail.X + 1 &&
+			          grid.Y + grid.Height <= v.ActualHeight() + 1,
+			      "Organize overlaps the rail or leaves the viewer bounds");
+		}
+		check(v.ThumbnailPanel().Background() &&
+		          v.OutlinePanel().Background() &&
+		          v.AttachmentPanel().Background(),
+		      "a navigation panel has no opaque background");
 		check(v.OrganizeStatus().Text() == L"3 pages" &&
 		          !v.OrganizeDelete().IsEnabled(),
 		      "Organize state without a selection");
@@ -164,6 +196,12 @@ void TabsTest::organizeTick(MainWindow& owner) {
 	case 5:
 		check(!v.organizing() && v.m_layout && v.m_layout->pages().size() == 2,
 		      "Done did not return to the changed pages");
+		check(v.thumbnailsOpen() && v.findOpen() &&
+		          v.AllToolsPanel().Visibility() == Visibility::Visible &&
+		          v.ThumbnailsButton().IsEnabled(),
+		      "Done did not restore the reader surfaces");
+		v.closeFind();
+		v.setAllToolsOpen(false);
 		owner.openTool(L"comment");
 		check(v.commentsOpen(), "Comment did not open Comments");
 		v.setCommentsOpen(false);

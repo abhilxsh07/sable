@@ -3515,3 +3515,15 @@ Every tile reserves the same cell for its page and caption. The page
 keeps its shape and sits in the centre, so a landscape first page can't
 crop the next portrait page. Rotation updates the selected tiles in
 place and only renders the images it cleared; selection stays put.
+
+## Organize owns the canvas (2026-11-12)
+
+Organize remembers the open navigation panel, launcher and Find, closes
+them and hides the quick strip until Done. Its grid stays in the canvas
+column beside the rail. Panel toggles and reader input stay off while it
+is open; Done restores the previous surfaces. Read Aloud pauses and its
+overlays hide. Presentation leaves Organize and stops speech. Navigation
+panels now have the same opaque themed background as Comments.
+
+This is the Organize portion of the audit layout plan. The docked tool
+pane host and command-bar replacement remain separate work.

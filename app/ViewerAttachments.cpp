@@ -63,7 +63,7 @@ void ViewerPage::setupAttachments() {
 	});
 }
 void ViewerPage::setAttachmentsOpen(bool open) {
-	if (m_closed || (open && !m_layout)) {
+	if (m_closed || (open && (!m_layout || organizing()))) {
 		return;
 	}
 	if (open) {

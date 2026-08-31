@@ -95,7 +95,8 @@ void ViewerPage::setupReadAloud() {
 }
 
 void ViewerPage::startReadAloud() {
-	if (m_closed || !m_session || !m_layout || m_sizes.empty()) {
+	if (m_closed || !m_session || !m_layout || organizing() ||
+	    m_sizes.empty()) {
 		return;
 	}
 	if (readingAloud()) {
@@ -408,7 +409,7 @@ void ViewerPage::updateReadAloudBar() {
 
 // the outline follows the page through scrolling and zoom
 void ViewerPage::updateReadAloudFrame() {
-	if (!m_readAloudPage || !m_layout ||
+	if (!m_readAloudPage || !m_layout || organizing() ||
 	    *m_readAloudPage >= m_layout->pages().size()) {
 		ReadAloudFrame().Visibility(Visibility::Collapsed);
 		return;

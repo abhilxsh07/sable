@@ -163,6 +163,9 @@ bool ViewerPage::takeFocus() {
 	    Visibility() != XVisibility::Visible) {
 		return false;
 	}
+	if (organizing()) {
+		return OrganizeGrid().Focus(FocusState::Programmatic);
+	}
 	return findOpen() ? FindBox().Focus(FocusState::Programmatic)
 	                  : Scroller().Focus(FocusState::Programmatic);
 }
@@ -1082,6 +1085,9 @@ bool ViewerPage::thumbnailsOpen() {
 // thumbnail and scrolls it into view. The pages get the room back, and
 // "auto" and the fitting presets refit through the scroller's SizeChanged.
 void ViewerPage::setThumbnailsOpen(bool open) {
+	if (open && organizing()) {
+		return;
+	}
 	if (open) {
 		setOutlineOpen(false);
 		setAttachmentsOpen(false);

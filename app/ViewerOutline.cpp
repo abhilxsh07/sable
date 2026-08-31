@@ -76,7 +76,7 @@ void ViewerPage::setupOutline() {
 	    });
 }
 void ViewerPage::setOutlineOpen(bool open) {
-	if (m_closed || (open && !m_layout)) {
+	if (m_closed || (open && (!m_layout || organizing()))) {
 		return;
 	}
 	if (open) {

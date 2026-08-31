@@ -251,8 +251,8 @@ void ViewerPage::setupComments() {
 	    UIElement::VisibilityProperty(), visibility);
 }
 void ViewerPage::setCommentsOpen(bool open) {
-	if (m_closed ||
-	    (open && (!m_layout || Rail().Visibility() != XVisibility::Visible))) {
+	if (m_closed || (open && (!m_layout || organizing() ||
+	                          Rail().Visibility() != XVisibility::Visible))) {
 		return;
 	}
 	if (open) {

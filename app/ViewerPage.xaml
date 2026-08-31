@@ -246,7 +246,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 		<!-- Organize: every page as a tile to select, turn, delete, drag
 			into a new order, insert into or copy out to a new PDF -->
-		<Grid Grid.Row="1" x:Name="OrganizePanel" Grid.ColumnSpan="3"
+		<Grid Grid.Row="1" x:Name="OrganizePanel"
 			Visibility="Collapsed"
 			Background="{ThemeResource SableViewerBrush}">
 			<Grid.RowDefinitions>
@@ -286,7 +286,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
 		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200"
-			Visibility="Collapsed"
+			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<ScrollViewer x:Name="ThumbnailScroller"
@@ -298,7 +298,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
 		<Border x:Name="OutlinePanel" Grid.Row="1" Grid.Column="1" Width="200"
-			Visibility="Collapsed"
+			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
@@ -330,7 +330,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<Border x:Name="AttachmentPanel" Grid.Row="1" Grid.Column="1"
 			Width="200"
-			Visibility="Collapsed"
+			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
 			<Grid>
