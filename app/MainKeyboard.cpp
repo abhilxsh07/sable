@@ -56,6 +56,34 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	const bool editing = focused.try_as<Controls::TextBox>() ||
 	                     focused.try_as<Controls::PasswordBox>() ||
 	                     focused.try_as<Controls::RichEditBox>();
+	if (viewer && viewer->organizing()) {
+		if (!editing && viewer->organizeKey(key, modifiers, repeated)) {
+			return true;
+		}
+		const auto* binding =
+		    helpers::matchShortcut(m_shortcuts, key, modifiers);
+		const bool shell = (binding && (binding->action == "openNewPDF" ||
+		                                binding->action == "close-tab" ||
+		                                binding->action == "switch-tab" ||
+		                                binding->action == "move-tab" ||
+		                                binding->action == "reopen-tab")) ||
+		                   (modifiers == helpers::SHORTCUT_CTRL &&
+		                    (key == 'S' || key == 'O' || key == 'P' ||
+		                     (key >= '1' && key <= '9'))) ||
+		                   (modifiers == helpers::SHORTCUT_ALT && key == 'S');
+		if (!shell) {
+			// the grid keeps its native focus, selection and scrolling keys.
+			if (editing ||
+			    ((modifiers == 0 || modifiers == helpers::SHORTCUT_SHIFT) &&
+			     (key == VK_TAB || key == VK_LEFT || key == VK_RIGHT ||
+			      key == VK_UP || key == VK_DOWN || key == VK_HOME ||
+			      key == VK_END || key == VK_SPACE || key == VK_PRIOR ||
+			      key == VK_NEXT || key == VK_RETURN))) {
+				return false;
+			}
+			return true;
+		}
+	}
 	if (const auto active = self->Viewer()) {
 		const auto pdf = get_self<ViewerPage>(active);
 		if (modifiers == helpers::SHORTCUT_CTRL && key == 'F') {

@@ -403,6 +403,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void showOrganizeTile(std::size_t page, const pdf::Bitmap& bitmap);
 	std::vector<int> organizeSelection();
 	void showOrganizeState();
+	void deleteOrganizeSelection();
+	bool organizeKey(unsigned key, unsigned modifiers, bool repeated);
 	void reorderPages(std::vector<int> dragged);
 	void organizeEdit(pdf::PageEdit edit);
 	void finishPageEdit(pdf::PageEditResult result,

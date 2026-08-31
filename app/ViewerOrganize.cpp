@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ViewerPage.xaml.h"
 #include "pdf/session.h"
 #include "helpers/attachment_file.h"
+#include "helpers/keybinds.h"
 #include "helpers/logging.h"
 #include <algorithm>
 #include <cmath>
@@ -124,18 +125,9 @@ void ViewerPage::setupOrganize() {
 	OrganizeRotateRight().Click([rotate](auto&&, auto&&) { rotate(1); });
 	OrganizeDelete().Click([weak](auto&&, auto&&) {
 		const auto self = weak.get();
-		if (!self) {
-			return;
+		if (self) {
+			self->deleteOrganizeSelection();
 		}
-		auto pages = self->organizeSelection();
-		if (pages.empty()) {
-			return;
-		}
-		if (pages.size() >= self->m_sizes.size()) {
-			self->showNotice(L"A PDF needs at least one page.");
-			return;
-		}
-		self->organizeEdit({pdf::PageEditKind::Delete, std::move(pages)});
 	});
 	OrganizeInsert().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
@@ -422,6 +414,39 @@ std::vector<int> ViewerPage::organizeSelection() {
 	}
 	std::sort(pages.begin(), pages.end());
 	return pages;
+}
+
+void ViewerPage::deleteOrganizeSelection() {
+	if (pageOperationBusy() || m_noteSaving || m_noteBusy) {
+		return;
+	}
+	auto pages = organizeSelection();
+	if (pages.empty()) {
+		return;
+	}
+	if (pages.size() >= m_sizes.size()) {
+		showNotice(L"A PDF needs at least one page.");
+		return;
+	}
+	organizeEdit({pdf::PageEditKind::Delete, std::move(pages)});
+}
+
+bool ViewerPage::organizeKey(unsigned key, unsigned modifiers, bool repeated) {
+	if (key == VK_ESCAPE && modifiers == 0) {
+		closeOrganize();
+		return true;
+	}
+	if (key == 'A' && modifiers == helpers::SHORTCUT_CTRL) {
+		OrganizeGrid().SelectAll();
+		return true;
+	}
+	if (key == VK_DELETE && modifiers == 0) {
+		if (!repeated) {
+			deleteOrganizeSelection();
+		}
+		return true;
+	}
+	return false;
 }
 
 void ViewerPage::showOrganizeState() {

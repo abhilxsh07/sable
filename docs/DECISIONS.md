@@ -3527,3 +3527,11 @@ panels now have the same opaque themed background as Comments.
 
 This is the Organize portion of the audit layout plan. The docked tool
 pane host and command-bar replacement remain separate work.
+
+## Organize keyboard routing (2026-11-12)
+
+While Organize owns the canvas, Ctrl+A selects its tiles, Delete uses
+the same refusal checks as its button and Esc returns to reading.
+GridView keeps its native arrows, Home, End and Space. Reader bindings
+are held off; save, print, open, tab switching and closing still belong
+to the window. NightPDF's bindings are unchanged in reading mode.

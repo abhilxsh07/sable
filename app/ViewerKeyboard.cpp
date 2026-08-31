@@ -34,8 +34,9 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 	using helpers::NavKey;
 	using Windows::System::VirtualKey;
 	// a menu opened from the rail keeps its own keys
-	if (!m_layout || m_closed || m_presentation || m_propertiesDialog ||
-	    m_passwordDialog || source.try_as<MenuFlyoutItemBase>()) {
+	if (!m_layout || m_closed || m_presentation || organizing() ||
+	    m_propertiesDialog || m_passwordDialog ||
+	    source.try_as<MenuFlyoutItemBase>()) {
 		return false;
 	}
 	// Sidebar lists keep their native arrows, type-ahead and selection keys.

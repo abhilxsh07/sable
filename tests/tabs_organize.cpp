@@ -136,6 +136,22 @@ void TabsTest::organizeTick(MainWindow& owner) {
 			      "a refused reorder left the tiles ahead of the PDF");
 			v.showOrganizeState();
 		}
+		owner.m_shortcuts.push_back({VK_F9, 0, "close-tab", {}});
+		v.m_exporting = true;
+		v.showNotice(L"Checking the remapped close binding.");
+		check(owner.routeKey(VK_F9, 0, false) &&
+		          v.Message().Message() ==
+		              L"Wait for the page operation to finish before closing.",
+		      "Organize swallowed a remapped close-tab binding");
+		v.m_exporting = false;
+		owner.m_shortcuts.pop_back();
+		v.showOrganizeState();
+		check(owner.routeKey('F', helpers::SHORTCUT_CTRL, false) &&
+		          !v.findOpen(),
+		      "Organize let Ctrl+F open the hidden reader");
+		check(owner.routeKey('A', helpers::SHORTCUT_CTRL, false) &&
+		          v.organizeSelection().size() == 3 && !v.hasTextSelection(),
+		      "Ctrl+A selected reader text instead of all tiles");
 		select({0, 2});
 		check(v.OrganizeStatus().Text() == L"3 pages · 2 selected",
 		      "Organize did not count the selection");
@@ -179,7 +195,7 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(sized(0, 300, 200) && sized(1, 842, 595) && sized(2, 792, 612),
 		      "dragging the last page first did not move it");
 		select({0});
-		invoke(v.OrganizeDelete());
+		check(owner.routeKey(VK_DELETE, 0, false), "Organize ignored Delete");
 		break;
 	case 4:
 		check(v.m_sizes.size() == 2 && sized(0, 842, 595) &&
@@ -191,7 +207,7 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		          v.Message().Message() == L"A PDF needs at least one page." &&
 		          v.m_sizes.size() == 2,
 		      "deleting every page was not refused");
-		invoke(v.OrganizeDone());
+		check(owner.routeKey(VK_ESCAPE, 0, false), "Organize ignored Esc");
 		break;
 	case 5:
 		check(!v.organizing() && v.m_layout && v.m_layout->pages().size() == 2,
