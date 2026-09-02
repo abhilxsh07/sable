@@ -295,6 +295,12 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 }
 
 void ViewerPage::close() {
+	closeOrganize(false);
+	if (m_organizeVisibility) {
+		UnregisterPropertyChangedCallback(UIElement::VisibilityProperty(),
+		                                  m_organizeVisibility);
+		m_organizeVisibility = 0;
+	}
 	clearAnnotationSelection();
 	stopReadAloud();
 	if (m_presentationTimer) {

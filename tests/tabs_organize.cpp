@@ -81,12 +81,13 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		v.setThumbnailsOpen(true);
 		v.setAllToolsOpen(true);
 		v.openFind();
+		v.requestProperties();
 		owner.openTool(L"organize");
 		check(v.organizing() && v.OrganizeGrid().Items().Size() == 3,
 		      "Organize did not show a tile per page");
 		break;
 	case 1:
-		if (v.m_organizeTile < 3) {
+		if (v.m_organizeTile < 3 || v.m_propertiesPending) {
 			check(ticks < 100, "Organize tiles did not render");
 			return;
 		}
@@ -122,6 +123,23 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(v.OrganizeStatus().Text() == L"3 pages" &&
 		          !v.OrganizeDelete().IsEnabled(),
 		      "Organize state without a selection");
+		check(v.m_properties && v.m_properties->pages == 3,
+		      "couldn't cache the original document properties");
+		select({1});
+		{
+			const auto version = v.m_organizeVersion;
+			v.Visibility(Visibility::Collapsed);
+			check(!v.m_organizeTimer.IsRunning() &&
+			          v.OrganizeGrid().Items().Size() == 0 &&
+			          !v.m_organizeRendering && v.m_organizeVersion > version,
+			      "hidden Organize kept its tile timer or bitmaps");
+			v.Visibility(Visibility::Visible);
+			v.activate();
+			check(v.organizing() && v.OrganizeGrid().Items().Size() == 3 &&
+			          v.organizeSelection() == std::vector<int>({1}),
+			      "showing Organize did not restore its tiles and selection");
+		}
+		select({});
 		{
 			// a drop can finish after another operation took the edit lock.
 			auto items = v.OrganizeGrid().Items();
@@ -164,6 +182,8 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(v.organizeSelection() == std::vector<int>({0, 2}) &&
 		          v.OrganizeRotateRight().IsEnabled() && v.m_pagesDirty,
 		      "rotation lost the selected pages");
+		check(!v.m_properties && !v.m_propertiesPending,
+		      "page edits kept cached document properties");
 		{
 			// the first page is landscape now; it mustn't size the other cells.
 			v.OrganizeGrid().UpdateLayout();
@@ -195,12 +215,21 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(sized(0, 300, 200) && sized(1, 842, 595) && sized(2, 792, 612),
 		      "dragging the last page first did not move it");
 		select({0});
+		v.m_readAloudSilent = true;
+		v.m_readAloudPage = 2;
+		v.m_readAloudPaused = true;
+		v.m_readAloudWords = "stale page text";
 		check(owner.routeKey(VK_DELETE, 0, false), "Organize ignored Delete");
 		break;
 	case 4:
 		check(v.m_sizes.size() == 2 && sized(0, 842, 595) &&
 		          v.OrganizeGrid().Items().Size() == 2,
 		      "Delete did not remove the selected page");
+		check(v.m_readAloudPage == 1u && v.m_readAloudPaused &&
+		          v.m_readAloudWords != "stale page text",
+		      "page edits kept stale Read Aloud page numbers or text");
+		v.stopReadAloud();
+		v.requestProperties();
 		select({0, 1});
 		invoke(v.OrganizeDelete());
 		check(v.Message().IsOpen() &&
@@ -210,6 +239,11 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(owner.routeKey(VK_ESCAPE, 0, false), "Organize ignored Esc");
 		break;
 	case 5:
+		if (v.m_propertiesPending) {
+			return;
+		}
+		check(v.m_properties && v.m_properties->pages == 2,
+		      "Properties did not reload the changed page count");
 		check(!v.organizing() && v.m_layout && v.m_layout->pages().size() == 2,
 		      "Done did not return to the changed pages");
 		check(v.thumbnailsOpen() && v.findOpen() &&
@@ -249,7 +283,12 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		          L"Save changes",
 		      "Comments described page edits as notes");
 		v.CommentsMoreButton().Flyout().Hide();
+		v.openOrganize();
 		v.close();
+		check(!v.m_organizeTimer.IsRunning() &&
+		          v.OrganizeGrid().Items().Size() == 0 &&
+		          !v.m_organizeRendering,
+		      "closing Organize kept its timer or bitmaps");
 		status.Text(L"PASS: Organize rotate, move, delete and refusal");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();

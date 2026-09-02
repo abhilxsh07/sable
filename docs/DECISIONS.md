@@ -3542,3 +3542,15 @@ I track page edits separately from notes. Rotate, Delete, Move and Insert
 use "Save your changes?", "Save changes" and an "edited.pdf" copy name,
 as form edits already do. Note-only documents keep their existing
 wording. Both kinds of dirty state clear only after a successful save.
+
+## Organize teardown and changed-page caches (2026-11-12)
+
+A hidden Organize tab stops its tile timer and releases its images. It
+keeps the selected page numbers and rebuilds the tiles when shown again.
+Closing releases them without reopening any of the remembered panels.
+Render callbacks check their generation before changing queue state.
+
+Page edits invalidate Properties, including an older request still in
+flight. Read Aloud drops the previous text, clamps its page to the new
+count and fetches it again, keeping the paused state in Organize. The
+large-document tile cache while Organize is visible is separate work.

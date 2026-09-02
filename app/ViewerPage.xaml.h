@@ -396,7 +396,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	}
 	void setupOrganize();
 	void openOrganize();
-	void closeOrganize();
+	void closeOrganize(bool restore = true);
+	void releaseOrganizeTiles();
 	void fillOrganize();
 	void sizeOrganizeTile(std::size_t page);
 	void renderOrganizeTile();
@@ -476,6 +477,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		bool launcher, find, resumeReadAloud;
 	};
 	std::optional<OrganizeView> m_organizeView;
+	std::vector<int> m_organizeHiddenSelection;
+	std::int64_t m_organizeVisibility = 0;
 	bool m_organizeRendering = false;
 	std::size_t m_organizeTile = 0;
 	std::uint64_t m_organizeVersion = 0;

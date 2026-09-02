@@ -170,6 +170,19 @@ void ViewerPage::setupOrganize() {
 			self->renderOrganizeTile();
 		}
 	});
+	m_organizeVisibility = RegisterPropertyChangedCallback(
+	    UIElement::VisibilityProperty(), [weak](auto&&, auto&&) {
+		    const auto self = weak.get();
+		    if (!self || self->m_closed || !self->organizing()) {
+			    return;
+		    }
+		    if (self->Visibility() == XVisibility::Visible) {
+			    self->fillOrganize();
+		    } else {
+			    self->m_organizeHiddenSelection = self->organizeSelection();
+			    self->releaseOrganizeTiles();
+		    }
+	    });
 }
 
 void ViewerPage::openOrganize() {
@@ -216,15 +229,25 @@ void ViewerPage::openOrganize() {
 	OrganizeGrid().Focus(FocusState::Programmatic);
 }
 
-void ViewerPage::closeOrganize() {
+void ViewerPage::releaseOrganizeTiles() {
+	m_organizeTimer.Stop();
+	++m_organizeVersion;
+	m_organizeRendering = false;
+	m_organizeTile = 0;
+	OrganizeGrid().Items().Clear();
+}
+
+void ViewerPage::closeOrganize(bool restore) {
 	if (!m_organizeSetup || !organizing()) {
 		return;
 	}
-	m_organizeTimer.Stop();
-	++m_organizeVersion;
 	const auto previous = *std::exchange(m_organizeView, std::nullopt);
 	OrganizePanel().Visibility(XVisibility::Collapsed);
-	OrganizeGrid().Items().Clear();
+	releaseOrganizeTiles();
+	m_organizeHiddenSelection.clear();
+	if (!restore) {
+		return;
+	}
 	Scroller().IsEnabled(true);
 	for (const auto& button :
 	     {ThumbnailsButton(), OutlineButton(), AttachmentButton(),
@@ -255,6 +278,10 @@ void ViewerPage::closeOrganize() {
 }
 
 void ViewerPage::fillOrganize() {
+	if (m_closed || Visibility() != XVisibility::Visible) {
+		releaseOrganizeTiles();
+		return;
+	}
 	++m_organizeVersion;
 	auto items = OrganizeGrid().Items();
 	items.Clear();
@@ -286,6 +313,12 @@ void ViewerPage::fillOrganize() {
 		items.Append(tile);
 		sizeOrganizeTile(page);
 	}
+	for (const int page : m_organizeHiddenSelection) {
+		if (page >= 0 && static_cast<uint32_t>(page) < items.Size()) {
+			OrganizeGrid().SelectRange(Data::ItemIndexRange(page, 1));
+		}
+	}
+	m_organizeHiddenSelection.clear();
 	m_organizeTile = 0;
 	m_organizeRendering = false;
 	m_organizeTimer.Start();
@@ -311,7 +344,12 @@ void ViewerPage::sizeOrganizeTile(std::size_t page) {
 }
 
 void ViewerPage::renderOrganizeTile() {
-	if (m_closed || !m_session || !organizing() || m_organizeRendering) {
+	if (m_closed || !m_session || !organizing() ||
+	    Visibility() != XVisibility::Visible) {
+		m_organizeTimer.Stop();
+		return;
+	}
+	if (m_organizeRendering) {
 		return;
 	}
 	const auto items = OrganizeGrid().Items();
@@ -358,9 +396,11 @@ void ViewerPage::renderOrganizeTile() {
 			    if (!self) {
 				    return;
 			    }
+			    if (self->m_closed || version != self->m_organizeVersion) {
+				    return;
+			    }
 			    self->m_organizeRendering = false;
-			    if (self->m_closed || version != self->m_organizeVersion ||
-			        rendered->canceled) {
+			    if (rendered->canceled) {
 				    return;
 			    }
 			    if (rendered->bitmap) {
@@ -579,7 +619,11 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 	m_pagesDirty = true;
 	pagesChanged(std::move(result.info));
 	if (organizing()) {
-		if (rotated.empty()) {
+		if (rotated.empty() || Visibility() != XVisibility::Visible ||
+		    OrganizeGrid().Items().Size() != m_sizes.size()) {
+			if (rotated.empty()) {
+				m_organizeHiddenSelection.clear();
+			}
 			fillOrganize();
 		} else {
 			++m_organizeVersion;
@@ -602,6 +646,20 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 	}
 	const auto page = (std::min)(m_current, sizes.size() - 1);
 	m_sizes = std::move(sizes);
+	++m_propertiesVersion;
+	m_propertiesPending = false;
+	m_propertiesFailed = false;
+	m_properties.reset();
+	m_propertiesPage = page;
+	m_propertiesSize = helpers::rotatedSize(m_sizes[page], m_rotation);
+	const auto readPage = m_readAloudPage;
+	const bool wasPaused = m_readAloudPaused;
+	if (readPage) {
+		pauseReadAloud();
+		++m_readAloudGeneration;
+		m_readAloudPending = false;
+		m_readAloudWords.clear();
+	}
 	// the same page number can now hold another page's text
 	m_pageTextPage.reset();
 	m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
@@ -621,6 +679,15 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 		return;
 	}
 	// every page index may have moved, so the comments are listed again.
+	if (m_propertiesDialog) {
+		requestProperties();
+	}
+	if (readPage) {
+		readAloudPage((std::min)(*readPage, m_sizes.size() - 1));
+		if (!wasPaused && !organizing()) {
+			resumeReadAloud();
+		}
+	}
 	refreshNotes();
 	showPosition();
 	showComments();
