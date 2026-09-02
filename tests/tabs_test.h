@@ -140,6 +140,7 @@ struct TabsTest {
 	int panelsRound = 0;
 	std::vector<std::string> panelsSeen;
 	std::vector<std::string> panelsFaults;
+	ViewerPage* panelsShort = nullptr;
 	bool presentationOnly = false;
 	bool saveCopyOnly = false;
 	bool keyboardOnly = false;

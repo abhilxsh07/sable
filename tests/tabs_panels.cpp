@@ -33,8 +33,12 @@ namespace {
 // stale.
 //   tools-over-page    All tools and the quick strip lie over the pages
 //   notice-overlap     notices float over the bars and the pages
-constexpr std::array<std::string_view, 2> OPEN_FAULTS = {"tools-over-page",
-                                                         "notice-overlap"};
+//   failed-tab-chrome  a tab that didn't open keeps its command bar
+//   thumbs-top         a short thumbnail list sits in the middle
+//   min-size           the window shrinks until the rail overlaps itself
+constexpr std::array<std::string_view, 5> OPEN_FAULTS = {
+    "tools-over-page", "notice-overlap", "failed-tab-chrome", "thumbs-top",
+    "min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
@@ -363,7 +367,62 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			ticks = 0;
 			return;
 		}
-		finish(L"panels at three sizes");
+		// a short document, where the thumbnail list ends above the
+		// panel's foot
+		resize(1);
+		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
+		break;
+	}
+	case 2:
+		check(ticks < 115, "panels: the short document didn't open");
+		if (&v == first.get() || !ready(v) || ticks < 4) {
+			return;
+		}
+		panelsShort = &v;
+		v.setThumbnailsOpen(true);
+		break;
+	case 3:
+		if (ticks < 4) {
+			return;
+		}
+		expect(box(v.Thumbnails()).Y - box(v.ThumbnailScroller()).Y < 1,
+		       "thumbs-top",
+		       "short document: the thumbnails don't start at the top");
+		measure("1366x768 short document");
+		owner.openDocument(engine, L"tests/fixtures/broken.pdf", 1);
+		break;
+	case 4:
+		// the broken file's tab, once it says why it didn't open
+		check(ticks < 115, "panels: the broken file's tab never said why");
+		if (&v == first.get() || &v == panelsShort || ticks < 4 ||
+		    !shown(v.Message())) {
+			return;
+		}
+		expect(!shown(v.DocumentBar()), "failed-tab-chrome",
+		       "failed tab: the command bar is still there");
+		expect(!shown(v.QuickTools()), "failed-tab-chrome",
+		       "failed tab: the quick strip is still there");
+		measure("failed tab");
+		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
+		owner.m_presenter.Restore();
+		// the window stops at its minimum size
+		owner.AppWindow().Resize({1, 1});
+		break;
+	case 5: {
+		check(ticks < 115, "panels: the window didn't come back");
+		if (&v != first.get() || !ready(v) || ticks < 6) {
+			return;
+		}
+		const auto scale = root.XamlRoot().RasterizationScale();
+		const auto outer = owner.AppWindow().Size();
+		expect(outer.Width >= 720 * scale - 1 &&
+		           outer.Height >= 540 * scale - 1,
+		       "min-size",
+		       "minimum window is " + std::to_string(outer.Width) + "x" +
+		           std::to_string(outer.Height) + " px");
+		measure("minimum size", "min-size");
+		finish(L"panels at three sizes, a short document, a failed "
+		       L"tab and the minimum size");
 		return;
 	}
 	default:

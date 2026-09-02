@@ -2,6 +2,25 @@
 
 Started: 19 October 2026. Target: the current local alpha source.
 
+## Panel layout probe (13 November 2026)
+
+The Panels probe opens long.pdf and, maximized and at 1366x768 and
+1024x768, shows thumbnails, outline, comments, attachments, All tools,
+Find, Organize and a notice in turn. For each one it reads the bounds of
+every visible panel and fails when two overlap, one leaves the window,
+the rail's controls collide, or an Organize tile is cut off or a
+different size. Organize over the disabled pages and the Read Aloud bar
+are the only overlaps allowed. It then checks a short document's
+thumbnails, a tab that failed to open and the minimum window size.
+
+Five faults are still open and listed in the probe: All tools and the
+quick strip over the pages, notices over the bars, the command bar on a
+failed tab, short thumbnail lists in the middle of the panel, and a
+565x200 minimum that lets the rail overlap itself. The probe reports
+those, and fails once one of them stops happening until it comes off
+the list. The full probe run passes 70 of 71; KeyboardInput fails
+because the Google Drive app owns Ctrl+Alt+G.
+
 ## Fill & Sign check marks and crosses (10 November 2026)
 
 I open pages.pdf, choose Fill & Sign in Comments and cancel the first
