@@ -136,6 +136,10 @@ struct TabsTest {
 	int freezeShows = 0;
 	helpers::PageSize gestureSize{};
 	bool layoutOnly = false;
+	bool panelsOnly = false;
+	int panelsRound = 0;
+	std::vector<std::string> panelsSeen;
+	std::vector<std::string> panelsFaults;
 	bool presentationOnly = false;
 	bool saveCopyOnly = false;
 	bool keyboardOnly = false;
@@ -455,6 +459,7 @@ struct TabsTest {
 	void selectionTick(MainWindow& owner);
 	void presentationTick(MainWindow& owner);
 	void layoutTick(MainWindow& owner);
+	void panelsTick(MainWindow& owner);
 	void longGesturesTick(MainWindow& owner);
 	void gesturesTick(MainWindow& owner);
 	void panTick(MainWindow& owner);

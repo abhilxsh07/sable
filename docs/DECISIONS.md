@@ -3554,3 +3554,11 @@ Page edits invalidate Properties, including an older request still in
 flight. Read Aloud drops the previous text, clamps its page to the new
 count and fetches it again, keeping the paused state in Organize. The
 large-document tile cache while Organize is visible is separate work.
+
+## Known layout faults in the Panels probe (2026-11-13)
+
+The Panels probe goes in before the layout fixes, so it would fail until
+the tool pane exists. I list the faults that are still open in the probe
+instead. A check that finds one reports it and goes on; anything else
+fails. Once a fix lands, its fault stops showing up and the probe fails
+until I take it off the list, so the list can't outlive the bugs.
