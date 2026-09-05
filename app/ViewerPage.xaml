@@ -292,7 +292,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<ScrollViewer x:Name="ThumbnailScroller"
 				HorizontalScrollBarVisibility="Disabled"
 				VerticalScrollBarVisibility="Auto">
-				<Canvas x:Name="Thumbnails" TabFocusNavigation="Local" />
+				<Canvas x:Name="Thumbnails" TabFocusNavigation="Local"
+					VerticalAlignment="Top" />
 			</ScrollViewer>
 		</Border>
 

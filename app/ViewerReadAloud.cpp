@@ -396,9 +396,9 @@ void ViewerPage::updateReadAloudBar() {
 	if (!m_readAloudPage) {
 		return;
 	}
-	ReadAloudPosition().Text(L"Reading page " +
-	                         to_hstring(*m_readAloudPage + 1) + L" of " +
-	                         to_hstring(m_sizes.size()));
+	ReadAloudPosition().Text(
+	    L"Reading page " + to_hstring(helpers::grouped(*m_readAloudPage + 1)) +
+	    L" of " + to_hstring(helpers::grouped(m_sizes.size())));
 	const hstring action = m_readAloudPaused ? L"Play" : L"Pause";
 	ReadAloudPlayIcon().Glyph(m_readAloudPaused ? L"\uE768" : L"\uE769");
 	ToolTipService::SetToolTip(ReadAloudPlay(), box_value(action));

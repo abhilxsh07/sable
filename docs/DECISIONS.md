@@ -3562,3 +3562,10 @@ the tool pane exists. I list the faults that are still open in the probe
 instead. A check that finds one reports it and goes on; anything else
 fails. Once a fix lands, its fault stops showing up and the probe fails
 until I take it off the list, so the list can't outlive the bugs.
+
+## Grouped page counts (2026-11-13)
+
+The rail already prints "of 1,000" the way pdf.js's en-US strings do.
+Organize's count, the Comments loading line, Export's range message and
+Read Aloud's position now use the same grouping. The page box itself
+still takes and shows plain numbers, as in pdf.js.

@@ -26,7 +26,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <utility>
 
 namespace helpers {
-namespace {
 // how @fluent/bundle prints a number in en-US: 1234 becomes "1,234"
 std::string grouped(std::size_t number) {
 	const auto digits = std::to_string(number);
@@ -39,6 +38,8 @@ std::string grouped(std::size_t number) {
 	}
 	return text;
 }
+
+namespace {
 
 bool isSpace(char c) {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' ||

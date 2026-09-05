@@ -34,11 +34,9 @@ namespace {
 //   tools-over-page    All tools and the quick strip lie over the pages
 //   notice-overlap     notices float over the bars and the pages
 //   failed-tab-chrome  a tab that didn't open keeps its command bar
-//   thumbs-top         a short thumbnail list sits in the middle
 //   min-size           the window shrinks until the rail overlaps itself
-constexpr std::array<std::string_view, 5> OPEN_FAULTS = {
-    "tools-over-page", "notice-overlap", "failed-tab-chrome", "thumbs-top",
-    "min-size"};
+constexpr std::array<std::string_view, 4> OPEN_FAULTS = {
+    "tools-over-page", "notice-overlap", "failed-tab-chrome", "min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
@@ -222,6 +220,15 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		// Organize's tiles share one cell and stay inside the grid's width
 		if (v.organizing() && shown(v.OrganizeGrid())) {
 			const auto grid = box(v.OrganizeGrid());
+			// and its page count reads like the rail's "of 1,000"
+			const std::wstring pages =
+			    std::wstring(to_hstring(helpers::grouped(v.m_sizes.size()))) +
+			    L" page";
+			expect(
+			    std::wstring_view(v.OrganizeStatus().Text()).starts_with(pages),
+			    everything,
+			    where + ": Organize says \"" +
+			        to_string(v.OrganizeStatus().Text()) + "\"");
 			std::optional<Windows::Foundation::Rect> cell;
 			const auto count =
 			    (std::min<std::uint32_t>)(v.OrganizeGrid().Items().Size(), 60);

@@ -680,8 +680,10 @@ void ViewerPage::showComments() {
 		                      to_hstring(m_commentScan.nextPage() + 1) + L".");
 	} else if (!m_commentScan.done()) {
 		CommentsStatus().Text(
-		    L"Loading comments\u2026 " + to_hstring(m_commentScan.nextPage()) +
-		    L" of " + to_hstring(m_commentScan.pageCount()) + L" pages");
+		    L"Loading comments\u2026 " +
+		    to_hstring(helpers::grouped(m_commentScan.nextPage())) + L" of " +
+		    to_hstring(helpers::grouped(m_commentScan.pageCount())) +
+		    L" pages");
 	} else {
 		CommentsStatus().Text(
 		    m_commentScan.limited() ? L"Some comments could not be listed."

@@ -165,7 +165,9 @@ fire_and_forget ViewerPage::exportPages() {
 				    args.Cancel(true);
 				    if (const auto text = message.get()) {
 					    text.Text(L"Enter pages like 1-3, 5 between 1 and " +
-					              to_hstring(count) + L".");
+					              to_hstring(helpers::grouped(
+					                  static_cast<std::size_t>(count))) +
+					              L".");
 				    }
 			    }
 		    });

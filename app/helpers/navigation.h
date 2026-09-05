@@ -49,6 +49,9 @@ struct PageText {
 	bool operator==(const PageText&) const = default;
 };
 
+// a count the way pdf.js's en-US strings print it: 1234 becomes "1,234"
+std::string grouped(std::size_t number);
+
 // "3" and "of 128", or with labels "iii" and "(3 of 128)". Counts are
 // grouped like en-US numbers in pdf.js's strings ("of 1,000"), the box
 // isn't.

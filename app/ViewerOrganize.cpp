@@ -499,10 +499,11 @@ void ViewerPage::showOrganizeState() {
 	OrganizeInsert().IsEnabled(idle);
 	OrganizeGrid().CanReorderItems(idle);
 	OrganizeGrid().CanDragItems(idle);
-	auto text = to_hstring(m_sizes.size()) +
+	auto text = to_hstring(helpers::grouped(m_sizes.size())) +
 	            (m_sizes.size() == 1 ? L" page" : L" pages");
 	if (selected) {
-		text = text + L" · " + to_hstring(selected) + L" selected";
+		text = text + L" · " + to_hstring(helpers::grouped(selected)) +
+		       L" selected";
 	}
 	OrganizeStatus().Text(m_organizeBusy ? hstring(L"Updating pages…") : text);
 }

@@ -61,6 +61,16 @@ TEST(PageText, NumberAndCount) {
 	          (helpers::PageText{"1", "of 1,234,567"}));
 }
 
+// Organize, Comments, Export and Read Aloud print their counts like the
+// rail does
+TEST(PageText, GroupedCounts) {
+	EXPECT_EQ(helpers::grouped(0), "0");
+	EXPECT_EQ(helpers::grouped(999), "999");
+	EXPECT_EQ(helpers::grouped(1000), "1,000");
+	EXPECT_EQ(helpers::grouped(2400), "2,400");
+	EXPECT_EQ(helpers::grouped(1234567), "1,234,567");
+}
+
 TEST(PageText, Labels) {
 	const std::vector<std::string> labels = {"i", "ii", "", "1"};
 	EXPECT_EQ(helpers::pageText(1, 4, labels),
