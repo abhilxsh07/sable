@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<Grid Background="{ThemeResource SableViewerBrush}">
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
 			<RowDefinition Height="*" />
 		</Grid.RowDefinitions>
 		<Grid.ColumnDefinitions>
@@ -35,7 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<ColumnDefinition Width="Auto" />
 		</Grid.ColumnDefinitions>
 
-		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="2"
+		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="3"
 			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
 			IsHitTestVisible="False" />
 		<!-- the command bar: All tools on the left; find, save and print on
@@ -157,7 +158,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
 			rectangle, as it has outline: none. -->
-		<ScrollViewer Grid.Row="1" x:Name="Scroller" ZoomMode="Enabled"
+		<ScrollViewer Grid.Row="2" x:Name="Scroller" ZoomMode="Enabled"
 			Background="Transparent"
 			HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled"
 			IsHorizontalRailEnabled="False" IsVerticalRailEnabled="False"
@@ -173,12 +174,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ScrollViewer>
 		<!-- the gesture's last view, kept over the pages while the scroller's
 			zoom resets and they're laid out again at the new zoom -->
-		<Image Grid.Row="1" x:Name="GestureFreeze" Stretch="Fill"
+		<Image Grid.Row="2" x:Name="GestureFreeze" Stretch="Fill"
 			HorizontalAlignment="Left" VerticalAlignment="Top"
 			IsHitTestVisible="False" Visibility="Collapsed"
 			AutomationProperties.AccessibilityView="Raw" />
 		<!-- the stroke being drawn, until the page draws the saved ink -->
-		<Canvas Grid.Row="1" x:Name="InkPreview" IsHitTestVisible="False"
+		<Canvas Grid.Row="2" x:Name="InkPreview" IsHitTestVisible="False"
 			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
 			<Polyline x:Name="InkPreviewLine" StrokeLineJoin="Round"
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
@@ -186,7 +187,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Canvas>
 		<!-- All tools: every tool in one list, grouped, over the left of
 			the pages -->
-		<Border Grid.Row="1" x:Name="AllToolsPanel" Width="230"
+		<Border Grid.Row="2" x:Name="AllToolsPanel" Width="230"
 			HorizontalAlignment="Left" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
@@ -196,7 +197,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</ScrollViewer>
 		</Border>
 		<!-- the quick tools you reach for constantly, floating by the pages -->
-		<Border Grid.Row="1" x:Name="QuickTools" HorizontalAlignment="Left"
+		<Border Grid.Row="2" x:Name="QuickTools" HorizontalAlignment="Left"
 		Visibility="Collapsed"
 			VerticalAlignment="Center" Margin="12,0,0,0" Padding="4"
 			CornerRadius="8" Background="{ThemeResource SablePaneBrush}"
@@ -204,13 +205,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<StackPanel x:Name="QuickToolsList" Spacing="2" />
 		</Border>		<!-- Read Aloud: an outline around the page being read, and the bar
 			that plays, pauses, stops and turns its pages -->
-		<Canvas Grid.Row="1" x:Name="ReadAloudFrame" IsHitTestVisible="False"
+		<Canvas Grid.Row="2" x:Name="ReadAloudFrame" IsHitTestVisible="False"
 			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
 			<Rectangle x:Name="ReadAloudOutline" StrokeThickness="3"
 				RadiusX="2" RadiusY="2"
 				Stroke="{ThemeResource AccentFillColorDefaultBrush}" />
 		</Canvas>
-		<Border Grid.Row="1" x:Name="ReadAloudBar" Visibility="Collapsed"
+		<Border Grid.Row="2" x:Name="ReadAloudBar" Visibility="Collapsed"
 			HorizontalAlignment="Center" VerticalAlignment="Bottom"
 			Margin="16,0,16,16" Padding="6" CornerRadius="8"
 			Background="{ThemeResource SablePaneBrush}"
@@ -248,7 +249,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 		<!-- Organize: every page as a tile to select, turn, delete, drag
 			into a new order, insert into or copy out to a new PDF -->
-		<Grid Grid.Row="1" x:Name="OrganizePanel"
+		<Grid Grid.Row="2" x:Name="OrganizePanel"
 			Visibility="Collapsed"
 			Background="{ThemeResource SableViewerBrush}">
 			<Grid.RowDefinitions>
@@ -273,11 +274,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				CanReorderItems="True" AllowDrop="True" Padding="12,0,12,12"
 				AutomationProperties.Name="Pages" />
 		</Grid>
-		<InfoBar Grid.RowSpan="2" x:Name="Message" Grid.ColumnSpan="3"
-			Visibility="Collapsed"
-			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"
-			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480"
-			/>
+		<!-- notices get a row of their own under the command bar, so they never
+			cover a control; with none showing the row has no height -->
+		<InfoBar Grid.Row="1" Grid.ColumnSpan="3" x:Name="Message"
+			Visibility="Collapsed" IsOpen="False" IsClosable="False"
+			Severity="Error" HorizontalAlignment="Stretch" />
 
 		<!-- the right rail. Page number and zoom sit at the bottom, where
 			pdf.js had them in its toolbar: the page box, "of N", previous and
@@ -287,7 +288,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- pdf.js's sidebar showing thumbnails, 200 px wide, opened from the
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
-		<Border Grid.Row="1" x:Name="ThumbnailPanel" Grid.Column="1" Width="200"
+		<Border Grid.Row="2" x:Name="ThumbnailPanel" Grid.Column="1" Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -300,7 +301,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 
 
-		<Border x:Name="OutlinePanel" Grid.Row="1" Grid.Column="1" Width="200"
+		<Border x:Name="OutlinePanel" Grid.Row="2" Grid.Column="1" Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -331,7 +332,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border x:Name="AttachmentPanel" Grid.Row="1" Grid.Column="1"
+		<Border x:Name="AttachmentPanel" Grid.Row="2" Grid.Column="1"
 			Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
@@ -359,7 +360,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border x:Name="CommentsPanel" Grid.Row="1" Grid.Column="1" Width="260"
+		<Border x:Name="CommentsPanel" Grid.Row="2" Grid.Column="1" Width="260"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -476,7 +477,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border Grid.Row="1" x:Name="Rail" Grid.Column="2" Width="56"
+		<Border Grid.Row="2" x:Name="Rail" Grid.Column="2" Width="56"
 			Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
@@ -636,7 +637,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</StackPanel>
 			</Grid>
 		</Border>
-		<Border x:Name="PresentationControls" Grid.RowSpan="2"
+		<Border x:Name="PresentationControls" Grid.RowSpan="3"
 			Grid.ColumnSpan="3"
 			Visibility="Collapsed" VerticalAlignment="Bottom"
 			HorizontalAlignment="Center"

@@ -3576,3 +3576,13 @@ A tab that is still opening, or that didn't open, shows no command bar,
 quick strip or rail. A failed one keeps just its message. The command bar
 and the strip appear when the document has opened, and a failure after
 that hides them again.
+
+## Notices get their own row (2026-11-13)
+
+A notice no longer floats over the page and the command bar. It sits in a
+row of its own under the command bar and the pages move down to make room;
+with nothing to say, the row has no height. One notice shows at a time and
+a new one replaces the last. A success closes itself after five seconds.
+An error stays until it is closed, replaced, or what it described changes:
+Organize opening or closing, or a page edit going through. The message of a
+tab that didn't open is that tab's only content, so nothing replaces it.

@@ -332,6 +332,9 @@ void ViewerPage::close() {
 	if (m_textMenu) {
 		m_textMenu.Hide();
 	}
+	if (m_noticeTimer) {
+		m_noticeTimer.Stop();
+	}
 	Message().IsOpen(false);
 	m_promptLoaded.revoke();
 	m_passwordPending.reset();
@@ -1721,18 +1724,64 @@ void ViewerPage::showNotice(const hstring& text, InfoBarSeverity severity) {
 	                       ? diagnostics::Level::Info
 	                       : diagnostics::Level::Warning,
 	                   to_string(text));
+	// the message of a tab that couldn't open is all that tab has
+	if (m_messageOnly) {
+		return;
+	}
+	// one notice at a time: a new one takes the place of the last, and the
+	// last one's timer goes with it
+	if (m_noticeTimer) {
+		m_noticeTimer.Stop();
+	}
 	Message().Severity(severity);
 	Message().Message(text);
 	Message().IsClosable(true);
 	Message().IsOpen(true);
 	Message().Visibility(XVisibility::Visible);
+	// a success closes itself; an error stays until it's closed or what it
+	// describes changes (A-10)
+	if (severity == InfoBarSeverity::Success) {
+		startNoticeTimer();
+	}
+}
+
+void ViewerPage::startNoticeTimer() {
+	if (!m_noticeTimer) {
+		m_noticeTimer = DispatcherQueue().CreateTimer();
+		m_noticeTimer.IsRepeating(false);
+		m_noticeTimer.Interval(std::chrono::seconds(NOTICE_SECONDS));
+		m_noticeTimer.Tick([weak = get_weak()](auto&&, auto&&) {
+			if (auto self = weak.get();
+			    self && !self->m_closed &&
+			    self->Message().Severity() == InfoBarSeverity::Success) {
+				self->clearNotice();
+			}
+		});
+	}
+	m_noticeTimer.Stop();
+	m_noticeTimer.Start();
+}
+
+// what a notice described has changed, or its time is up. The message
+// of a tab that couldn't open is that tab's only content, so it stays.
+void ViewerPage::clearNotice() {
+	if (m_closed || m_messageOnly) {
+		return;
+	}
+	if (m_noticeTimer) {
+		m_noticeTimer.Stop();
+	}
+	Message().IsOpen(false);
+	Message().Visibility(XVisibility::Collapsed);
 }
 
 void ViewerPage::showMessage(const hstring& text) {
 	if (m_closed) {
 		return;
 	}
+	m_messageOnly = false;
 	showNotice(text);
+	m_messageOnly = true;
 	Message().IsClosable(false);
 	Scroller().Visibility(XVisibility::Collapsed);
 	// a tab with nothing to show keeps only its message (A-09)

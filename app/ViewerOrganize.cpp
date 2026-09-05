@@ -195,6 +195,7 @@ void ViewerPage::openOrganize() {
 		OrganizeGrid().Focus(FocusState::Programmatic);
 		return;
 	}
+	clearNotice();
 	setupOrganize();
 	m_organizeView =
 	    OrganizeView{thumbnailsOpen(),
@@ -242,6 +243,7 @@ void ViewerPage::closeOrganize(bool restore) {
 		return;
 	}
 	const auto previous = *std::exchange(m_organizeView, std::nullopt);
+	clearNotice();
 	OrganizePanel().Visibility(XVisibility::Collapsed);
 	releaseOrganizeTiles();
 	m_organizeHiddenSelection.clear();
@@ -616,6 +618,7 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 		                       L"not allow page changes."));
 		return;
 	}
+	clearNotice();
 	m_notesDirty = true;
 	m_pagesDirty = true;
 	pagesChanged(std::move(result.info));

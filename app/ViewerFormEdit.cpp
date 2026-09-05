@@ -399,8 +399,8 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 							owner->refreshNotes();
 							owner->showNotice(
 							    L"Field updated. Save a copy to keep "
-							    L"your changes.");
-							owner->Message().Severity(InfoBarSeverity::Success);
+							    L"your changes.",
+							    InfoBarSeverity::Success);
 						}
 						owner->showComments();
 					});

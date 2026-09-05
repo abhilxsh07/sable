@@ -32,10 +32,9 @@ namespace {
 // and the probe fails until the name comes off this list, so it can't go
 // stale.
 //   tools-over-page    All tools and the quick strip lie over the pages
-//   notice-overlap     notices float over the bars and the pages
 //   min-size           the window shrinks until the rail overlaps itself
-constexpr std::array<std::string_view, 3> OPEN_FAULTS = {
-    "tools-over-page", "notice-overlap", "min-size"};
+constexpr std::array<std::string_view, 2> OPEN_FAULTS = {"tools-over-page",
+                                                         "min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
@@ -428,10 +427,43 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		       "minimum window is " + std::to_string(outer.Width) + "x" +
 		           std::to_string(outer.Height) + " px");
 		measure("minimum size", "min-size");
-		finish(L"panels at three sizes, a short document, a failed "
-		       L"tab and the minimum size");
-		return;
+		// notices: a success closes itself
+		v.showNotice(L"Saved a copy.",
+		             Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
+		break;
 	}
+	case 6:
+		if (ticks < 24) {
+			// a second in, it's still there
+			if (ticks == 4) {
+				expect(v.Message().IsOpen(), {},
+				       "notice: a success closed within a second");
+			}
+			return;
+		}
+		expect(!v.Message().IsOpen(), {},
+		       "notice: a success was still showing after five seconds");
+		// a new notice takes the place of the last and its timer goes with it,
+		// so an error outlasts the success it replaced
+		v.showNotice(L"Saved a copy.",
+		             Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
+		break;
+	case 7:
+		if (ticks == 8) {
+			v.showNotice(L"A PDF needs at least one page.");
+		}
+		if (ticks < 24) {
+			return;
+		}
+		expect(v.Message().IsOpen() &&
+		           v.Message().Severity() ==
+		               Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error,
+		       {}, "notice: an error closed by itself");
+		// the rail still collides at the smallest size (min-size)
+		measure("error notice", "min-size");
+		finish(L"panels at three sizes, a short document, a failed "
+		       L"tab, the minimum size and notice timing");
+		return;
 	default:
 		return;
 	}

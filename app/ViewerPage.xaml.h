@@ -484,6 +484,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::uint64_t m_organizeVersion = 0;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_organizeTimer{
 	    nullptr};
+	// a success notice closes itself after this long; an error stays
+	static constexpr int NOTICE_SECONDS = 5;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_noticeTimer{
+	    nullptr};
+	bool m_messageOnly = false;
 	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
 	     m_notesDirty = false, m_formsDirty = false, m_pagesDirty = false,
 	     m_noteSaving = false;
@@ -695,6 +700,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void
 	showNotice(const winrt::hstring& text,
 	           winrt::Microsoft::UI::Xaml::Controls::InfoBarSeverity severity);
+	void clearNotice();
+	void startNoticeTimer();
 	Device makeDevice();
 	void rebuildDevice();
 	void updateVisible();
