@@ -42,6 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			the right with the rest in More. Only a document has one. -->
 		<StackPanel Grid.ColumnSpan="3" x:Name="TopBars">
 		<Grid x:Name="DocumentBar" Height="40" Padding="8,0" ColumnSpacing="4"
+			Visibility="Collapsed"
 			Background="{ThemeResource SableTitleBarBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="0,0,0,1">
@@ -196,6 +197,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 		<!-- the quick tools you reach for constantly, floating by the pages -->
 		<Border Grid.Row="1" x:Name="QuickTools" HorizontalAlignment="Left"
+		Visibility="Collapsed"
 			VerticalAlignment="Center" Margin="12,0,0,0" Padding="4"
 			CornerRadius="8" Background="{ThemeResource SablePaneBrush}"
 			AutomationProperties.Name="Quick tools">

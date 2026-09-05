@@ -33,10 +33,9 @@ namespace {
 // stale.
 //   tools-over-page    All tools and the quick strip lie over the pages
 //   notice-overlap     notices float over the bars and the pages
-//   failed-tab-chrome  a tab that didn't open keeps its command bar
 //   min-size           the window shrinks until the rail overlaps itself
-constexpr std::array<std::string_view, 4> OPEN_FAULTS = {
-    "tools-over-page", "notice-overlap", "failed-tab-chrome", "min-size"};
+constexpr std::array<std::string_view, 3> OPEN_FAULTS = {
+    "tools-over-page", "notice-overlap", "min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
@@ -405,10 +404,11 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		    !shown(v.Message())) {
 			return;
 		}
-		expect(!shown(v.DocumentBar()), "failed-tab-chrome",
+		expect(!shown(v.DocumentBar()), {},
 		       "failed tab: the command bar is still there");
-		expect(!shown(v.QuickTools()), "failed-tab-chrome",
+		expect(!shown(v.QuickTools()), {},
 		       "failed tab: the quick strip is still there");
+		expect(!shown(v.Rail()), {}, "failed tab: the rail is still there");
 		measure("failed tab");
 		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
 		owner.m_presenter.Restore();

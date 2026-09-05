@@ -3569,3 +3569,10 @@ The rail already prints "of 1,000" the way pdf.js's en-US strings do.
 Organize's count, the Comments loading line, Export's range message and
 Read Aloud's position now use the same grouping. The page box itself
 still takes and shows plain numbers, as in pdf.js.
+
+## Failed and still-loading tabs (2026-11-13)
+
+A tab that is still opening, or that didn't open, shows no command bar,
+quick strip or rail. A failed one keeps just its message. The command bar
+and the strip appear when the document has opened, and a failure after
+that hides them again.

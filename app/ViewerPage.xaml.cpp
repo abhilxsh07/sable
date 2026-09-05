@@ -1596,6 +1596,8 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Source(m_surface->source());
 		Pages().Width(size->cx / m_scale);
 		Pages().Height(size->cy / m_scale);
+		// the command bar and the quick strip belong to a document that opened
+		DocumentBar().Visibility(XVisibility::Visible);
 		setupSelection();
 		setupPan();
 		setupPresentation();
@@ -1733,6 +1735,10 @@ void ViewerPage::showMessage(const hstring& text) {
 	showNotice(text);
 	Message().IsClosable(false);
 	Scroller().Visibility(XVisibility::Collapsed);
+	// a tab with nothing to show keeps only its message (A-09)
+	DocumentBar().Visibility(XVisibility::Collapsed);
+	AllToolsPanel().Visibility(XVisibility::Collapsed);
+	QuickTools().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
 	ThumbnailPanel().Visibility(XVisibility::Collapsed);
 	m_thumbScrollPending = false;

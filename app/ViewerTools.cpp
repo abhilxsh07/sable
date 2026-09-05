@@ -255,7 +255,10 @@ void ViewerPage::updateQuickTools() {
 	if (m_closed || !m_toolSurfacesSetup) {
 		return;
 	}
-	QuickTools().Visibility(s_quickTools && !m_presentation && !organizing()
+	// no command bar (a tab that failed or is still loading): no strip
+	const bool chrome = DocumentBar().Visibility() == Visibility::Visible;
+	QuickTools().Visibility(s_quickTools && chrome && !m_presentation &&
+	                                !organizing()
 	                            ? Visibility::Visible
 	                            : Visibility::Collapsed);
 	m_syncingQuickTools = true;
