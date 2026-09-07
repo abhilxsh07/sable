@@ -211,7 +211,7 @@ void ViewerPage::applyNativeZoom() {
 		return;
 	}
 	try {
-		if (!m_presentation && relayout(target->zoom)) {
+		if (!presenting() && relayout(target->zoom)) {
 			m_preset = helpers::ZoomPreset::None;
 			settle();
 		} else {
@@ -260,7 +260,7 @@ void ViewerPage::nativeGestureStarted() {
 // the last frame of the gesture.
 bool ViewerPage::showFreeze() {
 	hideFreeze();
-	if (m_presentation || !m_surface || !m_device.device) {
+	if (presenting() || !m_surface || !m_device.device) {
 		return false;
 	}
 	try {

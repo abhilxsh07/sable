@@ -104,7 +104,7 @@ void ViewerPage::openFillSign() {
 }
 
 bool ViewerPage::organizing() {
-	return m_organizeView.has_value();
+	return m_mode == ViewerMode::Organize;
 }
 
 void ViewerPage::setupOrganize() {
@@ -186,7 +186,7 @@ void ViewerPage::setupOrganize() {
 }
 
 void ViewerPage::openOrganize() {
-	if (m_closed || !m_layout || !m_session || m_presentation || m_noteDialog ||
+	if (m_closed || !m_layout || !m_session || presenting() || m_noteDialog ||
 	    m_passwordDialog || m_propertiesDialog || pageOperationBusy() ||
 	    m_noteBusy || m_noteSaving) {
 		return;
@@ -205,6 +205,7 @@ void ViewerPage::openOrganize() {
 	                 AllToolsPanel().Visibility() == XVisibility::Visible,
 	                 findOpen(),
 	                 readingAloud() && !m_readAloudPaused};
+	m_mode = ViewerMode::Organize;
 	cancelNotePlacement();
 	clearAnnotationSelection();
 	clearTextSelection();
@@ -243,6 +244,7 @@ void ViewerPage::closeOrganize(bool restore) {
 		return;
 	}
 	const auto previous = *std::exchange(m_organizeView, std::nullopt);
+	m_mode = ViewerMode::Read;
 	clearNotice();
 	OrganizePanel().Visibility(XVisibility::Collapsed);
 	releaseOrganizeTiles();

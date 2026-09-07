@@ -97,8 +97,7 @@ void ViewerPage::setupFind() {
 	showFindCount();
 }
 void ViewerPage::openFind() {
-	if (m_closed || m_presentation || organizing() || !m_layout ||
-	    !m_findTimer) {
+	if (m_closed || presenting() || organizing() || !m_layout || !m_findTimer) {
 		return;
 	}
 	stopPan();

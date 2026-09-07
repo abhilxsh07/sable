@@ -307,6 +307,7 @@ void ViewerPage::close() {
 		m_presentationTimer.Stop();
 	}
 	m_presentation.reset();
+	m_mode = ViewerMode::Read;
 	m_exitPresentation = {};
 	m_presentationTouch.reset();
 	m_panHover = false;
@@ -428,7 +429,7 @@ void ViewerPage::zoomReset() {
 // window. pdf.js keeps it even when the scale doesn't change, but not when
 // it couldn't be applied (see relayout).
 void ViewerPage::zoomTo(double zoom, Windows::Foundation::Point anchor) {
-	if (m_presentation) {
+	if (presenting()) {
 		return;
 	}
 	if (std::abs(zoom - m_zoom) < 1e-9 || setZoom(zoom, anchor)) {
@@ -439,8 +440,7 @@ void ViewerPage::zoomTo(double zoom, Windows::Foundation::Point anchor) {
 
 // pdf_viewer.js currentScaleValue = "auto", "page-fit" and so on
 void ViewerPage::setPreset(helpers::ZoomPreset preset) {
-	if (!m_layout ||
-	    (m_presentation && preset != helpers::ZoomPreset::PageFit)) {
+	if (!m_layout || (presenting() && preset != helpers::ZoomPreset::PageFit)) {
 		return;
 	}
 	m_preset = preset;
@@ -746,7 +746,7 @@ void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
 		args.Handled(true);
 		return;
 	}
-	if (m_presentation) {
+	if (presenting()) {
 		return;
 	}
 	if (args.PointerDeviceType() !=
@@ -771,7 +771,7 @@ void ViewerPage::requestLink(Windows::Foundation::Point point,
 	const double x = (point.X - rect.x) / rect.width;
 	const double y = (point.Y - rect.y) / rect.height;
 	if (x < 0 || x > 1 || y < 0 || y > 1) {
-		if (presentationAdvance && m_presentation) {
+		if (presentationAdvance && presenting()) {
 			advancePage(presentationAdvance);
 		}
 		return;
@@ -805,12 +805,12 @@ void ViewerPage::requestLink(Windows::Foundation::Point point,
 					        if (reply->link && reply->link->destination) {
 						        self->followLink(*reply->link->destination);
 					        } else if (presentationAdvance &&
-					                   self->m_presentation) {
+					                   self->presenting()) {
 						        self->advancePage(presentationAdvance);
 					        } else if (reply->link) {
 						        self->openLink(std::move(reply->link->uri));
 					        } else if (presentationAdvance) {
-						        if (self->m_presentation) {
+						        if (self->presenting()) {
 							        self->advancePage(presentationAdvance);
 						        } else if (self->m_clickSpreads) {
 							        self->turnSpread(presentationAdvance);
@@ -834,7 +834,7 @@ void ViewerPage::followLink(const pdf::LinkDestination& destination,
 	    static_cast<std::size_t>(target.page) >= m_sizes.size()) {
 		return;
 	}
-	if (m_presentation) {
+	if (presenting()) {
 		goToPage(static_cast<std::size_t>(target.page));
 		return;
 	}
@@ -1028,7 +1028,7 @@ void ViewerPage::showPosition() {
 	PageTotal().Text(to_hstring(text.total));
 	PreviousButton().IsEnabled(m_current > 0);
 	NextButton().IsEnabled(m_current + 1 < count);
-	if (m_presentation) {
+	if (presenting()) {
 		PresentationPosition().Text(to_hstring(m_current + 1) + L" / " +
 		                            to_hstring(count));
 		PresentationPrevious().IsEnabled(m_current > 0);
@@ -1499,7 +1499,7 @@ void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
 	if (!m_layout) {
 		return;
 	}
-	if (m_presentation) {
+	if (presenting()) {
 		const auto properties = args.GetCurrentPoint(Scroller()).Properties();
 		if (!properties.IsHorizontalMouseWheel()) {
 			presentationWheel(properties.MouseWheelDelta());
@@ -2137,9 +2137,8 @@ void ViewerPage::invalidate(std::size_t page) {
 
 // runs inside the surface's update callback, in pixels
 void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
-	context.Clear(m_presentation || appearance::obsidian()
-	                  ? D2D1::ColorF(0, 0, 0)
-	                  : BACKGROUND);
+	context.Clear(presenting() || appearance::obsidian() ? D2D1::ColorF(0, 0, 0)
+	                                                     : BACKGROUND);
 	if (!m_layout) {
 		return;
 	}
@@ -2251,9 +2250,8 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 // the freeze frame, in its own pixels: the pages as they stood when the
 // gesture ended, scaled by it
 void ViewerPage::drawFreeze(ID2D1DeviceContext& context, const RECT& rect) {
-	context.Clear(m_presentation || appearance::obsidian()
-	                  ? D2D1::ColorF(0, 0, 0)
-	                  : BACKGROUND);
+	context.Clear(presenting() || appearance::obsidian() ? D2D1::ColorF(0, 0, 0)
+	                                                     : BACKGROUND);
 	if (!m_freeze || !m_layout) {
 		return;
 	}

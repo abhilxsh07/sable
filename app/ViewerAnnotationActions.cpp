@@ -42,7 +42,7 @@ bool ViewerPage::canDeleteAnnotation() {
 	const auto target = annotationTarget();
 	return target && target->revision && m_session && !m_closed &&
 	       m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
-	       !m_notePlacing && !m_presentation &&
+	       !m_notePlacing && !presenting() &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable()) &&
 	       (target->subtype == "Text" || target->subtype == "Highlight" ||
@@ -63,7 +63,7 @@ void ViewerPage::clearAnnotationSelection() {
 }
 void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
                                      bool context) {
-	if (m_closed || m_presentation || !m_session || !m_layout || m_noteBusy ||
+	if (m_closed || presenting() || !m_session || !m_layout || m_noteBusy ||
 	    m_noteSaving || m_noteDialog || m_notePlacing ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
@@ -101,7 +101,7 @@ void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
 				        }
 				        self->m_annotationPending = false;
 				        if (result.canceled || !self->m_layout ||
-				            self->m_presentation || self->pixels(page) != at ||
+				            self->presenting() || self->pixels(page) != at ||
 				            self->m_noteBusy || self->m_noteSaving ||
 				            self->m_noteDialog || self->m_notePlacing ||
 				            self->m_rotationVersion != rotation ||
@@ -301,7 +301,7 @@ void ViewerPage::deleteAnnotation() {
 void ViewerPage::drawSelectedAnnotation(ID2D1DeviceContext& context,
                                         helpers::PageRange pages) {
 	if (!m_selectedAnnotation || !m_selectedAnnotation->displayBounds ||
-	    m_presentation) {
+	    presenting()) {
 		return;
 	}
 	const auto page = m_selectedAnnotation->target.page;

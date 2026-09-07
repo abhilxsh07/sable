@@ -34,7 +34,7 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 	using helpers::NavKey;
 	using Windows::System::VirtualKey;
 	// a menu opened from the rail keeps its own keys
-	if (!m_layout || m_closed || m_presentation || organizing() ||
+	if (!m_layout || m_closed || presenting() || organizing() ||
 	    m_propertiesDialog || m_passwordDialog ||
 	    source.try_as<MenuFlyoutItemBase>()) {
 		return false;

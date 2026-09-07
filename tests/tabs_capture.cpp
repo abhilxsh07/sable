@@ -1047,7 +1047,8 @@ void TabsTest::presentationTick(MainWindow& owner) {
 		owner.onPresentation({}, {});
 		break;
 	case 2:
-		check(v.m_presentation && owner.m_presentationViewer == current &&
+		check(v.m_presentation && v.mode() == ViewerMode::Present &&
+		          owner.m_presentationViewer == current &&
 		          owner.AppWindow().Presenter().Kind() == Kind::FullScreen,
 		      "presentation did not enter full screen");
 		check(v.m_current == outlinePage &&
@@ -1103,7 +1104,8 @@ void TabsTest::presentationTick(MainWindow& owner) {
 		owner.endPresentation();
 		break;
 	case 5:
-		check(!v.m_presentation && !owner.m_presentationViewer &&
+		check(!v.m_presentation && v.mode() == ViewerMode::Read &&
+		          !owner.m_presentationViewer &&
 		          owner.AppWindow().Presenter().Kind() == Kind::Overlapped &&
 		          owner.AppTitleBar().Visibility() == Visibility::Visible,
 		      "presentation did not restore window chrome/presenter");

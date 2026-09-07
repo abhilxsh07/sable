@@ -29,7 +29,7 @@ using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 namespace winrt::Sable::implementation {
 bool ViewerPage::beginPresentation(std::function<void()> exit) {
-	if (m_closed || !m_layout || !m_surface || m_startPage || m_presentation ||
+	if (m_closed || !m_layout || !m_surface || m_startPage || presenting() ||
 	    m_directManipulation || m_resettingGesture ||
 	    std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f) {
 		return false;
@@ -61,6 +61,7 @@ bool ViewerPage::beginPresentation(std::function<void()> exit) {
 	                                  AttachmentPanel().Visibility(),
 	                                  Scroller().HorizontalScrollMode(),
 	                                  Scroller().VerticalScrollMode()};
+	m_mode = ViewerMode::Present;
 	m_exitPresentation = std::move(exit);
 	m_presentationSwiped = false;
 	m_presentationDelta = 0;
@@ -115,6 +116,7 @@ void ViewerPage::endPresentation() {
 	if (!saved) {
 		return;
 	}
+	m_mode = ViewerMode::Read;
 	m_exitPresentation = {};
 	m_presentationTouch.reset();
 	if (m_presentationTimer) {
@@ -174,7 +176,7 @@ void ViewerPage::endPresentation() {
 }
 
 void ViewerPage::presentationKey(unsigned key, bool shift) {
-	if (!m_presentation || m_closed) {
+	if (!presenting() || m_closed) {
 		return;
 	}
 	m_presentationWheelTime = {};
@@ -215,7 +217,7 @@ void ViewerPage::presentationKey(unsigned key, bool shift) {
 }
 
 void ViewerPage::presentationWheel(int delta) {
-	if (!m_presentation || !delta || m_closed) {
+	if (!presenting() || !delta || m_closed) {
 		return;
 	}
 	const auto now = std::chrono::steady_clock::now();
@@ -240,7 +242,7 @@ void ViewerPage::presentationWheel(int delta) {
 }
 
 void ViewerPage::showPresentationControls() {
-	if (!m_presentation || m_closed) {
+	if (!presenting() || m_closed) {
 		return;
 	}
 	PresentationPosition().Text(to_hstring(m_current + 1) + L" / " +
@@ -290,12 +292,12 @@ void ViewerPage::setupPresentation() {
 	});
 	Scroller().PointerMoved(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs&) {
-		    if (const auto self = weak.get(); self && self->m_presentation) {
+		    if (const auto self = weak.get(); self && self->presenting()) {
 			    self->showPresentationControls();
 		    }
 	    });
 	Scroller().Tapped([weak](auto&&, const Input::TappedRoutedEventArgs& e) {
-		if (const auto self = weak.get(); self && self->m_presentation) {
+		if (const auto self = weak.get(); self && self->presenting()) {
 			if (!std::exchange(self->m_presentationSwiped, false)) {
 				self->requestLink(e.GetPosition(self->Pages()),
 				                  (GetKeyState(VK_SHIFT) & 0x8000) ? -1 : 1);
@@ -306,13 +308,13 @@ void ViewerPage::setupPresentation() {
 	Scroller().PointerPressed(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& e) {
 		    if (const auto self = weak.get();
-		        self && self->m_presentation &&
+		        self && self->presenting() &&
 		        e.Pointer().PointerDeviceType() !=
 		            Microsoft::UI::Input::PointerDeviceType::Touch) {
 			    self->m_presentationSwiped = false;
 		    }
 		    if (const auto self = weak.get();
-		        self && self->m_presentation &&
+		        self && self->presenting() &&
 		        e.Pointer().PointerDeviceType() ==
 		            Microsoft::UI::Input::PointerDeviceType::Touch) {
 			    if (self->m_presentationTouch) {
@@ -329,7 +331,7 @@ void ViewerPage::setupPresentation() {
 	Scroller().PointerReleased(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& e) {
 		    if (const auto self = weak.get();
-		        self && self->m_presentation &&
+		        self && self->presenting() &&
 		        self->m_presentationTouch == e.Pointer().PointerId()) {
 			    self->m_presentationTouch.reset();
 			    const auto end = e.GetCurrentPoint(self->Scroller()).Position();

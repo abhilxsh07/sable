@@ -38,7 +38,7 @@ bool panContent(DependencyObject source, const ScrollViewer& scroller) {
 }
 } // namespace
 void ViewerPage::setCursorTool(CursorTool tool) {
-	if (m_closed || m_presentation || tool == m_cursorTool) {
+	if (m_closed || presenting() || tool == m_cursorTool) {
 		return;
 	}
 	stopPan();
@@ -79,7 +79,7 @@ void ViewerPage::stopPan(bool leaveViewport) {
 	updatePanCursor();
 }
 bool ViewerPage::beginPan(Windows::Foundation::Point point) {
-	if (m_closed || m_presentation || !m_layout ||
+	if (m_closed || presenting() || !m_layout ||
 	    m_cursorTool != CursorTool::Hand ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return false;

@@ -91,6 +91,9 @@ inline const wchar_t* writeNotice(pdf::WriteRefusal refusal,
 	return fallback;
 }
 struct MainWindow;
+// what the viewer is doing with the document: reading it, rearranging its
+// pages in Organize, or showing it full screen. One at a time.
+enum class ViewerMode { Read, Organize, Present };
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -191,7 +194,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		winrt::Microsoft::UI::Xaml::Visibility thumbnails, outline, attachments;
 		winrt::Microsoft::UI::Xaml::Controls::ScrollMode horizontal, vertical;
 	};
+	// the mode is the state; this only holds the view to go back to
 	std::optional<PresentationView> m_presentation;
+	ViewerMode m_mode = ViewerMode::Read;
 	std::function<void()> m_exitPresentation;
 	std::function<void()> m_documentOpened;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_presentationTimer{
@@ -391,6 +396,12 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void refreshNotes(std::optional<int> edited = {});
 	bool layOut(int rotation, std::size_t page);
 	bool organizing();
+	ViewerMode mode() const {
+		return m_mode;
+	}
+	bool presenting() const {
+		return m_mode == ViewerMode::Present;
+	}
 	bool pageOperationBusy() const {
 		return m_organizeBusy || m_exporting;
 	}

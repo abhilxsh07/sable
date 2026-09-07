@@ -42,7 +42,7 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 		requestAnnotationAt(point);
 		return;
 	}
-	if (m_closed || !m_session || !m_layout || m_presentation ||
+	if (m_closed || !m_session || !m_layout || presenting() ||
 	    m_directManipulation || m_noteBusy || m_noteSaving || m_noteDialog ||
 	    m_notePlacing || Visibility() != XVisibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable())) {
@@ -139,7 +139,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 		    (!button && !selection && field.type != pdf::FormFieldType::Text)) {
 			co_return;
 		}
-		if (m_closed || !m_session || !m_fillAllowed || m_presentation ||
+		if (m_closed || !m_session || !m_fillAllowed || presenting() ||
 		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
 		    m_passwordDialog || !XamlRoot() ||
 		    Visibility() != XVisibility::Visible ||

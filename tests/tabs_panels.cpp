@@ -360,9 +360,16 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		if (state == 0 && ticks < 6) {
 			return;
 		}
+		expect(v.mode() ==
+		           (state == 6 ? ViewerMode::Organize : ViewerMode::Read),
+		       {},
+		       text(STATES[static_cast<std::size_t>(state)]) +
+		           ": the viewer's mode is wrong");
 		measure(text(SIZES[static_cast<std::size_t>(size)]) + " " +
 		        text(STATES[static_cast<std::size_t>(state)]));
 		reset();
+		expect(v.mode() == ViewerMode::Read, {},
+		       "closing the panels left the viewer out of Read");
 		if (++panelsRound < ROUNDS) {
 			const auto next = panelsRound % static_cast<int>(STATES.size());
 			if (next == 0) {

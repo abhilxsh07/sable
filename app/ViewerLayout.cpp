@@ -38,7 +38,7 @@ ViewerPage::makeLayout(std::span<const helpers::PageSize> sizes, double zoom) {
 double ViewerPage::fittedZoom(std::span<const helpers::PageSize> sizes) {
 	const auto spread =
 	    helpers::spreadPages(sizes.size(), m_current, m_spreadMode);
-	if (m_presentation) {
+	if (presenting()) {
 		const auto size = helpers::spreadSize(sizes, m_current, m_spreadMode);
 		const double gap = spread.end - spread.first > 1 ? PAGE_GAP : 0.;
 		return (std::min)({helpers::MAX_ZOOM,
@@ -63,7 +63,7 @@ helpers::PageRect ViewerPage::viewport() {
 }
 void ViewerPage::setLayout(helpers::ScrollMode scroll,
                            helpers::SpreadMode spread) {
-	if (m_presentation || m_directManipulation || m_resettingGesture ||
+	if (presenting() || m_directManipulation || m_resettingGesture ||
 	    std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f) {
 		return;
 	}
@@ -208,7 +208,7 @@ void ViewerPage::advancePage(int direction) {
 	}
 }
 bool ViewerPage::spreadClicksEnabled() const {
-	return !m_closed && m_layout && !m_presentation &&
+	return !m_closed && m_layout && !presenting() &&
 	       m_scrollMode == helpers::ScrollMode::Page &&
 	       m_spreadMode != helpers::SpreadMode::None;
 }

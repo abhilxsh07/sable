@@ -41,7 +41,7 @@ namespace winrt::Sable::implementation {
 bool ViewerPage::canPickStamp() {
 	return !m_closed && m_session && m_layout && m_noteAllowed && !m_noteBusy &&
 	       !m_noteSaving && !m_noteDialog && !m_passwordDialog &&
-	       !m_linkPending && !m_presentation && commentsOpen() &&
+	       !m_linkPending && !presenting() && commentsOpen() &&
 	       Rail().Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());

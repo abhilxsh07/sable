@@ -237,7 +237,7 @@ void ViewerPage::setupSelection() {
 	Pages().ContextFlyout(m_textMenu);
 	Pages().RightTapped([weak](auto&&,
 	                           const Input::RightTappedRoutedEventArgs& args) {
-		if (const auto self = weak.get(); self && !self->m_presentation) {
+		if (const auto self = weak.get(); self && !self->presenting()) {
 			self->requestAnnotationAt(args.GetPosition(self->Pages()), true);
 			args.Handled(true);
 		}
@@ -276,7 +276,7 @@ void ViewerPage::cancelSelectionDrag() {
 	Pages().ReleasePointerCaptures();
 }
 void ViewerPage::beginSelection(Windows::Foundation::Point point) {
-	if (m_closed || m_presentation || !m_layout || !m_session ||
+	if (m_closed || presenting() || !m_layout || !m_session ||
 	    m_cursorTool == CursorTool::Hand ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
@@ -509,7 +509,7 @@ void ViewerPage::selectAllText() {
 }
 void ViewerPage::showSelectionMenu() {
 	if (!m_selectionMenuPending || !m_selection || m_textPointerDown ||
-	    m_textStart || m_closed || m_presentation || !m_layout ||
+	    m_textStart || m_closed || presenting() || !m_layout ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    !m_textMenu) {
 		return;

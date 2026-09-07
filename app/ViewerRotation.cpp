@@ -41,7 +41,7 @@ std::vector<helpers::PageSize> ViewerPage::displaySizes() const {
 // see:
 // https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/pdf_viewer.js
 void ViewerPage::rotateView(int turns) {
-	if (m_presentation || m_directManipulation || m_resettingGesture ||
+	if (presenting() || m_directManipulation || m_resettingGesture ||
 	    std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f) {
 		return;
 	}

@@ -198,15 +198,15 @@ void ViewerPage::setAllToolsOpen(bool open) {
 	if ((checked && checked.Value()) != open) {
 		AllToolsButton().IsChecked(open);
 	}
-	AllToolsPanel().Visibility(open && !m_presentation ? Visibility::Visible
-	                                                   : Visibility::Collapsed);
+	AllToolsPanel().Visibility(open && !presenting() ? Visibility::Visible
+	                                                 : Visibility::Collapsed);
 	updateQuickTools();
 }
 
 // one tool from the panel or the strip; Combine starts from its own list of
 // files, so the window opens it.
 void ViewerPage::runTool(std::wstring_view tool) {
-	if (m_closed || m_presentation) {
+	if (m_closed || presenting()) {
 		return;
 	}
 	const auto placing = [&](PlacementTool placement) {
@@ -257,7 +257,7 @@ void ViewerPage::updateQuickTools() {
 	}
 	// no command bar (a tab that failed or is still loading): no strip
 	const bool chrome = DocumentBar().Visibility() == Visibility::Visible;
-	QuickTools().Visibility(s_quickTools && chrome && !m_presentation &&
+	QuickTools().Visibility(s_quickTools && chrome && !presenting() &&
 	                                !organizing()
 	                            ? Visibility::Visible
 	                            : Visibility::Collapsed);
