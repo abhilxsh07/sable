@@ -666,8 +666,10 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		for (const auto& child : v.AllToolsList().Children()) {
 			buttons += child.try_as<Button>() ? 1 : 0;
 		}
+		// the pages keep the strip's 56 px margin; the pane has a column of
+		// its own (Panels checks where it sits)
 		check(visible(v.AllToolsPanel()) && buttons == 7 &&
-		          v.QuickTools().Margin().Left > 200,
+		          v.Scroller().Margin().Left > 55,
 		      "All tools didn't open with every tool");
 		invoke(quick(L"hand"));
 		check(v.m_cursorTool == ViewerPage::CursorTool::Hand &&
@@ -707,11 +709,12 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		check(visible(v.FindBar()), "the command bar's Find didn't open");
 		v.closeFind();
 		invoke(v.AllToolsButton());
-		check(!visible(v.AllToolsPanel()) && v.QuickTools().Margin().Left < 20,
+		check(!visible(v.AllToolsPanel()) && v.Scroller().Margin().Left > 55,
 		      "All tools didn't close");
 		// the menu item toggles like a check box
 		invoke(v.BarQuickToolsItem());
-		check(!visible(v.QuickTools()), "Hide quick tools didn't hide them");
+		check(!visible(v.QuickTools()) && v.Scroller().Margin().Left < 1,
+		      "Hide quick tools didn't hide them or give the pages its room");
 		invoke(v.BarQuickToolsItem());
 		check(visible(v.QuickTools()), "quick tools didn't come back");
 		v.close();

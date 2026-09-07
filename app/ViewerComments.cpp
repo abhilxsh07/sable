@@ -256,6 +256,7 @@ void ViewerPage::setCommentsOpen(bool open) {
 		return;
 	}
 	if (open) {
+		makeRoomForPanel(CommentsPanel().Width());
 		setThumbnailsOpen(false);
 		setOutlineOpen(false);
 		setAttachmentsOpen(false);

@@ -31,16 +31,15 @@ namespace {
 // of these reports it and carries on; once the fix lands the check passes,
 // and the probe fails until the name comes off this list, so it can't go
 // stale.
-//   tools-over-page    All tools and the quick strip lie over the pages
 //   min-size           the window shrinks until the rail overlaps itself
-constexpr std::array<std::string_view, 2> OPEN_FAULTS = {"tools-over-page",
-                                                         "min-size"};
+constexpr std::array<std::string_view, 1> OPEN_FAULTS = {"min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
-constexpr std::array<const wchar_t*, 8> STATES = {
-    L"thumbnails", L"outline", L"comments", L"attachments",
-    L"All tools",  L"Find",    L"Organize", L"notice"};
+constexpr std::array<const wchar_t*, 9> STATES = {
+    L"thumbnails",  L"outline",   L"comments",
+    L"attachments", L"All tools", L"Find",
+    L"Organize",    L"notice",    L"All tools + comments"};
 
 std::string text(const wchar_t* value) {
 	return to_string(value);
@@ -146,9 +145,6 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			if (pair("Organize", "pages") || pair("Read Aloud bar", "pages")) {
 				return std::string_view("allowed");
 			}
-			if (pair("All tools", "pages") || pair("quick tools", "pages")) {
-				return std::string_view("tools-over-page");
-			}
 			if (a == "notice" || b == "notice") {
 				return std::string_view("notice-overlap");
 			}
@@ -178,6 +174,28 @@ void TabsTest::panelsTick(MainWindow& owner) {
 				       where + ": " + parts[i].first + " overlaps " +
 				           parts[j].first + " by " + by);
 			}
+		}
+		// the tool pane is a column of its own, so the pages move over; with
+		// a side panel open too they keep at least 360 px, or one closes
+		if (shown(v.AllToolsPanel()) && shown(v.Scroller())) {
+			const auto pane = box(v.AllToolsPanel());
+			const auto pages = box(v.Scroller());
+			expect(pages.X >= pane.X + pane.Width - 1, everything,
+			       where + ": the pages start under All tools");
+			const bool side =
+			    shown(v.ThumbnailPanel()) || shown(v.OutlinePanel()) ||
+			    shown(v.AttachmentPanel()) || shown(v.CommentsPanel());
+			const auto width = pages.Width + v.Scroller().Margin().Left;
+			expect(!side || width >= 359, everything,
+			       where + ": the pages are " +
+			           std::to_string(static_cast<int>(width)) +
+			           " px wide beside All tools and a panel");
+		}
+		// and the quick strip keeps to its own margin beside them
+		if (shown(v.QuickTools()) && shown(v.Scroller())) {
+			const auto strip = box(v.QuickTools());
+			expect(strip.X + strip.Width <= box(v.Scroller()).X + 1, everything,
+			       where + ": the quick strip lies over the pages");
 		}
 		// the rail's own controls, which collide first when it gets short
 		if (shown(v.Rail())) {
@@ -303,6 +321,10 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			break;
 		case 7:
 			v.showNotice(L"A PDF needs at least one page.");
+			break;
+		case 8:
+			v.setCommentsOpen(true);
+			v.setAllToolsOpen(true);
 			break;
 		default:
 			break;

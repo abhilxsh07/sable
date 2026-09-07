@@ -3586,3 +3586,14 @@ a new one replaces the last. A success closes itself after five seconds.
 An error stays until it is closed, replaced, or what it described changes:
 Organize opening or closing, or a page edit going through. The message of a
 tab that didn't open is that tab's only content, so nothing replaces it.
+
+## All tools gets its own column (2026-11-13)
+
+All tools used to open as a 230 px panel lying over the left of the page,
+and the quick strip floated over it too. The panel is now a column of its
+own, 320 px wide, left of the pages, and the pages move over to make room,
+the way they already do for the thumbnails and the other right-hand
+panels. The quick strip keeps a 56 px margin beside the pages; hiding the
+strip gives that room back. All tools and a right-hand panel can be open
+together, unless that would leave the pages narrower than 360 px: then
+opening one closes the other.

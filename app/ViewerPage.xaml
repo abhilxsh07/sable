@@ -30,18 +30,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="*" />
 		</Grid.RowDefinitions>
+		<!-- the tool pane, the pages, the side panel, the rail -->
 		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto" />
 			<ColumnDefinition Width="*" />
 			<ColumnDefinition Width="Auto" />
 			<ColumnDefinition Width="Auto" />
 		</Grid.ColumnDefinitions>
 
 		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="3"
-			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
+			Grid.ColumnSpan="4" Fill="#000000" Visibility="Collapsed"
 			IsHitTestVisible="False" />
 		<!-- the command bar: All tools on the left; find, save and print on
 			the right with the rest in More. Only a document has one. -->
-		<StackPanel Grid.ColumnSpan="3" x:Name="TopBars">
+		<StackPanel Grid.ColumnSpan="4" x:Name="TopBars">
 		<Grid x:Name="DocumentBar" Height="40" Padding="8,0" ColumnSpacing="4"
 			Visibility="Collapsed"
 			Background="{ThemeResource SableTitleBarBrush}"
@@ -101,7 +103,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</Button>
 			</StackPanel>
 		</Grid>
-  <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed"
+  <Border x:Name="FindBar" Grid.ColumnSpan="4" Visibility="Collapsed"
 	Padding="8"
    Background="{ThemeResource SablePaneBrush}" CornerRadius="8">
    <StackPanel Spacing="4">
@@ -158,7 +160,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			Fill maps one onto the other without blurring. Focusable, like
 			pdf.js's viewer container, so the keys work after a click; no focus
 			rectangle, as it has outline: none. -->
-		<ScrollViewer Grid.Row="2" x:Name="Scroller" ZoomMode="Enabled"
+		<ScrollViewer Grid.Row="2" Grid.Column="1" x:Name="Scroller"
+			ZoomMode="Enabled"
 			Background="Transparent"
 			HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled"
 			IsHorizontalRailEnabled="False" IsVerticalRailEnabled="False"
@@ -174,21 +177,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ScrollViewer>
 		<!-- the gesture's last view, kept over the pages while the scroller's
 			zoom resets and they're laid out again at the new zoom -->
-		<Image Grid.Row="2" x:Name="GestureFreeze" Stretch="Fill"
+		<Image Grid.Row="2" Grid.Column="1" x:Name="GestureFreeze"
+			Stretch="Fill"
 			HorizontalAlignment="Left" VerticalAlignment="Top"
 			IsHitTestVisible="False" Visibility="Collapsed"
 			AutomationProperties.AccessibilityView="Raw" />
 		<!-- the stroke being drawn, until the page draws the saved ink -->
-		<Canvas Grid.Row="2" x:Name="InkPreview" IsHitTestVisible="False"
+		<Canvas Grid.Row="2" Grid.Column="1" x:Name="InkPreview"
+			IsHitTestVisible="False"
 			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
 			<Polyline x:Name="InkPreviewLine" StrokeLineJoin="Round"
 				StrokeStartLineCap="Round" StrokeEndLineCap="Round"
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
-		<!-- All tools: every tool in one list, grouped, over the left of
-			the pages -->
-		<Border Grid.Row="2" x:Name="AllToolsPanel" Width="230"
-			HorizontalAlignment="Left" Visibility="Collapsed"
+		<!-- the tool pane: a column of its own left of the pages, so they
+			move over instead of lying under it. All tools lists every tool,
+			grouped. -->
+		<Border Grid.Row="2" x:Name="AllToolsPanel" Width="320"
+			Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="0,0,1,0">
@@ -196,22 +202,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<StackPanel x:Name="AllToolsList" Padding="12" Spacing="2" />
 			</ScrollViewer>
 		</Border>
-		<!-- the quick tools you reach for constantly, floating by the pages -->
-		<Border Grid.Row="2" x:Name="QuickTools" HorizontalAlignment="Left"
-		Visibility="Collapsed"
-			VerticalAlignment="Center" Margin="12,0,0,0" Padding="4"
+		<!-- the quick tools you reach for constantly, in a 56 px margin the
+			pages keep free beside them -->
+		<Border Grid.Row="2" Grid.Column="1" x:Name="QuickTools"
+			HorizontalAlignment="Left" Visibility="Collapsed"
+			VerticalAlignment="Center" Margin="6,0,0,0" Padding="4"
 			CornerRadius="8" Background="{ThemeResource SablePaneBrush}"
 			AutomationProperties.Name="Quick tools">
 			<StackPanel x:Name="QuickToolsList" Spacing="2" />
-		</Border>		<!-- Read Aloud: an outline around the page being read, and the bar
+		</Border>
+		<!-- Read Aloud: an outline around the page being read, and the bar
 			that plays, pauses, stops and turns its pages -->
-		<Canvas Grid.Row="2" x:Name="ReadAloudFrame" IsHitTestVisible="False"
+		<Canvas Grid.Row="2" Grid.Column="1" x:Name="ReadAloudFrame"
+			IsHitTestVisible="False"
 			Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw">
 			<Rectangle x:Name="ReadAloudOutline" StrokeThickness="3"
 				RadiusX="2" RadiusY="2"
 				Stroke="{ThemeResource AccentFillColorDefaultBrush}" />
 		</Canvas>
-		<Border Grid.Row="2" x:Name="ReadAloudBar" Visibility="Collapsed"
+		<Border Grid.Row="2" Grid.Column="1" x:Name="ReadAloudBar"
+			Visibility="Collapsed"
 			HorizontalAlignment="Center" VerticalAlignment="Bottom"
 			Margin="16,0,16,16" Padding="6" CornerRadius="8"
 			Background="{ThemeResource SablePaneBrush}"
@@ -249,7 +259,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 		<!-- Organize: every page as a tile to select, turn, delete, drag
 			into a new order, insert into or copy out to a new PDF -->
-		<Grid Grid.Row="2" x:Name="OrganizePanel"
+		<Grid Grid.Row="2" Grid.Column="1" x:Name="OrganizePanel"
 			Visibility="Collapsed"
 			Background="{ThemeResource SableViewerBrush}">
 			<Grid.RowDefinitions>
@@ -276,7 +286,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Grid>
 		<!-- notices get a row of their own under the command bar, so they never
 			cover a control; with none showing the row has no height -->
-		<InfoBar Grid.Row="1" Grid.ColumnSpan="3" x:Name="Message"
+		<InfoBar Grid.Row="1" Grid.ColumnSpan="4" x:Name="Message"
 			Visibility="Collapsed" IsOpen="False" IsClosable="False"
 			Severity="Error" HorizontalAlignment="Stretch" />
 
@@ -288,7 +298,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<!-- pdf.js's sidebar showing thumbnails, 200 px wide, opened from the
 			rail. The viewer places them on the canvas itself and only makes
 			the ones near the view. -->
-		<Border Grid.Row="2" x:Name="ThumbnailPanel" Grid.Column="1" Width="200"
+		<Border Grid.Row="2" x:Name="ThumbnailPanel" Grid.Column="2" Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -301,7 +311,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Border>
 
 
-		<Border x:Name="OutlinePanel" Grid.Row="2" Grid.Column="1" Width="200"
+		<Border x:Name="OutlinePanel" Grid.Row="2" Grid.Column="2" Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -332,7 +342,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border x:Name="AttachmentPanel" Grid.Row="2" Grid.Column="1"
+		<Border x:Name="AttachmentPanel" Grid.Row="2" Grid.Column="2"
 			Width="200"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
@@ -360,7 +370,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border x:Name="CommentsPanel" Grid.Row="2" Grid.Column="1" Width="260"
+		<Border x:Name="CommentsPanel" Grid.Row="2" Grid.Column="2" Width="260"
 			Visibility="Collapsed" Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="1,0,0,0" CornerRadius="8">
@@ -477,7 +487,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 
-		<Border Grid.Row="2" x:Name="Rail" Grid.Column="2" Width="56"
+		<Border Grid.Row="2" x:Name="Rail" Grid.Column="3" Width="56"
 			Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
@@ -638,7 +648,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</Grid>
 		</Border>
 		<Border x:Name="PresentationControls" Grid.RowSpan="3"
-			Grid.ColumnSpan="3"
+			Grid.ColumnSpan="4"
 			Visibility="Collapsed" VerticalAlignment="Bottom"
 			HorizontalAlignment="Center"
 			Background="{ThemeResource SablePresentationBarBrush}"

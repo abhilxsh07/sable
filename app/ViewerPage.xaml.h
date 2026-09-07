@@ -438,6 +438,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setAllToolsOpen(bool open);
 	void runTool(std::wstring_view tool);
 	void updateQuickTools();
+	// the tool pane and a side panel share the width left of the rail
+	bool crowded(double pane, double side);
+	void makeRoomForPanel(double width);
 	// save, print, properties, presentation and combine belong to the window
 	std::function<void(std::wstring_view)> m_commandRequested;
 	std::vector<std::pair<

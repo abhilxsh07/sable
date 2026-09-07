@@ -71,6 +71,10 @@ constexpr ToolEntry QUICK_TOOLS[] = {
      L"Listen to the PDF with a Windows voice"},
 };
 
+// the narrowest the pages may get before the tool pane and a side panel
+// stop sharing the window
+constexpr double MIN_CANVAS = 360.;
+
 FontIcon icon(const wchar_t* glyph) {
 	FontIcon icon;
 	icon.Glyph(glyph);
@@ -187,6 +191,20 @@ void ViewerPage::setupToolSurfaces() {
 		QuickToolsList().Children().Append(button);
 		m_quickToolButtons.emplace_back(button, entry.tool);
 	}
+	// the strip has a 56 px margin of its own, so the pages (and the frozen
+	// view a gesture leaves over them) start after it. Whatever hides the
+	// strip, Presentation or a failed tab too, gives them the room back.
+	QuickTools().RegisterPropertyChangedCallback(
+	    UIElement::VisibilityProperty(), [weak](auto&&, auto&&) {
+		    if (const auto self = weak.get()) {
+			    const Thickness margin{
+			        self->QuickTools().Visibility() == Visibility::Visible ? 56.
+			                                                               : 0.,
+			        0, 0, 0};
+			    self->Scroller().Margin(margin);
+			    self->GestureFreeze().Margin(margin);
+		    }
+	    });
 	updateQuickTools();
 }
 
@@ -198,9 +216,39 @@ void ViewerPage::setAllToolsOpen(bool open) {
 	if ((checked && checked.Value()) != open) {
 		AllToolsButton().IsChecked(open);
 	}
+	if (open && !presenting()) {
+		// a side panel that would leave the pages too narrow closes
+		for (const auto& panel : {ThumbnailPanel(), OutlinePanel(),
+		                          AttachmentPanel(), CommentsPanel()}) {
+			if (panel.Visibility() == Visibility::Visible &&
+			    crowded(AllToolsPanel().Width(), panel.Width())) {
+				setThumbnailsOpen(false);
+				setOutlineOpen(false);
+				setAttachmentsOpen(false);
+				setCommentsOpen(false);
+				break;
+			}
+		}
+	}
 	AllToolsPanel().Visibility(open && !presenting() ? Visibility::Visible
 	                                                 : Visibility::Collapsed);
 	updateQuickTools();
+}
+
+bool ViewerPage::crowded(double pane, double side) {
+	const double rail =
+	    Rail().Visibility() == Visibility::Visible ? Rail().Width() : 0.;
+	// not laid out yet: nothing to measure against
+	const double width = ActualWidth();
+	return width > 0 && width - pane - side - rail < MIN_CANVAS;
+}
+
+// a side panel opening closes the tool pane if both won't fit
+void ViewerPage::makeRoomForPanel(double width) {
+	if (AllToolsPanel().Visibility() == Visibility::Visible &&
+	    crowded(AllToolsPanel().Width(), width)) {
+		setAllToolsOpen(false);
+	}
 }
 
 // one tool from the panel or the strip; Combine starts from its own list of
@@ -264,10 +312,6 @@ void ViewerPage::updateQuickTools() {
 	m_syncingQuickTools = true;
 	BarQuickToolsItem().IsChecked(s_quickTools);
 	m_syncingQuickTools = false;
-	// the strip moves over when the panel is open
-	QuickTools().Margin(
-	    {AllToolsPanel().Visibility() == Visibility::Visible ? 242. : 12., 0, 0,
-	     0});
 	const bool canNote =
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog;
 	// setting IsChecked here mustn't start the tools again

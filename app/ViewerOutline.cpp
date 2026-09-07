@@ -80,6 +80,7 @@ void ViewerPage::setOutlineOpen(bool open) {
 		return;
 	}
 	if (open) {
+		makeRoomForPanel(OutlinePanel().Width());
 		setThumbnailsOpen(false);
 		setAttachmentsOpen(false);
 		setCommentsOpen(false);

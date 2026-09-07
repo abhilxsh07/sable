@@ -1098,6 +1098,7 @@ void ViewerPage::setThumbnailsOpen(bool open) {
 		return;
 	}
 	if (open) {
+		makeRoomForPanel(ThumbnailPanel().Width());
 		setOutlineOpen(false);
 		setAttachmentsOpen(false);
 		setCommentsOpen(false);

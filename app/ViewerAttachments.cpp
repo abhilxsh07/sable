@@ -67,6 +67,7 @@ void ViewerPage::setAttachmentsOpen(bool open) {
 		return;
 	}
 	if (open) {
+		makeRoomForPanel(AttachmentPanel().Width());
 		setThumbnailsOpen(false);
 		setOutlineOpen(false);
 		setCommentsOpen(false);
