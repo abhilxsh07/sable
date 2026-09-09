@@ -191,16 +191,46 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				Stroke="{ThemeResource TextFillColorPrimaryBrush}" />
 		</Canvas>
 		<!-- the tool pane: a column of its own left of the pages, so they
-			move over instead of lying under it. All tools lists every tool,
-			grouped. -->
+			move over instead of lying under it. Its header names what it
+			shows, goes back to the list of tools and closes it. All tools
+			lists every tool, grouped. -->
 		<Border Grid.Row="2" x:Name="AllToolsPanel" Width="320"
 			Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}"
 			BorderThickness="0,0,1,0">
-			<ScrollViewer>
-				<StackPanel x:Name="AllToolsList" Padding="12" Spacing="2" />
-			</ScrollViewer>
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+				</Grid.RowDefinitions>
+				<Grid Padding="12,8,8,0" ColumnSpacing="4">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto" />
+						<ColumnDefinition Width="*" />
+						<ColumnDefinition Width="Auto" />
+					</Grid.ColumnDefinitions>
+					<Button x:Name="ToolPaneBack" Width="32" Height="32"
+						Padding="0" Visibility="Collapsed"
+						ToolTipService.ToolTip="Back to all tools"
+						AutomationProperties.Name="Back to all tools">
+						<FontIcon Glyph="&#xE72B;" FontSize="14" />
+					</Button>
+					<TextBlock x:Name="ToolPaneTitle" Grid.Column="1"
+						VerticalAlignment="Center" FontSize="16"
+						FontWeight="SemiBold"
+						AutomationProperties.HeadingLevel="Level2" />
+					<Button x:Name="ToolPaneClose" Grid.Column="2" Width="32"
+						Height="32" Padding="0"
+						ToolTipService.ToolTip="Close"
+						AutomationProperties.Name="Close tool pane">
+						<FontIcon Glyph="&#xE711;" FontSize="14" />
+					</Button>
+				</Grid>
+				<ScrollViewer Grid.Row="1">
+					<StackPanel x:Name="AllToolsList" Padding="12" Spacing="2" />
+				</ScrollViewer>
+			</Grid>
 		</Border>
 		<!-- the quick tools you reach for constantly, in a 56 px margin the
 			pages keep free beside them -->

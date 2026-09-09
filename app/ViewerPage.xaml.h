@@ -94,6 +94,9 @@ struct MainWindow;
 // what the viewer is doing with the document: reading it, rearranging its
 // pages in Organize, or showing it full screen. One at a time.
 enum class ViewerMode { Read, Organize, Present };
+// what the left pane column holds: nothing, or the list of every tool.
+// The pane, its header and the All tools button all follow it.
+enum class ToolPane { None, Launcher };
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -197,6 +200,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// the mode is the state; this only holds the view to go back to
 	std::optional<PresentationView> m_presentation;
 	ViewerMode m_mode = ViewerMode::Read;
+	ToolPane m_toolPane = ToolPane::None;
+	bool m_syncingToolPane = false;
 	std::function<void()> m_exitPresentation;
 	std::function<void()> m_documentOpened;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_presentationTimer{
@@ -436,6 +441,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// the command bar, the All tools panel and the quick-tools strip
 	void setupToolSurfaces();
 	void setAllToolsOpen(bool open);
+	// the pane that's open; asking for it again moves focus into it
+	void openPane(ToolPane pane);
+	void closePane();
+	void updateToolPane();
+	void focusToolPane();
 	void runTool(std::wstring_view tool);
 	void updateQuickTools();
 	// the tool pane and a side panel share the width left of the rail

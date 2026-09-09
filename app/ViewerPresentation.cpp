@@ -80,7 +80,7 @@ bool ViewerPage::beginPresentation(std::function<void()> exit) {
 	AttachmentPanel().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
 	DocumentBar().Visibility(XVisibility::Collapsed);
-	AllToolsPanel().Visibility(XVisibility::Collapsed);
+	updateToolPane();
 	QuickTools().Visibility(XVisibility::Collapsed);
 	PresentationBackdrop().Visibility(XVisibility::Visible);
 	Pages().VerticalAlignment(VerticalAlignment::Center);
@@ -136,10 +136,7 @@ void ViewerPage::endPresentation() {
 	AttachmentPanel().Visibility(saved->attachments);
 	Rail().Visibility(XVisibility::Visible);
 	DocumentBar().Visibility(XVisibility::Visible);
-	{
-		const auto checked = AllToolsButton().IsChecked();
-		setAllToolsOpen(checked && checked.Value());
-	}
+	updateToolPane();
 	PresentationBackdrop().Visibility(XVisibility::Collapsed);
 	PresentationControls().Visibility(XVisibility::Collapsed);
 	Pages().VerticalAlignment(VerticalAlignment::Top);

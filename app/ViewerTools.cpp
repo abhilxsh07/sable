@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ViewerPage.xaml.h"
 #include "helpers/logging.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
 
 using namespace winrt;
@@ -119,13 +120,24 @@ void ViewerPage::setupToolSurfaces() {
 	// Checked and Unchecked, not Click, so keyboard and automation toggles
 	// count too
 	AllToolsButton().Checked([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->setAllToolsOpen(true);
+		if (const auto self = weak.get(); self && !self->m_syncingToolPane) {
+			self->openPane(ToolPane::Launcher);
 		}
 	});
 	AllToolsButton().Unchecked([weak](auto&&, auto&&) {
+		if (const auto self = weak.get(); self && !self->m_syncingToolPane) {
+			self->closePane();
+		}
+	});
+	ToolPaneBack().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->setAllToolsOpen(false);
+			self->openPane(ToolPane::Launcher);
+		}
+	});
+	ToolPaneClose().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->closePane();
+			self->Scroller().Focus(FocusState::Programmatic);
 		}
 	});
 	BarQuickToolsItem().IsChecked(s_quickTools);
@@ -209,13 +221,49 @@ void ViewerPage::setupToolSurfaces() {
 }
 
 void ViewerPage::setAllToolsOpen(bool open) {
-	if (m_closed || (open && organizing())) {
+	if (open) {
+		openPane(ToolPane::Launcher);
+	} else {
+		closePane();
+	}
+}
+
+void ViewerPage::openPane(ToolPane pane) {
+	if (m_closed || pane == ToolPane::None || organizing()) {
 		return;
 	}
+	if (m_toolPane == pane) {
+		focusToolPane();
+		return;
+	}
+	m_toolPane = pane;
+	updateToolPane();
+}
+
+void ViewerPage::closePane() {
+	if (m_closed) {
+		return;
+	}
+	m_toolPane = ToolPane::None;
+	updateToolPane();
+}
+
+// Lays the pane out from m_toolPane: its column, header and button. Nothing
+// else sets them. Presentation keeps the state and only hides the column.
+void ViewerPage::updateToolPane() {
+	const bool open = m_toolPane != ToolPane::None;
 	const auto checked = AllToolsButton().IsChecked();
 	if ((checked && checked.Value()) != open) {
+		m_syncingToolPane = true;
 		AllToolsButton().IsChecked(open);
+		m_syncingToolPane = false;
 	}
+	ToolPaneTitle().Text(m_toolPane == ToolPane::Launcher ? L"All tools" : L"");
+	// a tool's own pane goes back to the list
+	ToolPaneBack().Visibility(m_toolPane == ToolPane::None ||
+	                                  m_toolPane == ToolPane::Launcher
+	                              ? Visibility::Collapsed
+	                              : Visibility::Visible);
 	if (open && !presenting()) {
 		// a side panel that would leave the pages too narrow closes
 		for (const auto& panel : {ThumbnailPanel(), OutlinePanel(),
@@ -233,6 +281,18 @@ void ViewerPage::setAllToolsOpen(bool open) {
 	AllToolsPanel().Visibility(open && !presenting() ? Visibility::Visible
 	                                                 : Visibility::Collapsed);
 	updateQuickTools();
+}
+
+void ViewerPage::focusToolPane() {
+	if (presenting() || AllToolsPanel().Visibility() != Visibility::Visible) {
+		return;
+	}
+	if (const auto first =
+	        Input::FocusManager::FindFirstFocusableElement(AllToolsList())) {
+		if (const auto control = first.try_as<Control>()) {
+			control.Focus(FocusState::Programmatic);
+		}
+	}
 }
 
 bool ViewerPage::crowded(double pane, double side) {

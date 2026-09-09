@@ -197,14 +197,13 @@ void ViewerPage::openOrganize() {
 	}
 	clearNotice();
 	setupOrganize();
-	m_organizeView =
-	    OrganizeView{thumbnailsOpen(),
-	                 outlineOpen(),
-	                 attachmentsOpen(),
-	                 commentsOpen(),
-	                 AllToolsPanel().Visibility() == XVisibility::Visible,
-	                 findOpen(),
-	                 readingAloud() && !m_readAloudPaused};
+	m_organizeView = OrganizeView{thumbnailsOpen(),
+	                              outlineOpen(),
+	                              attachmentsOpen(),
+	                              commentsOpen(),
+	                              m_toolPane != ToolPane::None,
+	                              findOpen(),
+	                              readingAloud() && !m_readAloudPaused};
 	m_mode = ViewerMode::Organize;
 	cancelNotePlacement();
 	clearAnnotationSelection();

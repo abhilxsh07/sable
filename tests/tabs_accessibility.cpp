@@ -182,8 +182,8 @@ int TabsTest::auditSurface(const UIElement& root, const std::wstring& surface,
 }
 
 // Accessibility: Home, the viewer, Organize, Fill & Sign, Comments, Read
-// Aloud, Export and Combine each have a name for every control and a Tab
-// path to it.
+// Aloud, Export, Combine and the tool pane each have a name for every
+// control and a Tab path to it.
 void TabsTest::accessibilityTick(MainWindow& owner) {
 	const auto home = owner.Home();
 	switch (step) {
@@ -306,6 +306,66 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 				check(ticks < 60, "Combine didn't close");
 				return;
 			}
+			v.setAllToolsOpen(true);
+			break;
+		case 10: {
+			// the tool pane names itself, offers a way out, and takes focus
+			// when it's asked for while it's already open
+			const auto pane = v.AllToolsPanel();
+			check(pane.Visibility() == Visibility::Visible,
+			      "All tools didn't open");
+			const auto title = v.FindName(L"ToolPaneTitle").try_as<TextBlock>();
+			check(title && title.Text() == L"All tools",
+			      "the tool pane's header doesn't name All tools");
+			const auto back = v.FindName(L"ToolPaneBack").try_as<Button>();
+			check(back && back.Visibility() == Visibility::Collapsed,
+			      "the launcher has no hidden back arrow for tool panes");
+			const auto close = v.FindName(L"ToolPaneClose").try_as<Button>();
+			check(close && Automation::AutomationProperties::GetName(close) ==
+			                   L"Close tool pane",
+			      "the tool pane has no Close tool pane button");
+			findings += auditSurface(pane, L"Tool pane", true);
+			v.Scroller().Focus(FocusState::Programmatic);
+			v.setAllToolsOpen(true);
+			const auto inside = [&](const DependencyObject& node,
+			                        const DependencyObject& root) {
+				for (auto at = node; at; at = VisualTreeHelper::GetParent(at)) {
+					if (at == root) {
+						return true;
+					}
+				}
+				return false;
+			};
+			const auto focused =
+			    Input::FocusManager::GetFocusedElement(current.XamlRoot())
+			        .try_as<DependencyObject>();
+			check(focused && inside(focused, pane),
+			      "opening the pane that's open didn't focus it");
+			if (close) {
+				Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+				    close)
+				    .GetPattern(Peers::PatternInterface::Invoke)
+				    .as<Provider::IInvokeProvider>()
+				    .Invoke();
+			}
+			break;
+		}
+		case 11: {
+			const auto checked = v.AllToolsButton().IsChecked();
+			check(v.AllToolsPanel().Visibility() == Visibility::Collapsed &&
+			          checked && !checked.Value(),
+			      "Close tool pane didn't close the pane");
+			const auto focused =
+			    Input::FocusManager::GetFocusedElement(current.XamlRoot())
+			        .try_as<DependencyObject>();
+			bool onPages = false;
+			for (auto at = focused; at; at = VisualTreeHelper::GetParent(at)) {
+				onPages = onPages || at == v.Scroller();
+			}
+			check(onPages, "closing the pane didn't return focus to the pages");
+			break;
+		}
+		case 12:
 			check(findings == 0, std::to_string(findings) +
 			                         " accessibility findings; see "
 			                         "Sable-probe-logs\\accessibility.txt");

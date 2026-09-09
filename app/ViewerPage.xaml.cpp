@@ -1787,7 +1787,7 @@ void ViewerPage::showMessage(const hstring& text) {
 	Scroller().Visibility(XVisibility::Collapsed);
 	// a tab with nothing to show keeps only its message (A-09)
 	DocumentBar().Visibility(XVisibility::Collapsed);
-	AllToolsPanel().Visibility(XVisibility::Collapsed);
+	closePane();
 	QuickTools().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
 	ThumbnailPanel().Visibility(XVisibility::Collapsed);

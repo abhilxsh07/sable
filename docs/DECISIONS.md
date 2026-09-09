@@ -3597,3 +3597,12 @@ panels. The quick strip keeps a 56 px margin beside the pages; hiding the
 strip gives that room back. All tools and a right-hand panel can be open
 together, unless that would leave the pages narrower than 360 px: then
 opening one closes the other.
+
+## The tool pane gets a header (2026-11-13)
+
+The pane left of the pages now has a header: the name of what it shows, a
+back arrow to the list of tools (hidden while the list itself is showing)
+and a Close button that gives focus back to the pages. The viewer keeps
+one record of what the pane holds, so the pane, its header and the All
+tools button can't disagree. Asking for the pane that is already open
+moves focus into it instead of opening it again.
