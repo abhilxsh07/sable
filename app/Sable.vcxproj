@@ -204,6 +204,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\night_run.h" />
 		<ClInclude Include="helpers\read_aloud.h" />
 		<ClInclude Include="helpers\update_check.h" />
+		<ClInclude Include="helpers\panes.h" />
 		<ClInclude Include="helpers\text_range.h" />
 		<ClInclude Include="PageText.h" />
 		<ClInclude Include="MusicPane.h" />
@@ -248,6 +249,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\update_check.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\panes.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="MainUpdateCheck.cpp" />

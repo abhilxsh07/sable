@@ -76,6 +76,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="helpers\logging.cpp"><Filter>helpers</Filter></ClCompile>
 		<ClInclude Include="helpers\night_run.h"><Filter>helpers</Filter></ClInclude>
 		<ClCompile Include="helpers\night_run.cpp"><Filter>helpers</Filter></ClCompile>
+		<ClInclude Include="helpers\panes.h"><Filter>helpers</Filter></ClInclude>
+		<ClCompile Include="helpers\panes.cpp"><Filter>helpers</Filter></ClCompile>
 		<ClInclude Include="NightRunAudio.h" />
 		<ClCompile Include="NightRunAudio.cpp" />
 		<ClInclude Include="NightRunPane.h" />
