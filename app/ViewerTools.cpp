@@ -55,7 +55,8 @@ constexpr ToolEntry ALL_TOOLS[] = {
      L"Save pages as images or the text as a file"},
     {L"Read", L"Read aloud", L"\uE767", L"readaloud",
      L"Listen to the PDF with a Windows voice"},
-    {L"Read", L"Find", L"\uE721", L"find", L"Find in document (Ctrl+F)"},
+    {L"Document", L"Document properties", L"\uE946", L"properties",
+     L"Title, author, size and other details of this PDF"},
 };
 // the strip: the tools you reach for constantly
 constexpr ToolEntry QUICK_TOOLS[] = {
@@ -238,6 +239,12 @@ void ViewerPage::openPane(ToolPane pane) {
 	}
 	m_toolPane = pane;
 	updateToolPane();
+	if (pane == ToolPane::Properties) {
+		// the rows come from the cache when it's still good
+		followPropertiesPage();
+		requestProperties();
+		updatePropertiesPane();
+	}
 }
 
 void ViewerPage::closePane() {
@@ -258,7 +265,14 @@ void ViewerPage::updateToolPane() {
 		AllToolsButton().IsChecked(open);
 		m_syncingToolPane = false;
 	}
-	ToolPaneTitle().Text(m_toolPane == ToolPane::Launcher ? L"All tools" : L"");
+	const bool properties = m_toolPane == ToolPane::Properties;
+	ToolPaneTitle().Text(m_toolPane == ToolPane::Launcher ? L"All tools"
+	                     : properties ? L"Document properties"
+	                                  : L"");
+	AllToolsScroll().Visibility(properties ? Visibility::Collapsed
+	                                       : Visibility::Visible);
+	PropertiesScroll().Visibility(properties ? Visibility::Visible
+	                                         : Visibility::Collapsed);
 	// a tool's own pane goes back to the list
 	ToolPaneBack().Visibility(m_toolPane == ToolPane::None ||
 	                                  m_toolPane == ToolPane::Launcher
@@ -287,11 +301,20 @@ void ViewerPage::focusToolPane() {
 	if (presenting() || AllToolsPanel().Visibility() != Visibility::Visible) {
 		return;
 	}
+	const UIElement host = propertiesOpen()
+	                           ? static_cast<UIElement>(PropertiesHost())
+	                           : static_cast<UIElement>(AllToolsList());
+	Control target{nullptr};
 	if (const auto first =
-	        Input::FocusManager::FindFirstFocusableElement(AllToolsList())) {
-		if (const auto control = first.try_as<Control>()) {
-			control.Focus(FocusState::Programmatic);
-		}
+	        Input::FocusManager::FindFirstFocusableElement(host)) {
+		target = first.try_as<Control>();
+	}
+	// the values are text, so a properties pane starts at its header
+	if (!target && propertiesOpen()) {
+		target = ToolPaneBack();
+	}
+	if (target) {
+		target.Focus(FocusState::Programmatic);
 	}
 }
 
@@ -324,6 +347,10 @@ void ViewerPage::runTool(std::wstring_view tool) {
 		if (tool == L"combine") {
 			if (m_commandRequested) {
 				m_commandRequested(L"combine");
+			}
+		} else if (tool == L"properties") {
+			if (m_commandRequested) {
+				m_commandRequested(L"properties");
 			}
 		} else if (tool == L"find") {
 			openFind();

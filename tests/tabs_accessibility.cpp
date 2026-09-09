@@ -325,6 +325,19 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			                   L"Close tool pane",
 			      "the tool pane has no Close tool pane button");
 			findings += auditSurface(pane, L"Tool pane", true);
+			// All tools lists Document properties and no longer lists Find
+			bool listsFind = false, listsProperties = false;
+			for (const auto& child : v.AllToolsList().Children()) {
+				if (const auto button = child.try_as<Button>()) {
+					const auto name =
+					    Automation::AutomationProperties::GetName(button);
+					listsFind = listsFind || name == L"Find";
+					listsProperties =
+					    listsProperties || name == L"Document properties";
+				}
+			}
+			check(!listsFind && listsProperties,
+			      "All tools should list Document properties, not Find");
 			v.Scroller().Focus(FocusState::Programmatic);
 			v.setAllToolsOpen(true);
 			const auto inside = [&](const DependencyObject& node,
@@ -366,6 +379,53 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			break;
 		}
 		case 12:
+			// Document properties opens in the pane, from the All tools entry
+			v.runTool(L"properties");
+			break;
+		case 13: {
+			const auto title = v.FindName(L"ToolPaneTitle").try_as<TextBlock>();
+			check(title && title.Text() == L"Document properties",
+			      "the properties pane's header doesn't name it");
+			const auto host =
+			    v.FindName(L"PropertiesHost").try_as<StackPanel>();
+			if (!host || !v.m_properties || v.m_propertiesPending) {
+				check(host && ticks < 60, "properties didn't load in the pane");
+				return;
+			}
+			const auto back = v.FindName(L"ToolPaneBack").try_as<Button>();
+			check(back && back.Visibility() == Visibility::Visible,
+			      "the properties pane has no back arrow to All tools");
+			// A-18: a screen reader gets the value, with its label, and the
+			// label takes its colour from the theme
+			const auto rows = host.Children().GetAt(0).as<Grid>();
+			const auto style =
+			    host.Resources().Lookup(box_value(L"PropertyLabelStyle"));
+			check(rows.Children().Size() >= 4, "properties show no rows");
+			for (uint32_t i = 0; i + 1 < rows.Children().Size(); i += 2) {
+				const auto label = rows.Children().GetAt(i).as<TextBlock>();
+				const auto value = rows.Children().GetAt(i + 1).as<TextBlock>();
+				check(Automation::AutomationProperties::GetName(value) ==
+				          label.Text() + L": " + value.Text(),
+				      "a property value isn't named with its value");
+				check(label.Style() ==
+				          style.as<winrt::Microsoft::UI::Xaml::Style>(),
+				      "a property label doesn't use the theme colour");
+			}
+			const auto focused =
+			    Input::FocusManager::GetFocusedElement(current.XamlRoot())
+			        .try_as<DependencyObject>();
+			bool inPane = false;
+			for (auto at = focused; at; at = VisualTreeHelper::GetParent(at)) {
+				inPane = inPane || at == v.AllToolsPanel();
+			}
+			check(inPane, "opening properties didn't move focus into the pane");
+			// (the walk below moves focus)
+			findings +=
+			    auditSurface(v.AllToolsPanel(), L"Properties pane", true);
+			v.closePane();
+			break;
+		}
+		case 14:
 			check(findings == 0, std::to_string(findings) +
 			                         " accessibility findings; see "
 			                         "Sable-probe-logs\\accessibility.txt");

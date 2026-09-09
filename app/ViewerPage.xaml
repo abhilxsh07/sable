@@ -227,8 +227,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<FontIcon Glyph="&#xE711;" FontSize="14" />
 					</Button>
 				</Grid>
-				<ScrollViewer Grid.Row="1">
+				<ScrollViewer Grid.Row="1" x:Name="AllToolsScroll">
 					<StackPanel x:Name="AllToolsList" Padding="12" Spacing="2" />
+				</ScrollViewer>
+				<!-- Document properties: read-only rows, built by code -->
+				<ScrollViewer Grid.Row="1" x:Name="PropertiesScroll"
+					Visibility="Collapsed">
+					<StackPanel x:Name="PropertiesHost" Padding="12"
+						Spacing="12">
+						<StackPanel.Resources>
+							<Style x:Key="PropertyLabelStyle" TargetType="TextBlock">
+								<Setter Property="Foreground"
+									Value="{ThemeResource SableTextSecondaryBrush}" />
+							</Style>
+						</StackPanel.Resources>
+					</StackPanel>
 				</ScrollViewer>
 			</Grid>
 		</Border>

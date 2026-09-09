@@ -30,75 +30,36 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::dismissProperties() {
-	if (auto dialog = std::exchange(m_propertiesDialog, nullptr)) {
-		dialog.Hide();
+	if (propertiesOpen()) {
+		closePane();
 	}
 }
-fire_and_forget ViewerPage::showProperties() {
-	weak_ref<ViewerPage> weak;
-	ContentDialog dialog{nullptr};
+// Document properties live in the tool pane, so they sit beside the pages
+// and follow the reader instead of freezing at the page that was current.
+void ViewerPage::showProperties() {
 	try {
-		weak = get_weak();
 		if (m_closed || !m_layout || !m_session || !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
-		    m_propertiesDialog || m_passwordDialog) {
-			co_return;
+		    presenting() || m_passwordDialog) {
+			return;
+		}
+		if (organizing()) {
+			showNotice(
+			    L"Finish organizing pages before opening document properties.");
+			return;
 		}
 		stopPan();
 		leavePageBox();
-		m_propertiesPage = m_current;
-		m_propertiesSize = helpers::rotatedSize(m_sizes[m_current], m_rotation);
-		dialog = ContentDialog();
-		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Document properties"));
-		dialog.CloseButtonText(L"Close");
-		dialog.DefaultButton(ContentDialogButton::Close);
-		dialog.SizeChanged([weak](auto&&, auto&&) {
-			const auto self = weak.get();
-			if (!self || !self->m_propertiesDialog || !self->XamlRoot()) {
-				return;
-			}
-			if (const auto scroll =
-			        self->m_propertiesDialog.Content().try_as<ScrollViewer>()) {
-				scroll.MaxHeight((std::max)(
-				    80.,
-				    (std::min)(460., self->XamlRoot().Size().Height - 210.)));
-			}
-		});
-		dialog.PrimaryButtonClick(
-		    [weak](auto&&, const ContentDialogButtonClickEventArgs& e) {
-			    e.Cancel(true);
-			    if (auto self = weak.get()) {
-				    self->requestProperties();
-			    }
-		    });
-		m_propertiesDialog = dialog;
-		if (!m_properties) {
-			requestProperties();
-		}
-		updatePropertiesDialog();
-		co_await dialog.ShowAsync();
-		if (auto self = weak.get();
-		    self && self->m_propertiesDialog == dialog) {
-			self->m_propertiesDialog = nullptr;
+		const bool opened = propertiesOpen();
+		openPane(ToolPane::Properties);
+		if (!opened) {
+			focusToolPane();
 		}
 	} catch (...) {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Couldn't show document properties.");
-		if (auto self = weak.get()) {
-			if (self->m_propertiesDialog == dialog) {
-				self->m_propertiesDialog = nullptr;
-			}
-			if (dialog) {
-				try {
-					dialog.Hide();
-				} catch (...) {
-				}
-			}
-			if (!self->m_closed) {
-				self->showNotice(
-				    L"Couldn't open document properties. Try again.");
-			}
+		if (!m_closed) {
+			showNotice(L"Couldn't open document properties. Try again.");
 		}
 	}
 }
@@ -108,7 +69,7 @@ void ViewerPage::requestProperties() {
 	}
 	m_propertiesPending = true;
 	m_propertiesFailed = false;
-	updatePropertiesDialog();
+	updatePropertiesPane();
 	const auto version = ++m_propertiesVersion;
 	const auto session = m_session.get();
 	try {
@@ -129,7 +90,7 @@ void ViewerPage::requestProperties() {
 				                             ? std::nullopt
 				                             : std::move(reply->properties);
 				    self->m_propertiesFailed = !self->m_properties;
-				    self->updatePropertiesDialog();
+				    self->updatePropertiesPane();
 			    });
 		    })) {
 			return;
@@ -140,14 +101,36 @@ void ViewerPage::requestProperties() {
 	}
 	m_propertiesPending = false;
 	m_propertiesFailed = true;
-	updatePropertiesDialog();
+	updatePropertiesPane();
 }
-void ViewerPage::updatePropertiesDialog() {
-	if (!m_propertiesDialog || m_closed) {
+void ViewerPage::followPropertiesPage() {
+	if (!m_layout || m_current >= m_sizes.size()) {
 		return;
 	}
-	auto dialog = m_propertiesDialog;
-	dialog.PrimaryButtonText(L"");
+	m_propertiesPage = m_current;
+	m_propertiesSize = helpers::rotatedSize(m_sizes[m_current], m_rotation);
+	// the same text the rows were built with, named like they were
+	const auto set = [](const TextBlock& cell, const wchar_t* label,
+	                    const hstring& value) {
+		if (cell) {
+			cell.Text(value);
+			Automation::AutomationProperties::SetName(cell, hstring(label) +
+			                                                    L": " + value);
+		}
+	};
+	set(m_propertiesCurrent, L"Current page", to_hstring(m_propertiesPage + 1));
+	set(m_propertiesPageSize, L"Page size",
+	    to_hstring(helpers::propertyPageSize(m_propertiesSize.width,
+	                                         m_propertiesSize.height)));
+}
+void ViewerPage::updatePropertiesPane() {
+	if (!propertiesOpen() || m_closed) {
+		return;
+	}
+	const auto children = PropertiesHost().Children();
+	children.Clear();
+	m_propertiesCurrent = nullptr;
+	m_propertiesPageSize = nullptr;
 	if (!m_properties) {
 		TextBlock status;
 		status.Text(
@@ -157,10 +140,17 @@ void ViewerPage::updatePropertiesDialog() {
 		status.TextWrapping(TextWrapping::Wrap);
 		Automation::AutomationProperties::SetLiveSetting(
 		    status, Automation::Peers::AutomationLiveSetting::Polite);
+		children.Append(status);
 		if (m_propertiesFailed) {
-			dialog.PrimaryButtonText(L"Retry");
+			Button retry;
+			retry.Content(box_value(L"Retry"));
+			retry.Click([weak = get_weak()](auto&&, auto&&) {
+				if (const auto self = weak.get()) {
+					self->requestProperties();
+				}
+			});
+			children.Append(retry);
 		}
-		dialog.Content(status);
 		return;
 	}
 	const auto& p = *m_properties;
@@ -190,6 +180,11 @@ void ViewerPage::updatePropertiesDialog() {
 	    {L"Fast web view",
 	     p.linearized ? (*p.linearized ? L"Yes" : L"No") : L"Unavailable"},
 	    {L"Encrypted", p.encrypted ? L"Yes" : L"No"}};
+	// the label colour comes from the theme, so it follows light and dark
+	const auto labelStyle = PropertiesHost()
+	                            .Resources()
+	                            .Lookup(box_value(L"PropertyLabelStyle"))
+	                            .as<winrt::Microsoft::UI::Xaml::Style>();
 	Grid rows;
 	rows.ColumnSpacing(18);
 	rows.RowSpacing(13);
@@ -206,36 +201,35 @@ void ViewerPage::updatePropertiesDialog() {
 		label.Text(name);
 		label.FontSize(12);
 		label.TextWrapping(TextWrapping::Wrap);
-		label.Foreground(Media::SolidColorBrush({255, 166, 166, 166}));
+		label.Style(labelStyle);
+		// the value's name carries the label, so it isn't read twice
+		Automation::AutomationProperties::SetAccessibilityView(
+		    label, Automation::Peers::AccessibilityView::Raw);
 		Grid::SetRow(label, index);
 		rows.Children().Append(label);
 		TextBlock text;
-		text.Text(value.empty() ? L"\u2014" : value);
 		text.FontSize(13);
 		text.TextWrapping(TextWrapping::Wrap);
 		text.IsTextSelectionEnabled(true);
-		Automation::AutomationProperties::SetName(text, name);
+		const hstring shown = value.empty() ? hstring(L"\u2014") : value;
+		text.Text(shown);
+		Automation::AutomationProperties::SetName(text, hstring(name) + L": " +
+		                                                    shown);
 		Grid::SetRow(text, index);
 		Grid::SetColumn(text, 1);
 		rows.Children().Append(text);
+		if (std::wstring_view(name) == L"Current page") {
+			m_propertiesCurrent = text;
+		} else if (std::wstring_view(name) == L"Page size") {
+			m_propertiesPageSize = text;
+		}
 	}
-	StackPanel content;
-	content.Spacing(18);
-	content.Children().Append(rows);
+	children.Append(rows);
 	if (p.limited) {
 		TextBlock note;
 		note.Text(L"Some document details are too large to show.");
 		note.TextWrapping(TextWrapping::Wrap);
-		content.Children().Append(note);
+		children.Append(note);
 	}
-	ScrollViewer scroll;
-	scroll.MaxWidth(480);
-	scroll.MaxHeight(
-	    (std::max)(80., (std::min)(460., XamlRoot().Size().Height - 210.)));
-	scroll.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
-	scroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
-	scroll.Padding({0, 0, 12, 0});
-	scroll.Content(content);
-	dialog.Content(scroll);
 }
 } // namespace winrt::Sable::implementation

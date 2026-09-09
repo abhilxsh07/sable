@@ -94,9 +94,10 @@ struct MainWindow;
 // what the viewer is doing with the document: reading it, rearranging its
 // pages in Organize, or showing it full screen. One at a time.
 enum class ViewerMode { Read, Organize, Present };
-// what the left pane column holds: nothing, or the list of every tool.
-// The pane, its header and the All tools button all follow it.
-enum class ToolPane { None, Launcher };
+// what the left pane column holds: nothing, the list of every tool, or the
+// document's properties. The pane, its header and the All tools button all
+// follow it.
+enum class ToolPane { None, Launcher, Properties };
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -145,8 +146,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	}
 	void stopPan(bool leaveViewport = false);
 	void print(void* owner, std::function<void()> done);
-	winrt::fire_and_forget showProperties();
+	void showProperties();
 	void dismissProperties();
+	bool propertiesOpen() const {
+		return m_toolPane == ToolPane::Properties;
+	}
 	// A menu temporarily takes focus from an unfinished page-box edit.
 	void holdPageEdit(bool hold);
 	bool hasTextSelection() const;
@@ -248,10 +252,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
 	void startOpen(const std::string& password);
 	void requestProperties();
-	void updatePropertiesDialog();
+	void updatePropertiesPane();
+	// the open pane's Current page and Page size rows follow the reader
+	void followPropertiesPage();
 	std::optional<pdf::Properties> m_properties;
-	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_propertiesDialog{
-	    nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_propertiesCurrent{
+	    nullptr},
+	    m_propertiesPageSize{nullptr};
 	std::uint64_t m_propertiesVersion = 0;
 	bool m_propertiesPending = false, m_propertiesFailed = false;
 	std::size_t m_propertiesPage = 0;
@@ -498,7 +505,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_organizeSetup = false, m_organizeBusy = false;
 	struct OrganizeView {
 		bool thumbnails, outline, attachments, comments;
-		bool launcher, find, resumeReadAloud;
+		ToolPane pane;
+		bool find, resumeReadAloud;
 	};
 	std::optional<OrganizeView> m_organizeView;
 	std::vector<int> m_organizeHiddenSelection;

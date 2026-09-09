@@ -29,8 +29,7 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	auto self = this;
 	const auto current = Viewer();
 	const auto viewer = current ? get_self<ViewerPage>(current) : nullptr;
-	if (m_closing || m_settingsWindow ||
-	    (viewer && (viewer->m_propertiesDialog || viewer->m_passwordDialog))) {
+	if (m_closing || m_settingsWindow || (viewer && viewer->m_passwordDialog)) {
 		return false;
 	}
 	if (viewer && viewer->m_noteDialog) {

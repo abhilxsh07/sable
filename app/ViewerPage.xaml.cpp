@@ -1020,6 +1020,9 @@ void ViewerPage::showPosition() {
 		return;
 	}
 	const auto count = m_layout->pages().size();
+	if (propertiesOpen()) {
+		followPropertiesPage();
+	}
 	const auto text = helpers::pageText(m_current, count, m_labels);
 	m_pageBoxText = to_hstring(text.box);
 	if (!m_pageEditHeld) {

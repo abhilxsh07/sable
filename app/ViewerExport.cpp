@@ -95,8 +95,7 @@ fire_and_forget ViewerPage::exportPages() {
 		    m_noteDialog || m_passwordDialog || !XamlRoot()) {
 			co_return;
 		}
-		if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving ||
-		    m_propertiesDialog) {
+		if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
 			showNotice(L"Finish the page or note operation before exporting.");
 			co_return;
 		}

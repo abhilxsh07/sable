@@ -538,20 +538,20 @@ void TabsTest::keyboardInputTick(MainWindow& owner) {
 		v.showProperties();
 		break;
 	case 26:
-		check(v.m_propertiesDialog != nullptr,
-		      "properties dialog did not open");
+		check(v.propertiesOpen(), "properties pane did not open");
 		inputZoom = v.m_zoom;
 		deliverKeys({{VK_ADD, ctrl}, {'R', 0}});
 		break;
 	case 27:
-		check(v.m_zoom == inputZoom && v.m_rotation == 0,
-		      "modal dialog leaked OS-delivered reader keys");
-		deliverKeys({{VK_ESCAPE, 0}});
+		// the pane isn't modal: the reader's keys still work beside it
+		check(v.m_zoom != inputZoom && v.m_rotation == 1,
+		      "the properties pane swallowed OS-delivered reader keys");
+		v.dismissProperties();
 		break;
 	case 28:
-		check(!v.m_propertiesDialog, "Escape did not dismiss properties");
+		check(!v.propertiesOpen(), "properties pane did not close");
 		status.Text(L"PASS: Windows input delivery, text editing, zoom, Find, "
-		            L"rotation, tools, presentation and dialog isolation");
+		            L"rotation, tools, presentation and the properties pane");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;
@@ -748,13 +748,13 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		break;
 	}
 	case 9: {
-		check(v.m_propertiesDialog != nullptr,
-		      "properties dialog did not open");
+		check(v.propertiesOpen(), "properties pane did not open");
 		const auto beforeZoom = v.m_zoom;
-		check(!key('F', ctrl) && !key(VK_ADD, ctrl) && !key('R') &&
-		          !key('G', ctrl | alt) && v.m_zoom == beforeZoom &&
-		          !v.findOpen(),
-		      "modal dialog leaked reader shortcuts");
+		check(key('F', ctrl) && v.findOpen(),
+		      "the properties pane swallowed Ctrl-F");
+		key(VK_ESCAPE);
+		check(key(VK_ADD, ctrl) && v.m_zoom != beforeZoom,
+		      "the properties pane swallowed zoom");
 		v.dismissProperties();
 		break;
 	}

@@ -187,8 +187,7 @@ void ViewerPage::setupOrganize() {
 
 void ViewerPage::openOrganize() {
 	if (m_closed || !m_layout || !m_session || presenting() || m_noteDialog ||
-	    m_passwordDialog || m_propertiesDialog || pageOperationBusy() ||
-	    m_noteBusy || m_noteSaving) {
+	    m_passwordDialog || pageOperationBusy() || m_noteBusy || m_noteSaving) {
 		return;
 	}
 	if (organizing()) {
@@ -201,7 +200,7 @@ void ViewerPage::openOrganize() {
 	                              outlineOpen(),
 	                              attachmentsOpen(),
 	                              commentsOpen(),
-	                              m_toolPane != ToolPane::None,
+	                              m_toolPane,
 	                              findOpen(),
 	                              readingAloud() && !m_readAloudPaused};
 	m_mode = ViewerMode::Organize;
@@ -262,7 +261,11 @@ void ViewerPage::closeOrganize(bool restore) {
 	setOutlineOpen(previous.outline);
 	setAttachmentsOpen(previous.attachments);
 	setCommentsOpen(previous.comments);
-	setAllToolsOpen(previous.launcher);
+	if (previous.pane != ToolPane::None) {
+		openPane(previous.pane);
+	} else {
+		closePane();
+	}
 	if (previous.find) {
 		openFind();
 	}
@@ -684,7 +687,7 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 		return;
 	}
 	// every page index may have moved, so the comments are listed again.
-	if (m_propertiesDialog) {
+	if (propertiesOpen()) {
 		requestProperties();
 	}
 	if (readPage) {

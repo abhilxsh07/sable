@@ -3606,3 +3606,17 @@ and a Close button that gives focus back to the pages. The viewer keeps
 one record of what the pane holds, so the pane, its header and the All
 tools button can't disagree. Asking for the pane that is already open
 moves focus into it instead of opening it again.
+
+## Document properties open in the tool pane (2026-11-13)
+
+Document properties are a pane beside the pages instead of a dialog, so
+they no longer cover the document or stop the reader's keys, and the Current
+page and Page size rows follow you as you read. The values are read by a
+screen reader with their label ("File name: report.pdf"), and the labels take
+their colour from the theme. All tools lists Document properties in a group of
+its own and no longer lists Find; the command bar's Find button and Ctrl+F
+stay. Menu > File and the command bar's More menu open the same pane. Retry,
+when the details can't be loaded, is a button in the pane. Opening properties
+while Organize is open says to finish organizing first, and Organize gives back
+the pane that was open when it ends. Esc does not close the pane yet; the Esc
+order is a later step of this batch.

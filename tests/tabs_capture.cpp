@@ -263,14 +263,22 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		}
 	};
 	const auto value = [&](int index) {
-		const auto scroll =
-		    viewer->m_propertiesDialog.Content().as<ScrollViewer>();
 		const auto rows =
-		    scroll.Content().as<StackPanel>().Children().GetAt(0).as<Grid>();
+		    viewer->PropertiesHost().Children().GetAt(0).as<Grid>();
 		const auto text = rows.Children().GetAt(index * 2 + 1).as<TextBlock>();
 		check(text.IsTextSelectionEnabled(),
 		      "property values cannot be selected");
 		return text.Text();
+	};
+	const auto retryShown = [&] {
+		for (const auto& child : viewer->PropertiesHost().Children()) {
+			if (const auto button = child.try_as<Button>();
+			    button &&
+			    unbox_value_or<hstring>(button.Content(), L"") == L"Retry") {
+				return true;
+			}
+		}
+		return false;
 	};
 	switch (step) {
 	case 0: {
@@ -282,11 +290,12 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		first.copy_from(viewer);
 		zoom = viewer->m_zoom;
 		owner.onDocumentProperties({}, {});
-		const auto dialog = viewer->m_propertiesDialog;
-		check(dialog != nullptr, "properties dialog did not open");
+		check(viewer->propertiesOpen(), "properties pane did not open");
+		const auto rows = viewer->PropertiesHost().Children().Size();
 		owner.onDocumentProperties({}, {});
-		check(viewer->m_propertiesDialog == dialog,
-		      "duplicate properties dialog");
+		check(viewer->propertiesOpen() &&
+		          viewer->PropertiesHost().Children().Size() == rows,
+		      "properties pane opened twice");
 		break;
 	}
 	case 1:
@@ -306,14 +315,12 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		      "properties changed the document view");
 		propertiesRequest = viewer->m_propertiesVersion;
 		capture(L"properties-dark.png");
-		viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
-		    nullptr, 10000., nullptr, true);
+		viewer->PropertiesScroll().ChangeView(nullptr, 10000., nullptr, true);
 		break;
 	case 2:
 		capture(L"properties-details.png");
 		appearance::apply(true);
-		viewer->m_propertiesDialog.Content().as<ScrollViewer>().ChangeView(
-		    nullptr, 0., nullptr, true);
+		viewer->PropertiesScroll().ChangeView(nullptr, 0., nullptr, true);
 		break;
 	case 3:
 		capture(L"properties-obsidian.png");
@@ -340,8 +347,7 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		          value(12) == L"297.0 x 210.0 mm (A4, landscape)",
 		      "cached properties did not follow current page/view rotation");
 		owner.openDocument(engine, L"tests/fixtures/properties_missing.pdf", 1);
-		check(!first->m_propertiesDialog,
-		      "hidden tab kept its properties dialog");
+		check(!first->propertiesOpen(), "hidden tab kept its properties pane");
 		break;
 	case 7:
 		if (!viewer || viewer == first.get()) {
@@ -359,14 +365,13 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		owner.closeTab(owner.m_tabs.back().tab);
 		break;
 	case 9: {
-		check(viewer == first.get() && !viewer->m_propertiesDialog,
+		check(viewer == first.get() && !viewer->propertiesOpen(),
 		      "closed or switched properties returned");
 		viewer->m_properties.reset();
 		auto healthy = std::move(viewer->m_session);
 		viewer->m_session = std::make_unique<pdf::Session>(engine);
 		viewer->showProperties();
-		check(viewer->m_propertiesFailed &&
-		          viewer->m_propertiesDialog.PrimaryButtonText() == L"Retry",
+		check(viewer->m_propertiesFailed && retryShown(),
 		      "properties failure has no retry");
 		viewer->m_session = std::move(healthy);
 		capture(L"properties-retry.png");
@@ -378,13 +383,13 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 			return;
 		}
 		check(viewer->m_properties && !viewer->m_propertiesFailed &&
-		          viewer->m_propertiesDialog.PrimaryButtonText().empty(),
+		          !retryShown(),
 		      "properties retry failed");
 		viewer->dismissProperties();
 		break;
 	case 11: {
 		// A delayed reply can populate the cache, but cannot reopen a
-		// dismissed dialog.
+		// dismissed pane.
 		viewer->m_properties.reset();
 		auto release = std::make_shared<std::promise<void>>();
 		auto wait = release->get_future().share();
@@ -400,14 +405,14 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		if (viewer->m_propertiesPending) {
 			return;
 		}
-		check(viewer->m_properties && !viewer->m_propertiesDialog,
-		      "late metadata resurrected the dialog");
+		check(viewer->m_properties && !viewer->propertiesOpen(),
+		      "late metadata resurrected the pane");
 		viewer->showProperties();
 		break;
 	case 13:
-		check(viewer->m_propertiesDialog != nullptr);
+		check(viewer->propertiesOpen());
 		owner.closeTab(owner.m_tabs.front().tab);
-		check(first->m_closed && !first->m_propertiesDialog &&
+		check(first->m_closed && !first->propertiesOpen() &&
 		          !owner.PropertiesItem().IsEnabled(),
 		      "closing a document kept properties active");
 		peerWindow = app.createWindow();
@@ -426,12 +431,11 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		if (!other->m_properties || other->m_propertiesPending) {
 			return;
 		}
-		check(other->m_propertiesDialog != nullptr,
-		      "peer properties did not open");
+		check(other->propertiesOpen(), "peer properties did not open");
 		peerWindow->Close();
-		check(other->m_closed && !other->m_propertiesDialog &&
+		check(other->m_closed && !other->propertiesOpen() &&
 		          app.m_windows.size() == 1,
-		      "closing a reader kept its properties dialog alive");
+		      "closing a reader kept its properties pane alive");
 		status.Text(L"PASS: properties metadata, Unicode, dates, "
 		            L"page/rotation size, themes, "
 		            L"cache, retry, dismissal, tabs and close");
