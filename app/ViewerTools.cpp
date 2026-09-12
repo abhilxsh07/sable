@@ -20,9 +20,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "ViewerPage.xaml.h"
 #include "helpers/logging.h"
+#include "helpers/panes.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+#include <limits>
+#include <string_view>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -76,6 +79,18 @@ constexpr ToolEntry QUICK_TOOLS[] = {
 // the narrowest the pages may get before the tool pane and a side panel
 // stop sharing the window
 constexpr double MIN_CANVAS = 360.;
+
+// what panes.json calls each pane; empty for none
+std::string_view paneKey(ToolPane pane) {
+	switch (pane) {
+	case ToolPane::Launcher:
+		return "launcher";
+	case ToolPane::Properties:
+		return "properties";
+	default:
+		return {};
+	}
+}
 
 FontIcon icon(const wchar_t* glyph) {
 	FontIcon icon;
@@ -219,6 +234,7 @@ void ViewerPage::setupToolSurfaces() {
 		    }
 	    });
 	updateQuickTools();
+	setupPaneGrip();
 }
 
 void ViewerPage::setAllToolsOpen(bool open) {
@@ -238,6 +254,9 @@ void ViewerPage::openPane(ToolPane pane) {
 		return;
 	}
 	m_toolPane = pane;
+	// each pane comes back at the width it was last given
+	AllToolsPanel().Width(
+	    helpers::loadPaneWidths(s_panesFile).width(paneKey(pane)));
 	updateToolPane();
 	if (pane == ToolPane::Properties) {
 		// the rows come from the cache when it's still good
@@ -294,6 +313,12 @@ void ViewerPage::updateToolPane() {
 	}
 	AllToolsPanel().Visibility(open && !presenting() ? Visibility::Visible
 	                                                 : Visibility::Collapsed);
+	if (AllToolsPanel().Visibility() != Visibility::Visible &&
+	    (m_paneGripHover || m_paneResizing)) {
+		// a hidden grip gets no PointerExited
+		m_paneGripHover = m_paneResizing = false;
+		updatePaneGripCursor();
+	}
 	updateQuickTools();
 }
 
@@ -315,6 +340,89 @@ void ViewerPage::focusToolPane() {
 	}
 	if (target) {
 		target.Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::resizePane(double width, bool save) {
+	if (m_closed) {
+		return;
+	}
+	// not open or not laid out: only the range applies
+	double room = std::numeric_limits<double>::quiet_NaN();
+	if (ActualWidth() > 0 &&
+	    AllToolsPanel().Visibility() == Visibility::Visible) {
+		double side = 0;
+		for (const auto& panel : {ThumbnailPanel(), OutlinePanel(),
+		                          AttachmentPanel(), CommentsPanel()}) {
+			if (panel.Visibility() == Visibility::Visible) {
+				side += panel.Width();
+			}
+		}
+		const double rail =
+		    Rail().Visibility() == Visibility::Visible ? Rail().Width() : 0.;
+		room = ActualWidth() - side - rail - MIN_CANVAS;
+	}
+	const double fitted = helpers::fitPaneWidth(width, room);
+	AllToolsPanel().Width(fitted);
+	if (save) {
+		if (const auto key = paneKey(m_toolPane); !key.empty()) {
+			helpers::savePaneWidth(s_panesFile, key, fitted);
+		}
+	}
+}
+
+// the grip on the pane's edge beside the pages. Its arrow keys come through
+// navigationKey, as the window sees keys before the grip does.
+void ViewerPage::setupPaneGrip() {
+	const auto weak = get_weak();
+	const auto grip = ToolPaneGrip();
+	grip.DragStarted([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->m_paneResizing = true;
+			self->m_paneDragWidth = self->AllToolsPanel().Width();
+			self->updatePaneGripCursor();
+		}
+	});
+	grip.DragDelta([weak](auto&&, const Primitives::DragDeltaEventArgs& e) {
+		if (const auto self = weak.get()) {
+			// the unrounded width, so whole-pixel steps don't drift from
+			// the pointer at fractional scales
+			self->m_paneDragWidth += e.HorizontalChange();
+			self->resizePane(self->m_paneDragWidth, false);
+		}
+	});
+	grip.DragCompleted([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->m_paneResizing = false;
+			self->resizePane(self->AllToolsPanel().Width(), true);
+			self->updatePaneGripCursor();
+		}
+	});
+	grip.PointerEntered([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->m_paneGripHover = true;
+			self->updatePaneGripCursor();
+		}
+	});
+	grip.PointerExited([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->m_paneGripHover = false;
+			self->updatePaneGripCursor();
+		}
+	});
+}
+
+void ViewerPage::updatePaneGripCursor() {
+	if (m_closed) {
+		return;
+	}
+	if (m_paneGripHover || m_paneResizing) {
+		using namespace Microsoft::UI::Input;
+		ProtectedCursor(
+		    InputSystemCursor::Create(InputSystemCursorShape::SizeWestEast));
+	} else {
+		// whatever the pages want, the hand tool's cursor or none
+		updatePanCursor();
 	}
 }
 

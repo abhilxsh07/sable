@@ -3620,3 +3620,14 @@ when the details can't be loaded, is a button in the pane. Opening properties
 while Organize is open says to finish organizing first, and Organize gives back
 the pane that was open when it ends. Esc does not close the pane yet; the Esc
 order is a later step of this batch.
+
+## The tool pane can be resized (2026-11-13)
+
+The tool pane has a grip on its edge beside the pages. Dragging it, or
+Left and Right while it has focus (16 px a press), makes the pane anything
+from 280 to 480 px wide; it opens at 320. Each pane keeps the last width it
+was given in panes.json next to config.json, so config.json keeps
+NightPDF's keys. Widening the pane stops where the pages would drop under
+360 px beside an open side panel instead of closing the panel; opening the
+pane at a remembered width still closes a side panel that won't fit, as
+before.

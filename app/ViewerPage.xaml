@@ -204,6 +204,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<RowDefinition Height="Auto" />
 					<RowDefinition Height="*" />
 				</Grid.RowDefinitions>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*" />
+					<ColumnDefinition Width="6" />
+				</Grid.ColumnDefinitions>
 				<Grid Padding="12,8,8,0" ColumnSpacing="4">
 					<Grid.ColumnDefinitions>
 						<ColumnDefinition Width="Auto" />
@@ -243,6 +247,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</StackPanel.Resources>
 					</StackPanel>
 				</ScrollViewer>
+				<!-- the grip on the edge beside the pages: drag it, or Left and
+					Right while it has focus, for 280 to 480 px -->
+				<Thumb x:Name="ToolPaneGrip" Grid.Column="1" Grid.RowSpan="2"
+					IsTabStop="True" UseSystemFocusVisuals="True"
+					ToolTipService.ToolTip="Drag to resize"
+					AutomationProperties.Name="Resize tool pane"
+					AutomationProperties.HelpText="Left and Right arrows make it narrower or wider">
+					<Thumb.Template>
+						<ControlTemplate TargetType="Thumb">
+							<Border Background="Transparent" />
+						</ControlTemplate>
+					</Thumb.Template>
+				</Thumb>
 			</Grid>
 		</Border>
 		<!-- the quick tools you reach for constantly, in a 56 px margin the

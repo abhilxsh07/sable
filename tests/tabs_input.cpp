@@ -654,16 +654,55 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		return;
 	}
 	auto& v = *get_self<ViewerPage>(current);
-	if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
-	    (v.m_findTimer && v.m_findTimer.IsRunning())) {
-		return;
-	}
 	constexpr auto ctrl = helpers::SHORTCUT_CTRL;
 	constexpr auto shift = helpers::SHORTCUT_SHIFT;
 	constexpr auto alt = helpers::SHORTCUT_ALT;
 	const auto key = [&](unsigned code, unsigned modifiers = 0) {
 		return owner.routeKey(code, modifiers);
 	};
+	// the password prompt is modal: the reader's keys stay off the page
+	// behind it, and Esc (from Windows, as the dialog handles it) closes it
+	if (step == 10) {
+		check(ticks < 115, "the password prompt didn't open");
+		if (!v.m_passwordDialog || ticks < 6) {
+			return;
+		}
+		const auto before = v.m_zoom;
+		check(!key('F', ctrl) && !v.findOpen() && !key(VK_ADD, ctrl) &&
+		          v.m_zoom == before && !key('R') && v.m_rotation == 0,
+		      "the password prompt let Ctrl-F, Ctrl-plus or R through");
+		check_hresult(owner.get_strong().as<IWindowNative>()->get_WindowHandle(
+		    &inputWindow));
+		owner.Activate();
+		bringToFront(inputWindow);
+		++step;
+		ticks = 0;
+		return;
+	}
+	if (step == 11) {
+		if (ticks < 3) {
+			return;
+		}
+		deliverKeys({{VK_ESCAPE, 0}});
+		++step;
+		ticks = 0;
+		return;
+	}
+	if (step == 12) {
+		if (v.m_passwordDialog) {
+			check(ticks < 60, "Esc didn't close the password prompt");
+			return;
+		}
+		owner.closeTab(owner.m_tabs.back().tab);
+		owner.Tabs().SelectedIndex(0);
+		++step;
+		ticks = 0;
+		return;
+	}
+	if (!ready(v) || v.m_finding || v.m_findNeedsReveal ||
+	    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+		return;
+	}
 	switch (step) {
 	case 0: {
 		owner.Tabs().SelectedItem().as<TabViewItem>().Focus(
@@ -756,27 +795,29 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		check(key(VK_ADD, ctrl) && v.m_zoom != beforeZoom,
 		      "the properties pane swallowed zoom");
 		v.dismissProperties();
+		// a modal prompt: the password one, in a tab of its own
+		owner.openDocument(engine, L"tests/fixtures/password.pdf", 1);
 		break;
 	}
-	case 10:
+	case 13:
 		key('P', ctrl | alt);
 		break;
-	case 11:
+	case 14:
 		check(v.m_presentation.has_value(), "presentation key did not enter");
 		key(VK_DOWN, ctrl);
 		break;
-	case 12:
+	case 15:
 		check(v.m_current + 1 == v.m_sizes.size(),
 		      "presentation Ctrl-Down missed last page");
 		key(VK_UP, ctrl | shift);
 		break;
-	case 13:
+	case 16:
 		check(v.m_current == 0, "presentation Ctrl-Up missed first page");
 		owner.m_copyPicker = [](hstring) { return attachmentChoice(L"", {}); };
 		key('S', ctrl);
 		check(!v.m_presentation, "Save did not leave presentation");
 		break;
-	case 14:
+	case 17:
 		check(!owner.m_saveCopyCancel, "cancelled keyboard save stayed active");
 		key(VK_F11);
 		check(owner.AppWindow().Presenter().Kind() ==
@@ -793,7 +834,7 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 		owner.Tabs().SelectedIndex(0);
 		break;
-	case 15:
+	case 18:
 		check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
 		          owner.Tabs().SelectedIndex() == 1 && first->m_current == 0,
 		      "custom binding lost priority over viewer letters");

@@ -453,6 +453,15 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void closePane();
 	void updateToolPane();
 	void focusToolPane();
+	// the pane's width, 280 to 480 px; resizing keeps the pages their 360.
+	// save keeps it in panes.json for the pane that's open.
+	void resizePane(double width, bool save);
+	// panes.json next to config.json; MainWindow sets it
+	static inline std::filesystem::path s_panesFile;
+	void setupPaneGrip();
+	void updatePaneGripCursor();
+	bool m_paneGripHover = false, m_paneResizing = false;
+	double m_paneDragWidth = 0;
 	void runTool(std::wstring_view tool);
 	void updateQuickTools();
 	// the tool pane and a side panel share the width left of the rail

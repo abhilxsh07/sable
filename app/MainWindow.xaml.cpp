@@ -174,6 +174,10 @@ MainWindow::MainWindow(helpers::NightPDFSettings settings)
 	ViewerPage::s_readAloudFile =
 	    config.empty() ? std::filesystem::path{}
 	                   : config.parent_path() / L"read-aloud.json";
+	// the tool pane's widths, beside it too
+	ViewerPage::s_panesFile = config.empty()
+	                              ? std::filesystem::path{}
+	                              : config.parent_path() / L"panes.json";
 	// the update check's on/off choice, beside them
 	::SettingsWindow::s_updateCheckFile =
 	    config.empty() ? std::filesystem::path{}

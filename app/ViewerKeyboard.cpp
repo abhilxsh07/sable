@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "helpers/panes.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -37,6 +38,17 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 	if (!m_layout || m_closed || presenting() || organizing() ||
 	    m_passwordDialog || source.try_as<MenuFlyoutItemBase>()) {
 		return false;
+	}
+	// the tool pane's grip: Left and Right move its edge
+	if (source && source.try_as<Primitives::Thumb>() == ToolPaneGrip() &&
+	    !modifiers.ctrl && !modifiers.alt && !modifiers.windows &&
+	    (static_cast<VirtualKey>(key) == VirtualKey::Left ||
+	     static_cast<VirtualKey>(key) == VirtualKey::Right)) {
+		const double step = static_cast<VirtualKey>(key) == VirtualKey::Right
+		                        ? helpers::paneWidthStep
+		                        : -helpers::paneWidthStep;
+		resizePane(AllToolsPanel().Width() + step, true);
+		return true;
 	}
 	// Sidebar lists keep their native arrows, type-ahead and selection keys.
 	if ((outlineHasFocus() || attachmentsHasFocus() || commentsHasFocus()) &&

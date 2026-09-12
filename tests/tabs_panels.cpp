@@ -18,11 +18,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
+#include "../app/helpers/panes.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <optional>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace winrt::Sable::implementation {
@@ -36,10 +39,17 @@ constexpr std::array<std::string_view, 1> OPEN_FAULTS = {"min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
-constexpr std::array<const wchar_t*, 9> STATES = {
-    L"thumbnails",  L"outline",   L"comments",
-    L"attachments", L"All tools", L"Find",
-    L"Organize",    L"notice",    L"All tools + comments"};
+constexpr std::array<const wchar_t*, 10> STATES = {
+    L"thumbnails",
+    L"outline",
+    L"comments",
+    L"attachments",
+    L"All tools",
+    L"Find",
+    L"Organize",
+    L"notice",
+    L"All tools + comments",
+    L"All tools at 480 px + comments"};
 
 std::string text(const wchar_t* value) {
 	return to_string(value);
@@ -282,6 +292,11 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			v.closeFind();
 		}
 		v.setAllToolsOpen(false);
+		v.resizePane(helpers::paneDefaultWidth, false);
+		{
+			std::error_code ignored;
+			std::filesystem::remove(ViewerPage::s_panesFile, ignored);
+		}
 		v.setOutlineOpen(false);
 		v.setCommentsOpen(false);
 		v.setAttachmentsOpen(false);
@@ -326,9 +341,42 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			v.setCommentsOpen(true);
 			v.setAllToolsOpen(true);
 			break;
+		case 9:
+			// the widest the pane goes, where the pages can spare it
+			v.setCommentsOpen(true);
+			v.setAllToolsOpen(true);
+			v.resizePane(helpers::paneMaxWidth, false);
+			break;
 		default:
 			break;
 		}
+	};
+	// the pane's grip and width: 480 px unless that would leave the pages
+	// under 360, and the width it was given comes back when it reopens
+	const auto paneWidth = [&](const std::string& where) {
+		const auto grip =
+		    v.FindName(L"ToolPaneGrip").try_as<FrameworkElement>();
+		const auto pane = box(v.AllToolsPanel());
+		expect(grip && shown(grip) && std::abs(grip.ActualWidth() - 6) < 1 &&
+		           std::abs(box(grip).X + box(grip).Width - pane.X -
+		                    pane.Width) < 2,
+		       {}, where + ": the tool pane has no 6 px grip on its edge");
+		const auto pages = box(v.Scroller()).Width + v.Scroller().Margin().Left;
+		expect(pane.Width >= helpers::paneMaxWidth - 1 ||
+		           (shown(v.CommentsPanel()) && pages < 362),
+		       {},
+		       where + ": the pane is " +
+		           std::to_string(static_cast<int>(pane.Width)) +
+		           " px with room for 480 (pages " +
+		           std::to_string(static_cast<int>(pages)) + " px)");
+		const auto width = v.AllToolsPanel().Width();
+		v.resizePane(width, true);
+		v.setAllToolsOpen(false);
+		v.setAllToolsOpen(true);
+		expect(v.AllToolsPanel().Width() == width, {},
+		       where + ": the pane came back at " +
+		           std::to_string(static_cast<int>(v.AllToolsPanel().Width())) +
+		           " px, not " + std::to_string(static_cast<int>(width)));
 	};
 	// every open fault has to have shown up, and nothing else may
 	const auto finish = [&](const wchar_t* checked) {
@@ -367,6 +415,13 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			return;
 		}
 		first = v.get_strong();
+		// the pane widths the probe sets stay out of the real panes.json
+		ViewerPage::s_panesFile =
+		    std::filesystem::temp_directory_path() / L"sable-probe-panes.json";
+		{
+			std::error_code ignored;
+			std::filesystem::remove(ViewerPage::s_panesFile, ignored);
+		}
 		reset();
 		resize(0);
 		break;
@@ -387,8 +442,12 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		       {},
 		       text(STATES[static_cast<std::size_t>(state)]) +
 		           ": the viewer's mode is wrong");
-		measure(text(SIZES[static_cast<std::size_t>(size)]) + " " +
-		        text(STATES[static_cast<std::size_t>(state)]));
+		const auto where = text(SIZES[static_cast<std::size_t>(size)]) + " " +
+		                   text(STATES[static_cast<std::size_t>(state)]);
+		if (state == 9) {
+			paneWidth(where);
+		}
+		measure(where);
 		reset();
 		expect(v.mode() == ViewerMode::Read, {},
 		       "closing the panels left the viewer out of Read");
