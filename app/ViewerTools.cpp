@@ -434,6 +434,32 @@ bool ViewerPage::crowded(double pane, double side) {
 	return width > 0 && width - pane - side - rail < MIN_CANVAS;
 }
 
+// Esc steps back one thing at a time: Find, then an armed tool (or a
+// drawing being dragged), then Organize, then the tool pane, which hands
+// focus back to the pages
+bool ViewerPage::escape() {
+	if (m_closed || presenting()) {
+		return false;
+	}
+	if (findOpen()) {
+		closeFind();
+		return true;
+	}
+	if (cancelNotePlacement()) {
+		return true;
+	}
+	if (organizing()) {
+		closeOrganize();
+		return true;
+	}
+	if (m_toolPane != ToolPane::None) {
+		closePane();
+		Scroller().Focus(FocusState::Programmatic);
+		return true;
+	}
+	return false;
+}
+
 // a side panel opening closes the tool pane if both won't fit
 void ViewerPage::makeRoomForPanel(double width) {
 	if (AllToolsPanel().Visibility() == Visibility::Visible &&

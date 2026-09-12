@@ -638,13 +638,6 @@ void MainWindow::setupTabKeys() {
 		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
 		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
 		const auto key = static_cast<unsigned>(args.Key());
-		if (key == VK_ESCAPE && modifiers == 0) {
-			if (const auto viewer = self->Viewer();
-			    viewer && get_self<ViewerPage>(viewer)->cancelNotePlacement()) {
-				args.Handled(true);
-				return;
-			}
-		}
 		args.Handled(
 		    self->routeKey(key, modifiers, args.KeyStatus().WasKeyDown));
 	});
@@ -734,7 +727,7 @@ void MainWindow::selectTab() {
 		if (!selected) {
 			get_self<ViewerPage>(entry.viewer)->cancelFormRequest();
 			get_self<ViewerPage>(entry.viewer)->stopPan(true);
-			get_self<ViewerPage>(entry.viewer)->dismissProperties();
+			// its tool pane stays as it was, properties too: it's the tab's
 		}
 		entry.viewer.Visibility(selected ? Visibility::Visible
 		                                 : Visibility::Collapsed);

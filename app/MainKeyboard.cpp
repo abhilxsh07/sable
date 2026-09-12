@@ -40,6 +40,9 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	if (presentationKey(key, modifiers, repeated)) {
 		return true;
 	}
+	if (key == VK_ESCAPE && modifiers == 0 && viewer && viewer->escape()) {
+		return true;
+	}
 	if (key == VK_F11 && modifiers == 0) {
 		if (!repeated) {
 			onToggleFullScreen({}, {});
@@ -95,10 +98,6 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 		                    modifiers == (helpers::SHORTCUT_CTRL |
 		                                  helpers::SHORTCUT_SHIFT)))) {
 			pdf->navigateFind((modifiers & helpers::SHORTCUT_SHIFT) ? -1 : 1);
-			return true;
-		}
-		if (key == VK_ESCAPE && modifiers == 0 && pdf->findOpen()) {
-			pdf->closeFind();
 			return true;
 		}
 	}

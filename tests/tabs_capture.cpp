@@ -347,7 +347,9 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		          value(12) == L"297.0 x 210.0 mm (A4, landscape)",
 		      "cached properties did not follow current page/view rotation");
 		owner.openDocument(engine, L"tests/fixtures/properties_missing.pdf", 1);
-		check(!first->propertiesOpen(), "hidden tab kept its properties pane");
+		// the pane belongs to the tab, so the one left behind keeps it
+		check(first->propertiesOpen(),
+		      "the hidden tab lost its properties pane");
 		break;
 	case 7:
 		if (!viewer || viewer == first.get()) {
@@ -365,8 +367,9 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 		owner.closeTab(owner.m_tabs.back().tab);
 		break;
 	case 9: {
-		check(viewer == first.get() && !viewer->propertiesOpen(),
-		      "closed or switched properties returned");
+		check(viewer == first.get() && viewer->propertiesOpen(),
+		      "the first tab's properties didn't come back with it");
+		viewer->dismissProperties();
 		viewer->m_properties.reset();
 		auto healthy = std::move(viewer->m_session);
 		viewer->m_session = std::make_unique<pdf::Session>(engine);

@@ -453,6 +453,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void closePane();
 	void updateToolPane();
 	void focusToolPane();
+	// Esc steps back one thing: Find, an armed tool, Organize, the pane
+	bool escape();
 	// the pane's width, 280 to 480 px; resizing keeps the pages their 360.
 	// save keeps it in panes.json for the pane that's open.
 	void resizePane(double width, bool save);

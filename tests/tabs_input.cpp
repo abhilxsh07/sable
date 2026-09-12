@@ -838,8 +838,75 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
 		          owner.Tabs().SelectedIndex() == 1 && first->m_current == 0,
 		      "custom binding lost priority over viewer letters");
+		owner.m_presenter.Maximize();
+		break;
+	case 19:
+		// Esc steps back one thing at a time: Find, an armed tool, Organize,
+		// then the tool pane
+		if (ticks < 6) {
+			return;
+		}
+		v.openPane(ToolPane::Launcher);
+		v.setCommentsOpen(true);
+		v.beginNotePlacement();
+		v.openFind();
+		check(v.findOpen() && v.m_notePlacing &&
+		          v.m_toolPane == ToolPane::Launcher,
+		      "Esc order: Find, a note and the tool pane didn't all open");
+		check(key(VK_ESCAPE) && !v.findOpen() && v.m_notePlacing &&
+		          v.m_toolPane == ToolPane::Launcher,
+		      "Esc didn't close Find first");
+		check(key(VK_ESCAPE) && !v.m_notePlacing &&
+		          v.m_toolPane == ToolPane::Launcher,
+		      "Esc didn't drop the armed note next");
+		v.openOrganize();
+		break;
+	case 20:
+		if (!v.organizing() || v.m_organizeBusy) {
+			check(ticks < 115, "Organize didn't open");
+			return;
+		}
+		check(key(VK_ESCAPE) && !v.organizing(), "Esc didn't close Organize");
+		break;
+	case 21:
+		check(v.m_toolPane == ToolPane::Launcher,
+		      "Organize didn't give the tool pane back");
+		check(key(VK_ESCAPE) && v.m_toolPane == ToolPane::None,
+		      "Esc didn't close the tool pane");
+		v.showProperties();
+		check(key(VK_ESCAPE) && !v.propertiesOpen(),
+		      "Esc didn't close the properties pane");
+		// each tab keeps its own pane and width
+		v.openPane(ToolPane::Launcher);
+		v.resizePane(400, false);
+		owner.Tabs().SelectedIndex(0);
+		break;
+	case 22:
+		if (ticks < 4) {
+			return;
+		}
+		check(&v == first.get() && v.m_toolPane == ToolPane::None,
+		      "the other tab's tool pane followed the tab switch");
+		v.showProperties();
+		owner.Tabs().SelectedIndex(1);
+		break;
+	case 23:
+		if (ticks < 4) {
+			return;
+		}
+		check(&v != first.get() && v.m_toolPane == ToolPane::Launcher &&
+		          v.AllToolsPanel().Width() == 400 &&
+		          v.AllToolsPanel().Visibility() == Visibility::Visible,
+		      "the tab switch lost this tab's tool pane or its width");
+		check(first->propertiesOpen(),
+		      "the tab switch closed the other tab's properties");
+		check(key(VK_ESCAPE) && v.m_toolPane == ToolPane::None &&
+		          first->propertiesOpen(),
+		      "Esc reached the other tab's pane");
+		first->closePane();
 		status.Text(L"PASS: global focus, navigation, zoom aliases, Find, "
-		            L"tools, modal guards, presentation and custom bindings");
+		            L"tools, modal guards, presentation, custom bindings, "
+		            L"the Esc order and per-tab panes");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

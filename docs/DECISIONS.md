@@ -3631,3 +3631,12 @@ NightPDF's keys. Widening the pane stops where the pages would drop under
 360 px beside an open side panel instead of closing the panel; opening the
 pane at a remembered width still closes a side panel that won't fit, as
 before.
+
+## Esc steps back one thing at a time (2026-11-13)
+
+Esc closes Find first, then drops an armed tool (a note, a shape or a
+drawing being dragged), then closes Organize, then closes the tool pane
+and hands focus back to the pages. Before, an armed tool went before Find
+and Esc left the pane open. Clearing a selected annotation or text
+selection still happens on Esc once none of those is open. Each tab keeps
+its own pane, width and armed tool; switching tabs changes none of them.
