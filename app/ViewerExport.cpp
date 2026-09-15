@@ -99,6 +99,7 @@ void ViewerPage::exportPages() {
 		return;
 	}
 	setupExportPane();
+	refreshExportSelection();
 	const bool opened = m_toolPane == ToolPane::Export;
 	openPane(ToolPane::Export);
 	if (!opened) {
@@ -115,7 +116,7 @@ void ViewerPage::setupExportPane() {
 	ExportPages().SelectionChanged([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->ExportRange().IsEnabled(self->ExportPages().SelectedIndex() ==
-			                              2);
+			                              3);
 		}
 	});
 	ExportFormat().SelectionChanged([weak](auto&&, auto&&) {
@@ -129,6 +130,70 @@ void ViewerPage::setupExportPane() {
 			self->runExport();
 		}
 	});
+	ExportFolderChange().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->changeExportFolder();
+		}
+	});
+}
+
+void ViewerPage::refreshExportSelection() {
+	if (!m_exportSetup || m_closed) {
+		return;
+	}
+	ExportSelection().IsEnabled(!m_exportSelection.empty());
+	if (m_exportSelection.empty() && ExportPages().SelectedIndex() == 2) {
+		ExportPages().SelectedIndex(0);
+	}
+}
+
+void ViewerPage::setExportBusy(bool busy) {
+	m_exporting = busy;
+	if (!m_closed) {
+		ExportButton().IsEnabled(!busy);
+		ExportFolderChange().IsEnabled(!busy);
+	}
+}
+
+IAsyncOperation<bool> ViewerPage::chooseExportFolder() {
+	const auto lifetime = get_strong();
+	hstring folder;
+#ifdef SABLE_SURFACE_TEST
+	if (m_exportPicker) {
+		folder = co_await m_exportPicker(true);
+	} else
+#endif
+	{
+		const auto owner = XamlRoot().ContentIslandEnvironment().AppWindowId();
+		Microsoft::Windows::Storage::Pickers::FolderPicker picker(owner);
+		if (const auto chosen = co_await picker.PickSingleFolderAsync()) {
+			folder = chosen.Path();
+		}
+	}
+	if (m_closed || folder.empty()) {
+		co_return false;
+	}
+	m_exportFolder = folder.c_str();
+	ExportFolder().Text(L"Save to " + folder);
+	co_return true;
+}
+
+fire_and_forget ViewerPage::changeExportFolder() {
+	const auto lifetime = get_strong();
+	if (m_closed || m_exporting || pageOperationBusy()) {
+		co_return;
+	}
+	setExportBusy(true);
+	try {
+		co_await chooseExportFolder();
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not choose the export folder");
+		if (!m_closed) {
+			showNotice(L"Couldn't choose that folder. Try again.");
+		}
+	}
+	setExportBusy(false);
 }
 
 fire_and_forget ViewerPage::runExport() {
@@ -150,6 +215,9 @@ fire_and_forget ViewerPage::runExport() {
 			    static_cast<int>((std::min)(m_current, m_sizes.size() - 1)));
 			break;
 		case 2:
+			pages = m_exportSelection;
+			break;
+		case 3:
 			if (const auto parsed =
 			        helpers::parsePageList(ExportRange().Text(), count)) {
 				pages = *parsed;
@@ -174,34 +242,17 @@ fire_and_forget ViewerPage::runExport() {
 		if (pages.empty() || !m_session) {
 			co_return;
 		}
-		m_exporting = true;
-		ExportButton().IsEnabled(false);
-		const auto finish = [this] {
-			m_exporting = false;
-			ExportButton().IsEnabled(true);
-		};
+		setExportBusy(true);
+		const auto finish = [this] { setExportBusy(false); };
 		const auto stem = m_path.stem().wstring();
-		const auto owner = XamlRoot().ContentIslandEnvironment().AppWindowId();
 		const apartment_context ui;
+		if (m_exportFolder.empty() && !co_await chooseExportFolder()) {
+			finish();
+			co_return;
+		}
+		const auto folder = m_exportFolder;
 		if (kind == 2) {
-			hstring path;
-#ifdef SABLE_SURFACE_TEST
-			if (m_exportPicker) {
-				path = co_await m_exportPicker(false);
-			} else
-#endif
-			{
-				Microsoft::Windows::Storage::Pickers::FileSavePicker picker(
-				    owner);
-				picker.SuggestedFileName(hstring(stem));
-				picker.FileTypeChoices().Insert(
-				    L"Text file", single_threaded_vector<hstring>({L".txt"}));
-				picker.DefaultFileExtension(L".txt");
-				if (const auto chosen = co_await picker.PickSaveFileAsync()) {
-					path = chosen.Path();
-				}
-			}
-			if (path.empty() || m_closed || !m_session) {
+			if (m_closed || !m_session) {
 				finish();
 				co_return;
 			}
@@ -216,7 +267,7 @@ fire_and_forget ViewerPage::runExport() {
 			}
 			co_await ui;
 			finish();
-			const std::filesystem::path destination(path.c_str());
+			const auto destination = folder / (stem + L".txt");
 			if (m_closed || wait->result.canceled) {
 				co_return;
 			}
@@ -234,19 +285,7 @@ fire_and_forget ViewerPage::runExport() {
 			}
 			co_return;
 		}
-		hstring folder;
-#ifdef SABLE_SURFACE_TEST
-		if (m_exportPicker) {
-			folder = co_await m_exportPicker(true);
-		} else
-#endif
-		{
-			Microsoft::Windows::Storage::Pickers::FolderPicker picker(owner);
-			if (const auto chosen = co_await picker.PickSingleFolderAsync()) {
-				folder = chosen.Path();
-			}
-		}
-		if (folder.empty() || m_closed) {
+		if (m_closed) {
 			finish();
 			co_return;
 		}
@@ -279,9 +318,8 @@ fire_and_forget ViewerPage::runExport() {
 				bytes.assign(buffer.data(), buffer.data() + buffer.Length());
 			}
 			const auto destination =
-			    std::filesystem::path(folder.c_str()) /
-			    helpers::exportName(stem, page + 1, pages.back() + 1,
-			                        jpeg ? L".jpg" : L".png");
+			    folder / helpers::exportName(stem, page + 1, pages.back() + 1,
+			                                 jpeg ? L".jpg" : L".png");
 			if (bytes.empty() ||
 			    helpers::saveFile(destination, m_path, bytes) !=
 			        helpers::FileSaveResult::Saved) {
@@ -296,18 +334,14 @@ fire_and_forget ViewerPage::runExport() {
 		if (!m_closed && done == static_cast<int>(pages.size())) {
 			showNotice(L"Exported " + to_hstring(done) +
 			               (done == 1 ? L" page to " : L" pages to ") +
-			               hstring(std::filesystem::path(folder.c_str())
-			                           .filename()
-			                           .wstring()) +
-			               L".",
+			               hstring(folder.filename().wstring()) + L".",
 			           InfoBarSeverity::Success);
 		}
 	} catch (...) {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Could not export pages");
-		m_exporting = false;
+		setExportBusy(false);
 		if (!m_closed) {
-			ExportButton().IsEnabled(true);
 			showNotice(L"Couldn't export these pages. Try again.");
 		}
 	}

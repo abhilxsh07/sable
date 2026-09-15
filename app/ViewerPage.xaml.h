@@ -440,11 +440,17 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// opens Export in the tool pane; its Export button runs it
 	void exportPages();
 	void setupExportPane();
+	void refreshExportSelection();
+	void setExportBusy(bool busy);
+	winrt::Windows::Foundation::IAsyncOperation<bool> chooseExportFolder();
+	winrt::fire_and_forget changeExportFolder();
 	winrt::fire_and_forget runExport();
+	std::vector<int> m_exportSelection;
+	std::filesystem::path m_exportFolder;
 	bool m_exportSetup = false;
 	bool m_exporting = false;
 #ifdef SABLE_SURFACE_TEST
-	// a folder when asked for one, else a .txt path
+	// the output folder, or an empty path for Cancel
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
 	    bool)>
 	    m_exportPicker;

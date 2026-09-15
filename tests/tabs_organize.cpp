@@ -419,7 +419,7 @@ void TabsTest::exportTick(MainWindow& owner) {
 		return std::string(std::istreambuf_iterator<char>(file), {});
 	};
 	// opens the Export pane with a format and pages (0 all, 1 current,
-	// 2 range); the next tick presses its Export button
+	// 2 selection, 3 range); the next tick presses its Export button
 	const auto open = [&](int format, int which, const wchar_t* range) {
 		v.exportPages();
 		const auto formats = v.FindName(L"ExportFormat").try_as<RadioButtons>();
@@ -428,6 +428,10 @@ void TabsTest::exportTick(MainWindow& owner) {
 		          v.ToolPaneTitle().Text() == L"Export",
 		      "Export did not open in the tool pane");
 		formats.SelectedIndex(format);
+		check(v.FindName(L"ExportSelection").try_as<RadioButton>() &&
+		          v.FindName(L"ExportFolder").try_as<TextBlock>() &&
+		          v.FindName(L"ExportFolderChange").try_as<Button>(),
+		      "Export is missing Selection or the saved folder line");
 		v.FindName(L"ExportPages").as<RadioButtons>().SelectedIndex(which);
 		if (range) {
 			v.FindName(L"ExportRange").as<TextBox>().Text(range);
@@ -448,15 +452,21 @@ void TabsTest::exportTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		notesPath = makeTempDir("export");
-		v.m_exportPicker = [folder = notesPath](bool wantsFolder) {
-			const auto path = wantsFolder ? folder : folder / L"pages text.txt";
-			return attachmentChoice(hstring(path.wstring()), {});
+		v.setThumbnailsOpen(false);
+		v.m_exportSelection.clear();
+		v.m_exportPicker = [this, folder = notesPath](bool wantsFolder) {
+			check(wantsFolder,
+			      "text export asked for a file instead of a folder");
+			return attachmentChoice(hstring(folder.wstring()), {});
 		};
 		open(0, 0, nullptr);
+		check(!v.FindName(L"ExportSelection").as<RadioButton>().IsEnabled(),
+		      "Selection was enabled without selected thumbnails");
 		break;
 	case 1:
 	case 3:
 	case 5:
+	case 7:
 		if (!press()) {
 			return;
 		}
@@ -472,7 +482,15 @@ void TabsTest::exportTick(MainWindow& owner) {
 			check(bytes(notesPath / name).rfind("\x89PNG", 0) == 0,
 			      "a PNG page is missing or isn't a PNG");
 		}
-		open(1, 2, L"2");
+		check(std::wstring_view(
+		          v.FindName(L"ExportFolder").as<TextBlock>().Text())
+		              .find(notesPath.wstring()) != std::wstring_view::npos,
+		      "the chosen folder was not shown");
+		v.m_exportPicker = [this](bool) {
+			check(false, "Export asked for the saved folder again");
+			return attachmentChoice({}, {});
+		};
+		open(1, 3, L"2");
 		break;
 	case 4:
 		if (!std::filesystem::exists(notesPath / L"pages - page 002.jpg")) {
@@ -483,23 +501,81 @@ void TabsTest::exportTick(MainWindow& owner) {
 		              0 &&
 		          !std::filesystem::exists(notesPath / L"pages - page 001.jpg"),
 		      "the JPEG range did not export page 2 alone");
-		// the text of the current page alone
 		v.goToPage(1);
 		open(2, 1, nullptr);
 		break;
 	case 6: {
-		if (!std::filesystem::exists(notesPath / L"pages text.txt")) {
+		if (!std::filesystem::exists(notesPath / L"pages.txt")) {
 			check(ticks < 200, "the text export didn't finish");
 			return;
 		}
-		const auto text = bytes(notesPath / L"pages text.txt");
+		const auto text = bytes(notesPath / L"pages.txt");
 		check(text.find("Sable test page 1") == std::string::npos &&
 		          text.find("Sable test page 2") != std::string::npos &&
 		          text.find('\f') == std::string::npos,
 		      "the text export wasn't the current page alone");
+		v.setThumbnailsOpen(true);
+		v.openOrganize();
+		v.OrganizeGrid().SelectedItems().Clear();
+		v.OrganizeGrid().SelectedItems().Append(
+		    v.OrganizeGrid().Items().GetAt(0));
+		v.closeOrganize();
+		open(2, 2, nullptr);
+		check(v.FindName(L"ExportSelection").as<RadioButton>().IsEnabled(),
+		      "Organize's selection did not survive Done");
+		break;
+	}
+	case 8: {
+		const auto text = bytes(notesPath / L"pages.txt");
+		check(text.find("Sable test page 1") != std::string::npos &&
+		          text.find("Sable test page 2") == std::string::npos,
+		      "Selection did not export its page instead of the current page");
+		v.m_exportPicker = [](bool) { return attachmentChoice({}, {}); };
+		v.changeExportFolder();
+		break;
+	}
+	case 9: {
+		check(v.m_exportFolder == notesPath,
+		      "cancelling Change lost the saved folder");
+		const auto changed = notesPath / L"changed";
+		std::filesystem::create_directory(changed);
+		v.m_exportPicker = [folder = changed](bool) {
+			return attachmentChoice(hstring(folder.wstring()), {});
+		};
+		v.changeExportFolder();
+		break;
+	}
+	case 10:
+		check(v.m_exportFolder == notesPath / L"changed",
+		      "Change did not keep the new folder");
+		if (!press()) {
+			return;
+		}
+		break;
+	case 11:
+		check(std::filesystem::exists(notesPath / L"changed" / L"pages.txt"),
+		      "Export did not use the changed folder");
+		std::filesystem::copy_file(L"tests/fixtures/pages.pdf",
+		                           notesPath / L"other.pdf");
+		owner.openDocument(engine, notesPath / L"other.pdf", {});
+		break;
+	case 12:
+		if (owner.m_tabs.size() != 2 ||
+		    current == owner.m_tabs.front().viewer) {
+			check(ticks < 40, "the second export tab did not open");
+			return;
+		}
+		check(v.m_exportFolder.empty(),
+		      "another tab inherited the export folder");
+		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
+		break;
+	case 13: {
+		check(v.m_exportFolder == notesPath / L"changed" &&
+		          v.m_exportSelection == std::vector<int>{0},
+		      "switching tabs lost the export folder or selection");
 		v.close();
-		status.Text(L"PASS: Export pane, PNG, JPEG range and current-page "
-		            L"text");
+		status.Text(L"PASS: Export pane, per-tab folder, Change/Cancel, PNG, "
+		            L"JPEG range, current and selected-page text");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

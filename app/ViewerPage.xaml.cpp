@@ -1046,6 +1046,8 @@ void ViewerPage::showPosition() {
 	// pagechanging: the thumbnails move their highlight and keep it in view
 	if (thumbnailsOpen() && m_thumbCurrent != m_current) {
 		const auto previous = std::exchange(m_thumbCurrent, m_current);
+		m_exportSelection = {static_cast<int>(m_current)};
+		refreshExportSelection();
 		for (const auto page : {previous, m_thumbCurrent}) {
 			if (const auto found = page ? m_thumbs.find(*page) : m_thumbs.end();
 			    found != m_thumbs.end()) {
@@ -1121,6 +1123,8 @@ void ViewerPage::setThumbnailsOpen(bool open) {
 	// the strip's viewport, to know what's in view
 	ThumbnailScroller().UpdateLayout();
 	m_thumbCurrent = m_current;
+	m_exportSelection = {static_cast<int>(m_current)};
+	refreshExportSelection();
 	for (const auto& [page, button] : m_thumbs) {
 		styleThumbnail(button, page);
 	}

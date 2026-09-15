@@ -281,6 +281,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							SelectedIndex="0">
 							<x:String>All pages</x:String>
 							<x:String>Current page</x:String>
+							<RadioButton x:Name="ExportSelection" Content="Selection"
+								IsEnabled="False" />
 							<x:String>Range</x:String>
 						</RadioButtons>
 						<TextBox x:Name="ExportRange" PlaceholderText="1-3, 5"
@@ -293,6 +295,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							<x:String>150 dpi</x:String>
 							<x:String>300 dpi</x:String>
 						</ComboBox>
+						<TextBlock x:Name="ExportFolder" Text="Save to: choose a folder"
+							TextWrapping="Wrap" />
+						<Button x:Name="ExportFolderChange" Content="Change"
+							AutomationProperties.Name="Change export folder" />
 						<TextBlock x:Name="ExportError" TextWrapping="Wrap"
 							AutomationProperties.LiveSetting="Assertive" />
 						<Button x:Name="ExportButton" Content="Export&#x2026;"

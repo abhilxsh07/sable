@@ -254,6 +254,9 @@ void ViewerPage::closeOrganize(bool restore) {
 		return;
 	}
 	const auto previous = *std::exchange(m_organizeView, std::nullopt);
+	auto selected = organizeSelection();
+	m_exportSelection = selected;
+	refreshExportSelection();
 	m_mode = ViewerMode::Read;
 	clearNotice();
 	OrganizePanel().Visibility(XVisibility::Collapsed);
@@ -271,6 +274,8 @@ void ViewerPage::closeOrganize(bool restore) {
 	}
 	BarFindButton().IsEnabled(true);
 	setThumbnailsOpen(previous.thumbnails);
+	m_exportSelection = std::move(selected);
+	refreshExportSelection();
 	setOutlineOpen(previous.outline);
 	setAttachmentsOpen(previous.attachments);
 	setCommentsOpen(previous.comments);
@@ -660,6 +665,8 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 }
 
 void ViewerPage::pagesChanged(pdf::SessionInfo info) {
+	m_exportSelection.clear();
+	refreshExportSelection();
 	std::vector<helpers::PageSize> sizes;
 	sizes.reserve(info.pages.size());
 	for (const auto& size : info.pages) {

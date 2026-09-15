@@ -3658,3 +3658,13 @@ export starts from the last one, and the pane keeps its own width in
 panes.json. Export still asks where to save each time; the folder line
 comes next. A range that doesn't parse says so under the fields instead
 of keeping a dialog open.
+
+## Export keeps its folder and selected pages (2026-11-14)
+
+I keep the output folder with the tab. The first export asks for a folder;
+later exports use it until Change picks another one. Cancel leaves the
+previous folder alone. Text goes there as <stem>.txt, like the page images.
+Selection uses the highlighted thumbnail or the pages kept from Organize
+on Done. Page edits clear that saved selection, since page numbers may
+now refer to different pages. Export and Change stay disabled while either
+an export or its folder picker is running.
