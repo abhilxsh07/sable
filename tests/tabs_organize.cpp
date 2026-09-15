@@ -65,7 +65,8 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		v.m_exporting = false;
 		v.m_organizeBusy = true;
 		v.exportPages();
-		check(!v.m_noteDialog, "Export opened during a page edit");
+		check(!v.m_noteDialog && v.ToolPaneTitle().Text() != L"Export",
+		      "Export opened during a page edit");
 		{
 			const auto close = owner.confirmNotes(current);
 			check(close.Status() ==
@@ -417,38 +418,24 @@ void TabsTest::exportTick(MainWindow& owner) {
 		std::ifstream file(path, std::ios::binary);
 		return std::string(std::istreambuf_iterator<char>(file), {});
 	};
-	// opens the dialog with a format, pages and range; the next tick
-	// presses Export once its buttons exist.
-	const auto open = [&](int format, const wchar_t* range) {
+	// opens the Export pane with a format and pages (0 all, 1 current,
+	// 2 range); the next tick presses its Export button
+	const auto open = [&](int format, int which, const wchar_t* range) {
 		v.exportPages();
-		const auto dialog = v.m_noteDialog;
-		check(dialog && unbox_value<hstring>(dialog.Title()) == L"Export pages",
-		      "Export did not open its dialog");
-		const auto fields = dialog.Content().as<StackPanel>().Children();
-		fields.GetAt(0).as<RadioButtons>().SelectedIndex(format);
+		const auto formats = v.FindName(L"ExportFormat").try_as<RadioButtons>();
+		check(!v.m_noteDialog && formats &&
+		          v.AllToolsPanel().Visibility() == Visibility::Visible &&
+		          v.ToolPaneTitle().Text() == L"Export",
+		      "Export did not open in the tool pane");
+		formats.SelectedIndex(format);
+		v.FindName(L"ExportPages").as<RadioButtons>().SelectedIndex(which);
 		if (range) {
-			fields.GetAt(1).as<RadioButtons>().SelectedIndex(1);
-			fields.GetAt(2).as<TextBox>().Text(range);
+			v.FindName(L"ExportRange").as<TextBox>().Text(range);
 		}
 	};
 	const auto press = [&] {
-		std::function<Button(DependencyObject)> find;
-		find = [&](const DependencyObject& node) -> Button {
-			if (const auto button = node.try_as<Button>();
-			    button && button.Name() == L"PrimaryButton") {
-				return button;
-			}
-			for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node);
-			     ++i) {
-				if (const auto button =
-				        find(Media::VisualTreeHelper::GetChild(node, i))) {
-					return button;
-				}
-			}
-			return nullptr;
-		};
-		const auto button = v.m_noteDialog ? find(v.m_noteDialog) : nullptr;
-		if (!button) {
+		const auto button = v.FindName(L"ExportButton").try_as<Button>();
+		if (!button || !button.IsEnabled()) {
 			check(ticks < 40, "Export had no Export button");
 			return false;
 		}
@@ -465,7 +452,7 @@ void TabsTest::exportTick(MainWindow& owner) {
 			const auto path = wantsFolder ? folder : folder / L"pages text.txt";
 			return attachmentChoice(hstring(path.wstring()), {});
 		};
-		open(0, nullptr);
+		open(0, 0, nullptr);
 		break;
 	case 1:
 	case 3:
@@ -475,7 +462,8 @@ void TabsTest::exportTick(MainWindow& owner) {
 		}
 		break;
 	case 2:
-		if (v.m_noteDialog) {
+		if (!std::filesystem::exists(notesPath / L"pages - page 003.png")) {
+			check(ticks < 200, "the PNG export didn't finish");
 			return;
 		}
 		for (const auto* name :
@@ -484,29 +472,34 @@ void TabsTest::exportTick(MainWindow& owner) {
 			check(bytes(notesPath / name).rfind("\x89PNG", 0) == 0,
 			      "a PNG page is missing or isn't a PNG");
 		}
-		open(1, L"2");
+		open(1, 2, L"2");
 		break;
 	case 4:
-		if (v.m_noteDialog) {
+		if (!std::filesystem::exists(notesPath / L"pages - page 002.jpg")) {
+			check(ticks < 200, "the JPEG export didn't finish");
 			return;
 		}
 		check(bytes(notesPath / L"pages - page 002.jpg").rfind("\xff\xd8", 0) ==
 		              0 &&
 		          !std::filesystem::exists(notesPath / L"pages - page 001.jpg"),
 		      "the JPEG range did not export page 2 alone");
-		open(2, nullptr);
+		// the text of the current page alone
+		v.goToPage(1);
+		open(2, 1, nullptr);
 		break;
 	case 6: {
-		if (v.m_noteDialog) {
+		if (!std::filesystem::exists(notesPath / L"pages text.txt")) {
+			check(ticks < 200, "the text export didn't finish");
 			return;
 		}
 		const auto text = bytes(notesPath / L"pages text.txt");
-		check(text.find("Sable test page 1") != std::string::npos &&
+		check(text.find("Sable test page 1") == std::string::npos &&
 		          text.find("Sable test page 2") != std::string::npos &&
-		          text.find('\f') != std::string::npos,
-		      "the text export lost a page");
+		          text.find('\f') == std::string::npos,
+		      "the text export wasn't the current page alone");
 		v.close();
-		status.Text(L"PASS: Export PNG, JPEG range and text");
+		status.Text(L"PASS: Export pane, PNG, JPEG range and current-page "
+		            L"text");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

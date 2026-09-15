@@ -3648,3 +3648,13 @@ Insert from file, Extract selection) and its status sit in the middle of
 the command bar, and Done replaces find, save, print and More on the
 right. The row of buttons above the tiles is gone. The button labels
 don't change here.
+
+## Export opens in the tool pane (2026-11-13)
+
+Export is a pane beside the pages instead of a dialog: Format, Pages,
+the page range and Resolution, with Export at the foot. Pages gains
+Current page. The choices stay with the tab while it's open, so a second
+export starts from the last one, and the pane keeps its own width in
+panes.json. Export still asks where to save each time; the folder line
+comes next. A range that doesn't parse says so under the fields instead
+of keeping a dialog open.

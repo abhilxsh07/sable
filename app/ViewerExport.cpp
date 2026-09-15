@@ -87,8 +87,51 @@ encodePage(pdf::Bitmap bitmap, bool jpeg, int dpi) {
 } // namespace
 
 // Export pages: PNG or JPEG images of the unfiltered pages as they print,
-// or the document's text. The open file is only read.
-fire_and_forget ViewerPage::exportPages() {
+// or the document's text. The open file is only read. It lives in the tool
+// pane beside the pages; asking again moves focus into it.
+void ViewerPage::exportPages() {
+	if (m_closed || !m_layout || !m_session || m_noteDialog ||
+	    m_passwordDialog || presenting() || !XamlRoot()) {
+		return;
+	}
+	if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
+		showNotice(L"Finish the page or note operation before exporting.");
+		return;
+	}
+	setupExportPane();
+	const bool opened = m_toolPane == ToolPane::Export;
+	openPane(ToolPane::Export);
+	if (!opened) {
+		focusToolPane();
+	}
+}
+
+void ViewerPage::setupExportPane() {
+	if (m_exportSetup) {
+		return;
+	}
+	m_exportSetup = true;
+	const auto weak = get_weak();
+	ExportPages().SelectionChanged([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->ExportRange().IsEnabled(self->ExportPages().SelectedIndex() ==
+			                              2);
+		}
+	});
+	ExportFormat().SelectionChanged([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->ExportResolution().IsEnabled(
+			    self->ExportFormat().SelectedIndex() != 2);
+		}
+	});
+	ExportButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->runExport();
+		}
+	});
+}
+
+fire_and_forget ViewerPage::runExport() {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_layout || !m_session || m_exporting ||
@@ -100,101 +143,43 @@ fire_and_forget ViewerPage::exportPages() {
 			co_return;
 		}
 		const int count = static_cast<int>(m_sizes.size());
-		ContentDialog dialog;
-		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Export pages"));
-		dialog.PrimaryButtonText(L"Export…");
-		dialog.CloseButtonText(L"Cancel");
-		dialog.DefaultButton(ContentDialogButton::Primary);
-		StackPanel fields;
-		fields.Spacing(12);
-		fields.MinWidth(340);
-		RadioButtons format;
-		format.Header(box_value(L"Format"));
-		for (const auto* name :
-		     {L"PNG images", L"JPEG images", L"Text (.txt)"}) {
-			format.Items().Append(box_value(name));
-		}
-		format.SelectedIndex(0);
-		fields.Children().Append(format);
-		RadioButtons which;
-		which.Header(box_value(L"Pages"));
-		which.Items().Append(box_value(L"All pages"));
-		which.Items().Append(box_value(L"Range"));
-		which.SelectedIndex(0);
-		fields.Children().Append(which);
-		TextBox range;
-		range.PlaceholderText(L"1-3, 5");
-		range.IsEnabled(false);
-		Automation::AutomationProperties::SetName(range, L"Page range");
-		fields.Children().Append(range);
-		ComboBox resolution;
-		resolution.Header(box_value(L"Resolution"));
-		for (const auto* name : {L"72 dpi", L"150 dpi", L"300 dpi"}) {
-			resolution.Items().Append(box_value(name));
-		}
-		resolution.SelectedIndex(1);
-		fields.Children().Append(resolution);
-		TextBlock error;
-		error.TextWrapping(TextWrapping::Wrap);
-		fields.Children().Append(error);
-		dialog.Content(fields);
-		which.SelectionChanged([pick = make_weak(which),
-		                        field = make_weak(range)](auto&&, auto&&) {
-			const auto choice = pick.get();
-			if (const auto box = field.get(); choice && box) {
-				box.IsEnabled(choice.SelectedIndex() == 1);
-			}
-		});
-		format.SelectionChanged([pick = make_weak(format),
-		                         dpi = make_weak(resolution)](auto&&, auto&&) {
-			const auto choice = pick.get();
-			if (const auto box = dpi.get(); choice && box) {
-				box.IsEnabled(choice.SelectedIndex() != 2);
-			}
-		});
-		dialog.PrimaryButtonClick(
-		    [which = make_weak(which), field = make_weak(range),
-		     message = make_weak(error),
-		     count](auto&&, const ContentDialogButtonClickEventArgs& args) {
-			    const auto pick = which.get();
-			    const auto box = field.get();
-			    if (pick && box && pick.SelectedIndex() == 1 &&
-			        !helpers::parsePageList(box.Text(), count)) {
-				    args.Cancel(true);
-				    if (const auto text = message.get()) {
-					    text.Text(L"Enter pages like 1-3, 5 between 1 and " +
-					              to_hstring(helpers::grouped(
-					                  static_cast<std::size_t>(count))) +
-					              L".");
-				    }
-			    }
-		    });
-		m_noteDialog = dialog;
-		const auto choice = co_await dialog.ShowAsync();
-		if (m_noteDialog == dialog) {
-			m_noteDialog = nullptr;
-		}
-		if (m_closed || choice != ContentDialogResult::Primary ||
-		    organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
-			co_return;
-		}
 		std::vector<int> pages;
-		if (which.SelectedIndex() == 1) {
-			pages = helpers::parsePageList(range.Text(), count).value_or(pages);
-		} else {
+		switch (ExportPages().SelectedIndex()) {
+		case 1:
+			pages.push_back(
+			    static_cast<int>((std::min)(m_current, m_sizes.size() - 1)));
+			break;
+		case 2:
+			if (const auto parsed =
+			        helpers::parsePageList(ExportRange().Text(), count)) {
+				pages = *parsed;
+			} else {
+				ExportError().Text(L"Enter pages like 1-3, 5 between 1 and " +
+				                   to_hstring(helpers::grouped(
+				                       static_cast<std::size_t>(count))) +
+				                   L".");
+				ExportRange().Focus(FocusState::Programmatic);
+				co_return;
+			}
+			break;
+		default:
 			for (int page = 0; page < count; ++page) {
 				pages.push_back(page);
 			}
 		}
-		const int kind = format.SelectedIndex();
+		ExportError().Text(L"");
+		const int kind = ExportFormat().SelectedIndex();
 		const int dpi = std::array{72, 150, 300}[static_cast<std::size_t>(
-		    std::clamp(resolution.SelectedIndex(), 0, 2))];
+		    std::clamp(ExportResolution().SelectedIndex(), 0, 2))];
 		if (pages.empty() || !m_session) {
 			co_return;
 		}
 		m_exporting = true;
-		const auto finish = [this] { m_exporting = false; };
+		ExportButton().IsEnabled(false);
+		const auto finish = [this] {
+			m_exporting = false;
+			ExportButton().IsEnabled(true);
+		};
 		const auto stem = m_path.stem().wstring();
 		const auto owner = XamlRoot().ContentIslandEnvironment().AppWindowId();
 		const apartment_context ui;
@@ -322,6 +307,7 @@ fire_and_forget ViewerPage::exportPages() {
 		                    "Could not export pages");
 		m_exporting = false;
 		if (!m_closed) {
+			ExportButton().IsEnabled(true);
 			showNotice(L"Couldn't export these pages. Try again.");
 		}
 	}

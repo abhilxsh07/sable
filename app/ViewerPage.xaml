@@ -266,6 +266,40 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</StackPanel.Resources>
 					</StackPanel>
 				</ScrollViewer>
+				<!-- Export: what to save, then Export. The choices stay with
+					the tab until it closes. -->
+				<ScrollViewer Grid.Row="1" x:Name="ExportScroll"
+					Visibility="Collapsed">
+					<StackPanel x:Name="ExportHost" Padding="12" Spacing="12">
+						<RadioButtons x:Name="ExportFormat" Header="Format"
+							SelectedIndex="0">
+							<x:String>PNG images</x:String>
+							<x:String>JPEG images</x:String>
+							<x:String>Text (.txt)</x:String>
+						</RadioButtons>
+						<RadioButtons x:Name="ExportPages" Header="Pages"
+							SelectedIndex="0">
+							<x:String>All pages</x:String>
+							<x:String>Current page</x:String>
+							<x:String>Range</x:String>
+						</RadioButtons>
+						<TextBox x:Name="ExportRange" PlaceholderText="1-3, 5"
+							IsEnabled="False"
+							AutomationProperties.Name="Page range" />
+						<ComboBox x:Name="ExportResolution" Header="Resolution"
+							SelectedIndex="1"
+							AutomationProperties.Name="Resolution">
+							<x:String>72 dpi</x:String>
+							<x:String>150 dpi</x:String>
+							<x:String>300 dpi</x:String>
+						</ComboBox>
+						<TextBlock x:Name="ExportError" TextWrapping="Wrap"
+							AutomationProperties.LiveSetting="Assertive" />
+						<Button x:Name="ExportButton" Content="Export&#x2026;"
+							HorizontalAlignment="Right"
+							Style="{StaticResource AccentButtonStyle}" />
+					</StackPanel>
+				</ScrollViewer>
 				<!-- the grip on the edge beside the pages: drag it, or Left and
 					Right while it has focus, for 280 to 480 px -->
 				<Thumb x:Name="ToolPaneGrip" Grid.Column="1" Grid.RowSpan="2"

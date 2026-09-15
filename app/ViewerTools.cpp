@@ -87,6 +87,8 @@ std::string_view paneKey(ToolPane pane) {
 		return "launcher";
 	case ToolPane::Properties:
 		return "properties";
+	case ToolPane::Export:
+		return "export";
 	default:
 		return {};
 	}
@@ -285,13 +287,17 @@ void ViewerPage::updateToolPane() {
 		m_syncingToolPane = false;
 	}
 	const bool properties = m_toolPane == ToolPane::Properties;
+	const bool exporting = m_toolPane == ToolPane::Export;
 	ToolPaneTitle().Text(m_toolPane == ToolPane::Launcher ? L"All tools"
 	                     : properties ? L"Document properties"
+	                     : exporting  ? L"Export"
 	                                  : L"");
-	AllToolsScroll().Visibility(properties ? Visibility::Collapsed
-	                                       : Visibility::Visible);
+	AllToolsScroll().Visibility(properties || exporting ? Visibility::Collapsed
+	                                                    : Visibility::Visible);
 	PropertiesScroll().Visibility(properties ? Visibility::Visible
 	                                         : Visibility::Collapsed);
+	ExportScroll().Visibility(exporting ? Visibility::Visible
+	                                    : Visibility::Collapsed);
 	// a tool's own pane goes back to the list
 	ToolPaneBack().Visibility(m_toolPane == ToolPane::None ||
 	                                  m_toolPane == ToolPane::Launcher
@@ -328,6 +334,8 @@ void ViewerPage::focusToolPane() {
 	}
 	const UIElement host = propertiesOpen()
 	                           ? static_cast<UIElement>(PropertiesHost())
+	                       : m_toolPane == ToolPane::Export
+	                           ? static_cast<UIElement>(ExportHost())
 	                           : static_cast<UIElement>(AllToolsList());
 	Control target{nullptr};
 	if (const auto first =

@@ -94,10 +94,10 @@ struct MainWindow;
 // what the viewer is doing with the document: reading it, rearranging its
 // pages in Organize, or showing it full screen. One at a time.
 enum class ViewerMode { Read, Organize, Present };
-// what the left pane column holds: nothing, the list of every tool, or the
-// document's properties. The pane, its header and the All tools button all
-// follow it.
-enum class ToolPane { None, Launcher, Properties };
+// what the left pane column holds: nothing, the list of every tool, the
+// document's properties or Export. The pane, its header and the All tools
+// button all follow it.
+enum class ToolPane { None, Launcher, Properties, Export };
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -437,7 +437,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void pagesChanged(pdf::SessionInfo info);
 	winrt::fire_and_forget insertPagesFromFile();
 	winrt::fire_and_forget extractSelectedPages();
-	winrt::fire_and_forget exportPages();
+	// opens Export in the tool pane; its Export button runs it
+	void exportPages();
+	void setupExportPane();
+	winrt::fire_and_forget runExport();
+	bool m_exportSetup = false;
 	bool m_exporting = false;
 #ifdef SABLE_SURFACE_TEST
 	// a folder when asked for one, else a .txt path

@@ -278,18 +278,14 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			v.exportPages();
 			break;
 		case 6:
-			if (!v.m_noteDialog) {
-				check(ticks < 60, "Export didn't open");
-				return;
-			}
-			findings += auditSurface(current, L"Export", false);
-			v.m_noteDialog.Hide();
+			check(!v.m_noteDialog &&
+			          v.AllToolsPanel().Visibility() == Visibility::Visible &&
+			          v.ToolPaneTitle().Text() == L"Export",
+			      "Export didn't open in the tool pane");
+			findings += auditSurface(v.AllToolsPanel(), L"Export pane", true);
+			v.closePane();
 			break;
 		case 7:
-			if (v.m_noteDialog) {
-				check(ticks < 60, "Export didn't close");
-				return;
-			}
 			owner.setEngine(engine);
 			owner.openTool(L"combine");
 			break;
