@@ -3640,3 +3640,11 @@ and hands focus back to the pages. Before, an armed tool went before Find
 and Esc left the pane open. Clearing a selected annotation or text
 selection still happens on Esc once none of those is open. Each tab keeps
 its own pane, width and armed tool; switching tabs changes none of them.
+
+## Organize's buttons go in the command bar (2026-11-13)
+
+While Organize is open its actions (Rotate left, Rotate right, Delete,
+Insert from file, Extract selection) and its status sit in the middle of
+the command bar, and Done replaces find, save, print and More on the
+right. The row of buttons above the tiles is gone. The button labels
+don't change here.

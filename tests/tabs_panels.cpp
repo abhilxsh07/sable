@@ -378,6 +378,29 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		           std::to_string(static_cast<int>(v.AllToolsPanel().Width())) +
 		           " px, not " + std::to_string(static_cast<int>(width)));
 	};
+	// Organize's actions sit in the command bar, and Done takes the place
+	// of find, save, print and More
+	const auto organizeBar = [&](const std::string& where) {
+		const auto bar = box(v.DocumentBar());
+		for (const auto& [name, button] :
+		     std::initializer_list<std::pair<const char*, FrameworkElement>>{
+		         {"Rotate left", v.OrganizeRotateLeft()},
+		         {"Rotate right", v.OrganizeRotateRight()},
+		         {"Delete", v.OrganizeDelete()},
+		         {"Insert", v.OrganizeInsert()},
+		         {"Extract", v.OrganizeExtract()},
+		         {"Done", v.OrganizeDone()}}) {
+			expect(shown(button) && inside(box(button), bar), {},
+			       where + ": " + name + " isn't in the command bar");
+		}
+		expect(box(v.OrganizeDone()).X > box(v.OrganizeExtract()).X, {},
+		       where + ": Done isn't on the bar's right");
+		for (const auto& button : {v.BarFindButton(), v.BarSaveButton(),
+		                           v.BarPrintButton(), v.BarMoreButton()}) {
+			expect(!shown(button), {},
+			       where + ": find, save, print or More is still showing");
+		}
+	};
 	// every open fault has to have shown up, and nothing else may
 	const auto finish = [&](const wchar_t* checked) {
 		for (const auto& fault : OPEN_FAULTS) {
@@ -446,6 +469,9 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		                   text(STATES[static_cast<std::size_t>(state)]);
 		if (state == 9) {
 			paneWidth(where);
+		}
+		if (state == 6) {
+			organizeBar(where);
 		}
 		measure(where);
 		reset();

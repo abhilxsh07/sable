@@ -224,9 +224,21 @@ void ViewerPage::openOrganize() {
 	BarFindButton().IsEnabled(false);
 	Scroller().IsEnabled(false);
 	OrganizePanel().Visibility(XVisibility::Visible);
+	showOrganizeBar(true);
 	updateQuickTools();
 	fillOrganize();
 	OrganizeGrid().Focus(FocusState::Programmatic);
+}
+
+// Organize's actions take the middle of the command bar and Done takes the
+// place of find, save, print and More
+void ViewerPage::showOrganizeBar(bool show) {
+	OrganizeActions().Visibility(show ? XVisibility::Visible
+	                                  : XVisibility::Collapsed);
+	OrganizeDone().Visibility(show ? XVisibility::Visible
+	                               : XVisibility::Collapsed);
+	BarActions().Visibility(show ? XVisibility::Collapsed
+	                             : XVisibility::Visible);
 }
 
 void ViewerPage::releaseOrganizeTiles() {
@@ -245,6 +257,7 @@ void ViewerPage::closeOrganize(bool restore) {
 	m_mode = ViewerMode::Read;
 	clearNotice();
 	OrganizePanel().Visibility(XVisibility::Collapsed);
+	showOrganizeBar(false);
 	releaseOrganizeTiles();
 	m_organizeHiddenSelection.clear();
 	if (!restore) {

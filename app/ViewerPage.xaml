@@ -62,7 +62,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<TextBlock Text="All tools" />
 				</StackPanel>
 			</ToggleButton>
-			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2"
+			<!-- Organize's actions, in the bar while it's open -->
+			<StackPanel Grid.Column="1" x:Name="OrganizeActions"
+				Orientation="Horizontal" Spacing="4" Margin="8,0,0,0"
+				VerticalAlignment="Center" Visibility="Collapsed">
+				<Button x:Name="OrganizeRotateLeft" Content="Rotate left" />
+				<Button x:Name="OrganizeRotateRight" Content="Rotate right" />
+				<Button x:Name="OrganizeDelete" Content="Delete" />
+				<Button x:Name="OrganizeInsert"
+					Content="Insert from file&#x2026;" />
+				<Button x:Name="OrganizeExtract"
+					Content="Extract selection&#x2026;" />
+				<TextBlock x:Name="OrganizeStatus" Margin="8,0,0,0"
+					VerticalAlignment="Center" />
+			</StackPanel>
+			<!-- Done takes the place of find, save, print and More -->
+			<Button Grid.Column="2" x:Name="OrganizeDone" Content="Done"
+				VerticalAlignment="Center" Visibility="Collapsed"
+				Style="{StaticResource AccentButtonStyle}" />
+			<StackPanel Grid.Column="2" x:Name="BarActions"
+				Orientation="Horizontal" Spacing="2"
 				VerticalAlignment="Center">
 				<Button x:Name="BarFindButton"
 					ToolTipService.ToolTip="Find (Ctrl+F)"
@@ -322,26 +341,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Grid Grid.Row="2" Grid.Column="1" x:Name="OrganizePanel"
 			Visibility="Collapsed"
 			Background="{ThemeResource SableViewerBrush}">
-			<Grid.RowDefinitions>
-				<RowDefinition Height="Auto" />
-				<RowDefinition Height="*" />
-			</Grid.RowDefinitions>
-			<StackPanel Orientation="Horizontal" Spacing="4" Margin="12,8">
-				<Button x:Name="OrganizeRotateLeft" Content="Rotate left" />
-				<Button x:Name="OrganizeRotateRight" Content="Rotate right" />
-				<Button x:Name="OrganizeDelete" Content="Delete" />
-				<Button x:Name="OrganizeInsert"
-					Content="Insert from file&#x2026;" />
-				<Button x:Name="OrganizeExtract"
-					Content="Extract selection&#x2026;" />
-				<Button x:Name="OrganizeDone" Content="Done"
-					Style="{StaticResource AccentButtonStyle}" />
-				<TextBlock x:Name="OrganizeStatus" Margin="12,0,0,0"
-					VerticalAlignment="Center" />
-			</StackPanel>
-			<GridView Grid.Row="1" x:Name="OrganizeGrid"
+			<GridView x:Name="OrganizeGrid"
 				SelectionMode="Extended" CanDragItems="True"
-				CanReorderItems="True" AllowDrop="True" Padding="12,0,12,12"
+				CanReorderItems="True" AllowDrop="True" Padding="12,12,12,12"
 				AutomationProperties.Name="Pages" />
 		</Grid>
 		<!-- notices get a row of their own under the command bar, so they never

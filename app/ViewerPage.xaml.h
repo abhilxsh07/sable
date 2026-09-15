@@ -420,6 +420,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setupOrganize();
 	void openOrganize();
 	void closeOrganize(bool restore = true);
+	void showOrganizeBar(bool show);
 	void releaseOrganizeTiles();
 	void fillOrganize();
 	void sizeOrganizeTile(std::size_t page);
