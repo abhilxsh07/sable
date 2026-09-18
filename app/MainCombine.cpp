@@ -19,12 +19,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "ViewerPage.xaml.h"
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "helpers/attachment_file.h"
 #include "helpers/logging.h"
 #include <algorithm>
 #include <memory>
+#include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.Windows.Storage.Pickers.h>
 using namespace winrt;
@@ -91,6 +93,10 @@ fire_and_forget MainWindow::combinePdfs() {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closing || !m_engine || m_combining || !RootGrid().XamlRoot()) {
+			co_return;
+		}
+		if (const auto viewer = Viewer()) {
+			get_self<ViewerPage>(viewer)->openCombine();
 			co_return;
 		}
 		m_combining = true;
@@ -193,6 +199,23 @@ fire_and_forget MainWindow::combinePdfs() {
 			m_combining = false;
 			co_return;
 		}
+		m_combining = false;
+		saveCombined(std::move(files));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not open Combine files");
+		m_combining = false;
+	}
+}
+
+fire_and_forget
+MainWindow::saveCombined(std::vector<std::filesystem::path> files) {
+	const auto lifetime = get_strong();
+	if (m_closing || !m_engine || m_combining || files.size() < 2) {
+		co_return;
+	}
+	m_combining = true;
+	try {
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
 		if (m_notesPicker) {
@@ -275,5 +298,174 @@ fire_and_forget MainWindow::combinePdfs() {
 		                    "Could not combine PDFs");
 		m_combining = false;
 	}
+}
+
+// the draft belongs to the tab; the window only saves the result.
+void ViewerPage::openCombine() {
+	if (m_closed || !m_layout || !m_session || presenting() || m_noteDialog ||
+	    m_passwordDialog || !XamlRoot()) {
+		return;
+	}
+	if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
+		showNotice(L"Finish the page or note operation before combining.");
+		return;
+	}
+	if (!m_combineSetup) {
+		m_combineSetup = true;
+		const auto weak = get_weak();
+		CombineAdd().Click([weak](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->pickCombineFiles();
+			}
+		});
+		CombineButton().Click([weak](auto&&, auto&&) {
+			if (const auto self = weak.get();
+			    self && self->m_combineRequest && !self->m_combineLoading) {
+				std::vector<std::filesystem::path> files;
+				for (const auto& input : self->m_combineInputs) {
+					files.push_back(input.path);
+				}
+				self->m_combineRequest(std::move(files));
+			}
+		});
+		addCombineFiles({m_path});
+	}
+	openPane(ToolPane::Combine);
+	focusToolPane();
+}
+
+void ViewerPage::refreshCombine() {
+	if (m_closed) {
+		return;
+	}
+	CombineList().Items().Clear();
+	std::uint64_t total = 0;
+	bool ready = m_combineInputs.size() >= 2 && !m_combineLoading;
+	for (std::size_t i = 0; i < m_combineInputs.size(); ++i) {
+		const auto& input = m_combineInputs[i];
+		total += static_cast<std::uint64_t>(input.pages);
+		ready = ready && input.pages > 0;
+		Grid row;
+		ColumnDefinition nameColumn, removeColumn;
+		nameColumn.Width(GridLength{1, GridUnitType::Star});
+		removeColumn.Width(GridLength{0, GridUnitType::Auto});
+		row.ColumnDefinitions().Append(nameColumn);
+		row.ColumnDefinitions().Append(removeColumn);
+		TextBlock name;
+		name.Text(hstring(input.path.filename().wstring()) + L"\n" +
+		          (input.pages ? to_hstring(input.pages) +
+		                             (input.pages == 1 ? L" page" : L" pages")
+		                       : hstring{}) +
+		          (input.note.empty() ? hstring{} : L" " + input.note));
+		name.TextWrapping(TextWrapping::Wrap);
+		ToolTipService::SetToolTip(name, box_value(input.path.wstring()));
+		row.Children().Append(name);
+		Button remove;
+		remove.Content(box_value(L"Remove"));
+		remove.IsEnabled(!m_combineLoading);
+		Automation::AutomationProperties::SetName(
+		    remove, L"Remove " + hstring(input.path.filename().wstring()));
+		Grid::SetColumn(remove, 1);
+		remove.Click([weak = get_weak(), i](auto&&, auto&&) {
+			if (const auto self = weak.get();
+			    self && !self->m_combineLoading &&
+			    i < self->m_combineInputs.size()) {
+				self->m_combineInputs.erase(self->m_combineInputs.begin() + i);
+				self->refreshCombine();
+			}
+		});
+		row.Children().Append(remove);
+		CombineList().Items().Append(row);
+	}
+	CombineTotal().Text(to_hstring(total) +
+	                    (total == 1 ? L" page total" : L" pages total"));
+	CombineAdd().IsEnabled(!m_combineLoading);
+	CombineButton().IsEnabled(ready);
+}
+
+Windows::Foundation::IAsyncAction
+ViewerPage::addCombineFiles(std::vector<std::filesystem::path> files) {
+	const auto lifetime = get_strong();
+	if (m_closed || !m_engine || m_combineLoading || files.empty()) {
+		co_return;
+	}
+	m_combineLoading = true;
+	refreshCombine();
+	struct Reply {
+		handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+		std::vector<CombineInput> inputs;
+	};
+	const auto reply = std::make_shared<Reply>();
+	check_bool(static_cast<bool>(reply->ready));
+	const apartment_context ui;
+	const bool queued = m_engine->post([reply, files = std::move(files)] {
+		try {
+			for (const auto& path : files) {
+				CombineInput input{path};
+				const auto opened = pdf::openFile(path);
+				if (opened.document) {
+					input.pages = opened.document->pageCount();
+					if (opened.document->canWrite({}) ==
+					    pdf::WriteRefusal::Signed) {
+						input.note = L"(signed PDF)";
+					}
+				} else {
+					input.note =
+					    opened.error == pdf::Error::PasswordRequired ||
+					            opened.error == pdf::Error::WrongPassword
+					        ? L"Needs a password"
+					        : L"Couldn't read this PDF";
+				}
+				reply->inputs.push_back(std::move(input));
+			}
+		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Could not read Combine inputs");
+		}
+		SetEvent(reply->ready.get());
+	});
+	if (queued) {
+		co_await resume_on_signal(reply->ready.get());
+	}
+	co_await ui;
+	m_combineLoading = false;
+	if (!m_closed) {
+		for (auto& input : reply->inputs) {
+			m_combineInputs.push_back(std::move(input));
+		}
+		refreshCombine();
+		if (!queued || reply->inputs.empty()) {
+			showNotice(L"Couldn't add those PDFs. Try again.");
+		}
+	}
+}
+
+fire_and_forget ViewerPage::pickCombineFiles() {
+	const auto lifetime = get_strong();
+	if (m_closed || m_combineLoading || !XamlRoot()) {
+		co_return;
+	}
+	m_combineLoading = true;
+	refreshCombine();
+	try {
+		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
+		    XamlRoot().ContentIslandEnvironment().AppWindowId());
+		picker.FileTypeFilter().Append(L".pdf");
+		const auto chosen = co_await picker.PickMultipleFilesAsync();
+		std::vector<std::filesystem::path> files;
+		for (const auto& file : chosen) {
+			files.emplace_back(file.Path().c_str());
+		}
+		m_combineLoading = false;
+		co_await addCombineFiles(std::move(files));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not choose Combine inputs");
+		if (!m_closed) {
+			showNotice(L"Couldn't choose those PDFs. Try again.");
+		}
+	}
+	m_combineLoading = false;
+	refreshCombine();
 }
 } // namespace winrt::Sable::implementation

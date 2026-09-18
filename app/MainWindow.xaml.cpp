@@ -531,6 +531,11 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
 	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
 	const auto pdf = get_self<ViewerPage>(viewer);
+	pdf->m_combineRequest = [weak = get_weak()](auto files) {
+		if (const auto self = weak.get()) {
+			self->saveCombined(std::move(files));
+		}
+	};
 	// the command bar's save, print and the rest are this window's
 	pdf->m_commandRequested = [weak = get_weak()](std::wstring_view command) {
 		if (const auto self = weak.get()) {

@@ -182,6 +182,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void openTool(std::wstring_view tool);
 	void viewerCommand(std::wstring_view command);
 	winrt::fire_and_forget combinePdfs();
+	winrt::fire_and_forget
+	saveCombined(std::vector<std::filesystem::path> files);
 	bool m_combining = false;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_combineDialog{
 	    nullptr};

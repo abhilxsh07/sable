@@ -96,9 +96,9 @@ struct MainWindow;
 // pages in Organize, or showing it full screen. One at a time.
 enum class ViewerMode { Read, Organize, Present };
 // what the left pane column holds: nothing, the list of every tool, the
-// document's properties or Export. The pane, its header and the All tools
+// document's properties, Export or Combine. The header and All tools
 // button all follow it.
-enum class ToolPane { None, Launcher, Properties, Export };
+enum class ToolPane { None, Launcher, Properties, Export, Combine };
 // UI thread only. The session does the PDFium work on the engine thread and
 // its callbacks come back here through the dispatcher queue.
 struct ViewerPage : ViewerPageT<ViewerPage> {
@@ -455,6 +455,19 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_exportSetup = false;
 	bool m_exporting = false;
 	bool m_exportCanceled = false;
+	void openCombine();
+	void refreshCombine();
+	winrt::fire_and_forget pickCombineFiles();
+	winrt::Windows::Foundation::IAsyncAction
+	addCombineFiles(std::vector<std::filesystem::path> files);
+	struct CombineInput {
+		std::filesystem::path path;
+		int pages = 0;
+		winrt::hstring note;
+	};
+	std::vector<CombineInput> m_combineInputs;
+	std::function<void(std::vector<std::filesystem::path>)> m_combineRequest;
+	bool m_combineSetup = false, m_combineLoading = false;
 #ifdef SABLE_SURFACE_TEST
 	// the output folder, or an empty path for Cancel
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(

@@ -3686,3 +3686,12 @@ The end notice gives the file count and full output folder, including
 when I stop early. The choices stay disabled until the work finishes.
 Encoding and file writes run on a worker; the engine still owns every
 PDFium call. Organize and tab close keep their existing busy refusal.
+
+## Combine keeps its input list beside the document (2026-11-14)
+
+From a document, Combine opens a pane whose draft stays with that tab.
+It starts with the current file; each row shows its name, page count and
+Remove, with Add files, the total and Combine below. Password-protected
+inputs must be removed; signed inputs are labelled before starting.
+The engine reads those details. The window keeps the existing save picker
+and opens the new PDF. Home's picker flow is a later step of this batch.

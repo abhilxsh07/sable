@@ -290,12 +290,16 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			owner.openTool(L"combine");
 			break;
 		case 8:
-			if (!owner.m_combineDialog) {
-				check(ticks < 60, "Combine didn't open");
+			if (v.m_combineLoading) {
+				check(ticks < 60, "Combine input details didn't load");
 				return;
 			}
-			findings += auditSurface(current, L"Combine", false);
-			owner.m_combineDialog.Hide();
+			check(!owner.m_combineDialog &&
+			          v.AllToolsPanel().Visibility() == Visibility::Visible &&
+			          v.ToolPaneTitle().Text() == L"Combine files",
+			      "Combine didn't open in the tool pane");
+			findings += auditSurface(v.AllToolsPanel(), L"Combine pane", true);
+			v.closePane();
 			break;
 		case 9:
 			if (owner.m_combining) {

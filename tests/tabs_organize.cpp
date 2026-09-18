@@ -302,108 +302,112 @@ void TabsTest::organizeTick(MainWindow& owner) {
 	ticks = 0;
 }
 
-// Combine: two fixtures through the dialog into one saved, opened PDF.
+// Combine: a tab-owned draft, input details, then a saved and opened PDF.
 void TabsTest::combineTick(MainWindow& owner) {
 	using namespace Microsoft::UI::Xaml::Automation;
-	const auto pressPrimary = [&](const ContentDialog& dialog) {
-		std::function<Button(DependencyObject)> find;
-		find = [&](const DependencyObject& node) -> Button {
-			if (const auto button = node.try_as<Button>();
-			    button && button.Name() == L"PrimaryButton") {
-				return button;
-			}
-			for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node);
-			     ++i) {
-				if (const auto button =
-				        find(Media::VisualTreeHelper::GetChild(node, i))) {
-					return button;
-				}
-			}
-			return nullptr;
-		};
-		const auto button = find(dialog);
-		check(button && button.IsEnabled(), "Combine and save is disabled");
+	const auto invoke = [](const Button& button) {
 		Peers::FrameworkElementAutomationPeer::CreatePeerForElement(button)
 		    .GetPattern(Peers::PatternInterface::Invoke)
 		    .as<Provider::IInvokeProvider>()
 		    .Invoke();
 	};
-	switch (step) {
-	case 0:
-		// the app hands its window the engine at launch; this probe opens
-		// no PDF that would.
+	if (step == 0) {
 		owner.setEngine(engine);
-		{
-			// Fill & Sign, Comment and Read aloud are all real tools now
-			const auto home = get_self<HomePage>(owner.Home());
-			check(home->FillSignButton().IsEnabled() &&
-			          home->CommentButton().IsEnabled() &&
-			          home->ReadAloudButton().IsEnabled(),
-			      "Home's tool buttons have the wrong state");
-		}
+		const auto home = get_self<HomePage>(owner.Home());
+		check(home->FillSignButton().IsEnabled() &&
+		          home->CommentButton().IsEnabled() &&
+		          home->ReadAloudButton().IsEnabled(),
+		      "Home's tool buttons have the wrong state");
+		owner.openDocument(engine, L"tests/fixtures/pages.pdf", {});
+		++step;
+		ticks = 0;
+		return;
+	}
+	const auto current = owner.Viewer();
+	if (!current || !ready(*get_self<ViewerPage>(current))) {
+		check(ticks < 100, "the Combine document did not open");
+		return;
+	}
+	auto& v = *get_self<ViewerPage>(current);
+	if (v.m_combineLoading) {
+		check(ticks < 100, "the Combine input details did not load");
+		return;
+	}
+	switch (step) {
+	case 1:
 		owner.openTool(L"combine");
-		check(owner.m_combining && owner.m_combineDialog,
-		      "Combine files did not open its dialog");
-		break;
-	case 1: {
-		const auto dialog = owner.m_combineDialog;
-		check(static_cast<bool>(dialog), "the Combine dialog closed early");
-		const auto list = dialog.Content()
-		                      .as<StackPanel>()
-		                      .Children()
-		                      .GetAt(1)
-		                      .as<ListView>();
-		for (const auto* name :
-		     {L"tests/fixtures/pages.pdf", L"tests/fixtures/text.pdf"}) {
-			TextBlock row;
-			row.Text(name);
-			row.Tag(
-			    box_value(hstring(std::filesystem::absolute(name).wstring())));
-			list.Items().Append(row);
+		check(!owner.m_combineDialog &&
+		          v.FindName(L"CombineList").try_as<ListView>() &&
+		          v.ToolPaneTitle().Text() == L"Combine files",
+		      "Combine did not open in the tool pane");
+		if (v.m_combineLoading) {
+			return;
 		}
-		list.SelectedIndex(1);
+		check(v.m_combineInputs.size() == 1 &&
+		          v.m_combineInputs.front().pages == 3 &&
+		          !v.CombineButton().IsEnabled(),
+		      "Combine did not start with the current file and its page count");
+		v.addCombineFiles({L"tests/fixtures/text.pdf",
+		                   L"tests/fixtures/password.pdf",
+		                   L"tests/fixtures/note_signed.pdf"});
+		break;
+	case 2: {
+		check(v.m_combineInputs.size() == 4 &&
+		          v.m_combineInputs[1].pages == 5 &&
+		          v.m_combineInputs[2].note == L"Needs a password" &&
+		          v.m_combineInputs[3].note == L"(signed PDF)" &&
+		          !v.CombineButton().IsEnabled(),
+		      "Combine lost page counts or input warnings");
+		const auto remove = [&](uint32_t index) {
+			const auto row = v.CombineList().Items().GetAt(index).as<Grid>();
+			const auto button = row.Children().GetAt(1).as<Button>();
+			check(!AutomationProperties::GetName(button).empty(),
+			      "the input's Remove button has no name");
+			invoke(button);
+		};
+		remove(3);
+		remove(2);
+		check(v.CombineTotal().Text() == L"8 pages total" &&
+		          v.CombineButton().IsEnabled(),
+		      "removing inputs did not update the total and Combine button");
+		v.closePane();
+		owner.openTool(L"combine");
+		check(v.m_combineInputs.size() == 2 &&
+		          v.CombineList().Items().Size() == 2,
+		      "reopening Combine lost its draft");
 		notesPath = makeTempDir("combine") / L"combined.pdf";
 		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
 			return attachmentChoice(path, {});
 		};
-		pressPrimary(dialog);
+		invoke(v.CombineButton());
 		break;
 	}
-	case 2: {
-		if (owner.m_combining) {
-			check(ticks < 100, "Combine did not finish");
+	case 3:
+		if (owner.m_combining || v.m_path != notesPath) {
+			check(ticks < 100, "Combine did not save and open its result");
 			return;
 		}
-		check(!owner.PickerError().IsOpen(),
-		      "Combine reported: " + to_string(owner.PickerError().Message()));
-		check(std::filesystem::exists(notesPath),
-		      "the combined PDF was not saved");
-		const auto current = owner.Viewer();
-		check(current &&
-		          get_self<ViewerPage>(current)->m_path ==
-		              std::filesystem::absolute(notesPath).lexically_normal(),
-		      "the combined PDF was not opened");
+		check(!owner.PickerError().IsOpen() &&
+		          std::filesystem::exists(notesPath) && v.m_sizes.size() == 8,
+		      "Combine lost pages or reported an error");
+		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
 		break;
-	}
-	case 3: {
-		const auto current = owner.Viewer();
-		auto& v = *get_self<ViewerPage>(current);
-		if (!ready(v)) {
-			return;
-		}
-		check(v.m_sizes.size() > 3, "the combined PDF lost pages");
-		status.Text(L"PASS: Combine files saved and opened one PDF");
+	case 4:
+		check(v.m_combineInputs.size() == 2 &&
+		          v.ToolPaneTitle().Text() == L"Combine files" &&
+		          v.CombineTotal().Text() == L"8 pages total",
+		      "switching tabs lost the Combine pane or draft");
+		status.Text(
+		    L"PASS: Combine pane, input details, Remove, total and saved PDF");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;
-	}
 	default:
 		check(false, "unexpected combine step");
 	}
 	++step;
 	ticks = 0;
 }
-
 // Export: PNG for every page, JPEG for a range, then the text.
 void TabsTest::exportTick(MainWindow& owner) {
 	using namespace Microsoft::UI::Xaml::Automation;
