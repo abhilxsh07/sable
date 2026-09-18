@@ -454,6 +454,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::filesystem::path m_exportFolder;
 	bool m_exportSetup = false;
 	bool m_exporting = false;
+	bool m_exportCanceled = false;
 #ifdef SABLE_SURFACE_TEST
 	// the output folder, or an empty path for Cancel
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(

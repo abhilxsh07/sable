@@ -311,6 +311,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</Border>
 						<TextBlock x:Name="ExportError" TextWrapping="Wrap"
 							AutomationProperties.LiveSetting="Assertive" />
+						<StackPanel x:Name="ExportProgressRow" Spacing="8"
+							Visibility="Collapsed">
+							<ProgressBar x:Name="ExportProgress"
+								AutomationProperties.Name="Export progress" />
+							<TextBlock x:Name="ExportProgressText"
+								AutomationProperties.LiveSetting="Polite" />
+							<Button x:Name="ExportCancel" Content="Cancel"
+								AutomationProperties.Name="Cancel export" />
+						</StackPanel>
 						<Button x:Name="ExportButton" Content="Export&#x2026;"
 							HorizontalAlignment="Right"
 							Style="{StaticResource AccentButtonStyle}" />

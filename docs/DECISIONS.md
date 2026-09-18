@@ -3676,3 +3676,13 @@ even when the output range is All or Selection. PNG and JPEG use their own
 encoders; Text shows the page's first lines. The page and format label names
 the image for Narrator. Loading a later page or format discards an older
 reply, and closing the tab stops it from touching the pane.
+
+## Export can stop after the current page (2026-11-14)
+
+Export shows the page being worked on as n of m, with Cancel below it.
+Cancel finishes that page and keeps the files already written. Text is
+read a page at a time too; the completed pages go into one text file.
+The end notice gives the file count and full output folder, including
+when I stop early. The choices stay disabled until the work finishes.
+Encoding and file writes run on a worker; the engine still owns every
+PDFium call. Organize and tab close keep their existing busy refusal.

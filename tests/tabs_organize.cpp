@@ -432,6 +432,10 @@ void TabsTest::exportTick(MainWindow& owner) {
 		check(v.FindName(L"ExportPreviewImage").try_as<Image>() &&
 		          v.FindName(L"ExportPreviewText").try_as<TextBlock>(),
 		      "Export has no current-page preview");
+		check(v.FindName(L"ExportProgress").try_as<ProgressBar>() &&
+		          v.FindName(L"ExportProgressText").try_as<TextBlock>() &&
+		          v.FindName(L"ExportCancel").try_as<Button>(),
+		      "Export has no progress or Cancel");
 		check(v.FindName(L"ExportSelection").try_as<RadioButton>() &&
 		          v.FindName(L"ExportFolder").try_as<TextBlock>() &&
 		          v.FindName(L"ExportFolderChange").try_as<Button>(),
@@ -642,9 +646,82 @@ void TabsTest::exportTick(MainWindow& owner) {
 		          v.FindName(L"ExportPreviewLabel").as<TextBlock>().Text() ==
 		              L"Page 2: PNG preview",
 		      "navigation kept the previous page's portrait preview");
+		owner.openDocument(engine, L"tests/fixtures/long.pdf", {});
+		break;
+	}
+	case 16: {
+		if (v.m_sizes.size() != 1000) {
+			check(ticks < 80, "the long export document did not open");
+			return;
+		}
+		const auto folder = notesPath / L"cancel";
+		std::filesystem::create_directory(folder);
+		v.m_exportFolder = folder;
+		open(0, 0, nullptr);
+		v.FindName(L"ExportResolution").as<ComboBox>().SelectedIndex(0);
+		v.FindName(L"ExportProgressText")
+		    .as<TextBlock>()
+		    .RegisterPropertyChangedCallback(
+		        TextBlock::TextProperty(),
+		        [this, weak = v.get_weak()](const auto& sender, auto&&) {
+			        if (sender.template as<TextBlock>().Text() !=
+			            L"2 of 1000") {
+				        return;
+			        }
+			        const auto self = weak.get();
+			        if (!self) {
+				        return;
+			        }
+			        check(self->m_exporting && self->pageOperationBusy(),
+			              "export progress did not hold the page operation");
+			        self->openOrganize();
+			        check(!self->organizing(), "Organize opened during export");
+			        const auto cancel =
+			            self->FindName(L"ExportCancel").as<Button>();
+			        check(cancel.IsEnabled(),
+			              "Cancel was disabled during export");
+			        Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			            cancel)
+			            .GetPattern(Peers::PatternInterface::Invoke)
+			            .as<Provider::IInvokeProvider>()
+			            .Invoke();
+		        });
+		v.runExport();
+		break;
+	}
+	case 17: {
+		const auto folder = notesPath / L"cancel";
+		check(bytes(folder / L"long - page 0001.png").rfind("\x89PNG", 0) ==
+		              0 &&
+		          bytes(folder / L"long - page 0002.png").rfind("\x89PNG", 0) ==
+		              0 &&
+		          !std::filesystem::exists(folder / L"long - page 0003.png"),
+		      "Cancel did not stop after writing the current page");
+		const std::wstring message(v.Message().Message());
+		check(message.find(L"Stopped export: 2 files") != std::wstring::npos &&
+		          message.find(folder.wstring()) != std::wstring::npos &&
+		          v.FindName(L"ExportButton").as<Button>().IsEnabled() &&
+		          v.FindName(L"ExportProgressRow")
+		                  .as<StackPanel>()
+		                  .Visibility() == Visibility::Collapsed,
+		      "export completion lost the count, folder or idle state");
+		open(2, 0, nullptr);
+		v.runExport();
+		break;
+	}
+	case 18: {
+		const auto text = bytes(notesPath / L"cancel" / L"long.txt");
+		check(text.find("Page 1") != std::string::npos &&
+		          text.find("Page 2") != std::string::npos &&
+		          text.find("Page 3") == std::string::npos &&
+		          std::wstring_view(v.Message().Message())
+		                  .find(L"Stopped export: 1 file (2 pages)") !=
+		              std::wstring_view::npos,
+		      "text cancellation lost the current page or its file count");
 		v.close();
-		status.Text(L"PASS: Export pane, per-tab folder, Change/Cancel, PNG, "
-		            L"JPEG range, current and selected-page text, preview");
+		status.Text(
+		    L"PASS: Export pane, per-tab folder, Change/Cancel, PNG, "
+		    L"JPEG range, text, preview, progress and Cancel at page 2");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

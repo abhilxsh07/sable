@@ -85,6 +85,37 @@ encodePage(pdf::Bitmap bitmap, bool jpeg, int dpi) {
 	    buffer, buffer.Capacity(),
 	    Windows::Storage::Streams::InputStreamOptions::None);
 }
+
+IAsyncOperation<bool> writePageImage(pdf::Bitmap bitmap,
+                                     std::filesystem::path destination,
+                                     std::filesystem::path source, bool jpeg,
+                                     int dpi) {
+	co_await resume_background();
+	try {
+		const auto buffer = co_await encodePage(std::move(bitmap), jpeg, dpi);
+		const std::vector<std::uint8_t> bytes(buffer.data(),
+		                                      buffer.data() + buffer.Length());
+		co_return helpers::saveFile(destination, source, bytes) ==
+		    helpers::FileSaveResult::Saved;
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not encode or write an exported page");
+		co_return false;
+	}
+}
+
+IAsyncOperation<bool> writeExportText(std::filesystem::path destination,
+                                      std::filesystem::path source,
+                                      std::string text) {
+	co_await resume_background();
+	try {
+		co_return destination != source&& helpers::saveFile(destination, text);
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not write exported text");
+		co_return false;
+	}
+}
 } // namespace
 
 // Export pages: PNG or JPEG images of the unfiltered pages as they print,
@@ -135,6 +166,12 @@ void ViewerPage::setupExportPane() {
 	ExportFolderChange().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->changeExportFolder();
+		}
+	});
+	ExportCancel().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get(); self && self->m_exporting) {
+			self->m_exportCanceled = true;
+			self->ExportCancel().IsEnabled(false);
 		}
 	});
 }
@@ -254,6 +291,14 @@ void ViewerPage::setExportBusy(bool busy) {
 	if (!m_closed) {
 		ExportButton().IsEnabled(!busy);
 		ExportFolderChange().IsEnabled(!busy);
+		ExportFormat().IsEnabled(!busy);
+		ExportPages().IsEnabled(!busy);
+		ExportRange().IsEnabled(!busy && ExportPages().SelectedIndex() == 3);
+		ExportResolution().IsEnabled(!busy &&
+		                             ExportFormat().SelectedIndex() != 2);
+		if (!busy) {
+			ExportProgressRow().Visibility(Visibility::Collapsed);
+		}
 	}
 }
 
@@ -352,92 +397,109 @@ fire_and_forget ViewerPage::runExport() {
 			finish();
 			co_return;
 		}
+		if (m_closed || !m_session) {
+			finish();
+			co_return;
+		}
 		const auto folder = m_exportFolder;
-		if (kind == 2) {
-			if (m_closed || !m_session) {
-				finish();
-				co_return;
-			}
-			const auto wait = std::make_shared<Wait<pdf::DocumentTextResult>>();
-			const bool queued = m_session->documentText(
-			    pages, [wait](pdf::DocumentTextResult result) {
-				    wait->result = std::move(result);
-				    SetEvent(wait->ready.get());
-			    });
-			if (queued) {
-				co_await resume_on_signal(wait->ready.get());
-			}
-			co_await ui;
-			finish();
-			const auto destination = folder / (stem + L".txt");
-			if (m_closed || wait->result.canceled) {
-				co_return;
-			}
-			if (!queued || !wait->result.text) {
-				showNotice(L"Couldn't export the text. The PDF may not allow "
-				           L"copying.");
-			} else if (destination == m_path ||
-			           !helpers::saveFile(destination, *wait->result.text)) {
-				showNotice(L"Couldn't save the text. Choose a writable "
-				           L"folder and a new file name.");
-			} else {
-				showNotice(L"Exported the text to " +
-				               hstring(destination.filename().wstring()) + L".",
-				           InfoBarSeverity::Success);
-			}
-			co_return;
-		}
-		if (m_closed) {
-			finish();
-			co_return;
-		}
+		const auto source = m_path;
 		const bool jpeg = kind == 1;
+		const int total = static_cast<int>(pages.size());
+		m_exportCanceled = false;
+		ExportCancel().IsEnabled(true);
+		ExportProgress().Maximum(total);
+		ExportProgress().Value(0);
+		ExportProgressRow().Visibility(Visibility::Visible);
 		int done = 0;
+		std::string text;
 		for (const int page : pages) {
-			if (m_closed || !m_session) {
+			if (m_closed || !m_session || m_exportCanceled) {
 				break;
 			}
-			const auto& size = m_sizes[static_cast<std::size_t>(page)];
-			const auto [width, height] =
-			    helpers::exportPixels(size.width, size.height, dpi);
-			const auto wait = std::make_shared<Wait<pdf::PageImageResult>>();
-			const bool queued = m_session->pageImage(
-			    page, width, height, [wait](pdf::PageImageResult result) {
-				    wait->result = std::move(result);
-				    SetEvent(wait->ready.get());
-			    });
-			if (queued) {
-				co_await resume_on_signal(wait->ready.get());
+			ExportProgressText().Text(to_hstring(done + 1) + L" of " +
+			                          to_hstring(total));
+			bool saved = false;
+			if (kind == 2) {
+				const auto wait =
+				    std::make_shared<Wait<pdf::DocumentTextResult>>();
+				const bool queued = m_session->documentText(
+				    {page}, [wait](pdf::DocumentTextResult result) {
+					    wait->result = std::move(result);
+					    SetEvent(wait->ready.get());
+				    });
+				if (queued) {
+					co_await resume_on_signal(wait->ready.get());
+				}
+				co_await ui;
+				if (queued && wait->result.text && !wait->result.canceled) {
+					text += done ? "\f" : "";
+					text += *wait->result.text;
+					saved = true;
+				}
+			} else {
+				const auto& size = m_sizes[static_cast<std::size_t>(page)];
+				const auto [width, height] =
+				    helpers::exportPixels(size.width, size.height, dpi);
+				const auto wait =
+				    std::make_shared<Wait<pdf::PageImageResult>>();
+				const bool queued = m_session->pageImage(
+				    page, width, height, [wait](pdf::PageImageResult result) {
+					    wait->result = std::move(result);
+					    SetEvent(wait->ready.get());
+				    });
+				if (queued) {
+					co_await resume_on_signal(wait->ready.get());
+				}
+				co_await ui;
+				if (!m_closed && queued && wait->result.bitmap &&
+				    !wait->result.canceled) {
+					const auto destination =
+					    folder / helpers::exportName(stem, page + 1,
+					                                 pages.back() + 1,
+					                                 jpeg ? L".jpg" : L".png");
+					saved =
+					    co_await writePageImage(std::move(*wait->result.bitmap),
+					                            destination, source, jpeg, dpi);
+				}
 			}
-			co_await ui;
-			if (m_closed || wait->result.canceled) {
+			if (m_closed) {
 				break;
 			}
-			std::vector<std::uint8_t> bytes;
-			if (queued && wait->result.bitmap) {
-				const auto buffer = co_await encodePage(
-				    std::move(*wait->result.bitmap), jpeg, dpi);
-				bytes.assign(buffer.data(), buffer.data() + buffer.Length());
-			}
-			const auto destination =
-			    folder / helpers::exportName(stem, page + 1, pages.back() + 1,
-			                                 jpeg ? L".jpg" : L".png");
-			if (bytes.empty() ||
-			    helpers::saveFile(destination, m_path, bytes) !=
-			        helpers::FileSaveResult::Saved) {
+			if (!saved) {
 				finish();
 				showNotice(L"Couldn't export page " + to_hstring(page + 1) +
+				           L". " + to_hstring(kind == 2 ? 0 : done) +
+				           L" files written to " + hstring(folder.wstring()) +
 				           L". Choose a writable folder and try again.");
 				co_return;
 			}
 			++done;
+			ExportProgress().Value(done);
+		}
+		if (kind == 2 && done && !m_closed) {
+			if (!co_await writeExportText(folder / (stem + L".txt"), source,
+			                              std::move(text))) {
+				finish();
+				if (!m_closed) {
+					showNotice(
+					    L"Couldn't save the text to " +
+					    hstring(folder.wstring()) +
+					    L". Choose a writable folder and a new file name.");
+				}
+				co_return;
+			}
 		}
 		finish();
-		if (!m_closed && done == static_cast<int>(pages.size())) {
-			showNotice(L"Exported " + to_hstring(done) +
-			               (done == 1 ? L" page to " : L" pages to ") +
-			               hstring(folder.filename().wstring()) + L".",
-			           InfoBarSeverity::Success);
+		if (!m_closed) {
+			const int files = kind == 2 ? (done ? 1 : 0) : done;
+			showNotice((m_exportCanceled ? L"Stopped export: " : L"Exported ") +
+			               to_hstring(files) +
+			               (files == 1 ? L" file" : L" files") +
+			               (kind == 2 ? L" (" + to_hstring(done) + L" pages)"
+			                          : hstring{}) +
+			               L" to " + hstring(folder.wstring()) + L".",
+			           m_exportCanceled ? InfoBarSeverity::Informational
+			                            : InfoBarSeverity::Success);
 		}
 	} catch (...) {
 		diagnostics::caught(diagnostics::Level::Error,
