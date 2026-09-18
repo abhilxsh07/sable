@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <fstream>
 #include <iterator>
 
@@ -428,6 +429,9 @@ void TabsTest::exportTick(MainWindow& owner) {
 		          v.ToolPaneTitle().Text() == L"Export",
 		      "Export did not open in the tool pane");
 		formats.SelectedIndex(format);
+		check(v.FindName(L"ExportPreviewImage").try_as<Image>() &&
+		          v.FindName(L"ExportPreviewText").try_as<TextBlock>(),
+		      "Export has no current-page preview");
 		check(v.FindName(L"ExportSelection").try_as<RadioButton>() &&
 		          v.FindName(L"ExportFolder").try_as<TextBlock>() &&
 		          v.FindName(L"ExportFolderChange").try_as<Button>(),
@@ -438,6 +442,39 @@ void TabsTest::exportTick(MainWindow& owner) {
 		}
 	};
 	const auto press = [&] {
+		const int kind =
+		    v.FindName(L"ExportFormat").as<RadioButtons>().SelectedIndex();
+		const auto image = v.FindName(L"ExportPreviewImage").as<Image>();
+		const auto text = v.FindName(L"ExportPreviewText").as<TextBlock>();
+		if (kind == 2 ? text.Text() == L"Loading preview..."
+		              : !image.Source()) {
+			check(ticks < 80, "the current-page preview did not load");
+			return false;
+		}
+		const auto label = L"Page " + to_hstring(v.m_current + 1) + L": " +
+		                   (kind == 2   ? L"Text"
+		                    : kind == 1 ? L"JPEG"
+		                                : L"PNG") +
+		                   L" preview";
+		check(v.FindName(L"ExportPreviewLabel").as<TextBlock>().Text() == label,
+		      "the preview label did not follow the page and format");
+		if (kind == 2) {
+			check(std::wstring_view(text.Text())
+			                  .find(L"Sable test page " +
+			                        std::to_wstring(v.m_current + 1)) !=
+			              std::wstring_view::npos &&
+			          image.Visibility() == Visibility::Collapsed,
+			      "Text preview did not show the current page's first lines");
+		} else {
+			const auto bitmap =
+			    image.Source().as<Media::Imaging::BitmapImage>();
+			check(bitmap.PixelWidth() > 0 && bitmap.PixelWidth() <= 240 &&
+			          bitmap.PixelHeight() > 0 && bitmap.PixelHeight() <= 220 &&
+			          image.Visibility() == Visibility::Visible &&
+			          text.Visibility() == Visibility::Collapsed &&
+			          AutomationProperties::GetName(image) == label,
+			      "image preview was empty, too large or unnamed");
+		}
 		const auto button = v.FindName(L"ExportButton").try_as<Button>();
 		if (!button || !button.IsEnabled()) {
 			check(ticks < 40, "Export had no Export button");
@@ -569,13 +606,45 @@ void TabsTest::exportTick(MainWindow& owner) {
 		      "another tab inherited the export folder");
 		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
 		break;
-	case 13: {
+	case 13:
 		check(v.m_exportFolder == notesPath / L"changed" &&
 		          v.m_exportSelection == std::vector<int>{0},
 		      "switching tabs lost the export folder or selection");
+		open(0, 1, nullptr);
+		v.FindName(L"ExportFormat").as<RadioButtons>().SelectedIndex(1);
+		v.FindName(L"ExportFormat").as<RadioButtons>().SelectedIndex(2);
+		v.goToPage(2);
+		v.goToPage(0);
+		break;
+	case 14: {
+		const auto text = v.FindName(L"ExportPreviewText").as<TextBlock>();
+		if (text.Text() == L"Loading preview...") {
+			check(ticks < 80, "the preview did not follow rapid changes");
+			return;
+		}
+		check(std::wstring_view(text.Text()).find(L"Sable test page 1") !=
+		              std::wstring_view::npos &&
+		          v.FindName(L"ExportPreviewImage").as<Image>().Visibility() ==
+		              Visibility::Collapsed,
+		      "an older image or text reply replaced the current preview");
+		v.FindName(L"ExportFormat").as<RadioButtons>().SelectedIndex(0);
+		v.goToPage(1);
+		break;
+	}
+	case 15: {
+		const auto image = v.FindName(L"ExportPreviewImage").as<Image>();
+		if (!image.Source()) {
+			check(ticks < 80, "the image preview did not follow navigation");
+			return;
+		}
+		const auto bitmap = image.Source().as<Media::Imaging::BitmapImage>();
+		check(bitmap.PixelWidth() > bitmap.PixelHeight() &&
+		          v.FindName(L"ExportPreviewLabel").as<TextBlock>().Text() ==
+		              L"Page 2: PNG preview",
+		      "navigation kept the previous page's portrait preview");
 		v.close();
 		status.Text(L"PASS: Export pane, per-tab folder, Change/Cancel, PNG, "
-		            L"JPEG range, current and selected-page text");
+		            L"JPEG range, current and selected-page text, preview");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

@@ -252,10 +252,16 @@ void ViewerPage::openPane(ToolPane pane) {
 		return;
 	}
 	if (m_toolPane == pane) {
+		if (pane == ToolPane::Export) {
+			refreshExportPreview(true);
+		}
 		focusToolPane();
 		return;
 	}
 	m_toolPane = pane;
+	if (pane == ToolPane::Export) {
+		refreshExportPreview(true);
+	}
 	// each pane comes back at the width it was last given
 	AllToolsPanel().Width(
 	    helpers::loadPaneWidths(s_panesFile).width(paneKey(pane)));

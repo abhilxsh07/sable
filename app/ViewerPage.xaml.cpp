@@ -1016,6 +1016,7 @@ void ViewerPage::updateCurrentPage() {
 // toolbar.js #updateUIState: the page box, "of N", and which buttons work
 void ViewerPage::showPosition() {
 	updateGestureLimits();
+	refreshExportPreview();
 	if (!m_layout) {
 		return;
 	}

@@ -3668,3 +3668,11 @@ Selection uses the highlighted thumbnail or the pages kept from Organize
 on Done. Page edits clear that saved selection, since page numbers may
 now refer to different pages. Export and Change stay disabled while either
 an export or its folder picker is running.
+
+## Export previews the current page (2026-11-14)
+
+The Export pane shows a small unfiltered preview of the page I'm reading,
+even when the output range is All or Selection. PNG and JPEG use their own
+encoders; Text shows the page's first lines. The page and format label names
+the image for Narrator. Loading a later page or format discards an older
+reply, and closing the tab stops it from touching the pane.

@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -441,6 +442,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void exportPages();
 	void setupExportPane();
 	void refreshExportSelection();
+	winrt::fire_and_forget refreshExportPreview(bool force = false);
+	std::optional<std::tuple<std::size_t, int, std::uint64_t>>
+	    m_exportPreviewKey;
+	std::uint64_t m_exportPreviewVersion = 0;
 	void setExportBusy(bool busy);
 	winrt::Windows::Foundation::IAsyncOperation<bool> chooseExportFolder();
 	winrt::fire_and_forget changeExportFolder();

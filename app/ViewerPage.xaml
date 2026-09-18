@@ -299,6 +299,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 							TextWrapping="Wrap" />
 						<Button x:Name="ExportFolderChange" Content="Change"
 							AutomationProperties.Name="Change export folder" />
+						<TextBlock x:Name="ExportPreviewLabel" TextWrapping="Wrap" />
+						<Border BorderThickness="1" Padding="8"
+							BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+							<Grid MinHeight="80" MaxHeight="220">
+								<Image x:Name="ExportPreviewImage" Stretch="Uniform"
+									Visibility="Collapsed" />
+								<TextBlock x:Name="ExportPreviewText" TextWrapping="Wrap"
+									MaxLines="6" TextTrimming="CharacterEllipsis" />
+							</Grid>
+						</Border>
 						<TextBlock x:Name="ExportError" TextWrapping="Wrap"
 							AutomationProperties.LiveSetting="Assertive" />
 						<Button x:Name="ExportButton" Content="Export&#x2026;"
