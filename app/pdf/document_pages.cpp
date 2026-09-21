@@ -371,9 +371,10 @@ Document::extractPages(const std::vector<int>& pages,
 	return std::move(writer.bytes);
 }
 
-CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
-                           std::size_t limit,
-                           const std::function<bool()>& canceled) {
+CombineResult
+combineFiles(const std::vector<std::filesystem::path>& files, std::size_t limit,
+             const std::function<bool()>& canceled,
+             const std::function<void(std::size_t, std::size_t)>& progress) {
 	CombineResult result;
 	const std::function<bool()> stopped = [&canceled] {
 		return canceled && canceled();
@@ -410,6 +411,9 @@ CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
 	std::vector<DocumentPtr> sources;
 	std::vector<PageMark> expected;
 	inputs.reserve(files.size());
+	if (progress) {
+		progress(0, files.size());
+	}
 	for (std::size_t file = 0; file < files.size(); ++file) {
 		if (stopped()) {
 			return fail(CombineError::Canceled);
@@ -440,6 +444,9 @@ CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
 		}
 		expected.insert(expected.end(), marks->begin(), marks->end());
 		sources.push_back(std::move(source));
+		if (progress) {
+			progress(file + 1, files.size());
+		}
 	}
 	BoundedWriter writer(limit, stopped);
 	const bool saved = FPDF_SaveAsCopy(combined.get(), &writer, 0);
@@ -454,7 +461,7 @@ CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
 	const auto check = loadBytes(writer.bytes);
 	const auto pages = check ? markPages(check.get(), stopped) : std::nullopt;
 	if (!pages || *pages != expected) {
-		return fail(CombineError::Failed);
+		return fail(stopped() ? CombineError::Canceled : CombineError::Failed);
 	}
 	result.bytes = std::move(writer.bytes);
 	return result;

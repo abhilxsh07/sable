@@ -37,6 +37,21 @@ using namespace Microsoft::UI::Xaml::Controls;
 
 namespace winrt::Sable::implementation {
 namespace {
+Windows::Foundation::IAsyncOperation<int>
+writeCombinedPdf(std::filesystem::path destination,
+                 std::filesystem::path source, std::vector<std::uint8_t> bytes,
+                 std::shared_ptr<std::atomic_bool> cancel) {
+	co_await resume_background();
+	try {
+		co_return static_cast<int>(helpers::saveFile(
+		    destination, source, bytes, [cancel] { return cancel->load(); }));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not write the combined PDF");
+		co_return static_cast<int>(helpers::FileSaveResult::Failed);
+	}
+}
+
 std::filesystem::path itemPath(const Windows::Foundation::IInspectable& item) {
 	const auto row = item.try_as<FrameworkElement>();
 	return row ? std::filesystem::path(
@@ -94,11 +109,14 @@ fire_and_forget addCombineFiles(Microsoft::UI::WindowId owner,
 fire_and_forget MainWindow::combinePdfs() {
 	const auto lifetime = get_strong();
 	try {
-		if (m_closing || !m_engine || m_combining || !RootGrid().XamlRoot()) {
+		if (m_closing || !m_engine || !RootGrid().XamlRoot()) {
 			co_return;
 		}
 		if (const auto viewer = Viewer()) {
 			get_self<ViewerPage>(viewer)->openCombine();
+			co_return;
+		}
+		if (m_combining) {
 			co_return;
 		}
 		m_combining = true;
@@ -217,8 +235,31 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 	if (m_closing || !m_engine || m_combining || files.size() < 2) {
 		co_return;
 	}
-	m_combining = true;
+	com_ptr<ViewerPage> source;
 	try {
+		m_combining = true;
+		if (const auto viewer = Viewer()) {
+			source = get_self<ViewerPage>(viewer)->get_strong();
+		}
+		const auto cancel = std::make_shared<std::atomic_bool>(false);
+		if (source) {
+			source->m_combineCancel = cancel;
+			source->CombineProgress().IsIndeterminate(false);
+			source->CombineProgress().Maximum(
+			    static_cast<double>(files.size()));
+			source->CombineProgress().Value(0);
+			source->CombineProgressText().Text(
+			    L"Preparing to combine files...");
+			source->refreshCombine();
+		}
+		const auto finish =
+		    std::shared_ptr<void>(nullptr, [lifetime, source](void*) {
+			    lifetime->m_combining = false;
+			    if (source) {
+				    source->m_combineCancel.reset();
+				    source->refreshCombine();
+			    }
+		    });
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
 		if (m_notesPicker) {
@@ -237,12 +278,12 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 				path = chosen.Path();
 			}
 		}
-		if (path.empty() || m_closing) {
-			m_combining = false;
+		if (path.empty() || m_closing || cancel->load()) {
 			co_return;
 		}
 		const std::filesystem::path destination(path.c_str());
 		const auto report = [this](const hstring& message) {
+			PickerError().Severity(InfoBarSeverity::Error);
 			PickerError().Title(L"Couldn't combine the files");
 			PickerError().Message(message);
 			PickerError().IsOpen(true);
@@ -251,7 +292,6 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 		std::error_code error;
 		for (const auto& file : files) {
 			if (std::filesystem::equivalent(file, destination, error)) {
-				m_combining = false;
 				report(L"Choose a new file name; the combined PDF can't "
 				       L"replace one of its inputs.");
 				co_return;
@@ -264,9 +304,27 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 		const auto reply = std::make_shared<Reply>();
 		check_bool(static_cast<bool>(reply->ready));
 		const apartment_context ui;
-		const bool queued = m_engine->post([reply, files] {
+		const auto progress = [weak = source ? source->get_weak()
+		                                     : weak_ref<ViewerPage>{},
+		                       queue = DispatcherQueue(),
+		                       cancel](std::size_t done, std::size_t total) {
+			queue.TryEnqueue([weak, cancel, done, total] {
+				if (const auto self = weak.get();
+				    self && !self->m_closed &&
+				    self->m_combineCancel == cancel && !cancel->load() &&
+				    !self->CombineProgress().IsIndeterminate()) {
+					self->CombineProgress().Value(static_cast<double>(done));
+					self->CombineProgressText().Text(
+					    to_hstring(done) + L" of " + to_hstring(total) +
+					    L" files");
+				}
+			});
+		};
+		const bool queued = m_engine->post([reply, files, cancel, progress] {
 			try {
-				reply->result = pdf::combineFiles(files);
+				reply->result = pdf::combineFiles(
+				    files, 128 * 1024 * 1024,
+				    [cancel] { return cancel->load(); }, progress);
 			} catch (...) {
 				reply->result.error = pdf::CombineError::Failed;
 			}
@@ -276,8 +334,16 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 			co_await resume_on_signal(reply->ready.get());
 		}
 		co_await ui;
-		m_combining = false;
 		if (m_closing) {
+			co_return;
+		}
+		const auto stopped = [&] {
+			if (source && !source->m_closed) {
+				source->showNotice(L"Stopped combining. No file was saved.");
+			}
+		};
+		if (reply->result.error == pdf::CombineError::Canceled) {
+			stopped();
 			co_return;
 		}
 		if (!queued || reply->result.error != pdf::CombineError::None) {
@@ -286,12 +352,22 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 		}
 		// the writer wants a source to protect; every input was checked
 		// above, so the first stands in for them.
-		const auto saved =
-		    helpers::saveFile(destination, files.front(), reply->result.bytes);
+		if (source && !source->m_closed) {
+			source->CombineProgress().IsIndeterminate(true);
+			source->CombineProgressText().Text(L"Saving the combined PDF...");
+		}
+		const auto saved = static_cast<helpers::FileSaveResult>(
+		    co_await writeCombinedPdf(destination, files.front(),
+		                              std::move(reply->result.bytes), cancel));
+		if (m_closing) {
+			co_return;
+		}
 		if (saved != helpers::FileSaveResult::Saved) {
 			if (saved != helpers::FileSaveResult::Canceled) {
 				report(L"Couldn't save the combined PDF. Choose a writable "
 				       L"folder.");
+			} else {
+				stopped();
 			}
 			co_return;
 		}
@@ -300,6 +376,11 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files,
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Could not combine PDFs");
 		m_combining = false;
+		if (source && !source->m_closed) {
+			source->m_combineCancel.reset();
+			source->refreshCombine();
+			source->showNotice(L"Couldn't combine these files. Try again.");
+		}
 	}
 }
 
@@ -309,6 +390,11 @@ void ViewerPage::openCombine() {
 	    m_passwordDialog || !XamlRoot()) {
 		return;
 	}
+	if (m_combineCancel) {
+		openPane(ToolPane::Combine);
+		focusToolPane();
+		return;
+	}
 	if (organizing() || pageOperationBusy() || m_noteBusy || m_noteSaving) {
 		showNotice(L"Finish the page or note operation before combining.");
 		return;
@@ -316,12 +402,20 @@ void ViewerPage::openCombine() {
 	if (!m_combineSetup) {
 		m_combineSetup = true;
 		const auto weak = get_weak();
+		CombineCancel().Click([weak](auto&&, auto&&) {
+			if (const auto self = weak.get(); self && self->m_combineCancel) {
+				self->m_combineCancel->store(true);
+				self->CombineCancel().IsEnabled(false);
+				self->CombineProgressText().Text(L"Stopping combine...");
+			}
+		});
 		CombineName().Text(hstring(m_path.stem().wstring()) +
 		                   L" (combined).pdf");
 		CombineList().DragOver([weak](auto&&, const DragEventArgs& args) {
 			using namespace Windows::ApplicationModel::DataTransfer;
 			if (const auto self = weak.get();
 			    self && !self->m_closed && !self->m_combineLoading &&
+			    !self->m_combineCancel &&
 			    args.DataView().Contains(StandardDataFormats::StorageItems())) {
 				args.AcceptedOperation(DataPackageOperation::Copy);
 				args.Handled(true);
@@ -347,8 +441,9 @@ void ViewerPage::openCombine() {
 			}
 		});
 		CombineButton().Click([weak](auto&&, auto&&) {
-			if (const auto self = weak.get();
-			    self && self->m_combineRequest && !self->m_combineLoading) {
+			if (const auto self = weak.get(); self && self->m_combineRequest &&
+			                                  !self->m_combineLoading &&
+			                                  !self->m_combineCancel) {
 				auto name = self->CombineName().Text();
 				const std::wstring value(name);
 				if (value.empty() ||
@@ -382,9 +477,10 @@ void ViewerPage::refreshCombine() {
 		return;
 	}
 	const int selected = CombineList().SelectedIndex();
+	const bool busy = m_combineLoading || m_combineCancel;
 	CombineList().Items().Clear();
 	std::uint64_t total = 0;
-	bool ready = m_combineInputs.size() >= 2 && !m_combineLoading;
+	bool ready = m_combineInputs.size() >= 2 && !busy;
 	for (std::size_t i = 0; i < m_combineInputs.size(); ++i) {
 		const auto& input = m_combineInputs[i];
 		total += static_cast<std::uint64_t>(input.pages);
@@ -407,13 +503,13 @@ void ViewerPage::refreshCombine() {
 		row.Children().Append(name);
 		Button remove;
 		remove.Content(box_value(L"Remove"));
-		remove.IsEnabled(!m_combineLoading);
+		remove.IsEnabled(!busy);
 		Automation::AutomationProperties::SetName(
 		    remove, L"Remove " + hstring(input.path.filename().wstring()));
 		Grid::SetColumn(remove, 1);
 		remove.Click([weak = get_weak(), i](auto&&, auto&&) {
 			if (const auto self = weak.get();
-			    self && !self->m_combineLoading &&
+			    self && !self->m_combineLoading && !self->m_combineCancel &&
 			    i < self->m_combineInputs.size()) {
 				self->m_combineInputs.erase(self->m_combineInputs.begin() + i);
 				self->refreshCombine();
@@ -427,14 +523,18 @@ void ViewerPage::refreshCombine() {
 	}
 	CombineTotal().Text(to_hstring(total) +
 	                    (total == 1 ? L" page total" : L" pages total"));
-	CombineAdd().IsEnabled(!m_combineLoading);
-	CombineList().IsEnabled(!m_combineLoading);
+	CombineAdd().IsEnabled(!busy);
+	CombineList().IsEnabled(!busy);
+	CombineName().IsEnabled(!busy);
+	CombineProgressRow().Visibility(m_combineCancel ? Visibility::Visible
+	                                                : Visibility::Collapsed);
+	CombineCancel().IsEnabled(m_combineCancel && !m_combineCancel->load());
 	CombineButton().IsEnabled(ready);
 }
 
 // the rows carry their old indices, including when a file appears twice.
 void ViewerPage::reorderCombine() {
-	if (m_closed || m_combineLoading) {
+	if (m_closed || m_combineLoading || m_combineCancel) {
 		return;
 	}
 	std::vector<CombineInput> ordered;
@@ -467,8 +567,8 @@ bool ViewerPage::combineHasFocus() {
 }
 
 bool ViewerPage::combineKey(unsigned key, helpers::NavModifiers modifiers) {
-	if (m_combineLoading || !modifiers.alt || modifiers.ctrl ||
-	    modifiers.shift || modifiers.windows ||
+	if (m_combineLoading || m_combineCancel || !modifiers.alt ||
+	    modifiers.ctrl || modifiers.shift || modifiers.windows ||
 	    (key != VK_UP && key != VK_DOWN) || !combineHasFocus()) {
 		return false;
 	}
@@ -493,7 +593,7 @@ fire_and_forget ViewerPage::dropCombineFiles(
     Windows::ApplicationModel::DataTransfer::DataPackageView data) {
 	const auto lifetime = get_strong();
 	try {
-		if (m_closed || m_combineLoading) {
+		if (m_closed || m_combineLoading || m_combineCancel) {
 			co_return;
 		}
 		m_combineLoading = true;
@@ -524,7 +624,8 @@ fire_and_forget ViewerPage::dropCombineFiles(
 Windows::Foundation::IAsyncAction
 ViewerPage::addCombineFiles(std::vector<std::filesystem::path> files) {
 	const auto lifetime = get_strong();
-	if (m_closed || !m_engine || m_combineLoading || files.empty()) {
+	if (m_closed || !m_engine || m_combineLoading || m_combineCancel ||
+	    files.empty()) {
 		co_return;
 	}
 	m_combineLoading = true;
@@ -580,7 +681,7 @@ ViewerPage::addCombineFiles(std::vector<std::filesystem::path> files) {
 
 fire_and_forget ViewerPage::pickCombineFiles() {
 	const auto lifetime = get_strong();
-	if (m_closed || m_combineLoading || !XamlRoot()) {
+	if (m_closed || m_combineLoading || m_combineCancel || !XamlRoot()) {
 		co_return;
 	}
 	m_combineLoading = true;

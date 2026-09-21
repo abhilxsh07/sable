@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <d2d1_1.h>
 
 #include <cstddef>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -417,7 +418,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		return m_mode == ViewerMode::Present;
 	}
 	bool pageOperationBusy() const {
-		return m_organizeBusy || m_exporting;
+		return m_organizeBusy || m_exporting || m_combineCancel;
 	}
 	void setupOrganize();
 	void openOrganize();
@@ -475,6 +476,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::function<void(std::vector<std::filesystem::path>, winrt::hstring)>
 	    m_combineRequest;
 	bool m_combineSetup = false, m_combineLoading = false;
+	std::shared_ptr<std::atomic_bool> m_combineCancel;
 #ifdef SABLE_SURFACE_TEST
 	// the output folder, or an empty path for Cancel
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(

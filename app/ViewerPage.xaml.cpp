@@ -327,6 +327,9 @@ void ViewerPage::close() {
 		dialog.Hide();
 	}
 	m_closed = true;
+	if (m_combineCancel) {
+		m_combineCancel->store(true);
+	}
 	cancelSelectionDrag();
 	m_selection.reset();
 	m_text.clear();

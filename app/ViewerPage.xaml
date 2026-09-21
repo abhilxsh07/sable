@@ -344,6 +344,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<TextBlock x:Name="CombineTotal" TextWrapping="Wrap" />
 						<TextBox x:Name="CombineName" Header="Result name"
 							AutomationProperties.Name="Result name" />
+						<StackPanel x:Name="CombineProgressRow" Spacing="8"
+							Visibility="Collapsed">
+							<TextBlock x:Name="CombineProgressText" TextWrapping="Wrap" />
+							<ProgressBar x:Name="CombineProgress"
+								AutomationProperties.Name="Combine progress" />
+							<Button x:Name="CombineCancel" Content="Cancel" />
+						</StackPanel>
 						<Button x:Name="CombineButton" Content="Combine"
 							HorizontalAlignment="Right"
 							Style="{StaticResource AccentButtonStyle}" />

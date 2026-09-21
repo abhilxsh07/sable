@@ -308,6 +308,27 @@ TEST(PageEdits, CombiningJoinsFilesInOrder) {
 	    .get();
 }
 
+TEST(PageEdits, CombiningReportsProgressAndCancelsBetweenFiles) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    bool cancel = false;
+		    std::vector<std::size_t> progress;
+		    const auto result = pdf::combineFiles(
+		        {fixturePath("long.pdf"), fixturePath("pages.pdf")},
+		        128 * 1024 * 1024, [&] { return cancel; },
+		        [&](std::size_t done, std::size_t total) {
+			        EXPECT_EQ(total, 2u);
+			        progress.push_back(done);
+			        cancel = done == 1;
+		        });
+		    EXPECT_EQ(result.error, pdf::CombineError::Canceled);
+		    EXPECT_TRUE(result.bytes.empty());
+		    EXPECT_EQ(progress, (std::vector<std::size_t>{0, 1}));
+	    })
+	    .get();
+}
+
 TEST(PageEdits, CombiningReportsTheFileThatStoppedIt) {
 	pdf::Engine engine;
 	engine

@@ -403,6 +403,9 @@ void TabsTest::combineTick(MainWindow& owner) {
 		check(v.m_combineInputs.front().path.filename() == L"text.pdf",
 		      "drag order did not reach the Combine draft");
 		v.CombineName().Text(L"My report");
+		check(v.FindName(L"CombineProgress").try_as<ProgressBar>() &&
+		          v.FindName(L"CombineCancel").try_as<Button>(),
+		      "Combine is missing progress or Cancel");
 		notesPath = makeTempDir("combine") / L"combined.pdf";
 		owner.m_notesPicker = [this, path = hstring(notesPath.wstring())](
 		                          hstring name) {
@@ -423,17 +426,63 @@ void TabsTest::combineTick(MainWindow& owner) {
 		      "Combine lost pages or reported an error");
 		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
 		break;
-	case 4:
+	case 4: {
 		check(v.m_combineInputs.size() == 2 &&
 		          v.ToolPaneTitle().Text() == L"Combine files" &&
 		          v.CombineTotal().Text() == L"8 pages total" &&
 		          v.CombineName().Text() == L"My report",
 		      "switching tabs lost the Combine pane or draft");
-		status.Text(
-		    L"PASS: Combine pane, input details, Remove, total and saved PDF");
+		v.m_combineInputs.assign(32, {L"tests/fixtures/long.pdf", 1000, {}});
+		v.refreshCombine();
+		notesPath = notesPath.parent_path() / L"cancelled.pdf";
+		{
+			std::ofstream previous(notesPath);
+			previous << "keep this result";
+		}
+		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
+			return attachmentChoice(path, {});
+		};
+		const auto gate = std::make_shared<handle>(
+		    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+		check(static_cast<bool>(*gate) && engine.post([gate] {
+			WaitForSingleObject(gate->get(), 5000);
+		}),
+		      "could not hold the engine for the cancellation check");
+		invoke(v.CombineButton());
+		check(v.m_combineCancel && v.pageOperationBusy() &&
+		          v.CombineProgressRow().Visibility() == Visibility::Visible &&
+		          !v.CombineButton().IsEnabled() && !v.CombineAdd().IsEnabled(),
+		      "Combine did not show progress or hold its inputs");
+		v.closePane();
+		owner.openTool(L"combine");
+		check(v.m_toolPane == ToolPane::Combine,
+		      "the running Combine pane could not reopen for Cancel");
+		invoke(v.CombineCancel());
+		check(v.m_combineCancel->load() && !v.CombineCancel().IsEnabled(),
+		      "Cancel did not signal the engine");
+		SetEvent(gate->get());
+		break;
+	}
+	case 5: {
+		if (owner.m_combining) {
+			check(ticks < 100, "Combine did not stop after Cancel");
+			return;
+		}
+		std::ifstream previous(notesPath);
+		const std::string saved((std::istreambuf_iterator<char>(previous)), {});
+		check(saved == "keep this result" && owner.m_tabs.size() == 2 &&
+		          !v.pageOperationBusy() && v.CombineButton().IsEnabled() &&
+		          v.CombineProgressRow().Visibility() ==
+		              Visibility::Collapsed &&
+		          v.Message().Message() ==
+		              L"Stopped combining. No file was saved.",
+		      "cancel changed the destination, opened a tab or left Combine "
+		      "busy");
+		status.Text(L"PASS: Combine order, saved PDF, progress and Cancel");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;
+	}
 	default:
 		check(false, "unexpected combine step");
 	}

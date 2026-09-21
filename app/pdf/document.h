@@ -180,9 +180,11 @@ struct CombineResult {
 };
 // Every page of the files, in order, as one new PDF of at most limit bytes.
 // Engine thread only; the inputs are only read.
-CombineResult combineFiles(const std::vector<std::filesystem::path>& files,
-                           std::size_t limit = 128 * 1024 * 1024,
-                           const std::function<bool()>& canceled = {});
+CombineResult combineFiles(
+    const std::vector<std::filesystem::path>& files,
+    std::size_t limit = 128 * 1024 * 1024,
+    const std::function<bool()>& canceled = {},
+    const std::function<void(std::size_t, std::size_t)>& progress = {});
 namespace detail {
 struct PageMark;
 }

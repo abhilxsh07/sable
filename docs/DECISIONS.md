@@ -3703,3 +3703,13 @@ selected row. Plain arrows stay with the list. The saved order follows
 the rows, including repeated inputs. Other dropped file types are skipped.
 The result name starts as <stem> (combined).pdf and stays with the tab;
 the save picker suggests that name and adds .pdf if I left it off.
+
+## Combine progress, cancellation and writes (2026-11-14)
+
+Combine reports completed inputs out of the total, then shows the save
+phase. Cancel uses the engine's predicate and the file writer's check;
+it stops at the next check and leaves the destination alone. The tab
+stays busy through the picker and write, and I can reopen its pane to
+reach Cancel. Each run owns its flag so old progress can't reach a new
+run. Combine and Extract both write on workers; PDFium stays on the
+engine thread. Home's picker flow follows in the next task.

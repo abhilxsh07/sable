@@ -40,6 +40,21 @@ using namespace Microsoft::UI::Xaml::Controls;
 
 namespace winrt::Sable::implementation {
 namespace {
+Windows::Foundation::IAsyncOperation<int>
+writeExtractedPdf(std::filesystem::path destination,
+                  std::filesystem::path source,
+                  std::vector<std::uint8_t> bytes) {
+	co_await resume_background();
+	try {
+		co_return static_cast<int>(
+		    helpers::saveFile(destination, source, bytes));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not write extracted pages");
+		co_return static_cast<int>(helpers::FileSaveResult::Failed);
+	}
+}
+
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 // tiles are 160 px wide; very tall pages stop at 1.6 times that.
 constexpr double TILE = 160, TALLEST = TILE * 1.6;
@@ -837,7 +852,11 @@ fire_and_forget ViewerPage::extractSelectedPages() {
 		}
 		const std::filesystem::path destination(chosen.Path().c_str());
 		const auto saved =
-		    helpers::saveFile(destination, m_path, *reply->result.bytes);
+		    static_cast<helpers::FileSaveResult>(co_await writeExtractedPdf(
+		        destination, m_path, std::move(*reply->result.bytes)));
+		if (m_closed) {
+			co_return;
+		}
 		if (saved == helpers::FileSaveResult::Saved) {
 			showNotice(L"Saved the pages to " +
 			               hstring(destination.filename().wstring()) + L".",
