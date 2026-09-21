@@ -50,6 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/rotation.h"
 #include "helpers/pan.h"
 #include <winrt/Microsoft.UI.Input.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 #include <winrt/Windows.Media.Core.h>
 #include <winrt/Windows.Media.Playback.h>
 #include <winrt/Windows.Media.SpeechSynthesis.h>
@@ -457,6 +458,11 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_exportCanceled = false;
 	void openCombine();
 	void refreshCombine();
+	void reorderCombine();
+	bool combineHasFocus();
+	bool combineKey(unsigned key, helpers::NavModifiers modifiers);
+	winrt::fire_and_forget dropCombineFiles(
+	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
 	winrt::fire_and_forget pickCombineFiles();
 	winrt::Windows::Foundation::IAsyncAction
 	addCombineFiles(std::vector<std::filesystem::path> files);
@@ -466,7 +472,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		winrt::hstring note;
 	};
 	std::vector<CombineInput> m_combineInputs;
-	std::function<void(std::vector<std::filesystem::path>)> m_combineRequest;
+	std::function<void(std::vector<std::filesystem::path>, winrt::hstring)>
+	    m_combineRequest;
 	bool m_combineSetup = false, m_combineLoading = false;
 #ifdef SABLE_SURFACE_TEST
 	// the output folder, or an empty path for Cancel

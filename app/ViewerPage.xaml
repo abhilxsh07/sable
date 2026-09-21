@@ -328,7 +328,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<ScrollViewer Grid.Row="1" x:Name="CombineScroll"
 					Visibility="Collapsed">
 					<StackPanel x:Name="CombineHost" Padding="12" Spacing="12">
+						<TextBlock Text="Drop PDFs here. Use Alt+Up/Down to reorder."
+							TextWrapping="Wrap" />
 						<ListView x:Name="CombineList" MinHeight="80" MaxHeight="320"
+							AllowDrop="True" CanDragItems="True" CanReorderItems="True"
 							AutomationProperties.Name="Files to combine">
 							<ListView.ItemContainerStyle>
 								<Style TargetType="ListViewItem">
@@ -339,6 +342,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						</ListView>
 						<Button x:Name="CombineAdd" Content="Add files&#x2026;" />
 						<TextBlock x:Name="CombineTotal" TextWrapping="Wrap" />
+						<TextBox x:Name="CombineName" Header="Result name"
+							AutomationProperties.Name="Result name" />
 						<Button x:Name="CombineButton" Content="Combine"
 							HorizontalAlignment="Right"
 							Style="{StaticResource AccentButtonStyle}" />

@@ -3695,3 +3695,11 @@ Remove, with Add files, the total and Combine below. Password-protected
 inputs must be removed; signed inputs are labelled before starting.
 The engine reads those details. The window keeps the existing save picker
 and opens the new PDF. Home's picker flow is a later step of this batch.
+
+## Combine input order and result name (2026-11-14)
+
+I can drop PDFs on the list, drag its rows or use Alt+Up/Down to move the
+selected row. Plain arrows stay with the list. The saved order follows
+the rows, including repeated inputs. Other dropped file types are skipped.
+The result name starts as <stem> (combined).pdf and stays with the tab;
+the save picker suggests that name and adds .pdf if I left it off.

@@ -39,6 +39,9 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 	    m_passwordDialog || source.try_as<MenuFlyoutItemBase>()) {
 		return false;
 	}
+	if (combineKey(key, modifiers)) {
+		return true;
+	}
 	// the tool pane's grip: Left and Right move its edge
 	if (source && source.try_as<Primitives::Thumb>() == ToolPaneGrip() &&
 	    !modifiers.ctrl && !modifiers.alt && !modifiers.windows &&
@@ -51,7 +54,8 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 		return true;
 	}
 	// Sidebar lists keep their native arrows, type-ahead and selection keys.
-	if ((outlineHasFocus() || attachmentsHasFocus() || commentsHasFocus()) &&
+	if ((outlineHasFocus() || attachmentsHasFocus() || commentsHasFocus() ||
+	     combineHasFocus()) &&
 	    static_cast<VirtualKey>(key) != VirtualKey::F4 &&
 	    !(static_cast<VirtualKey>(key) == VirtualKey::G && modifiers.ctrl &&
 	      modifiers.alt)) {

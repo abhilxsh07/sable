@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <memory>
 #include <winrt/Microsoft.UI.Content.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Storage.h>
 #include <winrt/Microsoft.Windows.Storage.Pickers.h>
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -209,7 +211,8 @@ fire_and_forget MainWindow::combinePdfs() {
 }
 
 fire_and_forget
-MainWindow::saveCombined(std::vector<std::filesystem::path> files) {
+MainWindow::saveCombined(std::vector<std::filesystem::path> files,
+                         hstring name) {
 	const auto lifetime = get_strong();
 	if (m_closing || !m_engine || m_combining || files.size() < 2) {
 		co_return;
@@ -219,13 +222,13 @@ MainWindow::saveCombined(std::vector<std::filesystem::path> files) {
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
 		if (m_notesPicker) {
-			path = co_await m_notesPicker(L"Combined.pdf");
+			path = co_await m_notesPicker(name);
 		} else
 #endif
 		{
 			Microsoft::Windows::Storage::Pickers::FileSavePicker picker(
 			    AppWindow().Id());
-			picker.SuggestedFileName(L"Combined");
+			picker.SuggestedFileName(name);
 			picker.FileTypeChoices().Insert(
 			    L"PDF document", single_threaded_vector<hstring>({L".pdf"}));
 			picker.DefaultFileExtension(L".pdf");
@@ -313,6 +316,31 @@ void ViewerPage::openCombine() {
 	if (!m_combineSetup) {
 		m_combineSetup = true;
 		const auto weak = get_weak();
+		CombineName().Text(hstring(m_path.stem().wstring()) +
+		                   L" (combined).pdf");
+		CombineList().DragOver([weak](auto&&, const DragEventArgs& args) {
+			using namespace Windows::ApplicationModel::DataTransfer;
+			if (const auto self = weak.get();
+			    self && !self->m_closed && !self->m_combineLoading &&
+			    args.DataView().Contains(StandardDataFormats::StorageItems())) {
+				args.AcceptedOperation(DataPackageOperation::Copy);
+				args.Handled(true);
+			}
+		});
+		CombineList().Drop([weak](auto&&, const DragEventArgs& args) {
+			using namespace Windows::ApplicationModel::DataTransfer;
+			if (args.DataView().Contains(StandardDataFormats::StorageItems())) {
+				args.Handled(true);
+				if (const auto self = weak.get()) {
+					self->dropCombineFiles(args.DataView());
+				}
+			}
+		});
+		CombineList().DragItemsCompleted([weak](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->reorderCombine();
+			}
+		});
 		CombineAdd().Click([weak](auto&&, auto&&) {
 			if (const auto self = weak.get()) {
 				self->pickCombineFiles();
@@ -321,11 +349,26 @@ void ViewerPage::openCombine() {
 		CombineButton().Click([weak](auto&&, auto&&) {
 			if (const auto self = weak.get();
 			    self && self->m_combineRequest && !self->m_combineLoading) {
+				auto name = self->CombineName().Text();
+				const std::wstring value(name);
+				if (value.empty() ||
+				    value.find_first_of(L"<>:\"/\\|?*\r\n\t") !=
+				        std::wstring::npos ||
+				    value.back() == L'.' || value.back() == L' ') {
+					self->showNotice(
+					    L"Enter a file name without folder separators "
+					    L"or reserved characters.");
+					return;
+				}
+				if (_wcsicmp(std::filesystem::path(value).extension().c_str(),
+				             L".pdf") != 0) {
+					name = name + L".pdf";
+				}
 				std::vector<std::filesystem::path> files;
 				for (const auto& input : self->m_combineInputs) {
 					files.push_back(input.path);
 				}
-				self->m_combineRequest(std::move(files));
+				self->m_combineRequest(std::move(files), name);
 			}
 		});
 		addCombineFiles({m_path});
@@ -338,6 +381,7 @@ void ViewerPage::refreshCombine() {
 	if (m_closed) {
 		return;
 	}
+	const int selected = CombineList().SelectedIndex();
 	CombineList().Items().Clear();
 	std::uint64_t total = 0;
 	bool ready = m_combineInputs.size() >= 2 && !m_combineLoading;
@@ -346,6 +390,7 @@ void ViewerPage::refreshCombine() {
 		total += static_cast<std::uint64_t>(input.pages);
 		ready = ready && input.pages > 0;
 		Grid row;
+		row.Tag(box_value(static_cast<uint32_t>(i)));
 		ColumnDefinition nameColumn, removeColumn;
 		nameColumn.Width(GridLength{1, GridUnitType::Star});
 		removeColumn.Width(GridLength{0, GridUnitType::Auto});
@@ -377,10 +422,103 @@ void ViewerPage::refreshCombine() {
 		row.Children().Append(remove);
 		CombineList().Items().Append(row);
 	}
+	if (selected >= 0 && selected < static_cast<int>(m_combineInputs.size())) {
+		CombineList().SelectedIndex(selected);
+	}
 	CombineTotal().Text(to_hstring(total) +
 	                    (total == 1 ? L" page total" : L" pages total"));
 	CombineAdd().IsEnabled(!m_combineLoading);
+	CombineList().IsEnabled(!m_combineLoading);
 	CombineButton().IsEnabled(ready);
+}
+
+// the rows carry their old indices, including when a file appears twice.
+void ViewerPage::reorderCombine() {
+	if (m_closed || m_combineLoading) {
+		return;
+	}
+	std::vector<CombineInput> ordered;
+	std::vector<bool> seen(m_combineInputs.size());
+	for (const auto& item : CombineList().Items()) {
+		const auto index = unbox_value<uint32_t>(item.as<Grid>().Tag());
+		if (index >= seen.size() || seen[index]) {
+			refreshCombine();
+			return;
+		}
+		seen[index] = true;
+		ordered.push_back(m_combineInputs[index]);
+	}
+	if (ordered.size() == m_combineInputs.size()) {
+		m_combineInputs = std::move(ordered);
+	}
+	refreshCombine();
+}
+
+bool ViewerPage::combineHasFocus() {
+	if (m_closed || m_toolPane != ToolPane::Combine || !XamlRoot()) {
+		return false;
+	}
+	auto source = Input::FocusManager::GetFocusedElement(XamlRoot())
+	                  .try_as<DependencyObject>();
+	while (source && source != CombineList()) {
+		source = Media::VisualTreeHelper::GetParent(source);
+	}
+	return static_cast<bool>(source);
+}
+
+bool ViewerPage::combineKey(unsigned key, helpers::NavModifiers modifiers) {
+	if (m_combineLoading || !modifiers.alt || modifiers.ctrl ||
+	    modifiers.shift || modifiers.windows ||
+	    (key != VK_UP && key != VK_DOWN) || !combineHasFocus()) {
+		return false;
+	}
+	const int index = CombineList().SelectedIndex();
+	const int target = index + (key == VK_UP ? -1 : 1);
+	if (index >= 0 && target >= 0 &&
+	    target < static_cast<int>(m_combineInputs.size())) {
+		std::swap(m_combineInputs[index], m_combineInputs[target]);
+		refreshCombine();
+		CombineList().SelectedIndex(target);
+		CombineList().ScrollIntoView(CombineList().SelectedItem());
+		CombineList().UpdateLayout();
+		if (const auto row =
+		        CombineList().ContainerFromIndex(target).try_as<Control>()) {
+			row.Focus(FocusState::Keyboard);
+		}
+	}
+	return true;
+}
+
+fire_and_forget ViewerPage::dropCombineFiles(
+    Windows::ApplicationModel::DataTransfer::DataPackageView data) {
+	const auto lifetime = get_strong();
+	try {
+		if (m_closed || m_combineLoading) {
+			co_return;
+		}
+		m_combineLoading = true;
+		refreshCombine();
+		const auto items = co_await data.GetStorageItemsAsync();
+		std::vector<std::filesystem::path> files;
+		for (const auto& item : items) {
+			if (item.try_as<Windows::Storage::StorageFile>()) {
+				std::filesystem::path path(item.Path().c_str());
+				if (_wcsicmp(path.extension().c_str(), L".pdf") == 0) {
+					files.push_back(std::move(path));
+				}
+			}
+		}
+		m_combineLoading = false;
+		co_await addCombineFiles(std::move(files));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not add dropped Combine inputs");
+		if (!m_closed) {
+			showNotice(L"Couldn't add those PDFs. Try Add files instead.");
+		}
+	}
+	m_combineLoading = false;
+	refreshCombine();
 }
 
 Windows::Foundation::IAsyncAction

@@ -183,7 +183,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void viewerCommand(std::wstring_view command);
 	winrt::fire_and_forget combinePdfs();
 	winrt::fire_and_forget
-	saveCombined(std::vector<std::filesystem::path> files);
+	saveCombined(std::vector<std::filesystem::path> files,
+	             winrt::hstring name = L"Combined.pdf");
 	bool m_combining = false;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_combineDialog{
 	    nullptr};

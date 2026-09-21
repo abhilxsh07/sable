@@ -375,8 +375,38 @@ void TabsTest::combineTick(MainWindow& owner) {
 		check(v.m_combineInputs.size() == 2 &&
 		          v.CombineList().Items().Size() == 2,
 		      "reopening Combine lost its draft");
+		check(v.CombineList().AllowDrop() && v.CombineList().CanDragItems() &&
+		          v.CombineList().CanReorderItems() &&
+		          v.FindName(L"CombineName").try_as<TextBox>(),
+		      "Combine is missing drop, reorder or the result name");
+		v.CombineList().SelectedIndex(0);
+		v.UpdateLayout();
+		const auto row =
+		    v.CombineList().ContainerFromIndex(0).try_as<Control>();
+		check(row && row.Focus(FocusState::Keyboard) && v.combineHasFocus(),
+		      "the Combine input row could not take keyboard focus");
+		const auto page = v.m_current;
+		check(!owner.routeKey(VK_DOWN, 0, false) && v.m_current == page,
+		      "Combine's plain arrow changed the PDF page");
+		check(owner.routeKey(VK_DOWN, helpers::SHORTCUT_ALT, false) &&
+		          v.m_combineInputs.front().path.filename() == L"text.pdf" &&
+		          v.CombineList().SelectedIndex() == 1,
+		      "Alt+Down did not move the selected Combine input");
+		check(owner.routeKey(VK_UP, helpers::SHORTCUT_ALT, false) &&
+		          v.m_combineInputs.front().path.filename() == L"pages.pdf" &&
+		          v.CombineList().SelectedIndex() == 0,
+		      "Alt+Up did not restore the selected Combine input");
+		const auto firstRow = v.CombineList().Items().GetAt(0);
+		v.CombineList().Items().RemoveAt(0);
+		v.CombineList().Items().Append(firstRow);
+		v.reorderCombine();
+		check(v.m_combineInputs.front().path.filename() == L"text.pdf",
+		      "drag order did not reach the Combine draft");
+		v.CombineName().Text(L"My report");
 		notesPath = makeTempDir("combine") / L"combined.pdf";
-		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
+		owner.m_notesPicker = [this, path = hstring(notesPath.wstring())](
+		                          hstring name) {
+			check(name == L"My report.pdf", "Combine ignored the result name");
 			return attachmentChoice(path, {});
 		};
 		invoke(v.CombineButton());
@@ -388,14 +418,16 @@ void TabsTest::combineTick(MainWindow& owner) {
 			return;
 		}
 		check(!owner.PickerError().IsOpen() &&
-		          std::filesystem::exists(notesPath) && v.m_sizes.size() == 8,
+		          std::filesystem::exists(notesPath) && v.m_sizes.size() == 8 &&
+		          std::abs(v.m_sizes[5].width - 595) < .5,
 		      "Combine lost pages or reported an error");
 		owner.Tabs().SelectedItem(owner.m_tabs.front().tab);
 		break;
 	case 4:
 		check(v.m_combineInputs.size() == 2 &&
 		          v.ToolPaneTitle().Text() == L"Combine files" &&
-		          v.CombineTotal().Text() == L"8 pages total",
+		          v.CombineTotal().Text() == L"8 pages total" &&
+		          v.CombineName().Text() == L"My report",
 		      "switching tabs lost the Combine pane or draft");
 		status.Text(
 		    L"PASS: Combine pane, input details, Remove, total and saved PDF");
