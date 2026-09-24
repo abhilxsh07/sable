@@ -105,13 +105,9 @@ App::~App() {
 App::App() {
 	// don't call InitializeComponent here, XAML objects aren't ready yet
 	UnhandledException(
-	    [](IInspectable const&, UnhandledExceptionEventArgs const& e) {
-		    try {
-			    diagnostics::write(diagnostics::Level::Error,
-			                       "Unhandled XAML exception: " +
-			                           to_string(e.Message()));
-		    } catch (...) {
-		    }
+	    [this](IInspectable const&, UnhandledExceptionEventArgs const& e) {
+		    e.Handled(true);
+		    reportUiException(e.Message());
 #ifdef SABLE_SURFACE_TEST
 		    probeFail(L"FAIL: unhandled XAML exception: " + e.Message());
 #endif
@@ -123,6 +119,24 @@ App::App() {
 		    }
 #endif
 	    });
+}
+
+void App::reportUiException(const hstring& message) noexcept {
+	try {
+		diagnostics::write(diagnostics::Level::Error,
+		                   "Unhandled XAML exception: " + to_string(message));
+		for (const auto& window : m_windows) {
+			if (const auto main = window.try_as<winrt::Sable::MainWindow>()) {
+				get_self<MainWindow>(main)->showShellError(
+				    L"Couldn't finish that action",
+				    L"Try the action again. If it keeps failing, close and "
+				    L"reopen this window.");
+			}
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't report UI exception");
+	}
 }
 
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {

@@ -116,10 +116,13 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void onFilterKeyDown(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
+	void showShellError(const winrt::hstring& title,
+	                    const winrt::hstring& message) noexcept;
 
   private:
 #ifdef SABLE_SURFACE_TEST
 	friend struct TabsTest;
+	std::function<void(std::wstring_view)> m_shellFault;
 #endif
 	struct DocumentTab {
 		std::filesystem::path path;

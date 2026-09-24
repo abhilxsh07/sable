@@ -33,6 +33,51 @@ void TabsTest::printTick(MainWindow& owner) {
 	switch (step) {
 	case 0: {
 		check(owner.PrintItem().IsEnabled(), "print disabled with document");
+		owner.PickerError().IsOpen(false);
+		owner.m_shellFault = [](std::wstring_view) {
+			throw hresult_error(E_FAIL, L"forced shell failure");
+		};
+		bool escaped = false;
+		try {
+			owner.onPrint({}, {});
+		} catch (...) {
+			escaped = true;
+		}
+		owner.m_shellFault = {};
+		check(!escaped && owner.PickerError().IsOpen() && !owner.m_printing &&
+		          owner.PrintItem().IsEnabled(),
+		      "window-handle failure escaped without a print notice");
+		const auto selected = owner.Tabs().SelectedItem();
+		const auto position = owner.Tabs().SelectedIndex();
+		const auto count = owner.Tabs().TabItems().Size();
+		owner.m_shellFault = [](std::wstring_view) {
+			throw std::runtime_error("forced tab failure");
+		};
+		owner.PickerError().IsOpen(false);
+		owner.moveTab(position == 0 ? 1 : 0);
+		check(owner.PickerError().IsOpen() && !owner.m_movingTab &&
+		          owner.Tabs().SelectedItem() == selected &&
+		          owner.Tabs().SelectedIndex() == position &&
+		          owner.Tabs().TabItems().Size() == count,
+		      "failed move lost the tab, selection or notice");
+		owner.PickerError().IsOpen(false);
+		owner.beginTabDrag();
+		owner.endTabDrag();
+		check(owner.PickerError().IsOpen() && !owner.m_dragSelection &&
+		          owner.Tabs().SelectedItem() == selected,
+		      "failed drag retained its state or escaped without notice");
+		owner.m_shellFault = {};
+		owner.moveTab(position == 0 ? 1 : 0);
+		owner.moveTab(position);
+		check(owner.Tabs().SelectedItem() == selected &&
+		          owner.Tabs().SelectedIndex() == position,
+		      "tab move did not recover after failure");
+		owner.PickerError().IsOpen(false);
+		app.reportUiException(L"forced fallback failure");
+		check(owner.PickerError().IsOpen() &&
+		          owner.PickerError().Title() == L"Couldn't finish that action",
+		      "UI exception fallback did not show a notice");
+		owner.PickerError().IsOpen(false);
 		int calls = 0;
 		viewer.m_printDialog = [&](void* handle, int count, int page,
 		                           const std::wstring& title) {

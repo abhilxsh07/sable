@@ -3722,3 +3722,14 @@ those paths until the viewer has its engine and layout, then read their
 details. Regular Open still makes one tab per file. A picker owns its
 tool request while it waits, so Cancel, a busy picker or an error can't
 start that tool on an unrelated file later. The old Home dialog is gone.
+
+## Shell failure recovery (2026-11-15)
+
+I catch Print setup and tab move failures in the window and show an
+error notice. A failed move puts a removed header back before releasing
+the move guard, so the mounted viewer still has its tab. Drag cleanup
+clears its saved selection even when restoring that selection fails.
+The XAML exception fallback marks the exception handled, logs its detail
+and asks the reader windows to show a retry notice. Debug probes still
+fail on an unexpected XAML exception, so recovery cannot hide a broken
+check. This follows A-25 in the approved shell audit queue.

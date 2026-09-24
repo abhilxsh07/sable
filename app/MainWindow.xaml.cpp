@@ -934,11 +934,28 @@ void MainWindow::moveTab(int index) {
 	m_movingTab = true;
 	try {
 		items.RemoveAt(static_cast<uint32_t>(current));
+#ifdef SABLE_SURFACE_TEST
+		if (m_shellFault) {
+			m_shellFault(L"move");
+		}
+#endif
 		items.InsertAt(static_cast<uint32_t>(index), selected);
 		Tabs().SelectedItem(selected);
 	} catch (...) {
-		m_movingTab = false;
-		throw;
+		diagnostics::caught(diagnostics::Level::Error, "Couldn't move tab");
+		try {
+			uint32_t found = 0;
+			if (!items.IndexOf(selected, found)) {
+				items.InsertAt(
+				    (std::min)(static_cast<uint32_t>(current), items.Size()),
+				    selected);
+			}
+			Tabs().SelectedItem(selected);
+		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Error,
+			                    "Couldn't restore moved tab");
+		}
+		showShellError(L"Couldn't move the tab", L"Try moving it again.");
 	}
 	m_movingTab = false;
 	selectTab();
@@ -957,13 +974,20 @@ void MainWindow::endTabDrag() {
 	}
 	try {
 		uint32_t index = 0;
+#ifdef SABLE_SURFACE_TEST
+		if (m_shellFault) {
+			m_shellFault(L"drag");
+		}
+#endif
 		if (m_dragSelection &&
 		    Tabs().TabItems().IndexOf(m_dragSelection, index)) {
 			Tabs().SelectedItem(m_dragSelection);
 		}
 	} catch (...) {
-		m_dragSelection = nullptr;
-		throw;
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't finish tab drag");
+		showShellError(L"Couldn't finish moving the tab",
+		               L"Select the tab and try again.");
 	}
 	m_dragSelection = nullptr;
 	selectTab();
@@ -1267,18 +1291,52 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
 	if (m_closing || m_printing || !viewer) {
 		return;
 	}
-	HWND owner{};
-	check_hresult(this->try_as<::IWindowNative>()->get_WindowHandle(&owner));
-	m_printing = true;
-	PrintItem().IsEnabled(false);
-	get_self<ViewerPage>(viewer)->print(owner, [weak = get_weak()] {
-		if (auto self = weak.get()) {
-			self->m_printing = false;
-			if (!self->m_closing) {
-				self->PrintItem().IsEnabled(self->Viewer() != nullptr);
-			}
+	try {
+		HWND owner{};
+#ifdef SABLE_SURFACE_TEST
+		if (m_shellFault) {
+			m_shellFault(L"print");
 		}
-	});
+#endif
+		const auto native = this->try_as<::IWindowNative>();
+		check_bool(static_cast<bool>(native));
+		check_hresult(native->get_WindowHandle(&owner));
+		check_bool(owner != nullptr);
+		m_printing = true;
+		PrintItem().IsEnabled(false);
+		get_self<ViewerPage>(viewer)->print(owner, [weak = get_weak()] {
+			if (auto self = weak.get()) {
+				self->m_printing = false;
+				if (!self->m_closing) {
+					self->PrintItem().IsEnabled(self->Viewer() != nullptr);
+				}
+			}
+		});
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error, "Couldn't start print");
+		m_printing = false;
+		try {
+			PrintItem().IsEnabled(!m_closing && Viewer() != nullptr);
+		} catch (...) {
+			diagnostics::caught(diagnostics::Level::Warning,
+			                    "Couldn't restore Print command");
+		}
+		showShellError(L"Couldn't print", L"Try printing the document again.");
+	}
+}
+
+void MainWindow::showShellError(const hstring& title,
+                                const hstring& message) noexcept {
+	try {
+		if (!m_closing) {
+			PickerError().Title(title);
+			PickerError().Message(message);
+			PickerError().IsOpen(true);
+		}
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Couldn't show window error");
+	}
 }
 
 void MainWindow::updateLayoutMenu() {

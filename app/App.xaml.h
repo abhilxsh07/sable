@@ -41,6 +41,7 @@ struct App : AppT<App> {
 	             std::optional<int> page = {});
 
   private:
+	void reportUiException(const winrt::hstring& message) noexcept;
 #ifdef SABLE_SURFACE_TEST
 	friend struct TabsTest;
 #endif
