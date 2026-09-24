@@ -3713,3 +3713,12 @@ stays busy through the picker and write, and I can reopen its pane to
 reach Cancel. Each run owns its flag so old progress can't reach a new
 run. Combine and Extract both write on workers; PDFium stays on the
 engine thread. Home's picker flow follows in the next task.
+
+## Home opens Combine on the first picked PDF (2026-11-14)
+
+Home's Combine entry uses the multi-file picker, then opens one viewer
+on the first PDF with every selected path in its Combine draft. I keep
+those paths until the viewer has its engine and layout, then read their
+details. Regular Open still makes one tab per file. A picker owns its
+tool request while it waits, so Cancel, a busy picker or an error can't
+start that tool on an unrelated file later. The old Home dialog is gone.

@@ -378,6 +378,7 @@ fire_and_forget MainWindow::pickDocuments() {
 		try {
 			if (auto self = weak.get()) {
 				self->m_picking = false;
+				self->m_toolNext.clear();
 				if (!self->m_closing) {
 					self->PickerError().Message(message);
 					self->PickerError().IsOpen(true);
@@ -389,6 +390,7 @@ fire_and_forget MainWindow::pickDocuments() {
 	};
 	try {
 		weak = get_weak();
+		const auto tool = std::exchange(m_toolNext, {});
 		if (m_closing || m_picking || !m_engine) {
 			co_return;
 		}
@@ -397,15 +399,35 @@ fire_and_forget MainWindow::pickDocuments() {
 		PickerError().IsOpen(false);
 		// see:
 		// https://learn.microsoft.com/en-us/windows/apps/develop/files/using-file-folder-pickers
-		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
-		    AppWindow().Id());
-		picker.FileTypeFilter().Append(L".pdf");
-		const auto files = co_await picker.PickMultipleFilesAsync();
+		std::vector<std::filesystem::path> paths;
+#ifdef SABLE_SURFACE_TEST
+		if (m_documentPicker) {
+			const auto files = co_await m_documentPicker();
+			for (const auto& path : files) {
+				paths.emplace_back(path.c_str());
+			}
+		} else
+#endif
+		{
+			Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
+			    AppWindow().Id());
+			picker.FileTypeFilter().Append(L".pdf");
+			const auto files = co_await picker.PickMultipleFilesAsync();
+			for (const auto& file : files) {
+				paths.emplace_back(file.Path().c_str());
+			}
+		}
 		if (auto self = weak.get(); self && !self->m_closing) {
 			self->m_picking = false;
-			for (const auto& file : files) {
-				self->openDocument(*self->m_engine, file.Path().c_str(),
-				                   std::nullopt);
+			self->m_toolNext = tool;
+			if (tool == L"combine" && !paths.empty()) {
+				const auto firstPath = paths.front();
+				self->openDocument(*self->m_engine, firstPath, std::nullopt,
+				                   std::move(paths));
+			} else {
+				for (const auto& path : paths) {
+					self->openDocument(*self->m_engine, path, std::nullopt);
+				}
 			}
 			// a tool waits only for the files picked for it.
 			self->m_toolNext.clear();
@@ -488,7 +510,8 @@ fire_and_forget MainWindow::dropDocuments(
 
 void MainWindow::openDocument(pdf::Engine& engine,
                               const std::filesystem::path& path,
-                              std::optional<int> page) {
+                              std::optional<int> page,
+                              std::vector<std::filesystem::path> combine) {
 	if (m_closing || m_closePending) {
 		return;
 	}
@@ -501,6 +524,10 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	for (const auto& entry : m_tabs) {
 		if (entry.path == resolved) {
 			Tabs().SelectedItem(entry.tab);
+			if (!combine.empty()) {
+				get_self<ViewerPage>(entry.viewer)->m_combineSeed =
+				    std::move(combine);
+			}
 			if (!m_toolNext.empty()) {
 				get_self<ViewerPage>(entry.viewer)
 				    ->requestTool(std::exchange(m_toolNext, {}));
@@ -531,6 +558,7 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
 	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
 	const auto pdf = get_self<ViewerPage>(viewer);
+	pdf->m_combineSeed = std::move(combine);
 	pdf->m_combineRequest = [weak = get_weak()](auto files, auto name) {
 		if (const auto self = weak.get()) {
 			self->saveCombined(std::move(files), std::move(name));

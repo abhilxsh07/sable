@@ -312,14 +312,93 @@ void TabsTest::combineTick(MainWindow& owner) {
 		    .Invoke();
 	};
 	if (step == 0) {
-		owner.setEngine(engine);
-		const auto home = get_self<HomePage>(owner.Home());
-		check(home->FillSignButton().IsEnabled() &&
-		          home->CommentButton().IsEnabled() &&
-		          home->ReadAloudButton().IsEnabled(),
-		      "Home's tool buttons have the wrong state");
-		owner.openDocument(engine, L"tests/fixtures/pages.pdf", {});
-		++step;
+		check(ticks < 100, "Home's picker flow did not finish");
+		switch (combineHomeStep) {
+		case 0: {
+			owner.setEngine(engine);
+			const auto home = get_self<HomePage>(owner.Home());
+			check(home->FillSignButton().IsEnabled() &&
+			          home->CommentButton().IsEnabled() &&
+			          home->ReadAloudButton().IsEnabled(),
+			      "Home's tool buttons have the wrong state");
+			owner.m_picking = true;
+			owner.openTool(L"organize");
+			check(owner.m_toolNext.empty(), "a refused picker kept its tool");
+			owner.m_picking = false;
+			owner.m_documentPicker = [] { return documentChoice({}); };
+			owner.openTool(L"export");
+			break;
+		}
+		case 1:
+			if (owner.m_picking) {
+				return;
+			}
+			check(owner.m_toolNext.empty() && owner.m_tabs.empty(),
+			      "a cancelled picker kept its tool or opened a tab");
+			owner.m_documentPicker = [] { return documentChoice({}, true); };
+			owner.openTool(L"organize");
+			break;
+		case 2:
+			if (owner.m_picking) {
+				return;
+			}
+			check(owner.m_toolNext.empty() && owner.m_tabs.empty() &&
+			          owner.PickerError().IsOpen(),
+			      "a failed picker kept its tool or hid the error");
+			owner.m_documentPicker = nullptr;
+			owner.openDocument(engine, L"tests/fixtures/pages.pdf", {});
+			break;
+		case 3: {
+			const auto opened = owner.Viewer();
+			if (!opened || !ready(*get_self<ViewerPage>(opened))) {
+				return;
+			}
+			const auto page = get_self<ViewerPage>(opened);
+			check(!page->organizing() && page->m_pendingTool.empty() &&
+			          page->m_toolPane == ToolPane::None,
+			      "a cancelled picker started its tool on the next PDF");
+			owner.closeTab(owner.m_tabs.front().tab);
+			break;
+		}
+		case 4:
+			if (!owner.m_tabs.empty()) {
+				return;
+			}
+			owner.m_documentPicker = [] {
+				return documentChoice({hstring(std::filesystem::absolute(
+				                                   L"tests/fixtures/pages.pdf")
+				                                   .wstring()),
+				                       hstring(std::filesystem::absolute(
+				                                   L"tests/fixtures/text.pdf")
+				                                   .wstring())});
+			};
+			owner.openTool(L"combine");
+			break;
+		case 5: {
+			const auto opened = owner.Viewer();
+			if (!opened || !ready(*get_self<ViewerPage>(opened))) {
+				return;
+			}
+			const auto page = get_self<ViewerPage>(opened);
+			if (page->m_combineLoading) {
+				return;
+			}
+			check(owner.m_tabs.size() == 1 &&
+			          page->m_path.filename() == L"pages.pdf" &&
+			          page->m_toolPane == ToolPane::Combine &&
+			          page->m_combineInputs.size() == 2 &&
+			          page->CombineTotal().Text() == L"8 pages total",
+			      "Home did not open the first PDF with all picked inputs");
+			const auto row = page->CombineList().Items().GetAt(1).as<Grid>();
+			invoke(row.Children().GetAt(1).as<Button>());
+			owner.m_documentPicker = nullptr;
+			++step;
+			break;
+		}
+		default:
+			check(false, "unexpected Home picker step");
+		}
+		++combineHomeStep;
 		ticks = 0;
 		return;
 	}
@@ -336,8 +415,7 @@ void TabsTest::combineTick(MainWindow& owner) {
 	switch (step) {
 	case 1:
 		owner.openTool(L"combine");
-		check(!owner.m_combineDialog &&
-		          v.FindName(L"CombineList").try_as<ListView>() &&
+		check(v.FindName(L"CombineList").try_as<ListView>() &&
 		          v.ToolPaneTitle().Text() == L"Combine files",
 		      "Combine did not open in the tool pane");
 		if (v.m_combineLoading) {

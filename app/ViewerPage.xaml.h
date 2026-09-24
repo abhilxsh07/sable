@@ -473,6 +473,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		winrt::hstring note;
 	};
 	std::vector<CombineInput> m_combineInputs;
+	std::vector<std::filesystem::path> m_combineSeed;
 	std::function<void(std::vector<std::filesystem::path>, winrt::hstring)>
 	    m_combineRequest;
 	bool m_combineSetup = false, m_combineLoading = false;

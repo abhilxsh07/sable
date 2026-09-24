@@ -74,7 +74,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 
 	// adds a document tab, or selects the one already open for this path
 	void openDocument(pdf::Engine& engine, const std::filesystem::path& path,
-	                  std::optional<int> page);
+	                  std::optional<int> page,
+	                  std::vector<std::filesystem::path> combine = {});
 
 	void onToggleFullScreen(const winrt::Windows::Foundation::IInspectable&,
 	                        const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
@@ -174,6 +175,9 @@ struct MainWindow : MainWindowT<MainWindow> {
 	    winrt::hstring)>
 	    m_notesPicker;
 	std::function<winrt::Windows::Foundation::IAsyncOperation<
+	    winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring>>()>
+	    m_documentPicker;
+	std::function<winrt::Windows::Foundation::IAsyncOperation<
 	    winrt::Microsoft::UI::Xaml::Controls::ContentDialogResult>()>
 	    m_notesChoice;
 #endif
@@ -186,8 +190,6 @@ struct MainWindow : MainWindowT<MainWindow> {
 	saveCombined(std::vector<std::filesystem::path> files,
 	             winrt::hstring name = L"Combined.pdf");
 	bool m_combining = false;
-	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_combineDialog{
-	    nullptr};
 	void selectTabPosition(int index);
 	void moveTab(int index);
 	void beginTabDrag();

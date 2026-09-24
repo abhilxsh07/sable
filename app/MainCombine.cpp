@@ -52,13 +52,6 @@ writeCombinedPdf(std::filesystem::path destination,
 	}
 }
 
-std::filesystem::path itemPath(const Windows::Foundation::IInspectable& item) {
-	const auto row = item.try_as<FrameworkElement>();
-	return row ? std::filesystem::path(
-	                 unbox_value_or<hstring>(row.Tag(), hstring{}).c_str())
-	           : std::filesystem::path{};
-}
-
 hstring combineError(const pdf::CombineResult& result,
                      const std::vector<std::filesystem::path>& files) {
 	const auto name = result.file < files.size()
@@ -75,33 +68,6 @@ hstring combineError(const pdf::CombineResult& result,
 		return L"Couldn't combine these files. Try again.";
 	}
 }
-// a coroutine of its own, so its arguments outlive the click handler.
-fire_and_forget addCombineFiles(Microsoft::UI::WindowId owner,
-                                weak_ref<ListView> view,
-                                std::function<void()> refresh) {
-	try {
-		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(owner);
-		picker.FileTypeFilter().Append(L".pdf");
-		const auto files = co_await picker.PickMultipleFilesAsync();
-		const auto box = view.get();
-		if (!box) {
-			co_return;
-		}
-		for (const auto& file : files) {
-			TextBlock row;
-			row.Text(hstring(std::filesystem::path(file.Path().c_str())
-			                     .filename()
-			                     .wstring()));
-			row.Tag(box_value(file.Path()));
-			ToolTipService::SetToolTip(row, box_value(file.Path()));
-			box.Items().Append(row);
-		}
-		refresh();
-	} catch (...) {
-		diagnostics::caught(diagnostics::Level::Error,
-		                    "Could not add files to combine");
-	}
-}
 } // namespace
 
 // Combine files: the PDFs in a list I can reorder, joined into one new
@@ -116,115 +82,12 @@ fire_and_forget MainWindow::combinePdfs() {
 			get_self<ViewerPage>(viewer)->openCombine();
 			co_return;
 		}
-		if (m_combining) {
-			co_return;
-		}
-		m_combining = true;
-		ContentDialog dialog;
-		dialog.XamlRoot(RootGrid().XamlRoot());
-		dialog.Title(box_value(L"Combine files"));
-		dialog.PrimaryButtonText(L"Combine and save…");
-		dialog.CloseButtonText(L"Cancel");
-		dialog.DefaultButton(ContentDialogButton::Primary);
-		dialog.IsPrimaryButtonEnabled(false);
-		StackPanel fields;
-		fields.Spacing(12);
-		fields.MinWidth(380);
-		TextBlock hint;
-		hint.Text(L"Add PDFs and drag them into the order they should "
-		          L"appear. The files themselves don't change.");
-		hint.TextWrapping(TextWrapping::Wrap);
-		fields.Children().Append(hint);
-		ListView list;
-		list.Height(240);
-		list.SelectionMode(ListViewSelectionMode::Single);
-		list.CanReorderItems(true);
-		list.CanDragItems(true);
-		list.AllowDrop(true);
-		Automation::AutomationProperties::SetName(list, L"Files to combine");
-		fields.Children().Append(list);
-		StackPanel buttons;
-		buttons.Orientation(Orientation::Horizontal);
-		buttons.Spacing(4);
-		Button add, remove, up, down;
-		add.Content(box_value(L"Add files…"));
-		remove.Content(box_value(L"Remove"));
-		up.Content(box_value(L"Move up"));
-		down.Content(box_value(L"Move down"));
-		for (const auto& button : {add, remove, up, down}) {
-			buttons.Children().Append(button);
-		}
-		fields.Children().Append(buttons);
-		dialog.Content(fields);
-		const auto items = list.Items();
-		const std::function<void()> refresh =
-		    [prompt = make_weak(dialog), view = make_weak(list),
-		     drop = make_weak(remove), raise = make_weak(up),
-		     lower = make_weak(down)] {
-			    const auto box = view.get();
-			    const auto shown = prompt.get();
-			    const auto remove = drop.get();
-			    const auto up = raise.get();
-			    const auto down = lower.get();
-			    if (!box || !shown || !remove || !up || !down) {
-				    return;
-			    }
-			    const int index = box.SelectedIndex();
-			    const int count = static_cast<int>(box.Items().Size());
-			    remove.IsEnabled(index >= 0);
-			    up.IsEnabled(index > 0);
-			    down.IsEnabled(index >= 0 && index + 1 < count);
-			    shown.IsPrimaryButtonEnabled(count >= 2);
-		    };
-		refresh();
-		list.SelectionChanged([refresh](auto&&, auto&&) { refresh(); });
-		list.DragItemsCompleted([refresh](auto&&, auto&&) { refresh(); });
-		const auto move = [view = make_weak(list), refresh](int step) {
-			const auto box = view.get();
-			const int index = box ? box.SelectedIndex() : -1;
-			const int target = index + step;
-			if (index < 0 || target < 0 ||
-			    target >= static_cast<int>(box.Items().Size())) {
-				return;
-			}
-			const auto item = box.Items().GetAt(index);
-			box.Items().RemoveAt(index);
-			box.Items().InsertAt(target, item);
-			box.SelectedIndex(target);
-			refresh();
-		};
-		up.Click([move](auto&&, auto&&) { move(-1); });
-		down.Click([move](auto&&, auto&&) { move(1); });
-		remove.Click([view = make_weak(list), refresh](auto&&, auto&&) {
-			if (const auto box = view.get(); box && box.SelectedIndex() >= 0) {
-				box.Items().RemoveAt(box.SelectedIndex());
-				refresh();
-			}
-		});
-		add.Click([owner = AppWindow().Id(), view = make_weak(list),
-		           refresh](auto&&, auto&&) {
-			addCombineFiles(owner, view, refresh);
-		});
-		m_combineDialog = dialog;
-		const auto choice = co_await dialog.ShowAsync();
-		m_combineDialog = nullptr;
-		std::vector<std::filesystem::path> files;
-		for (const auto& item : items) {
-			if (auto path = itemPath(item); !path.empty()) {
-				files.push_back(std::move(path));
-			}
-		}
-		if (m_closing || choice != ContentDialogResult::Primary ||
-		    files.size() < 2) {
-			m_combining = false;
-			co_return;
-		}
-		m_combining = false;
-		saveCombined(std::move(files));
+		m_toolNext = L"combine";
+		pickDocuments();
 	} catch (...) {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Could not open Combine files");
-		m_combining = false;
+		m_toolNext.clear();
 	}
 }
 
@@ -466,7 +329,13 @@ void ViewerPage::openCombine() {
 				self->m_combineRequest(std::move(files), name);
 			}
 		});
-		addCombineFiles({m_path});
+		if (m_combineSeed.empty()) {
+			addCombineFiles({m_path});
+		}
+	}
+	if (!m_combineSeed.empty()) {
+		m_combineInputs.clear();
+		addCombineFiles(std::exchange(m_combineSeed, {}));
 	}
 	openPane(ToolPane::Combine);
 	focusToolPane();

@@ -82,6 +82,8 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 		startReadAloud();
 	} else if (tool == L"organize") {
 		openOrganize();
+	} else if (tool == L"combine") {
+		openCombine();
 	} else if (tool == L"export") {
 		exportPages();
 	} else if (tool == L"comment" || tool == L"fillsign") {

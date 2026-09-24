@@ -205,6 +205,7 @@ struct TabsTest {
 	bool fillMarksOnly = false;
 	bool organizeOnly = false;
 	bool combineOnly = false;
+	int combineHomeStep = 0;
 	bool exportOnly = false;
 	bool readAloudOnly = false;
 	bool toolSurfacesOnly = false;
@@ -242,6 +243,14 @@ struct TabsTest {
 			co_await resume_on_signal(gate->get());
 		}
 		co_return path;
+	}
+	static Windows::Foundation::IAsyncOperation<
+	    Windows::Foundation::Collections::IVectorView<hstring>>
+	documentChoice(std::vector<hstring> paths, bool fail = false) {
+		if (fail) {
+			throw hresult_error(E_FAIL);
+		}
+		co_return single_threaded_vector<hstring>(std::move(paths)).GetView();
 	}
 	ListViewItem attachmentItem{nullptr};
 	std::size_t outlinePage = 0;
