@@ -189,23 +189,8 @@ std::optional<bool> Document::updateFormField(
 	const std::string_view tokens(
 	    reinterpret_cast<const char*>(scratch.document->m_data.data()),
 	    scratch.document->m_data.size());
-	const auto actionKey = [&](std::string_view key) {
-		for (auto at = tokens.find(key); at != std::string_view::npos;
-		     at = tokens.find(key, at + key.size())) {
-			const auto end = at + key.size();
-			if (end == tokens.size() ||
-			    static_cast<unsigned char>(tokens[end]) <= 32 ||
-			    std::string_view("()<>[]{}/%").find(tokens[end]) !=
-			        std::string_view::npos) {
-				return true;
-			}
-		}
-		return false;
-	};
 	// i can't see every merged field's actions through its widget.
-	if (actionKey("/A") || actionKey("/AA") ||
-	    tokens.find("/JS") != std::string_view::npos ||
-	    tokens.find("/JavaScript") != std::string_view::npos) {
+	if (formActionTokens(tokens)) {
 		return {};
 	}
 

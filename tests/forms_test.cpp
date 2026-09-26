@@ -102,6 +102,7 @@ struct FormPageOptions {
 	bool appearances = true, reference = false, outline = false,
 	     nestedSignature = false, painted = false, text = false;
 	std::string boxes = "/MediaBox [0 0 200 300] /CropBox [20 40 180 260]";
+	std::string stream;
 };
 std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
                                     std::string parent = {}, int repeat = 1,
@@ -162,8 +163,10 @@ std::vector<std::uint8_t> formBytes(std::vector<std::string> fields,
 		const std::string paint =
 		    view.text ? "BT /Helv 10 Tf 30 100 Td (Static text) Tj ET"
 		              : "0 0 0 rg 40 50 50 20 re f";
-		objects.push_back("<< /Length " + std::to_string(paint.size()) +
-		                  " >>\nstream\n" + paint + "\nendstream");
+		objects.push_back(view.stream.empty()
+		                      ? "<< /Length " + std::to_string(paint.size()) +
+		                            " >>\nstream\n" + paint + "\nendstream"
+		                      : view.stream);
 	}
 	if (view.outline) {
 		const auto root = objects.size() + 1;
@@ -3896,6 +3899,60 @@ TEST(FormFields, WidgetDrawingKeepsLiveAppearancesAndRefreshesAfterEdits) {
 		    ASSERT_TRUE(nextPrint);
 		    EXPECT_NE(widget(*nextPrint), beforePrint);
 		    EXPECT_TRUE(opened.document->modified());
+	    })
+	    .get();
+}
+
+TEST(FormFields, ActionLookingDataDoesNotRefuseTextEdits) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    // a stored deflate block keeps the action-looking bytes in the
+		    // compressed stream, where they must not count as PDF names.
+		    const std::string paint = "% /JS /JavaScript /A /AA\n";
+		    std::string compressed("\x78\x01\x01", 3);
+		    const auto size = static_cast<unsigned>(paint.size());
+		    for (const auto value :
+		         {size & 255, size >> 8, (~size) & 255, ((~size) >> 8) & 255}) {
+			    compressed.push_back(static_cast<char>(value));
+		    }
+		    compressed += paint;
+		    unsigned a = 1, b = 0;
+		    for (const unsigned char byte : paint) {
+			    a = (a + byte) % 65521;
+			    b = (b + a) % 65521;
+		    }
+		    const auto adler = (b << 16) | a;
+		    for (const auto shift : {24, 16, 8, 0}) {
+			    compressed.push_back(static_cast<char>(adler >> shift));
+		    }
+		    const auto stream = "<< /Filter /FlateDecode /Length " +
+		                        std::to_string(compressed.size()) +
+		                        " >>\nstream\n" + compressed + "\nendstream";
+		    for (const auto& bytes :
+		         {formBytes({WIDGET + "/FT /Tx /T (field) /V (old) "
+		                              "/TU (/JS /JavaScript /A /AA)"}),
+		          formBytes({WIDGET + "/FT /Tx /T (field) /V (old) "
+		                              "/JSuffix 1 /JavaScriptish 2"}),
+		          formBytes({WIDGET + "/FT /Tx /T (field) /V (old)"}, {}, 1,
+		                    {.reference = true, .stream = stream})}) {
+			    const auto opened = pdf::openDocument(bytes);
+			    ASSERT_TRUE(opened.document);
+			    auto& document = *opened.document;
+			    const auto updated = document.updateTextField(
+			        0, 0, u"old", u"new", document.annotationRevision());
+			    EXPECT_TRUE(updated && *updated);
+			    if (!updated || !*updated) {
+				    continue;
+			    }
+			    const auto saved = document.serializeForCopy(1024 * 1024);
+			    ASSERT_TRUE(saved);
+			    const auto reopened = pdf::openDocument(*saved);
+			    ASSERT_TRUE(reopened.document);
+			    const auto fields = reopened.document->formFields(0);
+			    ASSERT_TRUE(fields && fields->entries.size() == 1);
+			    EXPECT_EQ(fields->entries[0].value, "new");
+		    }
 	    })
 	    .get();
 }

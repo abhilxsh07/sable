@@ -3733,3 +3733,13 @@ The XAML exception fallback marks the exception handled, logs its detail
 and asks the reader windows to show a retry notice. Debug probes still
 fail on an unexpected XAML exception, so recovery cannot hide a broken
 check. This follows A-25 in the approved shell audit queue.
+
+## Form action names in the rewritten copy (2026-11-15)
+
+I use the signature guard's token reader for the form action check too.
+Only decoded A, AA, JS and JavaScript names outside strings, comments
+and streams refuse a form transaction. Longer names do not match.
+This keeps the existing refusal for actions elsewhere in the form tree
+without treating compressed stream bytes or field text as actions.
+Signature checks keep their existing field/value and permission rules.
+This is A-29 in the approved shell audit queue.

@@ -149,3 +149,21 @@ TEST(WriteGuard, NamesThatOnlyLookSignedStillAcceptEdits) {
 	    })
 	    .get();
 }
+
+TEST(WriteGuard, FormActionsUseDecodedNamesOutsideStringsAndStreams) {
+	using pdf::detail::formActionTokens;
+	for (const auto name :
+	     {"A", "AA", "JS", "JavaScript", "J#53", "Java#53cript", "A#41"}) {
+		SCOPED_TRACE(name);
+		EXPECT_TRUE(formActionTokens(std::string("<< /") + name + "(x) >>"));
+	}
+	EXPECT_FALSE(formActionTokens("<< /JSuffix 1 /JavaScriptish 2 /AAA 3 >>"));
+	EXPECT_FALSE(formActionTokens("% /JS\n<< /T (/JS (/AA) \\(x\\)) "
+	                              "/TU <2f4a53> >>"));
+	const std::string data = "/JS endstream /AA /A /JavaScript";
+	const auto stream = "<< /Length " + std::to_string(data.size()) +
+	                    " >>\nstream\n" + data + "\nendstream\n";
+	EXPECT_FALSE(formActionTokens(stream));
+	EXPECT_TRUE(formActionTokens(stream + "<< /JS(x) >>"));
+	EXPECT_FALSE(formActionTokens("<< /Length 1 >>\nstream\n/JS\nendstream"));
+}

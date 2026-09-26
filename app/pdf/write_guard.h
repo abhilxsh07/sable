@@ -34,10 +34,11 @@ namespace pdf {
 enum class WriteRefusal { None, Signed, Unavailable, TooLarge };
 
 namespace detail {
+enum class TokenGuard { Signatures, FormActions };
 // i follow signature fields to their values in the rewritten copy. an
 // empty field has no signature contents. strings, streams and comments
 // cannot supply dictionary keys, and #xx escapes are decoded first.
-inline bool signatureTokens(std::string_view bytes) {
+inline bool guardedTokens(std::string_view bytes, TokenGuard guard) {
 	const auto space = [](char c) {
 		return c == 0 || c == 9 || c == 10 || c == 12 || c == 13 || c == 32;
 	};
@@ -223,7 +224,13 @@ inline bool signatureTokens(std::string_view bytes) {
 					name.push_back(bytes[at]);
 				}
 			}
-			if (name == "DocMDP" || name == "Perms") {
+			if (guard == TokenGuard::FormActions &&
+			    (name == "A" || name == "AA" || name == "JS" ||
+			     name == "JavaScript")) {
+				return true;
+			}
+			if (guard == TokenGuard::Signatures &&
+			    (name == "DocMDP" || name == "Perms")) {
 				return true;
 			}
 			if (!dictionaries.empty() && dictionaries.back().arrays == arrays) {
@@ -292,6 +299,9 @@ inline bool signatureTokens(std::string_view bytes) {
 			length.reset();
 		}
 	}
+	if (guard == TokenGuard::FormActions) {
+		return false;
+	}
 	for (const auto& candidate : candidates) {
 		if (!candidate.valueContents &&
 		    (!candidate.value || !contents.contains(*candidate.value))) {
@@ -312,6 +322,12 @@ inline bool signatureTokens(std::string_view bytes) {
 		}
 	}
 	return false;
+}
+inline bool signatureTokens(std::string_view bytes) {
+	return guardedTokens(bytes, TokenGuard::Signatures);
+}
+inline bool formActionTokens(std::string_view bytes) {
+	return guardedTokens(bytes, TokenGuard::FormActions);
 }
 } // namespace detail
 } // namespace pdf
