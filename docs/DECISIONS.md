@@ -3743,3 +3743,12 @@ This keeps the existing refusal for actions elsewhere in the form tree
 without treating compressed stream bytes or field text as actions.
 Signature checks keep their existing field/value and permission rules.
 This is A-29 in the approved shell audit queue.
+
+## Closing a background tab (2026-11-15)
+
+I confirm the requested document without selecting its tab first.
+Cancel keeps the active tab, and removing a clean background tab leaves
+the active viewer alone. Busy close/save/note refusals use the window's
+notice so they remain visible even when the requested tab is hidden.
+The existing per-document save/discard confirmation and save-copy
+cancellation still apply. This follows A-31 in the approved audit queue.

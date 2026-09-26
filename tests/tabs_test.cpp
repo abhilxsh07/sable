@@ -496,6 +496,50 @@ void TabsTest::tick() {
 			}
 			check(sizingWindow->m_presenter.State() ==
 			      Microsoft::UI::Windowing::OverlappedPresenterState::Restored);
+			{
+				const auto background = sizingWindow->m_tabs.front().tab;
+				const auto backgroundViewer = sizingWindow->Viewer();
+				sizingWindow->openDocument(engine, L"tests/fixtures/long.pdf",
+				                           {});
+				sizingWindow->openDocument(engine, L"tests/fixtures/print.pdf",
+				                           {});
+				const auto selected = sizingWindow->Tabs().SelectedItem();
+				auto* pdf = get_self<ViewerPage>(backgroundViewer);
+				pdf->m_notesDirty = true;
+				sizingWindow->m_notesChoice = [] {
+					return notesChoice(ContentDialogResult::None);
+				};
+				sizingWindow->closeTab(background);
+				check(sizingWindow->Tabs().SelectedItem() == selected &&
+				          sizingWindow->m_tabs.size() == 3 &&
+				          !sizingWindow->m_closePending,
+				      "canceling a background close changed the active tab");
+				pdf->m_notesDirty = false;
+				sizingWindow->m_notesChoice = {};
+				sizingWindow->PickerError().IsOpen(false);
+				pdf->m_noteBusy = true;
+				sizingWindow->closeTab(background);
+				pdf->m_noteBusy = false;
+				check(sizingWindow->PickerError().IsOpen() &&
+				          sizingWindow->Tabs().SelectedItem() == selected &&
+				          sizingWindow->m_tabs.size() == 3,
+				      "background busy refusal was not visible in the window");
+				for (auto* busy : {&sizingWindow->m_notesSaving,
+				                   &sizingWindow->m_closePending}) {
+					sizingWindow->PickerError().IsOpen(false);
+					*busy = true;
+					sizingWindow->closeTab(background);
+					*busy = false;
+					check(sizingWindow->PickerError().IsOpen() &&
+					          sizingWindow->Tabs().SelectedItem() == selected &&
+					          sizingWindow->m_tabs.size() == 3,
+					      "busy close had no notice or changed the active tab");
+				}
+				sizingWindow->closeTab(background);
+				check(sizingWindow->Tabs().SelectedItem() == selected &&
+				          sizingWindow->m_tabs.size() == 2 && pdf->m_closed,
+				      "clean background close changed the active tab");
+			}
 			sizingWindow->Close();
 			{
 				auto settings = self->m_settings;

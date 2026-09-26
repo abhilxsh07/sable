@@ -33,7 +33,8 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	const auto lifetime = get_strong();
 	const auto viewer = get_self<ViewerPage>(document);
 	if (viewer->pageOperationBusy()) {
-		viewer->showNotice(
+		showShellError(
+		    L"Couldn't close the tab",
 		    L"Wait for the page operation to finish before closing.");
 		co_return false;
 	}
@@ -41,7 +42,8 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	if (viewer->m_noteBusy || (viewer->m_noteSaving && !copying) ||
 	    viewer->m_noteDialog || viewer->m_notePlacing ||
 	    (viewer->m_notesDirty && viewer->m_passwordDialog)) {
-		viewer->showNotice(L"Finish the open dialog or note operation first.");
+		showShellError(L"Couldn't close the tab",
+		               L"Finish the open dialog or note operation first.");
 		co_return false;
 	}
 	if (!viewer->m_notesDirty) {
@@ -87,7 +89,15 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 
 fire_and_forget MainWindow::closeTab(TabViewItem tab) {
 	const auto lifetime = get_strong();
-	if (m_closing || m_closePending || m_notesSaving) {
+	if (m_closing) {
+		co_return;
+	}
+	if (m_closePending || m_notesSaving) {
+		showShellError(L"Couldn't close the tab",
+		               m_notesSaving
+		                   ? L"Wait for the save to finish before "
+		                     L"closing a tab."
+		                   : L"Finish the other close request first.");
 		co_return;
 	}
 	m_closePending = true;
@@ -100,7 +110,6 @@ fire_and_forget MainWindow::closeTab(TabViewItem tab) {
 			    [&tab](const auto& entry) { return entry.tab == tab; });
 			if (found != m_tabs.end()) {
 				const auto document = found->viewer;
-				Tabs().SelectedItem(tab);
 				if (co_await confirmNotes(document)) {
 					removeTab(tab);
 				}
@@ -109,6 +118,8 @@ fire_and_forget MainWindow::closeTab(TabViewItem tab) {
 	} catch (...) {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Couldn't finish closing the PDF tab.");
+		showShellError(L"Couldn't close the tab",
+		               L"Finish the open dialog and try closing it again.");
 	}
 	m_closePending = false;
 }
