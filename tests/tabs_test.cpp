@@ -472,6 +472,8 @@ void TabsTest::tick() {
 			closedDropWindow->Close();
 			break;
 		case 16:
+			check(self->RootGrid().AllowDrop(),
+			      "PDF drops are not enabled across Home and the viewer");
 			if (!windowsOnly) {
 				check(closedDropWindow->m_closing &&
 				      closedDropWindow->m_tabs.empty());
@@ -481,6 +483,26 @@ void TabsTest::tick() {
 				settings.general.MaximizeOnOpen = false;
 				sizingWindow = make_self<MainWindow>(settings);
 				sizingWindow->setEngine(engine);
+				auto folder = settingsPath;
+				folder.replace_extension(L".pdf");
+				std::filesystem::create_directory(folder);
+				sizingWindow->openDroppedFiles(
+				    {L"VERSION", folder, L"tests/fixtures/pages.pdf"});
+				check(sizingWindow->m_tabs.size() == 1 &&
+				          sizingWindow->m_tabs.front().path.filename() ==
+				              L"pages.pdf",
+				      "Home drop opened a non-PDF or folder");
+				sizingWindow->openDroppedFiles({L"VERSION", folder,
+				                                L"tests/fixtures/pages.pdf",
+				                                L"tests/fixtures/print.pdf"});
+				check(sizingWindow->m_tabs.size() == 2 &&
+				          sizingWindow->m_tabs.back().path.filename() ==
+				              L"print.pdf",
+				      "viewer drop was refused or duplicated the existing PDF");
+				while (!sizingWindow->m_tabs.empty()) {
+					sizingWindow->removeTab(sizingWindow->m_tabs.back().tab);
+				}
+				std::filesystem::remove(folder);
 				sizingWindow->Activate();
 			}
 			break;

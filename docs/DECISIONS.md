@@ -3761,3 +3761,14 @@ window's command state as soon as that layout is ready. Zoom, rotation,
 Find, presentation, properties, print, save and layout/cursor menus now
 follow that state. Print and save completion cannot enable a command
 over a failed or pending tab. This follows A-32 in the approved queue.
+
+## PDF drops across the reader (2026-11-15)
+
+I handle file drops at the window root, across Home and the document
+surface. Local PDFs open as tabs; other file types and folders are
+skipped. Existing paths still select their tab instead of adding a copy.
+A document opening while the source supplies its files no longer
+invalidates the drop. Combine's list handles its own file drags, even
+when busy, so they cannot turn into window-level opens. Non-file drags
+are left to the native controls for their own reordering. This is A-33
+in the approved audit queue; Home's Tools group stays in place.

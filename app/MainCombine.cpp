@@ -276,12 +276,16 @@ void ViewerPage::openCombine() {
 		                   L" (combined).pdf");
 		CombineList().DragOver([weak](auto&&, const DragEventArgs& args) {
 			using namespace Windows::ApplicationModel::DataTransfer;
-			if (const auto self = weak.get();
-			    self && !self->m_closed && !self->m_combineLoading &&
-			    !self->m_combineCancel &&
-			    args.DataView().Contains(StandardDataFormats::StorageItems())) {
+			if (!args.DataView().Contains(
+			        StandardDataFormats::StorageItems())) {
+				return;
+			}
+			args.Handled(true);
+			args.AcceptedOperation(DataPackageOperation::None);
+			if (const auto self = weak.get(); self && !self->m_closed &&
+			                                  !self->m_combineLoading &&
+			                                  !self->m_combineCancel) {
 				args.AcceptedOperation(DataPackageOperation::Copy);
-				args.Handled(true);
 			}
 		});
 		CombineList().Drop([weak](auto&&, const DragEventArgs& args) {

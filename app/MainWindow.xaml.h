@@ -146,6 +146,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 #endif
 	winrt::fire_and_forget dropDocuments(
 	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
+	void openDroppedFiles(const std::vector<std::filesystem::path>& files);
 	void setupOpen();
 	void setupEdit();
 	void setupMusic();

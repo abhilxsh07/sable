@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	Title="Sable">
 
 	<Grid x:Name="RootGrid" RowDefinitions="Auto,*"
+		AllowDrop="True"
 		Background="{ThemeResource SablePaneBrush}"
 		Tapped="onHideConfigurator" KeyDown="onFilterKeyDown">
 		<!-- my own title bar instead of the system one. The Menu button takes

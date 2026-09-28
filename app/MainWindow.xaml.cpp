@@ -345,20 +345,24 @@ void MainWindow::setupOpen() {
 	// port of app/render/index.ts splash drop handlers (L436-473)
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/design/input/drag-and-drop
-	const auto card = get_self<HomePage>(Home())->DropCard();
-	card.DragOver([weak = get_weak()](auto&&, const DragEventArgs& args) {
+	RootGrid().DragOver([weak = get_weak()](auto&&, const DragEventArgs& args) {
 		using namespace Windows::ApplicationModel::DataTransfer;
+		if (!args.DataView().Contains(StandardDataFormats::StorageItems())) {
+			return;
+		}
 		auto operation = DataPackageOperation::None;
 		if (auto self = weak.get();
-		    self && !self->m_closing && self->m_engine &&
-		    self->m_tabs.empty() &&
-		    args.DataView().Contains(StandardDataFormats::StorageItems())) {
+		    self && !self->m_closing && self->m_engine) {
 			operation = DataPackageOperation::Copy;
 		}
 		args.AcceptedOperation(operation);
 		args.Handled(true);
 	});
-	card.Drop([weak = get_weak()](auto&&, const DragEventArgs& args) {
+	RootGrid().Drop([weak = get_weak()](auto&&, const DragEventArgs& args) {
+		using Windows::ApplicationModel::DataTransfer::StandardDataFormats;
+		if (!args.DataView().Contains(StandardDataFormats::StorageItems())) {
+			return;
+		}
 		args.Handled(true);
 		if (auto self = weak.get()) {
 			self->dropDocuments(args.DataView());
@@ -471,24 +475,28 @@ fire_and_forget MainWindow::dropDocuments(
 	try {
 		weak = get_weak();
 		using Windows::ApplicationModel::DataTransfer::StandardDataFormats;
-		if (m_closing || !m_engine || !m_tabs.empty() ||
+		if (m_closing || !m_engine ||
 		    !data.Contains(StandardDataFormats::StorageItems())) {
 			co_return;
 		}
 		PickerError().IsOpen(false);
 		const auto items = co_await data.GetStorageItemsAsync();
-		// the home screen may have gone away while the source supplied files
 		if (auto self = weak.get();
-		    self && !self->m_closing && self->m_tabs.empty()) {
+		    self && !self->m_closing && self->m_engine) {
+			std::vector<std::filesystem::path> files;
 			for (const auto& item : items) {
+				if (!item.try_as<Windows::Storage::StorageFile>()) {
+					continue;
+				}
 				const auto path = item.Path();
 				if (path.empty()) {
 					report(
 					    L"Couldn't open a dropped item without a local path.");
 					continue;
 				}
-				self->openDocument(*self->m_engine, path.c_str(), std::nullopt);
+				files.emplace_back(path.c_str());
 			}
+			self->openDroppedFiles(files);
 		}
 	} catch (const hresult_error& error) {
 		try {
@@ -505,6 +513,22 @@ fire_and_forget MainWindow::dropDocuments(
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Could not open dropped PDFs");
 		report(L"Couldn't open the dropped files: unknown error.");
+	}
+}
+
+void MainWindow::openDroppedFiles(
+    const std::vector<std::filesystem::path>& files) {
+	if (m_closing || !m_engine) {
+		return;
+	}
+	for (const auto& path : files) {
+		if (path.empty() || _wcsicmp(path.extension().c_str(), L".pdf") != 0) {
+			continue;
+		}
+		std::error_code error;
+		if (!std::filesystem::is_directory(path, error)) {
+			openDocument(*m_engine, path, std::nullopt);
+		}
 	}
 }
 
