@@ -159,8 +159,8 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		owner.m_shortcuts.push_back({VK_F9, 0, "close-tab", {}});
 		v.m_exporting = true;
 		v.showNotice(L"Checking the remapped close binding.");
-		check(owner.routeKey(VK_F9, 0, false) &&
-		          v.Message().Message() ==
+		check(owner.routeKey(VK_F9, 0, false) && owner.PickerError().IsOpen() &&
+		          owner.PickerError().Message() ==
 		              L"Wait for the page operation to finish before closing.",
 		      "Organize swallowed a remapped close-tab binding");
 		v.m_exporting = false;
