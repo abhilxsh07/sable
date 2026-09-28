@@ -589,6 +589,7 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	// a file only goes into Recent once it has actually opened
 	get_self<ViewerPage>(viewer)->onOpened([weak = get_weak(), resolved] {
 		if (const auto self = weak.get(); self && !self->m_closing) {
+			self->selectTab();
 			get_self<HomePage>(self->Home())->Remember(resolved);
 		}
 	});
@@ -709,9 +710,9 @@ void MainWindow::selectTab() {
 		return;
 	}
 	const auto viewer = Viewer();
-	const bool hasDocument = viewer != nullptr;
+	const bool hasDocument = viewer && get_self<ViewerPage>(viewer)->m_layout;
 	const bool gameSelected = nightRunSelected();
-	const bool hasContent = hasDocument || gameSelected;
+	const bool hasContent = viewer || gameSelected;
 	if (m_saveCopyCancel && m_saveCopyViewer.get() != viewer) {
 		m_saveCopyCancel->store(true);
 	}
@@ -1308,7 +1309,9 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
 			if (auto self = weak.get()) {
 				self->m_printing = false;
 				if (!self->m_closing) {
-					self->PrintItem().IsEnabled(self->Viewer() != nullptr);
+					const auto current = self->Viewer();
+					self->PrintItem().IsEnabled(
+					    current && get_self<ViewerPage>(current)->m_layout);
 				}
 			}
 		});
@@ -1316,7 +1319,9 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
 		diagnostics::caught(diagnostics::Level::Error, "Couldn't start print");
 		m_printing = false;
 		try {
-			PrintItem().IsEnabled(!m_closing && Viewer() != nullptr);
+			const auto current = Viewer();
+			PrintItem().IsEnabled(!m_closing && current &&
+			                      get_self<ViewerPage>(current)->m_layout);
 		} catch (...) {
 			diagnostics::caught(diagnostics::Level::Warning,
 			                    "Couldn't restore Print command");
@@ -1341,9 +1346,10 @@ void MainWindow::showShellError(const hstring& title,
 
 void MainWindow::updateLayoutMenu() {
 	const auto current = Viewer();
-	ScrollModeMenu().IsEnabled(current != nullptr);
-	SpreadModeMenu().IsEnabled(current != nullptr);
 	const auto* v = current ? get_self<ViewerPage>(current) : nullptr;
+	const bool ready = v && v->m_layout;
+	ScrollModeMenu().IsEnabled(ready);
+	SpreadModeMenu().IsEnabled(ready);
 	const auto scroll = v ? v->scrollMode() : helpers::ScrollMode::Vertical;
 	const auto spread = v ? v->spreadMode() : helpers::SpreadMode::None;
 	ScrollVerticalItem().IsChecked(scroll == helpers::ScrollMode::Vertical);
@@ -1354,7 +1360,7 @@ void MainWindow::updateLayoutMenu() {
 	SpreadOddItem().IsChecked(spread == helpers::SpreadMode::Odd);
 	SpreadEvenItem().IsChecked(spread == helpers::SpreadMode::Even);
 	ClickSpreadsItem().IsChecked(v && v->m_clickSpreads);
-	ClickSpreadsItem().IsEnabled(v && v->spreadClicksEnabled());
+	ClickSpreadsItem().IsEnabled(ready && v->spreadClicksEnabled());
 }
 void MainWindow::onClickSpreads(const Windows::Foundation::IInspectable&,
                                 const RoutedEventArgs&) {
@@ -1401,7 +1407,8 @@ void MainWindow::onPageLayout(const Windows::Foundation::IInspectable& sender,
 
 void MainWindow::updateCursorToolMenu() {
 	const auto viewer = Viewer();
-	CursorToolMenu().IsEnabled(viewer != nullptr);
+	CursorToolMenu().IsEnabled(viewer &&
+	                           get_self<ViewerPage>(viewer)->m_layout);
 	const bool hand = viewer && get_self<ViewerPage>(viewer)->cursorTool() ==
 	                                ViewerPage::CursorTool::Hand;
 	HandToolItem().IsChecked(hand);

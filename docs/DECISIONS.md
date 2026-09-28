@@ -3752,3 +3752,12 @@ the active viewer alone. Busy close/save/note refusals use the window's
 notice so they remain visible even when the requested tab is hidden.
 The existing per-document save/discard confirmation and save-copy
 cancellation still apply. This follows A-31 in the approved audit queue.
+
+## Document commands wait for a ready PDF (2026-11-15)
+
+I keep the tab's viewer visible while it loads or shows a password/error,
+but document commands need its page layout. Opening a PDF refreshes the
+window's command state as soon as that layout is ready. Zoom, rotation,
+Find, presentation, properties, print, save and layout/cursor menus now
+follow that state. Print and save completion cannot enable a command
+over a failed or pending tab. This follows A-32 in the approved queue.

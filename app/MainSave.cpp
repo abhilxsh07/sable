@@ -106,7 +106,9 @@ fire_and_forget MainWindow::saveCopy() {
 				    self->m_saveCopyCancel == cancel) {
 					self->m_saveCopyCancel.reset();
 					self->m_saveCopyViewer = {};
-					self->SaveCopyItem().IsEnabled(self->Viewer() != nullptr);
+					const auto current = self->Viewer();
+					self->SaveCopyItem().IsEnabled(
+					    current && get_self<ViewerPage>(current)->m_layout);
 				}
 			});
 		};

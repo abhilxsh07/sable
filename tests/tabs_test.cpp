@@ -488,12 +488,56 @@ void TabsTest::tick() {
 			check(sizingWindow->m_presenter.State() ==
 			      Microsoft::UI::Windowing::OverlappedPresenterState::Restored);
 			check(sizingWindow->m_tabs.empty());
-			sizingWindow->openDocument(engine, L"tests/fixtures/pages.pdf", {});
+			sizingWindow->openDocument(engine, L"tests/fixtures/broken.pdf",
+			                           {});
 			break;
-		case 18:
+		case 18: {
+			const auto pendingViewer =
+			    get_self<ViewerPage>(sizingWindow->Viewer());
+			const auto enabled = [&](bool expected) {
+				for (const auto& item : std::vector<Control>{
+				         sizingWindow->ResetZoomItem(),
+				         sizingWindow->FindItem(), sizingWindow->ZoomInItem(),
+				         sizingWindow->ZoomOutItem(),
+				         sizingWindow->RotateClockwiseItem(),
+				         sizingWindow->RotateCounterClockwiseItem(),
+				         sizingWindow->PresentationItem(),
+				         sizingWindow->PrintItem(),
+				         sizingWindow->SaveCopyItem(),
+				         sizingWindow->PropertiesItem(),
+				         sizingWindow->ScrollModeMenu(),
+				         sizingWindow->SpreadModeMenu(),
+				         sizingWindow->CursorToolMenu()}) {
+					check(item.IsEnabled() == expected,
+					      "document commands do not follow PDF readiness");
+				}
+			};
+			const auto filename = sizingWindow->m_tabs.front().path.filename();
+			if (filename == L"broken.pdf" || filename == L"password.pdf") {
+				if (filename == L"broken.pdf" &&
+				    !pendingViewer->Message().IsOpen()) {
+					return;
+				}
+				if (filename == L"password.pdf" &&
+				    !pendingViewer->m_passwordDialog) {
+					return;
+				}
+				enabled(false);
+				check(sizingWindow->Documents().Visibility() ==
+				          Visibility::Visible,
+				      "failed or pending PDF hid its error/password surface");
+				sizingWindow->removeTab(sizingWindow->m_tabs.front().tab);
+				sizingWindow->openDocument(engine,
+				                           filename == L"broken.pdf"
+				                               ? L"tests/fixtures/password.pdf"
+				                               : L"tests/fixtures/pages.pdf",
+				                           {});
+				return;
+			}
 			if (!ready(*get_self<ViewerPage>(sizingWindow->Viewer()))) {
 				return;
 			}
+			enabled(true);
 			check(sizingWindow->m_presenter.State() ==
 			      Microsoft::UI::Windowing::OverlappedPresenterState::Restored);
 			{
@@ -549,6 +593,7 @@ void TabsTest::tick() {
 				sizingWindow->Activate();
 			}
 			break;
+		}
 		case 19:
 			check(
 			    sizingWindow->m_presenter.State() ==
