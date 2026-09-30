@@ -3772,3 +3772,13 @@ invalidates the drop. Combine's list handles its own file drags, even
 when busy, so they cannot turn into window-level opens. Non-file drags
 are left to the native controls for their own reordering. This is A-33
 in the approved audit queue; Home's Tools group stays in place.
+
+## Shortcut edits in open readers (2026-11-15)
+
+Before routing a key, each reader compares its active binding snapshot
+with the shared settings store and rebuilds the table if it changed.
+Only saved edits reach the table; failed saves keep the old bindings.
+I keep the table builder separate from event registration so edits do
+not add handlers. The startup settings stay const. Fixed menu keys,
+modifier requirements and keypad aliases keep their existing precedence
+and mapping. This follows A-41 in the approved audit queue.

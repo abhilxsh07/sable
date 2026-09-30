@@ -234,8 +234,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	winrt::Microsoft::UI::Windowing::AppWindowPresenter m_beforePresentation{
 	    nullptr};
 	void setupTabKeys();
+	void rebuildShortcuts();
 	void dispatchShortcut(const helpers::Shortcut& shortcut);
 	std::vector<helpers::Shortcut> m_shortcuts;
+	helpers::KeybindsMap m_shortcutBindings;
 	const helpers::NightPDFSettings m_settings;
 	helpers::SettingsStore* m_settingsStore = nullptr;
 	std::shared_ptr<::SettingsWindow> m_settingsWindow;

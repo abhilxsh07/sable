@@ -650,6 +650,61 @@ void TabsTest::tick() {
 			      peerWindow->m_tabs.size() == 1);
 			check(sizingWindow->m_engine == &engine &&
 			      peerWindow->m_engine == &engine);
+			const auto originalBinding =
+			    uiStore->get().keybinds.at("SwitchTab");
+			for (const auto& live : {sizingWindow, peerWindow}) {
+				live->setSettingsStore(*uiStore);
+			}
+			self->onOpenSettings({}, {});
+			check(
+			    self->m_settingsWindow->saveBinding(
+			        "SwitchTab", 0,
+			        helpers::KeybindHelper::keybindFromTriggerArray({"Alt+F9"})
+			            .front()),
+			    "live shortcut save failed");
+			self->m_settingsWindow->window.Close();
+			for (const auto& live : {sizingWindow, peerWindow}) {
+				live->openDocument(engine, L"tests/fixtures/print.pdf", {});
+				live->selectTabPosition(0);
+				const bool routed =
+				    live->routeKey(VK_F9, helpers::SHORTCUT_ALT);
+				const auto mapped = helpers::matchShortcut(
+				    live->m_shortcuts, VK_F9, helpers::SHORTCUT_ALT);
+				check(routed && live->Tabs().SelectedIndex() == 1,
+				      "edited shortcut: routed=" + std::to_string(routed) +
+				          ", index=" +
+				          std::to_string(live->Tabs().SelectedIndex()) +
+				          ", mapped=" + (mapped ? mapped->action : "none") +
+				          ", stored=" +
+				          uiStore->get()
+				              .keybinds.at("SwitchTab")
+				              .keybind.front()
+				              .key.value_or("none") +
+				          ", cache=" +
+				          std::to_string(live->m_shortcutBindings ==
+				                         uiStore->get().keybinds));
+				check(!helpers::matchShortcut(live->m_shortcuts, VK_TAB,
+				                              helpers::SHORTCUT_CTRL),
+				      "edited shortcut kept its old trigger");
+				live->removeTab(live->m_tabs.back().tab);
+			}
+			self->onOpenSettings({}, {});
+			check(self->m_settingsWindow->saveBinding("SwitchTab", 0,
+			                                          std::nullopt),
+			      "clearing the live shortcut failed");
+			self->m_settingsWindow->window.Close();
+			for (const auto& live : {sizingWindow, peerWindow}) {
+				check(
+				    !live->routeKey(VK_F9, helpers::SHORTCUT_ALT),
+				    "cleared shortcut still dispatched in an existing window");
+			}
+			check(uiStore->setKeybind("SwitchTab", originalBinding));
+			for (const auto& live : {sizingWindow, peerWindow}) {
+				live->routeKey(VK_F8, 0);
+				check(helpers::matchShortcut(live->m_shortcuts, VK_TAB,
+				                             helpers::SHORTCUT_CTRL) != nullptr,
+				      "restored shortcut did not reach an existing window");
+			}
 			sizingWindow->onPresetClick(sizingWindow->SepiaPreset(), {});
 			sizingWindow->m_sliders[0].Value(42);
 			check(sizingWindow->m_preset == "sepia" &&

@@ -32,6 +32,10 @@ bool MainWindow::routeKey(unsigned key, unsigned modifiers, bool repeated) {
 	if (m_closing || m_settingsWindow || (viewer && viewer->m_passwordDialog)) {
 		return false;
 	}
+	if (m_settingsStore &&
+	    m_shortcutBindings != m_settingsStore->get().keybinds) {
+		rebuildShortcuts();
+	}
 	if (viewer && viewer->m_noteDialog) {
 		// i swallow tab navigation rather than inserting a tab into the draft.
 		return key == VK_TAB && (modifiers & helpers::SHORTCUT_CTRL) &&
