@@ -331,6 +331,12 @@ void MainWindow::setupOpen() {
 			    self->openTool(tool);
 		    }
 	    });
+	get_self<HomePage>(Home())->PresetRequested(
+	    [weak = get_weak()](const std::string& preset) {
+		    if (const auto self = weak.get(); self && !self->m_closing) {
+			    self->setPreset(preset);
+		    }
+	    });
 	get_self<HomePage>(Home())->OpenRequested([weak = get_weak()] {
 		if (auto self = weak.get()) {
 			self->pickDocuments();
@@ -1728,6 +1734,7 @@ void MainWindow::refreshSliders() {
 }
 
 void MainWindow::updateFilter() {
+	get_self<HomePage>(Home())->ShowPreset(m_preset, m_values);
 	for (const auto& entry : m_tabs) {
 		get_self<ViewerPage>(entry.viewer)->setValues(m_values);
 	}
@@ -1740,16 +1747,23 @@ void MainWindow::onPresetClick(const Windows::Foundation::IInspectable& sender,
 	const auto preset = to_string(unbox_value<hstring>(button.Tag()));
 	const bool wasActive = preset == m_preset;
 	if (!wasActive) {
-		m_preset = preset;
-		helpers::handlePresetChange(preset == "custom" ? "original" : preset,
-		                            m_values);
-		refreshSliders();
-		updateFilter();
-		paintPresetChips();
+		setPreset(preset);
 	}
 	if (wasActive || preset == "custom") {
 		toggleConfigurator();
 	}
+}
+
+void MainWindow::setPreset(const std::string& preset) {
+	if (preset == m_preset) {
+		return;
+	}
+	m_preset = preset;
+	helpers::handlePresetChange(preset == "custom" ? "original" : preset,
+	                            m_values);
+	refreshSliders();
+	updateFilter();
+	paintPresetChips();
 }
 
 void MainWindow::paintPresetChips() {

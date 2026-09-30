@@ -3782,3 +3782,16 @@ I keep the table builder separate from event registration so edits do
 not add handlers. The startup settings stay const. Fixed menu keys,
 modifier requirements and keypad aliases keep their existing precedence
 and mapping. This follows A-41 in the approved audit queue.
+
+## Home presets and recent history (2026-11-15)
+
+Home uses the window's exact preset and slider values for its chips and
+sample page. A Home preset pick changes the window's filter too, without
+opening the document configurator; a repeated pick keeps the current
+values. The title-bar preset/configurator behavior stays as before.
+
+Clear recent is shown only when Recent contains an unstarred entry.
+Each row also has a named Remove from recent action. It removes that
+history entry, including its star if present, through the existing
+locked recent-file update. It never deletes or opens the source PDF.
+This follows A-47; the Home Tools group remains in place.

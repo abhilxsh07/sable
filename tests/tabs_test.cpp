@@ -713,11 +713,54 @@ void TabsTest::tick() {
 			      right->m_values == peerWindow->m_values &&
 			      left->m_values != right->m_values &&
 			      left->m_values.brightness == 42);
-			sizingWindow->openDocument(engine, L"tests/fixtures/missing.pdf",
-			                           {});
-			sizingWindow->Close();
-			check(app.m_windows.size() == 2);
-			check(sizingWindow->m_closing && sizingWindow->m_tabs.empty());
+			const auto home = get_self<HomePage>(sizingWindow->Home());
+			check(home->m_preset == sizingWindow->m_preset &&
+			          home->m_values == sizingWindow->m_values,
+			      "Home did not follow the window preset and slider values");
+			while (!sizingWindow->m_tabs.empty()) {
+				sizingWindow->removeTab(sizingWindow->m_tabs.back().tab);
+			}
+			check(sizingWindow->Nav().Visibility() == Visibility::Visible &&
+			          home->m_preset == "sepia" &&
+			          Automation::AutomationProperties::GetItemStatus(
+			              home->SepiaPreset()) == L"Selected",
+			      "Home lost its preset after the last tab closed");
+			home->onPresetClick(home->RedeyePreset(), {});
+			check(
+			    sizingWindow->m_preset == "redeye" &&
+			        home->m_values == sizingWindow->m_values &&
+			        sizingWindow->DarkConfigurator().Visibility() ==
+			            Visibility::Collapsed,
+			    "Home preset did not update the window without a configurator");
+			home->ShowStarredOnly(false);
+			home->m_recents.clear();
+			const auto starredPath =
+			    std::filesystem::absolute(L"tests/fixtures/pages.pdf");
+			home->Remember(starredPath);
+			home->toggleStar(starredPath);
+			check(home->ClearButton().Visibility() == Visibility::Collapsed,
+			      "Clear appeared with only starred history");
+			home->Remember(
+			    std::filesystem::absolute(L"tests/fixtures/print.pdf"));
+			check(home->ClearButton().Visibility() == Visibility::Visible,
+			      "Clear did not appear for unstarred history");
+			const auto row = home->RecentList().Items().GetAt(0).as<Grid>();
+			Button removeButton{nullptr};
+			for (const auto& child : row.Children()) {
+				if (const auto button = child.try_as<Button>();
+				    button && Automation::AutomationProperties::GetName(
+				                  button) == L"Remove print.pdf from recent") {
+					removeButton = button;
+				}
+			}
+			check(removeButton != nullptr,
+			      "recent row has no named remove action");
+			home->UpdateLayout();
+			Automation::Peers::FrameworkElementAutomationPeer::
+			    CreatePeerForElement(removeButton)
+			        .GetPattern(Automation::Peers::PatternInterface::Invoke)
+			        .as<Automation::Provider::IInvokeProvider>()
+			        .Invoke();
 			peerZoom = right->m_zoom;
 			right->zoomIn();
 			right->goToPage(2);
@@ -728,6 +771,19 @@ void TabsTest::tick() {
 			if (!ready(*right)) {
 				return;
 			}
+			const auto home = get_self<HomePage>(sizingWindow->Home());
+			check(
+			    home->m_recents.items().size() == 1 &&
+			        sizingWindow->m_tabs.empty() &&
+			        home->m_recents.items().front().starred &&
+			        home->ClearButton().Visibility() == Visibility::Collapsed &&
+			        std::filesystem::exists(L"tests/fixtures/print.pdf"),
+			    "removing a recent changed its file or the remaining history");
+			sizingWindow->openDocument(engine, L"tests/fixtures/missing.pdf",
+			                           {});
+			sizingWindow->Close();
+			check(app.m_windows.size() == 2 && sizingWindow->m_closing &&
+			      sizingWindow->m_tabs.empty());
 			check(right->m_current == 2 && right->m_zoom > peerZoom);
 			check(!peerWindow->m_closing && peerWindow->m_preset == "default");
 			sizingWindow = app.createWindow();

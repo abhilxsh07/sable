@@ -245,6 +245,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setupSliders();
 	void refreshSliders();
 	void paintPresetChips();
+	void setPreset(const std::string& preset);
 	void updateFilter();
 	void toggleConfigurator();
 	void alignConfigurator();

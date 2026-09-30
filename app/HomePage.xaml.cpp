@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <ShlObj.h>
+#include <algorithm>
 #include <ctime>
 #include <cwctype>
 #include <string_view>
@@ -124,6 +125,7 @@ void setColumns(const Grid& grid, bool compact) {
 	add(compact ? 150 : 190, GridUnitType::Pixel);
 	add(compact ? 0 : 110, GridUnitType::Pixel); // size
 	add(48, GridUnitType::Pixel);
+	add(40, GridUnitType::Pixel);
 }
 } // namespace
 
@@ -242,18 +244,29 @@ void HomePage::onSizeChanged(const Windows::Foundation::IInspectable&,
 void HomePage::onPresetClick(const Windows::Foundation::IInspectable& sender,
                              const RoutedEventArgs&) {
 	if (auto button = sender.try_as<Button>()) {
-		showPreset(
-		    to_string(unbox_value_or<hstring>(button.Tag(), L"default")));
+		const auto preset =
+		    to_string(unbox_value_or<hstring>(button.Tag(), L"default"));
+		if (m_presetRequested) {
+			m_presetRequested(preset);
+		} else {
+			showPreset(preset);
+		}
 	}
 }
 
-// Puts the sample page through the actual filter, so what you see is what a
-// real page will get. Custom is "original" (no filter) the first time it's
-// picked in NightPDF, so that's what it shows here.
+// a standalone Home starts with NightPDF's first Custom selection too.
 void HomePage::showPreset(const std::string& preset) {
-	m_preset = preset;
+	auto values = m_values;
 	helpers::handlePresetChange(preset == "custom" ? "original" : preset,
-	                            m_values);
+	                            values);
+	ShowPreset(preset, values);
+}
+
+// i use the window's exact values, including its slider edits.
+void HomePage::ShowPreset(const std::string& preset,
+                          const helpers::SliderValues& filter) {
+	m_preset = preset;
+	m_values = filter;
 
 	const auto resources = Resources();
 	setColour(resources, L"PreviewPaperBrush",
@@ -271,6 +284,8 @@ void HomePage::showPreset(const std::string& preset) {
 	     {DefaultPreset(), SepiaPreset(), RedeyePreset(), CustomPreset()}) {
 		const auto tag = unbox_value_or<hstring>(chip.Tag(), hstring{});
 		appearance::presetChip(chip, to_string(tag) == preset);
+		Automation::AutomationProperties::SetItemStatus(
+		    chip, to_string(tag) == preset ? L"Selected" : L"");
 	}
 
 	// "Darkness 7% · Grayscale 95% · ..." in the slider order
@@ -304,6 +319,10 @@ void HomePage::onClearRecent(const Windows::Foundation::IInspectable&,
 void HomePage::toggleStar(const fs::path& path) {
 	editRecents(
 	    [&](helpers::RecentFiles& recents) { recents.toggleStar(path); });
+}
+
+void HomePage::removeRecent(const fs::path& path) {
+	editRecents([&](helpers::RecentFiles& recents) { recents.remove(path); });
 }
 
 void HomePage::editRecents(
@@ -349,7 +368,10 @@ void HomePage::rebuildList() {
 	                            : XVisibility::Collapsed);
 	EmptyState().Visibility(any ? XVisibility::Collapsed
 	                            : XVisibility::Visible);
-	ClearButton().Visibility(!m_starredOnly && !m_recents.empty()
+	const bool unstarred =
+	    std::any_of(m_recents.items().begin(), m_recents.items().end(),
+	                [](const auto& file) { return !file.starred; });
+	ClearButton().Visibility(!m_starredOnly && unstarred
 	                             ? XVisibility::Visible
 	                             : XVisibility::Collapsed);
 	if (any) {
@@ -372,7 +394,7 @@ void HomePage::rebuildList() {
 	}
 }
 
-// one row: page icon, name, folder, when, size, star
+// one row: page icon, name, folder, when, size, star and remove
 Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
                        chr::minutes offset) {
 	Grid row;
@@ -459,6 +481,25 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	});
 	Grid::SetColumn(star, 5);
 	row.Children().Append(star);
+	Button removeButton;
+	removeButton.Style(star.Style());
+	removeButton.Padding({8, 8, 8, 8});
+	removeButton.HorizontalAlignment(XHorizontalAlignment::Right);
+	FontIcon removeIcon;
+	removeIcon.Glyph(L"\uE711");
+	removeIcon.FontSize(12);
+	removeIcon.Foreground(appearance::text(0x7a7a7a));
+	removeButton.Content(removeIcon);
+	ToolTipService::SetToolTip(removeButton, box_value(L"Remove from recent"));
+	Automation::AutomationProperties::SetName(
+	    removeButton, L"Remove " + to_hstring(file.name) + L" from recent");
+	removeButton.Click([weak = get_weak(), path = file.path](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->removeRecent(path);
+		}
+	});
+	Grid::SetColumn(removeButton, 6);
+	row.Children().Append(removeButton);
 	return row;
 }
 } // namespace winrt::Sable::implementation

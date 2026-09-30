@@ -37,6 +37,11 @@ struct HomePage : HomePageT<HomePage> {
 	void InitializeComponent();
 
 	void ShowStarredOnly(bool starredOnly);
+	void ShowPreset(const std::string& preset,
+	                const helpers::SliderValues& filter);
+	void PresetRequested(std::function<void(const std::string&)> handler) {
+		m_presetRequested = std::move(handler);
+	}
 	void OpenRequested(std::function<void()> handler) {
 		m_openRequested = std::move(handler);
 	}
@@ -92,9 +97,11 @@ struct HomePage : HomePageT<HomePage> {
 	makeRow(const helpers::RecentFile& file, std::chrono::sys_seconds now,
 	        std::chrono::minutes utcOffset);
 	void toggleStar(const std::filesystem::path& path);
+	void removeRecent(const std::filesystem::path& path);
 	void editRecents(const std::function<void(helpers::RecentFiles&)>& edit);
 
 	std::function<void()> m_openRequested;
+	std::function<void(const std::string&)> m_presetRequested;
 	std::function<void(std::wstring_view)> m_toolRequested;
 	std::function<void(const std::filesystem::path&)> m_openFileRequested;
 	helpers::RecentFiles m_recents;
