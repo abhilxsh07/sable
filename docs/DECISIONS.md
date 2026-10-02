@@ -3828,3 +3828,17 @@ shortcut captions take ButtonText. The title bar follows the same window
 and text colours on live theme changes. Dark keeps its existing colours,
 and Obsidian keeps its black surfaces. This follows approved A-43;
 Windows contrast-theme appearance remains a hand check.
+
+## Outline UI work on demand (2026-11-15)
+
+I keep the flat outline metadata, but create at most 128 native nodes
+per UI dispatch. Roots load in batches; expanding a node builds only
+its direct children, in the same bounded batches. Closing or hiding
+the sidebar pauses queued work, reopening resumes it, and replacement
+or document close invalidates old batches. Cached nodes retain later
+expansion changes.
+
+Approved A-49 replaces the initial PDF-count expansion recorded under
+Document outlines: every node starts collapsed. A large PDF cannot
+ask the UI to expand its entire hierarchy on first opening. The tree
+keeps its native selection, arrows, labels and destinations.

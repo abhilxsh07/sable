@@ -610,6 +610,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void closeOutline();
 	void requestOutline();
 	void showOutline();
+	void buildOutlineNodes(std::size_t parent);
 	void followOutline(std::size_t index);
 	bool outlineOpen();
 	bool outlineHasFocus();
@@ -620,6 +621,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::optional<pdf::Outline> m_outline;
 	std::vector<winrt::Microsoft::UI::Xaml::Controls::TreeViewNode>
 	    m_outlineNodes;
+	std::vector<std::vector<std::size_t>> m_outlineChildren;
+	std::vector<std::size_t> m_outlineNext;
+	std::vector<bool> m_outlineQueued;
 	std::uint64_t m_outlineVersion = 0;
 	std::uint64_t m_outlineLinkVersion = 0;
 	bool m_outlineLinkPending = false;

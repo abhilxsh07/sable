@@ -161,12 +161,13 @@ void TabsTest::outlineTick(MainWindow& owner) {
 		check(v.m_outlineNodes.size() == 8 &&
 		          v.OutlineTree().RootNodes().Size() == 5,
 		      "outline hierarchy roots");
+		check(!v.m_outlineNodes[0].IsExpanded() && !v.m_outlineNodes[1] &&
+		          v.m_outlineNodes[0].HasUnrealizedChildren(),
+		      "outline built closed children");
+		v.m_outlineNodes[0].IsExpanded(true);
 		check(v.m_outlineNodes[0].Children().Size() == 2 &&
-		          v.m_outlineNodes[2].Children().Size() == 1,
+		          !v.m_outlineNodes[3] && !v.m_outlineNodes[2].IsExpanded(),
 		      "outline hierarchy children");
-		check(v.m_outlineNodes[0].IsExpanded() &&
-		          !v.m_outlineNodes[2].IsExpanded(),
-		      "PDF expansion state");
 		check(unbox_value<hstring>(v.m_outlineNodes[0].Content()) ==
 		          L"Chapters \u03a9\U0001f600",
 		      "outline Unicode label");
@@ -187,6 +188,8 @@ void TabsTest::outlineTick(MainWindow& owner) {
 		check(v.m_current == 2 && v.m_preset == helpers::ZoomPreset::PageWidth,
 		      "outline named destination");
 		v.m_outlineNodes[2].IsExpanded(true);
+		check(v.m_outlineNodes[2].Children().Size() == 1,
+		      "outline expansion did not build direct children");
 		v.followOutline(3);
 		break;
 	case 4:
@@ -214,6 +217,40 @@ void TabsTest::outlineTick(MainWindow& owner) {
 	case 6:
 		check(v.m_outlineNodes.size() == 8 && v.m_outlineBuilt,
 		      "zoom lost outline");
+		{
+			const auto saved = *v.m_outline;
+			for (const bool nested : {false, true}) {
+				++v.m_outlineVersion;
+				v.m_outline = pdf::Outline{};
+				for (int i = 0; i < 10000; ++i) {
+					v.m_outline->entries.push_back(
+					    {"Entry", false, nested && i ? 0 : -1, true});
+				}
+				v.m_outlineBuilt = false;
+				v.showOutline();
+				const auto built = std::count_if(
+				    v.m_outlineNodes.begin(), v.m_outlineNodes.end(),
+				    [](const auto& node) { return bool(node); });
+				check(built <= 128,
+				      "large outline eagerly built every UI node");
+				for (const auto& node : v.m_outlineNodes) {
+					check(!node || !node.IsExpanded(),
+					      "large outline expanded itself");
+				}
+				if (nested) {
+					check(built == 1, "closed outline built descendants");
+					v.m_outlineNodes[0].IsExpanded(true);
+					check(v.m_outlineNodes[0].Children().Size() == 128,
+					      "wide outline expansion was not bounded");
+				}
+			}
+			++v.m_outlineVersion;
+			v.m_outline = saved;
+			v.m_outlineBuilt = false;
+			v.showOutline();
+			v.m_outlineNodes[0].IsExpanded(true);
+		}
+
 		v.setThumbnailsOpen(true);
 		check(v.thumbnailsOpen() && !v.outlineOpen(),
 		      "thumbnail did not close outline");

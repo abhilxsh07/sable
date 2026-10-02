@@ -60,6 +60,20 @@ void ViewerPage::setupOutline() {
 			self->requestOutline();
 		}
 	});
+	OutlineTree().Expanding(
+	    [weak](auto&&, const TreeViewExpandingEventArgs& args) {
+		    if (auto self = weak.get()) {
+			    const auto found =
+			        std::find(self->m_outlineNodes.begin(),
+			                  self->m_outlineNodes.end(), args.Node());
+			    if (found != self->m_outlineNodes.end()) {
+				    self->buildOutlineNodes(
+				        static_cast<std::size_t>(found -
+				                                 self->m_outlineNodes.begin()) +
+				        1);
+			    }
+		    }
+	    });
 	// RootNodes content mode supplies the invoked TreeViewNode.
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tree-view
 	OutlineTree().ItemInvoked(
@@ -128,6 +142,9 @@ void ViewerPage::closeOutline() {
 	m_outline.reset();
 	OutlineTree().RootNodes().Clear();
 	m_outlineNodes.clear();
+	m_outlineChildren.clear();
+	m_outlineNext.clear();
+	m_outlineQueued.clear();
 }
 void ViewerPage::requestOutline() {
 	if (m_closed || !m_session || m_outlinePending || m_outline) {
@@ -195,26 +212,29 @@ void ViewerPage::showOutline() {
 		return;
 	}
 	if (!m_outlineBuilt) {
+		++m_outlineVersion;
 		OutlineTree().RootNodes().Clear();
-		m_outlineNodes.clear();
-		m_outlineNodes.reserve(m_outline->entries.size());
-		for (const auto& entry : m_outline->entries) {
-			TreeViewNode node;
-			node.Content(box_value(to_hstring(entry.title)));
-			m_outlineNodes.push_back(node);
-		}
-		for (std::size_t i = 0; i < m_outlineNodes.size(); ++i) {
+		const auto count = m_outline->entries.size();
+		m_outlineNodes.assign(count, nullptr);
+		m_outlineChildren.assign(count + 1, {});
+		m_outlineNext.assign(count + 1, 0);
+		m_outlineQueued.assign(count + 1, false);
+		for (std::size_t i = 0; i < count; ++i) {
 			const int parent = m_outline->entries[i].parent;
-			if (parent >= 0 && static_cast<std::size_t>(parent) < i) {
-				m_outlineNodes[parent].Children().Append(m_outlineNodes[i]);
-			} else {
-				OutlineTree().RootNodes().Append(m_outlineNodes[i]);
-			}
-		}
-		for (std::size_t i = 0; i < m_outlineNodes.size(); ++i) {
-			m_outlineNodes[i].IsExpanded(m_outline->entries[i].expanded);
+			const auto group =
+			    parent >= 0 && static_cast<std::size_t>(parent) < i
+			        ? static_cast<std::size_t>(parent) + 1
+			        : 0;
+			m_outlineChildren[group].push_back(i);
 		}
 		m_outlineBuilt = true;
+	}
+	buildOutlineNodes(0);
+	// resume an interrupted batch after reopening the sidebar
+	for (std::size_t i = 0; i < m_outlineNodes.size(); ++i) {
+		if (m_outlineNodes[i] && m_outlineNodes[i].IsExpanded()) {
+			buildOutlineNodes(i + 1);
+		}
 	}
 	const bool empty = m_outlineNodes.empty();
 	OutlineTree().Visibility(empty ? collapsed : visible);
@@ -225,6 +245,46 @@ void ViewerPage::showOutline() {
 	                         ? L"Some outline entries are unavailable."
 	                         : L"");
 }
+// group zero holds roots; entry i's direct children are in group i + 1
+void ViewerPage::buildOutlineNodes(std::size_t parent) {
+	if (m_closed || !m_outline || !m_outlineBuilt || !outlineOpen() ||
+	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+	    parent >= m_outlineChildren.size() || m_outlineQueued[parent]) {
+		return;
+	}
+	const auto children = parent ? m_outlineNodes[parent - 1].Children()
+	                             : OutlineTree().RootNodes();
+	const auto& entries = m_outlineChildren[parent];
+	auto& next = m_outlineNext[parent];
+	const auto end = (std::min)(next + 128, entries.size());
+	while (next < end) {
+		const auto index = entries[next++];
+		TreeViewNode node;
+		node.Content(box_value(to_hstring(m_outline->entries[index].title)));
+		node.HasUnrealizedChildren(!m_outlineChildren[index + 1].empty());
+		m_outlineNodes[index] = node;
+		children.Append(node);
+	}
+	if (next == entries.size()) {
+		if (parent) {
+			m_outlineNodes[parent - 1].HasUnrealizedChildren(false);
+		}
+		return;
+	}
+	m_outlineQueued[parent] = true;
+	const auto version = m_outlineVersion;
+	if (!DispatcherQueue().TryEnqueue([weak = get_weak(), version, parent] {
+		    if (const auto self = weak.get();
+		        self && !self->m_closed && self->m_outlineVersion == version) {
+			    self->m_outlineQueued[parent] = false;
+			    if (!parent || self->m_outlineNodes[parent - 1].IsExpanded()) {
+				    self->buildOutlineNodes(parent);
+			    }
+		    }
+	    })) {
+		m_outlineQueued[parent] = false;
+	}
+}
 void ViewerPage::followOutline(std::size_t index) {
 	if (m_closed || !outlineOpen() || !m_outline ||
 	    index >= m_outline->entries.size() ||
@@ -233,7 +293,7 @@ void ViewerPage::followOutline(std::size_t index) {
 	}
 	const auto version = ++m_outlineLinkVersion;
 	m_outlineLinkPending = false;
-	if (index < m_outlineNodes.size()) {
+	if (index < m_outlineNodes.size() && m_outlineNodes[index]) {
 		OutlineTree().SelectedNode(m_outlineNodes[index]);
 	}
 	if (!m_outline->entries[index].canFollow || !m_session) {
