@@ -824,6 +824,36 @@ void TabsTest::tick() {
 			check(settings->m_version.Text() ==
 			          to_hstring(helpers::versionString()),
 			      "settings version");
+			check(settings->m_heading.Foreground() ==
+			              appearance::text(0xf1f1f3) &&
+			          settings->m_description.Foreground() ==
+			              appearance::text(0xa7a7ae) &&
+			          settings->m_version.Foreground() ==
+			              appearance::text(0xb3b3bb) &&
+			          settings->m_captureText.Foreground() ==
+			              appearance::text(0xf1f1f3),
+			      "Settings text bypasses shared contrast brushes");
+			using Windows::UI::ViewManagement::UIElementType;
+			for (const auto section : {"general", "keybinds", "version"}) {
+				settings->select(section);
+				for (const auto& item : settings->m_sections) {
+					const bool selected =
+					    unbox_value<hstring>(item.Tag()) == to_hstring(section);
+					check(item.Background() ==
+					              appearance::themed(
+					                  selected ? Windows::UI::Color{255, 0x2c,
+					                                                0x2c, 0x30}
+					                           : Windows::UI::Color{0, 0, 0, 0},
+					                  selected ? UIElementType::Highlight
+					                           : UIElementType::Window) &&
+					          item.Foreground() ==
+					              appearance::themed(
+					                  selected ? 0xf1f1f3 : 0xa7a7ae,
+					                  selected ? UIElementType::HighlightText
+					                           : UIElementType::WindowText),
+					      "Settings selection bypasses contrast brushes");
+				}
+			}
 			HWND owner{}, child{};
 			check_hresult(self.as<::IWindowNative>()->get_WindowHandle(&owner));
 			check_hresult(

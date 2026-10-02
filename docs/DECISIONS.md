@@ -3818,3 +3818,13 @@ the current save to finish, or cancel its open dialog."
 The running operation keeps its controller, cancellation flag, picker
 and completion path. Closing windows and closed documents retain their
 existing bail-outs. This follows A-53 and completes audit batch 8.
+
+## Settings theme colours (2026-11-15)
+
+I use the shared appearance brushes for Settings headings, details,
+card and shortcut borders, capture overlay and navigation selection.
+A selected section takes Highlight/HighlightText under a contrast theme;
+shortcut captions take ButtonText. The title bar follows the same window
+and text colours on live theme changes. Dark keeps its existing colours,
+and Obsidian keeps its black surfaces. This follows approved A-43;
+Windows contrast-theme appearance remains a hand check.

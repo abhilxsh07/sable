@@ -97,17 +97,6 @@ void SettingsWindow::initialize(const Window& owner,
 	window = Window();
 	window.Title(L"Settings - Sable");
 	window.AppWindow().SetIcon(icon.wstring());
-	auto titleBar = window.AppWindow().TitleBar();
-	const Windows::UI::Color background{255, 0x1e, 0x1e, 0x20};
-	const Windows::UI::Color foreground{255, 0xcc, 0xcc, 0xcc};
-	titleBar.BackgroundColor(background);
-	titleBar.InactiveBackgroundColor(background);
-	titleBar.ForegroundColor(foreground);
-	titleBar.InactiveForegroundColor(foreground);
-	titleBar.ButtonBackgroundColor(background);
-	titleBar.ButtonInactiveBackgroundColor(background);
-	titleBar.ButtonForegroundColor(foreground);
-	titleBar.ButtonInactiveForegroundColor(foreground);
 	const auto weak = weak_from_this();
 	auto root = buildLayout();
 	window.Activated([weak](auto&&, const WindowActivatedEventArgs& e) {
@@ -177,12 +166,15 @@ void SettingsWindow::select(const std::string& section) {
 	for (const auto& item : m_sections) {
 		const bool selected =
 		    unbox_value<hstring>(item.Tag()) == to_hstring(section);
-		item.Background(Media::SolidColorBrush(
+		using Windows::UI::ViewManagement::UIElementType;
+		item.Background(appearance::themed(
 		    selected ? Windows::UI::Color{255, 0x2c, 0x2c, 0x30}
-		             : Windows::UI::Color{0, 0, 0, 0}));
-		item.Foreground(Media::SolidColorBrush(
-		    selected ? Windows::UI::Color{255, 0xf1, 0xf1, 0xf3}
-		             : Windows::UI::Color{255, 0xa7, 0xa7, 0xae}));
+		             : Windows::UI::Color{0, 0, 0, 0},
+		    selected ? UIElementType::Highlight : UIElementType::Window));
+		item.Foreground(appearance::themed(selected ? 0xf1f1f3 : 0xa7a7ae,
+		                                   selected
+		                                       ? UIElementType::HighlightText
+		                                       : UIElementType::WindowText));
 	}
 	m_heading.Text(section == "general"    ? L"General"
 	               : section == "keybinds" ? L"Keyboard shortcuts"
@@ -334,13 +326,16 @@ void SettingsWindow::saveUpdateCheck() {
 
 void SettingsWindow::themeChanged() {
 	const auto titleBar = window.AppWindow().TitleBar();
-	const Windows::UI::Color background =
-	    appearance::obsidian() ? Windows::UI::Color{255, 0, 0, 0}
-	                           : Windows::UI::Color{255, 0x1e, 0x1e, 0x20};
+	const auto background = appearance::surface(0x1e1e20).Color();
+	const auto foreground = appearance::text(0xcccccc).Color();
 	titleBar.BackgroundColor(background);
 	titleBar.InactiveBackgroundColor(background);
 	titleBar.ButtonBackgroundColor(background);
 	titleBar.ButtonInactiveBackgroundColor(background);
+	titleBar.ForegroundColor(foreground);
+	titleBar.InactiveForegroundColor(foreground);
+	titleBar.ButtonForegroundColor(foreground);
+	titleBar.ButtonInactiveForegroundColor(foreground);
 	m_restoringTheme = true;
 	m_theme.SelectedIndex(appearance::obsidian() ? 1 : 0);
 	m_restoringTheme = false;

@@ -30,11 +30,6 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 
 namespace {
-Media::SolidColorBrush brush(unsigned rgb) {
-	return Media::SolidColorBrush({255, static_cast<uint8_t>(rgb >> 16),
-	                               static_cast<uint8_t>(rgb >> 8),
-	                               static_cast<uint8_t>(rgb)});
-}
 Style style(const wchar_t* key) {
 	return Application::Current()
 	    .Resources()
@@ -60,7 +55,7 @@ FontIcon glyph(const wchar_t* value, double size = 16) {
 Border card(const UIElement& child) {
 	Border frame;
 	frame.Background(appearance::surface(0x242426));
-	frame.BorderBrush(brush(0x343437));
+	frame.BorderBrush(appearance::text(0x343437));
 	frame.BorderThickness({1, 1, 1, 1});
 	frame.CornerRadius({8, 8, 8, 8});
 	frame.Padding({20, 18, 20, 18});
@@ -154,9 +149,9 @@ Grid SettingsWindow::buildLayout() {
 	intro.Margin({0, 0, 0, 26});
 	m_heading.FontSize(26);
 	m_heading.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
-	m_heading.Foreground(brush(0xf1f1f3));
+	m_heading.Foreground(appearance::text(0xf1f1f3));
 	m_description.FontSize(12);
-	m_description.Foreground(brush(0xa7a7ae));
+	m_description.Foreground(appearance::text(0xa7a7ae));
 	m_description.TextWrapping(TextWrapping::Wrap);
 	intro.Children().Append(m_heading);
 	intro.Children().Append(m_description);
@@ -270,7 +265,7 @@ Grid SettingsWindow::buildLayout() {
 	m_version.Text(to_hstring(helpers::versionString()));
 	m_version.FontSize(12);
 	m_version.LineHeight(22);
-	m_version.Foreground(brush(0xb3b3bb));
+	m_version.Foreground(appearance::text(0xb3b3bb));
 	m_version.TextWrapping(TextWrapping::Wrap);
 	m_version.IsTextSelectionEnabled(true);
 	m_version.Margin({18, 0, 18, 18});
@@ -314,7 +309,9 @@ Grid SettingsWindow::buildLayout() {
 	content.Children().Append(m_error);
 	root.Children().Append(content);
 	Grid::SetColumnSpan(m_overlay, 2);
-	m_overlay.Background(Media::SolidColorBrush({170, 0, 0, 0}));
+	m_overlay.Background(
+	    appearance::themed(Windows::UI::Color{170, 0, 0, 0},
+	                       Windows::UI::ViewManagement::UIElementType::Window));
 	m_overlay.Visibility(Visibility::Collapsed);
 	buildCaptureCard();
 	return root;
@@ -330,7 +327,7 @@ void SettingsWindow::buildCaptureCard() {
 	capture.Children().Append(
 	    label(L"Hold a modifier and press a key.", 13, 0xa7a7ae));
 	m_captureText.FontSize(20);
-	m_captureText.Foreground(brush(0xf1f1f3));
+	m_captureText.Foreground(appearance::text(0xf1f1f3));
 	m_captureText.TextWrapping(TextWrapping::Wrap);
 	m_captureText.MinHeight(40);
 	m_captureText.MaxWidth(320);
@@ -380,7 +377,7 @@ void SettingsWindow::buildKeybinds() {
 		auto row = bindingColumns();
 		row.MinHeight(44);
 		row.Padding({0, 4, 0, 4});
-		row.BorderBrush(brush(0x303034));
+		row.BorderBrush(appearance::text(0x303034));
 		row.BorderThickness({0, 0, 0, 1});
 		const auto name = to_hstring(bindings.getActionDisplayName(action));
 		auto text = label(name);
@@ -401,6 +398,9 @@ void SettingsWindow::buildKeybinds() {
 			binding.Style(style(L"SableSettingsShortcutStyle"));
 			binding.HorizontalAlignment(HorizontalAlignment::Stretch);
 			auto caption = label(chord, 12, assigned ? 0xe6e6ea : 0x9b9ba4);
+			caption.Foreground(appearance::themed(
+			    assigned ? 0xe6e6ea : 0x9b9ba4,
+			    Windows::UI::ViewManagement::UIElementType::ButtonText));
 			caption.TextWrapping(TextWrapping::NoWrap);
 			caption.TextTrimming(TextTrimming::CharacterEllipsis);
 			binding.Content(caption);
