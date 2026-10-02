@@ -3806,3 +3806,15 @@ The API distinguishes these behaviors:
 https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.candragtabs?view=windows-app-sdk-2.0
 https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.canreordertabs?view=windows-app-sdk-2.0
 https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.cantearouttabs?view=windows-app-sdk-2.0
+
+## Repeated Print and Save requests (2026-11-15)
+
+I report the existing busy refusals in the window's notice, so the
+reason stays visible across tabs. Print uses "Print already in progress"
+with "Finish or cancel the current print job before printing again."
+Save Copy and note saves use "Save already in progress" with "Wait for
+the current save to finish, or cancel its open dialog."
+
+The running operation keeps its controller, cancellation flag, picker
+and completion path. Closing windows and closed documents retain their
+existing bail-outs. This follows A-53 and completes audit batch 8.

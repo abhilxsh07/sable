@@ -55,7 +55,16 @@ fire_and_forget MainWindow::saveCopy() {
 	try {
 		weak = get_weak();
 		queue = DispatcherQueue();
-		if (m_closing || m_saveCopyCancel || !Viewer()) {
+		if (m_closing) {
+			co_return;
+		}
+		if (m_saveCopyCancel || m_notesSaving) {
+			showShellError(L"Save already in progress",
+			               L"Wait for the current save to finish, or cancel "
+			               L"its open dialog.");
+			co_return;
+		}
+		if (!Viewer()) {
 			co_return;
 		}
 		std::filesystem::path source;
@@ -72,7 +81,7 @@ fire_and_forget MainWindow::saveCopy() {
 				    L"Wait for the page operation to finish before saving.");
 				co_return;
 			}
-			if (m_notesSaving || viewer->m_noteBusy || viewer->m_noteSaving ||
+			if (viewer->m_noteBusy || viewer->m_noteSaving ||
 			    viewer->m_noteDialog || viewer->m_notePlacing) {
 				viewer->showNotice(L"Finish the open dialog or note operation "
 				                   L"before saving a copy.");

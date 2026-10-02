@@ -1327,7 +1327,16 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
                          const RoutedEventArgs&) {
 	commitMenuEdit();
 	const auto viewer = Viewer();
-	if (m_closing || m_printing || !viewer) {
+	if (m_closing) {
+		return;
+	}
+	if (m_printing) {
+		showShellError(L"Print already in progress",
+		               L"Finish or cancel the current print job before "
+		               L"printing again.");
+		return;
+	}
+	if (!viewer) {
 		return;
 	}
 	try {

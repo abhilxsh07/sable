@@ -79,6 +79,7 @@ void TabsTest::printTick(MainWindow& owner) {
 		      "UI exception fallback did not show a notice");
 		owner.PickerError().IsOpen(false);
 		int calls = 0;
+		bool busyNoticeSeen = false;
 		viewer.m_printDialog = [&](void* handle, int count, int page,
 		                           const std::wstring& title) {
 			HWND expected{};
@@ -90,13 +91,19 @@ void TabsTest::printTick(MainWindow& owner) {
 			      "print dialog active-document snapshot");
 			++calls;
 			owner.onPrint({}, {});
+			busyNoticeSeen =
+			    owner.PickerError().IsOpen() &&
+			    owner.PickerError().Title() == L"Print already in progress" &&
+			    owner.m_printing;
 			return pdf::PrintDialogResult{};
 		};
 		check(owner.routeKey('P', helpers::SHORTCUT_CTRL),
 		      "fixed print shortcut did not dispatch");
 		viewer.m_printDialog = {};
-		check(calls == 1 && !owner.m_printing && owner.PrintItem().IsEnabled(),
-		      "print cancel/reentry");
+		check(calls == 1 && busyNoticeSeen && !owner.m_printing &&
+		          owner.PrintItem().IsEnabled(),
+		      "repeated Print had no notice or changed its busy state");
+		owner.PickerError().IsOpen(false);
 		owner.selectTabPosition(0);
 		break;
 	}
@@ -147,9 +154,14 @@ void TabsTest::printTick(MainWindow& owner) {
 		      "modern print did not retain its document");
 		{
 			const auto controller = viewer.m_printController;
+			owner.PickerError().IsOpen(false);
 			owner.onPrint({}, {});
-			check(controller == viewer.m_printController,
+			check(controller == viewer.m_printController &&
+			          owner.PickerError().IsOpen() &&
+			          owner.PickerError().Title() ==
+			              L"Print already in progress",
 			      "modern print accepted a second dialog");
+			owner.PickerError().IsOpen(false);
 			controller->shown(true);
 			check(!controller->m_finished && owner.m_printing &&
 			          !viewer.Message().IsOpen(),
@@ -321,12 +333,40 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 		v.zoomIn();
 		choose(attachmentTarget.wstring());
 		owner.onSaveCopy(nullptr, nullptr);
+		owner.PickerError().IsOpen(false);
 		owner.onSaveCopy(nullptr, nullptr);
-		check(attachmentPicks == 2, "duplicate save opened another picker");
+		check(attachmentPicks == 2 && owner.m_saveCopyCancel &&
+		          !owner.m_saveCopyCancel->load() &&
+		          owner.PickerError().IsOpen() &&
+		          owner.PickerError().Title() == L"Save already in progress",
+		      "duplicate save opened a picker, canceled the save or had no "
+		      "notice");
+		owner.PickerError().IsOpen(false);
 		break;
 	case 2:
 		check(bytes(attachmentTarget) == bytes(v.m_path),
 		      "saving applied view changes to the PDF");
+		owner.PickerError().IsOpen(false);
+		owner.m_notesSaving = true;
+		owner.onSaveCopy(nullptr, nullptr);
+		check(owner.PickerError().IsOpen() && attachmentPicks == 2 &&
+		          !owner.m_saveCopyCancel && owner.m_notesSaving &&
+		          owner.PickerError().Title() == L"Save already in progress",
+		      "a save in flight was refused without a notice");
+		owner.m_notesSaving = false;
+		for (auto* busy : {&owner.m_notesSaving, &v.m_noteSaving}) {
+			*busy = true;
+			owner.PickerError().IsOpen(false);
+			const auto refused = owner.saveNotes(current);
+			check(refused.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !refused.GetResults() && owner.PickerError().IsOpen() &&
+			          owner.PickerError().Title() ==
+			              L"Save already in progress",
+			      "repeated note save was refused without a notice");
+			*busy = false;
+		}
+		owner.PickerError().IsOpen(false);
 		choose(std::filesystem::absolute(v.m_path).wstring());
 		owner.onSaveCopy(nullptr, nullptr);
 		break;

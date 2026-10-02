@@ -32,9 +32,17 @@ namespace winrt::Sable::implementation {
 IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 	const auto lifetime = get_strong();
 	const auto viewer = get_self<ViewerPage>(document);
-	if (m_closing || m_notesSaving || viewer->m_closed || !viewer->m_session ||
-	    !viewer->m_notesDirty || viewer->m_noteBusy || viewer->m_noteDialog ||
-	    viewer->m_notePlacing || viewer->m_noteSaving ||
+	if (m_closing || viewer->m_closed) {
+		co_return false;
+	}
+	if (m_notesSaving || viewer->m_noteSaving) {
+		showShellError(L"Save already in progress",
+		               L"Wait for the current save to finish, or cancel "
+		               L"its open dialog.");
+		co_return false;
+	}
+	if (!viewer->m_session || !viewer->m_notesDirty || viewer->m_noteBusy ||
+	    viewer->m_noteDialog || viewer->m_notePlacing ||
 	    viewer->pageOperationBusy()) {
 		co_return false;
 	}
