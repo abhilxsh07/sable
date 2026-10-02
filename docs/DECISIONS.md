@@ -3795,3 +3795,14 @@ Each row also has a named Remove from recent action. It removes that
 history entry, including its star if present, through the existing
 locked recent-file update. It never deletes or opens the source PDF.
 This follows A-47; the Home Tools group remains in place.
+
+## Tab dragging stays inside the strip (2026-11-15)
+
+I keep CanReorderTabs on and turn CanDragTabs and CanTearOutTabs off.
+Reordering remains the native strip interaction, with the existing
+selection guard; no external tab payload or new-window tear-out is
+offered without a destination. This follows A-48 in the approved queue.
+The API distinguishes these behaviors:
+https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.candragtabs?view=windows-app-sdk-2.0
+https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.canreordertabs?view=windows-app-sdk-2.0
+https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.cantearouttabs?view=windows-app-sdk-2.0

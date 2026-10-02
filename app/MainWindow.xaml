@@ -255,7 +255,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<!-- the strip lives here; viewers stay mounted below it -->
 				<TabView x:Name="Tabs" Height="48" Visibility="Collapsed"
 					IsAddTabButtonVisible="True" CanReorderTabs="True"
-					CanDragTabs="True" TabWidthMode="Equal"
+					CanDragTabs="False" CanTearOutTabs="False"
+					TabWidthMode="Equal"
 					TitleBar.IsDragRegion="False"
 					AutomationProperties.Name="Documents" />
 			</TitleBar.Content>

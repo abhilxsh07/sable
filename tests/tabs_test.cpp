@@ -472,6 +472,10 @@ void TabsTest::tick() {
 			closedDropWindow->Close();
 			break;
 		case 16:
+			check(self->Tabs().CanReorderTabs() &&
+			          !self->Tabs().CanDragTabs() &&
+			          !self->Tabs().CanTearOutTabs(),
+			      "tab strip offers an unsupported external drag");
 			check(self->RootGrid().AllowDrop(),
 			      "PDF drops are not enabled across Home and the viewer");
 			if (!windowsOnly) {
@@ -499,6 +503,19 @@ void TabsTest::tick() {
 				          sizingWindow->m_tabs.back().path.filename() ==
 				              L"print.pdf",
 				      "viewer drop was refused or duplicated the existing PDF");
+				const auto selected = sizingWindow->Tabs().SelectedItem();
+				const auto items = sizingWindow->Tabs().TabItems();
+				const auto firstTab = items.GetAt(0);
+				sizingWindow->beginTabDrag();
+				items.RemoveAt(0);
+				items.Append(firstTab);
+				sizingWindow->Tabs().SelectedItem(firstTab);
+				sizingWindow->endTabDrag();
+				check(items.GetAt(0) == selected &&
+				          items.GetAt(1) == firstTab &&
+				          sizingWindow->Tabs().SelectedItem() == selected &&
+				          !sizingWindow->m_dragSelection,
+				      "in-strip reordering lost the selected document");
 				while (!sizingWindow->m_tabs.empty()) {
 					sizingWindow->removeTab(sizingWindow->m_tabs.back().tab);
 				}
