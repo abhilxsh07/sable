@@ -3856,3 +3856,19 @@ The existing extraction limit, source-overwrite guard and byte writer
 stay as before; attachments are never launched. The native row peer
 does not offer SelectionItem to the probe here, so it changes the
 ListView selection directly and invokes Save through UI Automation.
+
+## Narrator page snapshots (2026-11-15)
+
+I assign the page name and cleaned text before raising either UI
+Automation notification. While a requested page's text is pending, the
+previous name/text pair stays together. A failed or copy-restricted read
+publishes the new name with empty text; a canceled response publishes
+nothing and can be retried. Text is still fetched only after a client
+asks for the peer. Existing text ranges retain their immutable snapshot.
+
+Every response must match the request generation, session and current
+page, and a closed viewer accepts none. Organize also invalidates the
+generation when a page number can now refer to different content. This
+follows approved A-51. The Accessibility check pauses the engine before
+a real page turn and rejects stale same-page, session, page and close
+responses through the production completion path.

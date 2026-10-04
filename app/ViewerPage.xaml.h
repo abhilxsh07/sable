@@ -68,6 +68,7 @@ class Surface;
 struct RenderResult;
 struct NoteResult;
 struct SessionInfo;
+struct DocumentTextResult;
 struct PageEdit;
 struct PageEditResult;
 struct FindUpdate;
@@ -835,9 +836,12 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::optional<int> m_startPage;
 	// pdf.js's current page (0-based) and the labels it would have shown
 	std::size_t m_current = 0;
-	// ViewerPageText.cpp: the page whose text the screen-reader host has
+	// ViewerPageText.cpp: the requested page and its response generation
 	std::optional<std::size_t> m_pageTextPage;
+	std::uint64_t m_pageTextVersion = 0;
 	void updatePageText();
+	void applyPageText(std::uint64_t version, pdf::Session* session,
+	                   std::size_t page, pdf::DocumentTextResult result);
 	std::vector<std::string> m_labels;
 	// what the page box was last set to, so only an edit goes anywhere
 	winrt::hstring m_pageBoxText;

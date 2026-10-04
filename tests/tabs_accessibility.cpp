@@ -424,15 +424,73 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			v.closePane();
 			break;
 		}
-		case 14:
+		case 14: {
 			check(findings == 0, std::to_string(findings) +
 			                         " accessibility findings; see "
 			                         "Sable-probe-logs\\accessibility.txt");
+			pagePeer =
+			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
+			        v.PageReader());
+			const auto text = pagePeer.GetPattern(Peers::PatternInterface::Text)
+			                      .as<Provider::ITextProvider>();
+			const auto beforeName = pagePeer.GetName();
+			const auto beforeText = text.DocumentRange().GetText(-1);
+			const auto gate = std::make_shared<winrt::handle>(
+			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+			check(static_cast<bool>(*gate));
+			check(engine.post(
+			          [gate] { WaitForSingleObject(gate->get(), 10000); }),
+			      "could not delay the page text");
+			v.goToPage(4);
+			const bool paired = pagePeer.GetName() == beforeName &&
+			                    text.DocumentRange().GetText(-1) == beforeText;
+			SetEvent(gate->get());
+			check(paired, "page name changed before its delayed text");
+			break;
+		}
+		case 15: {
+			const auto text = pagePeer.GetPattern(Peers::PatternInterface::Text)
+			                      .as<Provider::ITextProvider>();
+			if (pagePeer.GetName() != L"Page 5 of 5") {
+				check(ticks < 60, "delayed name/text never arrived together");
+				return;
+			}
+			const auto range = text.DocumentRange();
+			check(range.GetText(-1) == L"\u03a9\U0001f600\u00e9",
+			      "new page name came with another page's text");
+			const auto session = v.m_session.get();
+			const auto stale = v.m_pageTextVersion;
+			v.m_pageTextPage.reset();
+			v.updatePageText();
+			const auto version = v.m_pageTextVersion;
+			v.applyPageText(stale, session, 4,
+			                {"stale same-page reply", false});
+			v.applyPageText(version, nullptr, 4, {"stale session", false});
+			v.applyPageText(version, session, 0, {"stale page", false});
+			check(pagePeer.GetName() == L"Page 5 of 5" &&
+			          text.DocumentRange().GetText(-1) == range.GetText(-1),
+			      "a stale text reply replaced the page snapshot");
+			v.applyPageText(version, session, 4, {std::nullopt, true});
+			check(!v.m_pageTextPage &&
+			          text.DocumentRange().GetText(-1) == range.GetText(-1),
+			      "canceled text reply published a snapshot");
+			v.updatePageText();
+			const auto finalVersion = v.m_pageTextVersion;
+			v.applyPageText(finalVersion, session, 4, {std::nullopt, false});
+			check(pagePeer.GetName() == L"Page 5 of 5" &&
+			          text.DocumentRange().GetText(-1).empty() &&
+			          range.GetText(-1) == L"\u03a9\U0001f600\u00e9",
+			      "unavailable text or a retained range changed its snapshot");
 			v.close();
+			v.applyPageText(finalVersion, session, 4, {"closed reply", false});
+			check(text.DocumentRange().GetText(-1).empty(),
+			      "closed page accepted late text");
+			pagePeer = nullptr;
 			status.Text(L"PASS: names and keyboard reach on every surface");
 			probePass(owner.get_strong().as<Window>());
 			timer.Stop();
 			return;
+		}
 		}
 	}
 	}

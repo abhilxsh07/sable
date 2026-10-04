@@ -706,6 +706,7 @@ void ViewerPage::pagesChanged(pdf::SessionInfo info) {
 		m_readAloudWords.clear();
 	}
 	// the same page number can now hold another page's text
+	++m_pageTextVersion;
 	m_pageTextPage.reset();
 	m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 	closeFind();

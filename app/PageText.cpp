@@ -179,15 +179,7 @@ struct TextRange : implements<TextRange, ITextRangeProvider> {
 } // namespace
 
 void PageTextHost::PageName(const hstring& name) {
-	if (name == m_name) {
-		return;
-	}
-	m_name = name;
-	if (const auto peer = FrameworkElementAutomationPeer::FromElement(*this)) {
-		peer.RaiseNotificationEvent(
-		    AutomationNotificationKind::Other,
-		    AutomationNotificationProcessing::MostRecent, name, L"SablePage");
-	}
+	publish(name, PageText());
 }
 
 hstring PageTextHost::PageText() const {
@@ -195,13 +187,30 @@ hstring PageTextHost::PageText() const {
 }
 
 void PageTextHost::PageText(const hstring& text) {
+	publish(m_name, text);
+}
+
+void PageTextHost::publish(const hstring& name, const hstring& text) {
 	auto cleaned = helpers::screenReaderText(text);
-	if (cleaned == *m_text) {
-		return;
-	}
-	m_text = std::make_shared<const std::wstring>(std::move(cleaned));
+	const bool nameChanged = name != m_name;
+	const bool textChanged = cleaned != *m_text;
+	const auto snapshot =
+	    textChanged ? std::make_shared<const std::wstring>(std::move(cleaned))
+	                : m_text;
+	// both values are ready before a notification can make a client read them
+	m_name = name;
+	m_text = snapshot;
 	if (const auto peer = FrameworkElementAutomationPeer::FromElement(*this)) {
-		peer.RaiseAutomationEvent(AutomationEvents::TextPatternOnTextChanged);
+		if (nameChanged) {
+			peer.RaiseNotificationEvent(
+			    AutomationNotificationKind::Other,
+			    AutomationNotificationProcessing::MostRecent, name,
+			    L"SablePage");
+		}
+		if (textChanged) {
+			peer.RaiseAutomationEvent(
+			    AutomationEvents::TextPatternOnTextChanged);
+		}
 	}
 }
 

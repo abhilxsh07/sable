@@ -37,6 +37,7 @@ struct PageTextHost : PageTextHostT<PageTextHost> {
 	void PageName(const hstring& name);
 	hstring PageText() const;
 	void PageText(const hstring& text);
+	void publish(const hstring& name, const hstring& text);
 	Microsoft::UI::Xaml::Automation::Peers::AutomationPeer
 	OnCreateAutomationPeer();
 	// the text ranges keep the snapshot they were made from, so a page
