@@ -503,6 +503,15 @@ void TabsTest::attachmentSaveTick(MainWindow& owner) {
 			return attachmentChoice(hstring(path), attachmentGate);
 		};
 	};
+	const auto save = v.FindName(L"AttachmentSaveButton").try_as<Button>();
+	const auto saveSelected = [&] {
+		check(save && save.IsEnabled(), "attachment Save disabled");
+		using namespace Microsoft::UI::Xaml::Automation;
+		Peers::FrameworkElementAutomationPeer::CreatePeerForElement(save)
+		    .GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+	};
 	switch (step) {
 	case 0:
 		attachmentTarget = settingsPath;
@@ -513,56 +522,58 @@ void TabsTest::attachmentSaveTick(MainWindow& owner) {
 		if (!v.m_attachmentsBuilt) {
 			return;
 		}
-		check(v.AttachmentList().IsItemClickEnabled(),
-		      "attachment rows do not invoke Save As");
+		check(!v.AttachmentList().IsItemClickEnabled(),
+		      "selecting an attachment still invokes Save As");
+		check(save && !save.IsEnabled(), "Save enabled without a selection");
 		{
-			// UI Automation's Invoke takes the same ItemClick path as a
-			// click or Enter on the row
-			using namespace Microsoft::UI::Xaml::Automation;
 			const auto row =
 			    v.AttachmentList().Items().GetAt(0).as<ListViewItem>();
-			const auto peer =
-			    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(
-			        row);
-			const auto invoke =
-			    peer ? peer.GetPattern(Peers::PatternInterface::Invoke)
-			               .try_as<Provider::IInvokeProvider>()
-			         : nullptr;
-			if (!invoke) {
-				check(ticks < 30, "attachment row has no Invoke");
-				return;
-			}
 			choose(L"");
-			invoke.Invoke();
+			v.AttachmentList().SelectedItem(row);
+			check(attachmentPicks == 0 &&
+			          v.AttachmentList().SelectedItem() == row,
+			      "selecting an attachment opened its picker");
+			check(save.IsEnabled(), "selection did not enable Save");
+			saveSelected();
 		}
 		break;
-	case 2:
+	case 2: {
 		check(attachmentPicks == 1,
-		      "clicking an attachment row didn't open Save As");
+		      "explicit attachment Save did not open its picker");
 		check(!std::filesystem::exists(attachmentTarget) &&
 		          !v.Message().IsOpen(),
 		      "cancel changed attachment state");
 		check(attachmentName == L"notes \u03a9\U0001f600.txt",
 		      "picker lost Unicode filename");
+		v.AttachmentList().SelectedIndex(-1);
+		check(!save.IsEnabled(), "Save enabled after clearing selection");
+		const auto row = v.AttachmentList().Items().GetAt(0);
+		v.AttachmentList().Items().RemoveAt(0);
+		v.AttachmentList().Items().Append(row);
+		v.AttachmentList().SelectedItem(row);
 		choose(attachmentTarget.wstring());
-		v.saveAttachment(0);
+		saveSelected();
+		check(!save.IsEnabled(), "Save enabled during attachment extraction");
 		v.saveAttachment(1);
 		check(attachmentPicks == 2, "opened duplicate attachment picker");
 		break;
+	}
 	case 3: {
 		std::ifstream in(attachmentTarget, std::ios::binary);
 		const std::string bytes((std::istreambuf_iterator<char>(in)), {});
 		check(bytes == std::string("hello\0\xff\n", 8),
 		      "attachment bytes changed while saving");
 		choose(attachmentTarget.wstring());
-		v.saveAttachment(1);
+		v.AttachmentList().SelectedIndex(0);
+		saveSelected();
 		check(attachmentName == L"empty.bin", "picker kept a PDF path");
 		break;
 	}
 	case 4:
 		check(std::filesystem::file_size(attachmentTarget) == 0,
 		      "empty attachment was not saved");
-		v.saveAttachment(2);
+		v.AttachmentList().SelectedIndex(1);
+		saveSelected();
 		break;
 	case 5:
 		check(v.Message().IsOpen() &&
@@ -572,7 +583,8 @@ void TabsTest::attachmentSaveTick(MainWindow& owner) {
 		      "damaged attachment replaced a saved file");
 		v.Message().IsOpen(false);
 		choose(std::filesystem::absolute(v.m_path).wstring());
-		v.saveAttachment(0);
+		v.AttachmentList().SelectedIndex(3);
+		saveSelected();
 		break;
 	case 6:
 		check(v.Message().IsOpen() && std::wstring_view(v.Message().Message())
@@ -584,8 +596,13 @@ void TabsTest::attachmentSaveTick(MainWindow& owner) {
 		    CreateEventW(nullptr, TRUE, FALSE, nullptr));
 		check(static_cast<bool>(*attachmentGate));
 		choose(attachmentTarget.wstring());
-		v.saveAttachment(0);
-		check(v.m_attachmentSaving, "picker didn't suspend saving");
+		saveSelected();
+		check(v.m_attachmentSaving && !save.IsEnabled(),
+		      "picker didn't suspend saving");
+		v.AttachmentList().SelectedIndex(0);
+		check(!save.IsEnabled() &&
+		          attachmentName == L"notes \u03a9\U0001f600.txt",
+		      "busy selection changed the chosen attachment or enabled Save");
 		break;
 	case 7:
 		first.copy_from(&v);

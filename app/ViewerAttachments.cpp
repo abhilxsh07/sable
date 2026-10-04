@@ -78,6 +78,7 @@ void ViewerPage::setAttachmentsOpen(bool open) {
 	AttachmentButton().IsChecked(open);
 	AttachmentPanel().Visibility(open ? PanelVisibility::Visible
 	                                  : PanelVisibility::Collapsed);
+	updateAttachmentSave();
 	if (open) {
 		showAttachments();
 	}
@@ -135,6 +136,7 @@ void ViewerPage::requestAttachments() {
 	showAttachments();
 }
 void ViewerPage::showAttachments() {
+	updateAttachmentSave();
 	if (m_closed || !attachmentsOpen() ||
 	    Visibility() != PanelVisibility::Visible) {
 		return;
@@ -159,22 +161,22 @@ void ViewerPage::showAttachments() {
 	if (!m_attachmentsBuilt) {
 		AttachmentList().Items().Clear();
 		for (const auto& entry : m_attachments->entries) {
-			// a click reports the row's content rather than the row, so the
-			// name carries the PDF index as well (see setupAttachmentSaving)
 			TextBlock name;
 			name.Text(to_hstring(entry.name));
 			name.Tag(box_value(entry.index));
 			ListViewItem item;
 			item.Content(name);
 			item.Tag(box_value(entry.index));
-			ToolTipService::SetToolTip(item, box_value(L"Save attachment as"));
+			ToolTipService::SetToolTip(
+			    item, box_value(L"Select an attachment to save"));
 			Automation::AutomationProperties::SetName(item, name.Text());
 			Automation::AutomationProperties::SetHelpText(
-			    item, L"Save attachment as");
+			    item, L"Select this attachment, then choose Save");
 			AttachmentList().Items().Append(item);
 		}
 		m_attachmentsBuilt = true;
 	}
+	updateAttachmentSave();
 	const bool empty = m_attachments->entries.empty();
 	AttachmentList().Visibility(empty ? collapsed : visible);
 	AttachmentStatus().Visibility(empty || m_attachments->limited ? visible

@@ -30,19 +30,37 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::setupAttachmentSaving() {
-	AttachmentList().IsItemClickEnabled(true);
-	// ListViewBase::OnItemClick passes on the content of a row that is its
-	// own container, here the name's TextBlock, so both carry the index
-	// see:
-	// https://github.com/microsoft/microsoft-ui-xaml/blob/881cb743561f13b53d8ec44cd9451936bbc544cf/dxaml/xcp/dxaml/lib/ListViewBase_Partial_Interaction.cpp#L515-L565
-	AttachmentList().ItemClick(
-	    [weak = get_weak()](auto&&, const ItemClickEventArgs& args) {
-		    const auto row = args.ClickedItem().try_as<FrameworkElement>();
-		    const int index = row ? unbox_value_or<int>(row.Tag(), -1) : -1;
-		    if (auto self = weak.get(); self && index >= 0) {
-			    self->saveAttachment(index);
-		    }
-	    });
+	AttachmentList().IsItemClickEnabled(false);
+	const auto weak = get_weak();
+	AttachmentList().SelectionChanged([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->updateAttachmentSave();
+		}
+	});
+	AttachmentSaveButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->updateAttachmentSave();
+			const auto row = self->AttachmentList()
+			                     .SelectedItem()
+			                     .try_as<FrameworkElement>();
+			if (self->AttachmentSaveButton().IsEnabled() && row) {
+				self->saveAttachment(unbox_value_or<int>(row.Tag(), -1));
+			}
+		}
+	});
+}
+void ViewerPage::updateAttachmentSave() {
+	const auto row = AttachmentList().SelectedItem().try_as<FrameworkElement>();
+	const auto index = row ? unbox_value_or<int>(row.Tag(), -1) : -1;
+	const bool valid =
+	    m_attachments &&
+	    std::any_of(
+	        m_attachments->entries.begin(), m_attachments->entries.end(),
+	        [index](const auto& entry) { return entry.index == index; });
+	AttachmentSaveButton().IsEnabled(
+	    valid && !m_closed && m_session && !m_attachmentSaving &&
+	    !m_attachmentsPending && !organizing() && attachmentsOpen() &&
+	    Visibility() == Microsoft::UI::Xaml::Visibility::Visible);
 }
 fire_and_forget ViewerPage::saveAttachment(int index) {
 	weak_ref<ViewerPage> weak;
@@ -51,8 +69,8 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 	try {
 		weak = get_weak();
 		queue = DispatcherQueue();
-		if (m_closed || m_attachmentSaving || !m_session || !m_attachments ||
-		    !attachmentsOpen() ||
+		if (m_closed || m_attachmentSaving || organizing() || !m_session ||
+		    !m_attachments || !attachmentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			co_return;
 		}
@@ -66,6 +84,7 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 		const auto session = m_session.get();
 		version = ++m_attachmentSaveVersion;
 		m_attachmentSaving = true;
+		updateAttachmentSave();
 		const apartment_context ui;
 		hstring path;
 #ifdef SABLE_SURFACE_TEST
@@ -92,6 +111,7 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 		if (path.empty() || self->m_session.get() != session ||
 		    self->Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			self->m_attachmentSaving = false;
+			self->updateAttachmentSave();
 			co_return;
 		}
 		struct Extraction {
@@ -115,6 +135,7 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 		if (job->result.canceled || !job->result.bytes ||
 		    self->Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			self->m_attachmentSaving = false;
+			self->updateAttachmentSave();
 			if (!job->result.canceled && !job->result.bytes) {
 				self->showNotice(L"Couldn't read this attachment. It may be "
 				                 L"damaged or larger than 128 MiB.");
@@ -136,6 +157,7 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 		if (self = weak.get(); self && !self->m_closed &&
 		                       self->m_attachmentSaveVersion == version) {
 			self->m_attachmentSaving = false;
+			self->updateAttachmentSave();
 			if (!saved) {
 				self->showNotice(L"Couldn't save this attachment. Choose a "
 				                 L"writable folder and a file other than "
@@ -152,6 +174,7 @@ fire_and_forget ViewerPage::saveAttachment(int index) {
 					    self && !self->m_closed &&
 					    self->m_attachmentSaveVersion == version) {
 						self->m_attachmentSaving = false;
+						self->updateAttachmentSave();
 						self->showNotice(L"Couldn't save this attachment. Try "
 						                 L"again or choose another folder.");
 					}

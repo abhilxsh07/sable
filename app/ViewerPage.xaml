@@ -516,9 +516,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<ListView x:Name="AttachmentList" Grid.Row="2"
 					SelectionMode="Single"
 					AutomationProperties.Name="Attachments" />
-				<Button x:Name="AttachmentRetry" Grid.Row="3" Content="Retry"
-					Margin="12"
-					Visibility="Collapsed" HorizontalAlignment="Left" />
+				<StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
+					Margin="12">
+					<Button x:Name="AttachmentSaveButton" Content="Save" IsEnabled="False"
+						AutomationProperties.Name="Save selected attachment" />
+					<Button x:Name="AttachmentRetry" Content="Retry"
+						Visibility="Collapsed" />
+				</StackPanel>
 			</Grid>
 		</Border>
 

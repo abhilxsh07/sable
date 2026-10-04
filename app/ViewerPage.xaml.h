@@ -594,6 +594,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::optional<std::int64_t> m_commentVisibility, m_commentRailVisibility;
 	void setupAttachments();
 	void setupAttachmentSaving();
+	void updateAttachmentSave();
 	winrt::fire_and_forget saveAttachment(int index);
 	std::uint64_t m_attachmentSaveVersion = 0;
 	bool m_attachmentSaving = false;

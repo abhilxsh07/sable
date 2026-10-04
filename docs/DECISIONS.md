@@ -3842,3 +3842,17 @@ Approved A-49 replaces the initial PDF-count expansion recorded under
 Document outlines: every node starts collapsed. A large PDF cannot
 ask the UI to expand its entire hierarchy on first opening. The tree
 keeps its native selection, arrows, labels and destinations.
+
+## Select an attachment before saving (2026-11-15)
+
+Approved A-50 replaces the row-invokes-picker flow under Attachment Save
+As. Selecting a row now only selects it. A named Save button uses that
+row's PDF attachment index, even if rows have moved. It is disabled
+without a valid selection, while loading or saving, while hidden, and
+in Organize. The chosen index/name stay with an operation while its
+picker waits. Cancellation and every completion restore enablement.
+
+The existing extraction limit, source-overwrite guard and byte writer
+stay as before; attachments are never launched. The native row peer
+does not offer SelectionItem to the probe here, so it changes the
+ListView selection directly and invokes Save through UI Automation.
