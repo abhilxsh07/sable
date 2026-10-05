@@ -1,0 +1,13 @@
+{
+	"$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+	"name": "sable",
+	"version-string": "1.0.0-alpha.1",
+	"license": "GPL-2.0-only",
+	"builtin-baseline": "c76c06644034521fb761a39f8f52d8e87d1103d5",
+	"dependencies": [
+		"nlohmann-json",
+		"cli11",
+		"spdlog",
+		"gtest"
+	]
+}
