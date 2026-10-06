@@ -63,7 +63,11 @@ mine below it. First line of the header: "Sable, a native port of NightPDF".
 - PDFium `chromium/8086` (bblanchon/pdfium-binaries)
 - vcpkg baseline `c76c06644034521fb761a39f8f52d8e87d1103d5` (the 2026.07.29
   release)
-- Windows App SDK, C++/WinRT, WIL: pinned when the solution goes in
+- Windows App SDK 2.5.1 (meta package; its sub-packages are pinned in
+  `app/packages.config`, which is the actual source of truth)
+- C++/WinRT 3.0.260818.1, WIL 1.0.260126.7, Windows SDK build tools
+  10.0.28000.2705
+- Built with VS 2022 17.14 (MSVC v143)
 
 ## Differences from NightPDF
 
