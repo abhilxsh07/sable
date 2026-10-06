@@ -36,9 +36,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Grid x:Name="splash" Width="300" Height="232" Margin="0,60,0,0"
 				HorizontalAlignment="Center" VerticalAlignment="Top">
 				<!-- the dashed border is gradient3.svg in NightPDF, drawn here
-					instead of loaded. StrokeDashArray counts in stroke widths,
-					so "2 2" at 3px is the svg's "6 6" -->
-				<Rectangle StrokeThickness="3" StrokeDashArray="2 2" RadiusX="4" RadiusY="4">
+					instead of loaded. The svg strokes 3px centred on the edge of
+					its own viewport, so only the inner 1.5px ever shows, with
+					square corners. StrokeDashArray counts in stroke widths, so
+					"4 4" at 1.5px is the svg's "6 6" -->
+				<Rectangle StrokeThickness="1.5" StrokeDashArray="4 4">
 					<Rectangle.Stroke>
 						<LinearGradientBrush MappingMode="Absolute" StartPoint="156.079,232" EndPoint="143.921,0">
 							<GradientStop Offset="0" Color="#29c0ea" />

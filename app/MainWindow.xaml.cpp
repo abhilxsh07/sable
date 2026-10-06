@@ -41,8 +41,16 @@ constexpr int MIN_WIDTH = 565;
 constexpr int MIN_HEIGHT = 200;
 
 std::filesystem::path exeDir() {
-	wchar_t buf[MAX_PATH]{};
-	GetModuleFileNameW(nullptr, buf, MAX_PATH);
+	// GetModuleFileNameW truncates instead of failing when the buffer is too
+	// small, so keep growing it until the whole path fits
+	std::wstring buf(MAX_PATH, L'\0');
+	DWORD len = 0;
+	while ((len = GetModuleFileNameW(nullptr, buf.data(),
+	                                 static_cast<DWORD>(buf.size()))) ==
+	       buf.size()) {
+		buf.resize(buf.size() * 2);
+	}
+	buf.resize(len);
 	return std::filesystem::path(buf).parent_path();
 }
 } // namespace
@@ -59,8 +67,12 @@ void MainWindow::setupWindow() {
 	// relative paths resolve against the working directory, not the exe
 	appWindow.SetIcon((exeDir() / L"assets" / L"icon.ico").wstring());
 
+	auto windowNative = this->try_as<::IWindowNative>();
+	if (!windowNative) {
+		return; // every XAML Window has one, but don't crash over a size
+	}
 	HWND hwnd{};
-	check_hresult(this->try_as<::IWindowNative>()->get_WindowHandle(&hwnd));
+	check_hresult(windowNative->get_WindowHandle(&hwnd));
 	const double scale = GetDpiForWindow(hwnd) / 96.0;
 	auto px = [scale](int dip) {
 		return static_cast<int32_t>(dip * scale + 0.5);
