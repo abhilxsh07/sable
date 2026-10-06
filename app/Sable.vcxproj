@@ -185,6 +185,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<CopyFileToFolders Include="assets\gradient3.svg">
 			<DestinationFolders>$(OutDir)assets</DestinationFolders>
 		</CopyFileToFolders>
+		<!-- Manrope, from googlefonts/manrope (OFL 1.1, licence next to it) -->
+		<CopyFileToFolders Include="assets\fonts\Manrope-VF.ttf">
+			<DestinationFolders>$(OutDir)assets\fonts</DestinationFolders>
+		</CopyFileToFolders>
+		<CopyFileToFolders Include="assets\fonts\OFL.txt">
+			<DestinationFolders>$(OutDir)assets\fonts</DestinationFolders>
+		</CopyFileToFolders>
 	</ItemGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 	<ImportGroup Label="ExtensionTargets">
