@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.37710.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sable", "app\Sable.vcxproj", "{3F6B2C4E-8D1A-4B7E-9C52-6A1D0E7F4B93}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sable.Tests", "tests\Sable.Tests.vcxproj", "{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -25,6 +27,14 @@ Global
 		{3F6B2C4E-8D1A-4B7E-9C52-6A1D0E7F4B93}.Release|ARM64.ActiveCfg = Release|ARM64
 		{3F6B2C4E-8D1A-4B7E-9C52-6A1D0E7F4B93}.Release|ARM64.Build.0 = Release|ARM64
 		{3F6B2C4E-8D1A-4B7E-9C52-6A1D0E7F4B93}.Release|ARM64.Deploy.0 = Release|ARM64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Debug|x64.ActiveCfg = Debug|x64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Debug|x64.Build.0 = Debug|x64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Debug|ARM64.Build.0 = Debug|ARM64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Release|x64.ActiveCfg = Release|x64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Release|x64.Build.0 = Release|x64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Release|ARM64.ActiveCfg = Release|ARM64
+		{A7C3E915-2F4B-4D86-B0E1-5C9D8F3A2B67}.Release|ARM64.Build.0 = Release|ARM64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

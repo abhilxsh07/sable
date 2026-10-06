@@ -25,8 +25,7 @@ $root = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot "build.ps1") -Config $Config -Platform $Platform
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$tests = Get-ChildItem -Path (Join-Path $root "tests") -Recurse -Filter "*Tests.exe" -ErrorAction SilentlyContinue |
-	Where-Object { $_.FullName -match "\\$Platform\\$Config\\" }
+$tests = Get-ChildItem -Path (Join-Path $root "$Platform\$Config") -Filter "*Tests.exe" -ErrorAction SilentlyContinue
 if (-not $tests) {
 	Write-Output "test: no test binaries found for $Config|$Platform"
 	exit 1
