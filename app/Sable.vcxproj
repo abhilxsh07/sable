@@ -58,10 +58,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<WindowsPackageType>None</WindowsPackageType>
 		<AppxPackage>false</AppxPackage>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-		<!-- On ARM64 the inline C# tasks in the App SDK targets warn (CS1668)
-			that LIB lists ARM64 ATL and .NET SDK folders that aren't installed.
-			Neither is used here, so treat that one as a message. -->
-		<MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);CS1668</MSBuildWarningsAsMessages>
 	</PropertyGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 	<ItemGroup Label="ProjectConfigurations">

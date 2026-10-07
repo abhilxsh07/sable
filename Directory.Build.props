@@ -20,6 +20,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 -->
 <!-- Settings every C++ project in the solution should share. -->
 <Project>
+	<PropertyGroup>
+		<!-- inline C# build tasks (the App SDK has some) warn with CS1668 when LIB
+			lists ATL or .NET SDK lib folders that aren't installed, which
+			happens on ARM64 and on the GitHub runner. Nothing here uses ATL, so
+			treat that one as a message. -->
+		<MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);CS1668</MSBuildWarningsAsMessages>
+	</PropertyGroup>
 	<ItemDefinitionGroup>
 		<ClCompile>
 			<LanguageStandard>stdcpp20</LanguageStandard>
