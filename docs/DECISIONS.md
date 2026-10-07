@@ -38,8 +38,9 @@ version lives.
 ## Dependencies (2026-10-06)
 
 Microsoft packages (Windows App SDK, C++/WinRT, WIL) come from NuGet.
-Everything else (nlohmann/json, CLI11, spdlog, GoogleTest) comes from vcpkg in
-manifest mode, with a pinned baseline.
+Everything else (nlohmann/json, spdlog, GoogleTest) comes from vcpkg in
+manifest mode, with a pinned baseline. No CLI11 in the end: matching yargs'
+help output exactly was easier with a small hand-written parser.
 
 ## License header (2026-10-06)
 
