@@ -55,6 +55,19 @@ font (wght 200-800), OFL licensed, and ships inside the app with its licence
 next to it. Taken from googlefonts/manrope at
 `468c0dbe38efa331b80bfe9448256abe27be44c3` (v4.505).
 
+## More than a port (2026-10-07)
+
+Going through NightPDF's screens side by side with Acrobat Reader made it
+obvious how much a PDF reader can do that NightPDF only had because PDF.js
+came with it, or didn't have at all. So the goal moved: parity first is still
+how I'm building it, but the end result should be a reader with Acrobat
+Reader's free tools (comments, Fill & Sign, the works) plus organize pages,
+combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
+
+- The preset buttons stay in the top bar. They're the reason this app exists.
+- One Menu button instead of the classic menu bar. Same items, same shortcuts.
+- Layout ideas from Acrobat, but the icons are Windows' own Fluent icons.
+
 ## Still undecided
 
 - Help menu links. Upstream is archived and its issues are closed, so pointing
@@ -80,6 +93,9 @@ next to it. Taken from googlefonts/manrope at
 ## Differences from NightPDF
 
 - The UI font is Manrope, not Arial (see above).
+- The classic File / Edit / View / Window / Help menu bar becomes a single
+  Menu button.
+- Lots of tools NightPDF never had (see DESIGN.md).
 - `pull.yaml` also runs on pushes to main and by hand, not only on pull
   requests. It builds x64 and ARM64 on windows-2022 (windows-2025 only has VS 2026) and
   runs the tests on x64.
