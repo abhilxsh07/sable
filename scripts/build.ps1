@@ -44,10 +44,22 @@ $code = $LASTEXITCODE
 $diag = $out | ForEach-Object { "$_" } | Where-Object { $_ -match ":\s*(fatal )?(error|warning)( [A-Z]+\d+)?\s*:" } | Select-Object -Unique
 $errors = @($diag | Where-Object { $_ -match ":\s*(fatal )?error( [A-Z]+\d+)?\s*:" }).Count
 $warnings = @($diag).Count - $errors
-$diag | Select-Object -First 30 | ForEach-Object { Write-Output $_ }
+# on GitHub Actions, print them as annotations so they show up on the run
+# page (the raw logs need a signed-in account even on a public repo)
+$gh = $env:GITHUB_ACTIONS -eq "true"
+$diag | Select-Object -First 30 | ForEach-Object {
+	if ($gh) {
+		$level = if ($_ -match ":\s*(fatal )?error") { "error" } else { "warning" }
+		Write-Output "::${level}::$_"
+	} else {
+		Write-Output $_
+	}
+}
 if ($code -ne 0 -and @($diag).Count -eq 0) {
 	# no coded diagnostics (e.g. "error : ..."): show the tail instead
-	$out | Select-Object -Last 10 | ForEach-Object { Write-Output "$_" }
+	$out | Select-Object -Last 10 | ForEach-Object {
+		if ($gh) { Write-Output "::error::$_" } else { Write-Output "$_" }
+	}
 }
 $state = if ($code -eq 0) { "OK" } else { "FAILED" }
 Write-Output "build $Config|$Platform ${state}: $errors error(s), $warnings warning(s)"
