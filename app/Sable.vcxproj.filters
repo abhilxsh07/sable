@@ -62,6 +62,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</CopyFileToFolders>
 	</ItemGroup>
 	<ItemGroup>
+		<ClInclude Include="helpers\version.h">
+			<Filter>helpers</Filter>
+		</ClInclude>
+		<ClCompile Include="helpers\version.cpp">
+			<Filter>helpers</Filter>
+		</ClCompile>
+	</ItemGroup>
+	<ItemGroup>
+		<Filter Include="helpers">
+			<UniqueIdentifier>{2D7F4A91-6C3B-4E58-A1D0-8B5E3F7C9264}</UniqueIdentifier>
+		</Filter>
 		<Filter Include="assets">
 			<UniqueIdentifier>{9E2A4D61-0B7C-4F3A-8E15-2C6D7B0A9F48}</UniqueIdentifier>
 		</Filter>

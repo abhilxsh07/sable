@@ -58,6 +58,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<WindowsPackageType>None</WindowsPackageType>
 		<AppxPackage>false</AppxPackage>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<!-- vcpkg (VS's own) for the header-only libs helpers/ uses. Static
+			triplet because the app links the CRT statically (hybrid CRT). -->
+		<VcpkgEnableManifest>true</VcpkgEnableManifest>
+		<VcpkgAutoLink>false</VcpkgAutoLink>
+		<VcpkgTriplet>$(Platform.ToLower())-windows-static</VcpkgTriplet>
 	</PropertyGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 	<ItemGroup Label="ProjectConfigurations">
@@ -95,6 +100,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</PropertyGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
 	<ImportGroup Label="ExtensionSettings">
+		<Import Project="$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.props" Condition="Exists('$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.props')" />
 	</ImportGroup>
 	<ImportGroup Label="PropertySheets">
 		<Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -151,6 +157,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
 	</ItemGroup>
+	<!-- helpers/ is plain C++ with no WinRT in it, so it stays out of the pch -->
+	<ItemGroup>
+		<ClInclude Include="helpers\version.h" />
+	</ItemGroup>
+	<ItemGroup>
+		<ClCompile Include="helpers\version.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+	</ItemGroup>
 	<ItemGroup>
 		<Midl Include="MainWindow.idl">
 			<SubType>Code</SubType>
@@ -191,6 +206,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 	<ImportGroup Label="ExtensionTargets">
+		<Import Project="$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets" Condition="Exists('$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets')" />
 		<Import Project="..\packages\Microsoft.Windows.SDK.BuildTools.10.0.28000.2705\build\Microsoft.Windows.SDK.BuildTools.targets" Condition="Exists('..\packages\Microsoft.Windows.SDK.BuildTools.10.0.28000.2705\build\Microsoft.Windows.SDK.BuildTools.targets')" />
 		<Import Project="..\packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.targets" Condition="Exists('..\packages\Microsoft.Windows.SDK.BuildTools.MSIX.1.7.251221100\build\Microsoft.Windows.SDK.BuildTools.MSIX.targets')" />
 		<Import Project="..\packages\Microsoft.WindowsAppSDK.Base.2.0.4\build\native\Microsoft.WindowsAppSDK.Base.targets" Condition="Exists('..\packages\Microsoft.WindowsAppSDK.Base.2.0.4\build\native\Microsoft.WindowsAppSDK.Base.targets')" />

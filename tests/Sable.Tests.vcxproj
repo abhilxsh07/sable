@@ -72,7 +72,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ImportGroup>
 	<ItemDefinitionGroup>
 		<ClCompile>
-			<PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<AdditionalIncludeDirectories>..\app\helpers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 		</ClCompile>
 		<Link>
 			<SubSystem>Console</SubSystem>
@@ -92,6 +92,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ClCompile Include="main.cpp" />
 		<ClCompile Include="sanity_test.cpp" />
+		<ClCompile Include="version_test.cpp" />
+	</ItemGroup>
+	<!-- the code under test, built straight from app/helpers -->
+	<ItemGroup>
+		<ClInclude Include="..\app\helpers\version.h" />
+		<ClCompile Include="..\app\helpers\version.cpp" />
 	</ItemGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 	<ImportGroup Label="ExtensionTargets">
