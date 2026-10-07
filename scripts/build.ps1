@@ -29,8 +29,9 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer
 $msbuild = $null
 if (Test-Path $vswhere) {
 	# the projects use the VS 2022 toolset (v143). A newer VS can sit next to
-	# it (the GitHub runner has VS 2026 too) but can't build these projects
-	# without the 2022 tools, so prefer a 2022 install and fall back to latest
+	# it (or replace it, like on the windows-2025 runner) but can't build these
+	# projects without the 2022 tools, so prefer a 2022 install and fall back
+	# to the latest one
 	foreach ($range in @("[17.0,18.0)", $null)) {
 		$vsArgs = @("-latest", "-products", "*", "-requires", "Microsoft.Component.MSBuild", "-find", "MSBuild\**\Bin\MSBuild.exe")
 		if ($range) { $vsArgs = @("-version", $range) + $vsArgs }
