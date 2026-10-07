@@ -1,0 +1,65 @@
+# Sable, a native port of NightPDF
+# Copyright (C) 2021  Advaith Madhukar
+# Copyright (C) 2026  Abhilash Kar
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Same name and pull_request triggers as NightPDF's pull.yaml. Pushes to main
+# run it too so main itself shows whether it builds.
+name: Pull Request
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+    env:
+      # keep vcpkg's built libraries between runs (gtest, spdlog, ...)
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: cache nuget packages
+        uses: actions/cache@v4
+        with:
+          path: packages
+          key: nuget-${{ hashFiles('app/packages.config') }}
+      - name: cache vcpkg builds
+        uses: actions/cache@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
+      - name: make vcpkg cache dir
+        run: New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
+      - name: format
+        if: matrix.platform == 'x64'
+        run: ./scripts/format.ps1 -Check
+      - name: build
+        run: ./scripts/build.ps1 -Config Release -Platform ${{ matrix.platform }}
+      # the runner is x64, so ARM64 only gets built, not run
+      - name: test
+        if: matrix.platform == 'x64'
+        run: ./scripts/test.ps1 -Config Release -Platform x64
