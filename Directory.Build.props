@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+-->
+<!-- Settings every C++ project in the solution should share. -->
+<Project>
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<LanguageStandard>stdcpp20</LanguageStandard>
+			<!-- /permissive- -->
+			<ConformanceMode>true</ConformanceMode>
+			<WarningLevel>Level4</WarningLevel>
+			<!-- the sources have non-ASCII literals (the easter egg flag, for one),
+				so don't let MSVC guess the code page -->
+			<AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+			<TreatWarningAsError Condition="'$(CI)'=='true'">true</TreatWarningAsError>
+			<!-- /FS. The App SDK's auto-initializer .cpp files build without the
+				pch at the same time as everything else and they all write the same
+				vc143.pdb (C1041 in Debug). VC only adds /FS by itself in
+				multi-tool-task mode, see the comment in Microsoft.CppCommon.targets -->
+			<ForceSynchronousPDBWrites>true</ForceSynchronousPDBWrites>
+		</ClCompile>
+	</ItemDefinitionGroup>
+
+	<!-- Hybrid CRT for the app: static VC runtime + STL, dynamic UCRT.
+		A self-contained build otherwise still needs the VC++ redistributable
+		installed, which defeats the point.
+		see: https://github.com/microsoft/WindowsAppSDK/blob/main/HybridCRT.props
+		see: https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/self-contained-deploy/deploy-self-contained-apps -->
+	<ItemDefinitionGroup Condition="'$(MSBuildProjectName)'=='Sable' and '$(Configuration)'=='Debug'">
+		<ClCompile>
+			<RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+		</ClCompile>
+		<Link>
+			<IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries);libucrtd.lib</IgnoreSpecificDefaultLibraries>
+			<AdditionalOptions>%(AdditionalOptions) /defaultlib:ucrtd.lib</AdditionalOptions>
+		</Link>
+	</ItemDefinitionGroup>
+	<ItemDefinitionGroup Condition="'$(MSBuildProjectName)'=='Sable' and '$(Configuration)'=='Release'">
+		<ClCompile>
+			<RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+		</ClCompile>
+		<Link>
+			<IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries);libucrt.lib</IgnoreSpecificDefaultLibraries>
+			<AdditionalOptions>%(AdditionalOptions) /defaultlib:ucrt.lib</AdditionalOptions>
+		</Link>
+	</ItemDefinitionGroup>
+</Project>
