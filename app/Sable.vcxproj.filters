@@ -54,10 +54,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<CopyFileToFolders Include="assets\gradient3.svg">
 			<Filter>assets</Filter>
 		</CopyFileToFolders>
+		<CopyFileToFolders Include="assets\fonts\Manrope-VF.ttf">
+			<Filter>assets\fonts</Filter>
+		</CopyFileToFolders>
+		<CopyFileToFolders Include="assets\fonts\OFL.txt">
+			<Filter>assets\fonts</Filter>
+		</CopyFileToFolders>
 	</ItemGroup>
 	<ItemGroup>
 		<Filter Include="assets">
 			<UniqueIdentifier>{9E2A4D61-0B7C-4F3A-8E15-2C6D7B0A9F48}</UniqueIdentifier>
+		</Filter>
+		<Filter Include="assets\fonts">
+			<UniqueIdentifier>{5B8E1C73-4D29-4A6F-9E03-7C1F2A8D6B40}</UniqueIdentifier>
 		</Filter>
 	</ItemGroup>
 	<ItemGroup>
