@@ -28,7 +28,15 @@ $sln = Join-Path $root "Sable.sln"
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuild = $null
 if (Test-Path $vswhere) {
-	$msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+	# the projects use the VS 2022 toolset (v143). A newer VS can sit next to
+	# it (the GitHub runner has VS 2026 too) but can't build these projects
+	# without the 2022 tools, so prefer a 2022 install and fall back to latest
+	foreach ($range in @("[17.0,18.0)", $null)) {
+		$vsArgs = @("-latest", "-products", "*", "-requires", "Microsoft.Component.MSBuild", "-find", "MSBuild\**\Bin\MSBuild.exe")
+		if ($range) { $vsArgs = @("-version", $range) + $vsArgs }
+		$msbuild = & $vswhere @vsArgs | Select-Object -First 1
+		if ($msbuild) { break }
+	}
 }
 if (-not $msbuild) {
 	Write-Output "build: couldn't find Visual Studio/MSBuild (see Building in README.md)"
