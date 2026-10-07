@@ -1459,7 +1459,9 @@ void MainWindow::updateCursorToolMenu() {
 	const bool hand = viewer && get_self<ViewerPage>(viewer)->cursorTool() ==
 	                                ViewerPage::CursorTool::Hand;
 	HandToolItem().IsChecked(hand);
-	SelectToolItem().IsChecked(!hand);
+	SelectToolItem().IsChecked(viewer &&
+	                           get_self<ViewerPage>(viewer)->m_activeTool ==
+	                               ViewerPage::ActiveTool::Select);
 }
 void MainWindow::onCursorTool(const Windows::Foundation::IInspectable& sender,
                               const RoutedEventArgs&) {
@@ -1527,7 +1529,7 @@ void MainWindow::setupWindow() {
 			        [](const auto& entry) {
 				        const auto pdf = get_self<ViewerPage>(entry.viewer);
 				        return pdf->m_notesDirty || pdf->m_noteBusy ||
-				               pdf->m_noteDialog || pdf->m_notePlacing ||
+				               pdf->m_noteDialog || pdf->notePlacing() ||
 				               pdf->m_noteSaving || pdf->pageOperationBusy();
 			        });
 			if (needsReview || self->m_closePending) {

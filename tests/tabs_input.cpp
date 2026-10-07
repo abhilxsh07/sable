@@ -850,13 +850,13 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		v.setCommentsOpen(true);
 		v.beginNotePlacement();
 		v.openFind();
-		check(v.findOpen() && v.m_notePlacing &&
+		check(v.findOpen() && v.notePlacing() &&
 		          v.m_toolPane == ToolPane::Launcher,
 		      "Esc order: Find, a note and the tool pane didn't all open");
-		check(key(VK_ESCAPE) && !v.findOpen() && v.m_notePlacing &&
+		check(key(VK_ESCAPE) && !v.findOpen() && v.notePlacing() &&
 		          v.m_toolPane == ToolPane::Launcher,
 		      "Esc didn't close Find first");
-		check(key(VK_ESCAPE) && !v.m_notePlacing &&
+		check(key(VK_ESCAPE) && !v.notePlacing() &&
 		          v.m_toolPane == ToolPane::Launcher,
 		      "Esc didn't drop the armed note next");
 		v.openOrganize();

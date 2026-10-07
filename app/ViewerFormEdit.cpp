@@ -44,7 +44,7 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 	}
 	if (m_closed || !m_session || !m_layout || presenting() ||
 	    m_directManipulation || m_noteBusy || m_noteSaving || m_noteDialog ||
-	    m_notePlacing || Visibility() != XVisibility::Visible ||
+	    notePlacing() || Visibility() != XVisibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable())) {
 		return;
 	}
@@ -88,7 +88,7 @@ void ViewerPage::requestFormAt(Windows::Foundation::Point point) {
 				            self->Visibility() != XVisibility::Visible ||
 				            result.canceled || !self->m_fillAllowed ||
 				            self->m_noteBusy || self->m_noteSaving ||
-				            self->m_noteDialog || self->m_notePlacing ||
+				            self->m_noteDialog || self->notePlacing() ||
 				            (self->m_notesAvailable &&
 				             !self->m_notesAvailable())) {
 					        return;
@@ -140,7 +140,7 @@ fire_and_forget ViewerPage::editFormField(int page, std::uint64_t revision,
 			co_return;
 		}
 		if (m_closed || !m_session || !m_fillAllowed || presenting() ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || notePlacing() ||
 		    m_passwordDialog || !XamlRoot() ||
 		    Visibility() != XVisibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {

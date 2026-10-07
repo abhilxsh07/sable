@@ -38,17 +38,19 @@ bool panContent(DependencyObject source, const ScrollViewer& scroller) {
 }
 } // namespace
 void ViewerPage::setCursorTool(CursorTool tool) {
-	if (m_closed || presenting() || tool == m_cursorTool) {
+	if (m_closed || presenting() ||
+	    (tool != ActiveTool::Select && tool != ActiveTool::Hand)) {
 		return;
 	}
+	cancelNotePlacement();
 	stopPan();
 	cancelSelectionDrag();
-	m_cursorTool = tool;
+	m_activeTool = tool;
 	updatePanCursor();
 	updateQuickTools();
 }
 void ViewerPage::updatePanCursor() {
-	if (!m_closed && m_cursorTool == CursorTool::Hand &&
+	if (!m_closed && m_activeTool == CursorTool::Hand &&
 	    (m_panHover || m_pan.active())) {
 		if (!m_handCursor) {
 			using namespace Microsoft::UI::Input;
@@ -80,7 +82,7 @@ void ViewerPage::stopPan(bool leaveViewport) {
 }
 bool ViewerPage::beginPan(Windows::Foundation::Point point) {
 	if (m_closed || presenting() || !m_layout ||
-	    m_cursorTool != CursorTool::Hand ||
+	    m_activeTool != CursorTool::Hand ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return false;
 	}
@@ -154,7 +156,7 @@ void ViewerPage::setupPan() {
 			return;
 		}
 		if (!self || self->m_pan.active() ||
-		    self->m_cursorTool != CursorTool::Hand ||
+		    self->m_activeTool != CursorTool::Hand ||
 		    e.Pointer().PointerDeviceType() ==
 		        Microsoft::UI::Input::PointerDeviceType::Touch ||
 		    !e.GetCurrentPoint(self->Scroller())

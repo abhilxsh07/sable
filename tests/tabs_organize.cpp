@@ -1050,20 +1050,33 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		          v.Scroller().Margin().Left > 55,
 		      "All tools didn't open with every tool");
 		invoke(quick(L"hand"));
-		check(v.m_cursorTool == ViewerPage::CursorTool::Hand &&
+		check(v.m_activeTool == ViewerPage::CursorTool::Hand &&
 		          checked(quick(L"hand")) && !checked(quick(L"select")),
 		      "the hand quick tool didn't take over");
 		invoke(quick(L"select"));
-		check(v.m_cursorTool == ViewerPage::CursorTool::Select &&
+		check(v.m_activeTool == ViewerPage::CursorTool::Select &&
 		          checked(quick(L"select")),
 		      "the select quick tool didn't come back");
 		invoke(quick(L"note"));
-		check(v.m_notePlacing &&
-		          v.m_placementTool == ViewerPage::PlacementTool::Note &&
+		check(v.notePlacing() &&
+		          v.m_activeTool == ViewerPage::PlacementTool::Note &&
 		          checked(quick(L"note")),
 		      "the sticky note quick tool didn't arm");
+		invoke(quick(L"hand"));
+		check(!v.notePlacing() && checked(quick(L"hand")) &&
+		          !checked(quick(L"note")),
+		      "Hand kept the note armed beside it");
+		v.setThumbnailsOpen(true);
 		invoke(quick(L"note"));
-		check(!v.m_notePlacing && !checked(quick(L"note")),
+		check(v.notePlacing() && v.thumbnailsOpen() && !v.commentsOpen() &&
+		          !checked(quick(L"hand")) && !checked(quick(L"select")),
+		      "arming a note replaced the panel or kept another tool checked");
+		owner.updateCursorToolMenu();
+		check(!owner.HandToolItem().IsChecked() &&
+		          !owner.SelectToolItem().IsChecked(),
+		      "the cursor menu checked a second tool beside Note");
+		invoke(quick(L"note"));
+		check(!v.notePlacing() && !checked(quick(L"note")),
 		      "a second press didn't cancel the note");
 		invoke(quick(L"highlight"));
 		check(!v.m_noteBusy, "Highlight with nothing selected did something");

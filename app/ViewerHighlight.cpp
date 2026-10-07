@@ -26,7 +26,7 @@ using namespace winrt;
 namespace winrt::Sable::implementation {
 bool ViewerPage::canMarkSelection() const {
 	return hasTextSelection() && m_session && m_noteAllowed && !m_noteBusy &&
-	       !m_noteSaving && !m_noteDialog && !m_notePlacing &&
+	       !m_noteSaving && !m_noteDialog && !notePlacing() &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());
 }

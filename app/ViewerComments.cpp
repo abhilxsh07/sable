@@ -326,7 +326,7 @@ void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	if (width) {
 		s_inkStyle.width = *width;
 	}
-	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
+	if (notePlacing() && m_activeTool == PlacementTool::Ink) {
 		showComments();
 	} else {
 		beginNotePlacement(PlacementTool::Ink);
@@ -337,7 +337,7 @@ void ViewerPage::closeComments() {
 	m_stampImage.reset();
 	m_stampPicking = false;
 	dropInkStroke();
-	m_notePlacing = false;
+	m_activeTool = ActiveTool::Select;
 	setCommentsOpen(false);
 	if (m_commentVisibility) {
 		UnregisterPropertyChangedCallback(UIElement::VisibilityProperty(),
@@ -357,35 +357,30 @@ void ViewerPage::showComments() {
 		return;
 	}
 	updateQuickTools();
-	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
-	    Rail().Visibility() != XVisibility::Visible) {
+	if (Visibility() != XVisibility::Visible) {
 		m_shapeStart.reset();
-		m_stampImage.reset();
-		m_stampPicking = false;
 		dropInkStroke();
-		m_notePlacing = false;
 	}
 	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
-	PlaceNoteButton().Text(m_notePlacing &&
-	                               m_placementTool == PlacementTool::Note
+	PlaceNoteButton().Text(notePlacing() && m_activeTool == PlacementTool::Note
 	                           ? L"Cancel placement"
 	                           : L"Place note on page");
 	PlaceTextBoxButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
 	                               !m_noteSaving);
-	PlaceTextBoxButton().Text(m_notePlacing &&
-	                                  m_placementTool == PlacementTool::TextBox
+	PlaceTextBoxButton().Text(notePlacing() &&
+	                                  m_activeTool == PlacementTool::TextBox
 	                              ? L"Cancel text box placement"
 	                              : L"Place text box on page");
 	PlaceRectangleButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
 	                                 !m_noteSaving && !m_noteDialog);
-	PlaceRectangleButton().Text(m_notePlacing && m_placementTool ==
-	                                                 PlacementTool::Rectangle
+	PlaceRectangleButton().Text(notePlacing() &&
+	                                    m_activeTool == PlacementTool::Rectangle
 	                                ? L"Cancel rectangle placement"
 	                                : L"Place rectangle on page");
 	PlaceEllipseButton().IsEnabled(m_noteAllowed && !m_noteBusy &&
 	                               !m_noteSaving && !m_noteDialog);
-	PlaceEllipseButton().Text(m_notePlacing &&
-	                                  m_placementTool == PlacementTool::Ellipse
+	PlaceEllipseButton().Text(notePlacing() &&
+	                                  m_activeTool == PlacementTool::Ellipse
 	                              ? L"Cancel ellipse placement"
 	                              : L"Place ellipse on page");
 	for (const auto& [button, tool, text] :
@@ -393,20 +388,20 @@ void ViewerPage::showComments() {
 	      std::tuple{PlaceArrowButton(), PlacementTool::Arrow, L"arrow"}}) {
 		button.IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 		                 !m_noteDialog);
-		button.Text(m_notePlacing && m_placementTool == tool
+		button.Text(notePlacing() && m_activeTool == tool
 		                ? L"Cancel " + hstring(text) + L" placement"
 		                : L"Place " + hstring(text) + L" on page");
 	}
 	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
 	FillMarksMenu().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_noteDialog && !m_passwordDialog);
-	PlaceStampButton().Text(m_notePlacing &&
-	                                m_placementTool == PlacementTool::Stamp
+	PlaceStampButton().Text(notePlacing() &&
+	                                m_activeTool == PlacementTool::Stamp
 	                            ? L"Cancel image stamp placement"
 	                            : L"Place image stamp");
 	DrawInkButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
 	                          !m_noteDialog);
-	DrawInkButton().Text(m_notePlacing && m_placementTool == PlacementTool::Ink
+	DrawInkButton().Text(notePlacing() && m_activeTool == PlacementTool::Ink
 	                         ? L"Stop drawing"
 	                         : L"Draw on page");
 	// another tab or window may have changed the shared style
@@ -425,11 +420,11 @@ void ViewerPage::showComments() {
 		}
 	}
 	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
-	                          !m_notePlacing);
+	                          !notePlacing());
 	SaveNotesButton().Content(box_value(
 	    m_formsDirty || m_pagesDirty ? L"Save changes" : L"Save notes"));
 	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
-	                            !m_notePlacing);
+	                            !notePlacing());
 	const auto selected = CommentsList().SelectedIndex();
 	const auto& notes = m_commentScan.rows();
 	const bool selectedMarkup =
@@ -465,7 +460,7 @@ void ViewerPage::showComments() {
 	                                       : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
-	    !m_notePlacing &&
+	    !notePlacing() &&
 	    (selectedShape || selectedInk || selectedStamp || selectedBox ||
 	     selectedMarkup ||
 	     (selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
@@ -477,34 +472,34 @@ void ViewerPage::showComments() {
 	Automation::AutomationProperties::SetName(
 	    CommentsCount(), to_hstring(notes.size()) + L" comments loaded");
 	NotesState().Text(
-	    m_notePlacing  ? (m_placementTool == PlacementTool::TextBox
+	    notePlacing()  ? (m_activeTool == PlacementTool::TextBox
 	                          ? L"Click a page to place a text box. "
                                L"Esc cancels."
-	                      : m_placementTool == PlacementTool::Ink
+	                      : m_activeTool == PlacementTool::Ink
 	                          ? L"Drag on a page to draw. Esc stops drawing."
 	                          : L"Click a page to place a note. Esc cancels.")
 	    : m_noteBusy   ? L"Updating comments\u2026"
 	    : m_noteSaving ? L"Saving comments\u2026"
 	    : m_notesDirty ? L"Unsaved changes"
 	                   : L"");
-	if (m_notePlacing && (m_placementTool == PlacementTool::Rectangle ||
-	                      m_placementTool == PlacementTool::Ellipse ||
-	                      m_placementTool == PlacementTool::Stamp)) {
+	if (notePlacing() && (m_activeTool == PlacementTool::Rectangle ||
+	                      m_activeTool == PlacementTool::Ellipse ||
+	                      m_activeTool == PlacementTool::Stamp)) {
 		NotesState().Text(m_shapeStart
 		                      ? L"Click the opposite corner on the same page. "
 		                        L"Esc cancels."
-		                  : m_placementTool == PlacementTool::Ellipse
+		                  : m_activeTool == PlacementTool::Ellipse
 		                      ? L"Click the first corner of the ellipse. "
 		                        L"Esc cancels."
-		                  : m_placementTool == PlacementTool::Stamp
+		                  : m_activeTool == PlacementTool::Stamp
 		                      ? L"Click the first corner of the image stamp. "
 		                        L"Esc cancels."
 		                      : L"Click the first corner of the rectangle. "
 		                        L"Esc cancels.");
 	}
-	if (m_notePlacing && (m_placementTool == PlacementTool::Line ||
-	                      m_placementTool == PlacementTool::Arrow)) {
-		const bool arrow = m_placementTool == PlacementTool::Arrow;
+	if (notePlacing() && (m_activeTool == PlacementTool::Line ||
+	                      m_activeTool == PlacementTool::Arrow)) {
+		const bool arrow = m_activeTool == PlacementTool::Arrow;
 		NotesState().Text(
 		    (m_shapeStart ? (arrow ? L"Click where the arrow points"
 		                           : L"Click where the line ends")
@@ -512,22 +507,22 @@ void ViewerPage::showComments() {
 		                           : L"Click where the line starts")) +
 		    hstring(L" (") + inkStyleName(s_inkStyle) + L"). Esc cancels.");
 	}
-	if (m_notePlacing && m_placementTool == PlacementTool::Ink) {
+	if (notePlacing() && m_activeTool == PlacementTool::Ink) {
 		NotesState().Text(L"Drag on a page to draw (" +
 		                  inkStyleName(s_inkStyle) + L"). Esc stops drawing.");
 	}
-	if (m_notePlacing && (m_placementTool == PlacementTool::FillCheck ||
-	                      m_placementTool == PlacementTool::FillCross)) {
+	if (notePlacing() && (m_activeTool == PlacementTool::FillCheck ||
+	                      m_activeTool == PlacementTool::FillCross)) {
 		NotesState().Text(
-		    m_placementTool == PlacementTool::FillCheck
+		    m_activeTool == PlacementTool::FillCheck
 		        ? L"Click a page to place a check mark. Esc cancels."
 		        : L"Click a page to place a cross. Esc cancels.");
 	}
-	if (m_notePlacing && m_placementTool == PlacementTool::FillText) {
+	if (notePlacing() && m_activeTool == PlacementTool::FillText) {
 		NotesState().Text(L"Click a page to place text. Esc cancels.");
 	}
-	if (m_notePlacing && (m_placementTool == PlacementTool::TypedSignature ||
-	                      m_placementTool == PlacementTool::DrawnSignature)) {
+	if (notePlacing() && (m_activeTool == PlacementTool::TypedSignature ||
+	                      m_activeTool == PlacementTool::DrawnSignature)) {
 		NotesState().Text(L"Click a page to place the signature. Esc cancels.");
 	}
 	NotesState().Visibility(NotesState().Text().empty() ? XVisibility::Collapsed

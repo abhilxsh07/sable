@@ -31,7 +31,7 @@ void ViewerPage::beginNoteEdit() {
 	const auto selected = CommentsList().SelectedIndex();
 	const auto& rows = m_commentScan.rows();
 	if (m_closed || !m_session || !m_noteAllowed || m_noteBusy ||
-	    m_noteSaving || m_noteDialog || m_notePlacing || !commentsOpen() ||
+	    m_noteSaving || m_noteDialog || notePlacing() || !commentsOpen() ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable()) || selected < 0 ||
@@ -187,7 +187,7 @@ fire_and_forget ViewerPage::editShape(pdf::Annotation existing) {
 	const auto lifetime = get_strong();
 	try {
 		if (!existing.bounds || m_closed || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || notePlacing() ||
 		    m_passwordDialog || !XamlRoot() || !commentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
@@ -393,7 +393,7 @@ ViewerPage::editExistingNote(int page, int index, std::u16string expected,
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_session || !m_noteAllowed || m_noteBusy ||
-		    m_noteSaving || m_noteDialog || m_notePlacing || m_passwordDialog ||
+		    m_noteSaving || m_noteDialog || notePlacing() || m_passwordDialog ||
 		    !XamlRoot() || !commentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    Rail().Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||

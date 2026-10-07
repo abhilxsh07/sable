@@ -42,7 +42,7 @@ bool ViewerPage::canDeleteAnnotation() {
 	const auto target = annotationTarget();
 	return target && target->revision && m_session && !m_closed &&
 	       m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
-	       !m_notePlacing && !presenting() &&
+	       !notePlacing() && !presenting() &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable()) &&
 	       (target->subtype == "Text" || target->subtype == "Highlight" ||
@@ -64,7 +64,7 @@ void ViewerPage::clearAnnotationSelection() {
 void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
                                      bool context) {
 	if (m_closed || presenting() || !m_session || !m_layout || m_noteBusy ||
-	    m_noteSaving || m_noteDialog || m_notePlacing ||
+	    m_noteSaving || m_noteDialog || notePlacing() ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
 	}
@@ -103,7 +103,7 @@ void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
 				        if (result.canceled || !self->m_layout ||
 				            self->presenting() || self->pixels(page) != at ||
 				            self->m_noteBusy || self->m_noteSaving ||
-				            self->m_noteDialog || self->m_notePlacing ||
+				            self->m_noteDialog || self->notePlacing() ||
 				            self->m_rotationVersion != rotation ||
 				            self->m_zoom != zoom ||
 				            self->Visibility() !=
@@ -115,7 +115,7 @@ void ViewerPage::requestAnnotationAt(Windows::Foundation::Point point,
 						        Primitives::FlyoutShowOptions options;
 						        options.Position(point);
 						        self->m_textMenu.ShowAt(self->Pages(), options);
-					        } else if (self->m_cursorTool != CursorTool::Hand) {
+					        } else if (self->m_activeTool != CursorTool::Hand) {
 						        self->requestLink(
 						            point,
 						            self->m_clickSpreads

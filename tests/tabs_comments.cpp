@@ -900,16 +900,17 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		v.setCommentsOpen(true);
 		check(v.FillMarksMenu().IsEnabled(), "fill marks are disabled");
 		invoke(v.PlaceCheckButton());
-		check(v.m_notePlacing && v.placeNote({-1, -1}) && v.m_notePlacing &&
+		check(v.notePlacing() && v.placeNote({-1, -1}) && v.notePlacing() &&
 		          v.cancelNotePlacement() && !v.m_notesDirty,
 		      "page gap or Escape changed the PDF");
 		invoke(v.PlaceCrossButton());
-		check(v.m_notePlacing &&
-		          v.m_placementTool == ViewerPage::PlacementTool::FillCross,
+		check(v.notePlacing() &&
+		          v.m_activeTool == ViewerPage::PlacementTool::FillCross,
 		      "cross command did not arm placement");
 		v.setCommentsOpen(false);
-		check(!v.m_notePlacing && !v.m_notesDirty,
-		      "closing Comments kept the mark armed");
+		check(v.notePlacing() && !v.m_notesDirty,
+		      "closing Comments dropped the mark");
+		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
 		invoke(v.PlaceCheckButton());
 		place(0);
@@ -918,7 +919,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(v.m_notesDirty && !v.m_notePlacing && inkOn(0) != rows.end(),
+		check(v.m_notesDirty && !v.notePlacing() && inkOn(0) != rows.end(),
 		      "check mark did not refresh Comments");
 		v.rotateView(1);
 		v.goToPage(1);
@@ -992,8 +993,8 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		          inkOn(1) == rows.end(),
 		      "removing the cross lost the check mark or kept the cross");
 		invoke(v.PlaceFillTextButton());
-		check(v.m_notePlacing &&
-		          v.m_placementTool == ViewerPage::PlacementTool::FillText &&
+		check(v.notePlacing() &&
+		          v.m_activeTool == ViewerPage::PlacementTool::FillText &&
 		          v.cancelNotePlacement(),
 		      "Place text did not arm and cancel text placement");
 		invoke(v.PlaceTypedSignatureButton());
@@ -1009,7 +1010,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		v.m_signatureImage = helpers::typedSignature(u"Probe Signer");
 		check(v.m_signatureImage.has_value(), "typed signature image failed");
 		v.beginNotePlacement(ViewerPage::PlacementTool::TypedSignature);
-		check(v.m_notePlacing, "typed signature did not arm placement");
+		check(v.notePlacing(), "typed signature did not arm placement");
 		place(0);
 		break;
 	case 9:
@@ -1034,7 +1035,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		ViewerPage::s_signatureStrokes = {{{20, 20}, {120, 80}, {220, 30}},
 		                                  {{60, 100}, {300, 90}}};
 		v.beginNotePlacement(ViewerPage::PlacementTool::DrawnSignature);
-		check(v.m_notePlacing, "drawn signature did not arm placement");
+		check(v.notePlacing(), "drawn signature did not arm placement");
 		place(0);
 		break;
 	case 11:
@@ -1103,7 +1104,7 @@ void TabsTest::stampTick(MainWindow& owner) {
 		invoke(v.PlaceStampButton());
 		break;
 	case 2:
-		check(!v.m_notePlacing && !v.m_notesDirty,
+		check(!v.notePlacing() && !v.m_notesDirty,
 		      "canceling the picker changed the PDF");
 		v.m_stampPicker =
 		    [bad =
@@ -1113,7 +1114,7 @@ void TabsTest::stampTick(MainWindow& owner) {
 		invoke(v.PlaceStampButton());
 		break;
 	case 3:
-		check(!v.m_notePlacing && !v.m_notesDirty && v.Message().IsOpen(),
+		check(!v.notePlacing() && !v.m_notesDirty && v.Message().IsOpen(),
 		      "renamed PNG was accepted as JPEG");
 		attachmentGate = std::make_shared<winrt::handle>(
 		    CreateEventW(nullptr, TRUE, FALSE, nullptr));
@@ -1127,7 +1128,7 @@ void TabsTest::stampTick(MainWindow& owner) {
 		SetEvent(attachmentGate->get());
 		break;
 	case 4:
-		check(!v.m_notePlacing && !v.m_stampImage && !v.m_notesDirty,
+		check(!v.notePlacing() && !v.m_stampImage && !v.m_notesDirty,
 		      "a canceled picker result returned to the page");
 		v.m_stampPicker = [path = hstring(stampPath.wstring())] {
 			return attachmentChoice(path, {});
@@ -1135,14 +1136,14 @@ void TabsTest::stampTick(MainWindow& owner) {
 		invoke(v.PlaceStampButton());
 		break;
 	case 5:
-		check(v.m_notePlacing && v.m_stampImage && v.m_stampImage->valid() &&
+		check(v.notePlacing() && v.m_stampImage && v.m_stampImage->valid() &&
 		          v.PlaceStampButton().Text() ==
 		              L"Cancel image stamp placement",
 		      "a valid PNG did not arm placement");
 		v.placeNote(at(1, .25, .25));
 		v.placeNote(at(0, .6, .6));
 		check(v.m_shapeStart && v.m_shapeStart->corner.page == 1 &&
-		          v.m_notePlacing && !v.m_notesDirty,
+		          v.notePlacing() && !v.m_notesDirty,
 		      "a corner on another page consumed the stamp");
 		v.placeNote(at(1, .65, .60));
 		break;
@@ -1151,7 +1152,7 @@ void TabsTest::stampTick(MainWindow& owner) {
 			return;
 		}
 		check(v.m_notesDirty && stamp != rows.end() && stamp->page == 1 &&
-		          !v.m_notePlacing && !v.m_stampImage,
+		          !v.notePlacing() && !v.m_stampImage,
 		      "the placed stamp did not appear in Comments");
 		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
 			return attachmentChoice(path, {});
@@ -1255,13 +1256,13 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		v.zoomTo(1.5, {0, 0});
 		v.goToPage(1);
 		invoke(v.DrawInkButton());
-		check(v.m_notePlacing &&
-		          v.m_placementTool == ViewerPage::PlacementTool::Ink &&
+		check(v.notePlacing() &&
+		          v.m_activeTool == ViewerPage::PlacementTool::Ink &&
 		          v.DrawInkButton().Text() == L"Stop drawing" &&
 		          !v.m_notesDirty,
 		      "drawing did not arm");
 		invoke(v.DrawInkButton());
-		check(!v.m_notePlacing && v.DrawInkButton().Text() == L"Draw on page",
+		check(!v.notePlacing() && v.DrawInkButton().Text() == L"Draw on page",
 		      "Stop drawing kept the tool armed");
 		break;
 	case 1:
@@ -1269,7 +1270,7 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		check(!v.beginInkStroke({-1, -1}) && !v.m_inkStroke,
 		      "a page gap started a stroke");
 		check(v.placeNote(at(.3, .3)) && !v.m_inkStroke && !v.m_noteDialog &&
-		          v.m_notePlacing,
+		          v.notePlacing(),
 		      "a click opened an editor while drawing");
 		check(v.beginInkStroke(at(.2, .3)) && v.m_inkStroke && previewShown(),
 		      "stroke did not start on the page");
@@ -1281,24 +1282,25 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		check(v.beginInkStroke(at(.2, .3)), "second stroke did not start");
 		invoke(v.PlaceRectangleButton());
 		check(!v.m_inkStroke && !previewShown() &&
-		          v.m_placementTool == ViewerPage::PlacementTool::Rectangle,
+		          v.m_activeTool == ViewerPage::PlacementTool::Rectangle,
 		      "tool switch kept the stroke");
 		invoke(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .3)), "third stroke did not start");
 		v.setCommentsOpen(false);
-		check(!v.m_inkStroke && !v.m_notePlacing && !previewShown(),
-		      "hidden Comments kept the stroke");
+		check(v.m_inkStroke && v.notePlacing() && previewShown(),
+		      "closing Comments dropped the drawing tool");
+		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
 		invoke(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .3)), "fourth stroke did not start");
 		v.rotateView(1);
-		check(!v.m_inkStroke && v.m_notePlacing && !previewShown(),
+		check(!v.m_inkStroke && v.notePlacing() && !previewShown(),
 		      "rotation kept the stroke");
 		v.rotateView(-1);
 		check(!v.m_notesDirty, "canceled strokes changed the PDF");
 		break;
 	case 2:
-		check(v.m_notePlacing && v.beginInkStroke(at(.2, .3)),
+		check(v.notePlacing() && v.beginInkStroke(at(.2, .3)),
 		      "stroke did not start after rotation");
 		// the last point runs off the page and has to stay on it
 		for (const auto& [x, y] : {std::pair{.3, .4}, std::pair{.4, .35},
@@ -1320,7 +1322,7 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(v.m_notesDirty && v.m_notePlacing && !previewShown() &&
+		check(v.m_notesDirty && v.notePlacing() && !previewShown() &&
 		          inkRows() == 1,
 		      "drawn stroke missing from Comments or ended drawing");
 		{
@@ -1338,7 +1340,7 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 			      "drawing style menu is incomplete");
 			const pdf::InkStyle red{{235, 73, 73, 255}, 4};
 			v.chooseInkStyle(red.color, red.width);
-			check(v.m_notePlacing && v.s_inkStyle == red &&
+			check(v.notePlacing() && v.s_inkStyle == red &&
 			          v.NotesState().Text() ==
 			              L"Drag on a page to draw (Red, 4 pt). Esc "
 			              L"stops drawing.",
@@ -1369,13 +1371,13 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		}
 		check(inkRows() == 2, "single tap did not add a drawing");
 		invoke(v.DrawInkButton());
-		check(!v.m_notePlacing, "Stop drawing kept the tool armed");
+		check(!v.notePlacing(), "Stop drawing kept the tool armed");
 		v.chooseInkStyle(std::nullopt, 1.f);
-		check(v.m_notePlacing && v.s_inkStyle.width == 1 &&
+		check(v.notePlacing() && v.s_inkStyle.width == 1 &&
 		          v.s_inkStyle.color.red == 235,
 		      "a style choice did not arm drawing or kept the old width");
 		invoke(v.DrawInkButton());
-		check(!v.m_notePlacing && v.SaveNotesButton().IsEnabled(),
+		check(!v.notePlacing() && v.SaveNotesButton().IsEnabled(),
 		      "Stop drawing did not allow saving");
 		notesPath =
 		    std::filesystem::temp_directory_path() /
@@ -1440,7 +1442,7 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		check(v.beginInkStroke(at(.2, .6)),
 		      "stroke before close did not start");
 		v.close();
-		check(!v.m_inkStroke && !v.m_notePlacing,
+		check(!v.m_inkStroke && !v.notePlacing(),
 		      "forced close kept the stroke");
 		status.Text(L"PASS: drawing arms and stops, cancels on Esc, tool "
 		            L"switch, hidden Comments and rotation, keeps strokes "
@@ -1512,24 +1514,24 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 	case 0:
 		v.setCommentsOpen(true);
 		invoke(v.PlaceNoteButton());
-		check(v.m_notePlacing && !v.m_notesDirty &&
+		check(v.notePlacing() && !v.m_notesDirty &&
 		          !v.AddNoteButton().IsEnabled(),
 		      "placement did not arm independently of centered Add");
 		break;
 	case 1: {
-		check(v.placeNote({-1, -1}) && v.m_notePlacing && !v.m_noteDialog,
+		check(v.placeNote({-1, -1}) && v.notePlacing() && !v.m_noteDialog,
 		      "page gap opened editor or activated a link");
 		owner.closeTab(owner.m_tabs.front().tab);
-		check(owner.m_tabs.size() == 1 && v.m_notePlacing,
+		check(owner.m_tabs.size() == 1 && v.notePlacing(),
 		      "close lost armed placement");
 		HWND handle{};
 		check_hresult(
 		    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
 		SendMessageW(handle, WM_CLOSE, 0, 0);
-		check(!owner.m_closing && v.m_notePlacing,
+		check(!owner.m_closing && v.notePlacing(),
 		      "window close lost placement");
 		invoke(v.PlaceNoteButton());
-		check(!v.m_notePlacing && !v.m_notesDirty,
+		check(!v.notePlacing() && !v.m_notesDirty,
 		      "Cancel placement changed PDF");
 		v.openFind();
 		v.beginNotePlacement();
@@ -1538,11 +1540,11 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		v.closeFind();
 		v.beginNotePlacement();
 		v.Visibility(Visibility::Collapsed);
-		check(!v.m_notePlacing, "hidden viewer kept placement armed");
+		check(v.notePlacing(), "switching tabs dropped placement");
 		v.Visibility(Visibility::Visible);
-		v.beginNotePlacement();
 		v.setCommentsOpen(false);
-		check(!v.m_notePlacing, "hidden comments kept placement armed");
+		check(v.notePlacing(), "closing Comments dropped placement");
+		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
 		break;
 	}
@@ -1551,7 +1553,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		v.goToPage(1);
 		invoke(v.PlaceNoteButton());
 		check(v.placeNote(choosePoint()) && v.m_noteDialog &&
-		          !v.m_notePlacing && !v.m_notesDirty,
+		          !v.notePlacing() && !v.m_notesDirty,
 		      "chosen location mutated before Add");
 		break;
 	case 3: {
@@ -1629,13 +1631,13 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		if (ellipsePlacementOnly) {
 			v.placeNote(choosePoint());
 			invoke(v.PlaceRectangleButton());
-			check(v.m_notePlacing && !v.m_shapeStart &&
-			          v.m_placementTool == ViewerPage::PlacementTool::Rectangle,
+			check(v.notePlacing() && !v.m_shapeStart &&
+			          v.m_activeTool == ViewerPage::PlacementTool::Rectangle,
 			      "tool switch retained the ellipse corner");
 			v.placeNote(choosePoint());
 			invoke(v.PlaceEllipseButton());
-			check(v.m_notePlacing && !v.m_shapeStart &&
-			          v.m_placementTool == ViewerPage::PlacementTool::Ellipse,
+			check(v.notePlacing() && !v.m_shapeStart &&
+			          v.m_activeTool == ViewerPage::PlacementTool::Ellipse,
 			      "tool switch retained the rectangle corner");
 		}
 		check(v.placeNote(choosePoint()) && v.m_shapeStart && !v.m_notesDirty &&
@@ -1655,15 +1657,16 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		placeShape();
 		v.placeNote(choosePoint());
 		v.setCommentsOpen(false);
-		check(!v.m_notePlacing && !v.m_shapeStart,
-		      "hidden Comments retained shape placement");
+		check(v.notePlacing() && v.m_shapeStart,
+		      "closing Comments dropped shape placement");
+		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
 		placeShape();
 		v.placeNote(choosePoint());
 		const int previousRotation = v.m_rotation;
 		v.rotateView(1);
 		check(v.m_rotation != previousRotation && !v.m_shapeStart &&
-		          v.m_notePlacing,
+		          v.notePlacing(),
 		      "rotation retained the old shape corner");
 		v.rotateView(-1);
 		v.placeNote(choosePoint());
@@ -1671,7 +1674,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		break;
 	}
 	case 9: {
-		check(!v.m_notesDirty && !v.m_notePlacing && !v.m_shapeStart &&
+		check(!v.m_notesDirty && !v.notePlacing() && !v.m_shapeStart &&
 		          v.Message().IsOpen(),
 		      "empty shape changed the PDF or kept placement");
 		placeShape();
@@ -1898,7 +1901,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		placeShape();
 		v.placeNote(choosePoint());
 		v.close();
-		check(!v.m_notePlacing && !v.m_shapeStart && !v.m_noteDialog,
+		check(!v.notePlacing() && !v.m_shapeStart && !v.m_noteDialog,
 		      "forced close kept placement state");
 		status.Text(
 		    L"PASS: note and shape placement, tool changes, cancel, "

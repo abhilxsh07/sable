@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## One active pointer tool (2026-11-15)
+
+I keep the cursor and placement in one per-tab ActiveTool. Hand and Select
+drop placement even when the cursor menu already showed that choice.
+Quick tools no longer open Comments or replace the reading panel, and
+closing a panel or switching tabs keeps the active tool. Hiding a tab
+drops an unfinished stroke or shape corner, while its chosen tool stays.
+Organize and explicit cancellation still drop placement. Fill & Sign text
+passes its editor title explicitly after returning to Select. This follows
+audit batch 6 and replaces the independent cursor/placement state and the
+old Comments visibility requirement; settings and shortcuts stay as before.
+
 ## Drawing from Comments (2026-11-07)
 
 "Draw on page" arms a drawing tool that stays on until Stop drawing, Esc,

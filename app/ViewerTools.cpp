@@ -497,7 +497,7 @@ void ViewerPage::runTool(std::wstring_view tool) {
 		return;
 	}
 	const auto placing = [&](PlacementTool placement) {
-		return m_notePlacing && m_placementTool == placement;
+		return notePlacing() && m_activeTool == placement;
 	};
 	try {
 		if (tool == L"combine") {
@@ -515,6 +515,7 @@ void ViewerPage::runTool(std::wstring_view tool) {
 		} else if (tool == L"hand") {
 			setCursorTool(CursorTool::Hand);
 		} else if (tool == L"highlight") {
+			setCursorTool(CursorTool::Select);
 			if (hasTextSelection() && canMarkSelection()) {
 				markSelection(pdf::TextMarkup::Highlight);
 			} else {
@@ -527,10 +528,7 @@ void ViewerPage::runTool(std::wstring_view tool) {
 			if (placing(placement)) {
 				cancelNotePlacement();
 			} else {
-				setCommentsOpen(true);
-				if (commentsOpen()) {
-					beginNotePlacement(placement);
-				}
+				beginNotePlacement(placement);
 			}
 		} else {
 			requestTool(tool);
@@ -562,17 +560,17 @@ void ViewerPage::updateQuickTools() {
 	for (const auto& [button, tool] : m_quickToolButtons) {
 		bool on = false, enabled = true;
 		if (tool == L"select") {
-			on = m_cursorTool == CursorTool::Select;
+			on = m_activeTool == CursorTool::Select;
 		} else if (tool == L"hand") {
-			on = m_cursorTool == CursorTool::Hand;
+			on = m_activeTool == CursorTool::Hand;
 		} else if (tool == L"note") {
-			on = m_notePlacing && m_placementTool == PlacementTool::Note;
+			on = notePlacing() && m_activeTool == PlacementTool::Note;
 			enabled = canNote;
 		} else if (tool == L"draw") {
-			on = m_notePlacing && m_placementTool == PlacementTool::Ink;
+			on = notePlacing() && m_activeTool == PlacementTool::Ink;
 			enabled = canNote;
 		} else if (tool == L"textbox") {
-			on = m_notePlacing && m_placementTool == PlacementTool::TextBox;
+			on = notePlacing() && m_activeTool == PlacementTool::TextBox;
 			enabled = canNote;
 		} else if (tool == L"readaloud") {
 			on = readingAloud();

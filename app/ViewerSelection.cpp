@@ -38,12 +38,12 @@ void ViewerPage::setupSelection() {
 	Pages().PointerPressed(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
 		    if (auto self = weak.get()) {
-			    if (self->m_notePlacing) {
+			    if (self->notePlacing()) {
 				    const bool touch =
 				        args.Pointer().PointerDeviceType() ==
 				        Microsoft::UI::Input::PointerDeviceType::Touch;
 				    const auto point = args.GetCurrentPoint(self->Pages());
-				    if (!touch && self->m_placementTool == PlacementTool::Ink &&
+				    if (!touch && self->m_activeTool == PlacementTool::Ink &&
 				        point.Properties().IsLeftButtonPressed() &&
 				        self->beginInkStroke(point.Position())) {
 					    self->Scroller().Focus(FocusState::Programmatic);
@@ -52,7 +52,7 @@ void ViewerPage::setupSelection() {
 				    args.Handled(!touch);
 				    return;
 			    }
-			    if (self->m_cursorTool == CursorTool::Hand) {
+			    if (self->m_activeTool == CursorTool::Hand) {
 				    return;
 			    }
 			    self->m_ignorePanTap = false;
@@ -277,7 +277,7 @@ void ViewerPage::cancelSelectionDrag() {
 }
 void ViewerPage::beginSelection(Windows::Foundation::Point point) {
 	if (m_closed || presenting() || !m_layout || !m_session ||
-	    m_cursorTool == CursorTool::Hand ||
+	    m_activeTool == CursorTool::Hand ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
 	}

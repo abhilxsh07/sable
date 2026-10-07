@@ -86,7 +86,7 @@ void TabsTest::inkEditTick(MainWindow& owner) {
 			return;
 		}
 		check(inkRows() == 1 && v.m_notesDirty, "the drawing wasn't written");
-		check(v.cancelNotePlacement() && !v.m_notePlacing,
+		check(v.cancelNotePlacement() && !v.notePlacing(),
 		      "drawing stayed armed");
 		v.requestAnnotationAt(at(.40, .34));
 		break;
@@ -219,7 +219,7 @@ void TabsTest::stampEditTick(MainWindow& owner) {
 		// red on the left, blue on the right
 		v.m_stampImage =
 		    pdf::StampImage{2, 1, {0, 0, 255, 255, 255, 0, 0, 255}};
-		check(v.m_notePlacing, "stamp placement didn't arm");
+		check(v.notePlacing(), "stamp placement didn't arm");
 		v.placeNote(at(.2, .2));
 		v.placeNote(at(.4, .3));
 		break;
@@ -228,7 +228,7 @@ void TabsTest::stampEditTick(MainWindow& owner) {
 			check(ticks < 60, "the stamp didn't reach Comments");
 			return;
 		}
-		check(!v.m_notePlacing, "placing the stamp kept the tool armed");
+		check(!v.notePlacing(), "placing the stamp kept the tool armed");
 		v.requestAnnotationAt(at(.3, .25));
 		break;
 	case 2:
@@ -344,11 +344,11 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		v.setCommentsOpen(true);
 		v.goToPage(0);
 		invokeElement(v.PlaceLineButton());
-		check(v.m_notePlacing &&
-		          v.m_placementTool == ViewerPage::PlacementTool::Line &&
+		check(v.notePlacing() &&
+		          v.m_activeTool == ViewerPage::PlacementTool::Line &&
 		          v.PlaceLineButton().Text() == L"Cancel line placement",
 		      "Place line didn't arm");
-		check(v.cancelNotePlacement() && !v.m_notePlacing,
+		check(v.cancelNotePlacement() && !v.notePlacing(),
 		      "Esc kept the line tool");
 		invokeElement(v.PlaceLineButton());
 		v.placeNote(at(.2, .2));
@@ -359,7 +359,7 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(inkRows() == 1 && v.m_notesDirty && !v.m_notePlacing,
+		check(inkRows() == 1 && v.m_notesDirty && !v.notePlacing(),
 		      "the line wasn't written");
 		check(std::any_of(v.m_commentScan.rows().begin(),
 		                  v.m_commentScan.rows().end(),
@@ -371,7 +371,7 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		v.placeNote(at(.3, .6));
 		// a click right next to the start is too short and keeps it
 		v.placeNote(at(.3005, .6));
-		check(v.m_notePlacing && v.m_shapeStart && !v.m_noteBusy,
+		check(v.notePlacing() && v.m_shapeStart && !v.m_noteBusy,
 		      "a too-short arrow didn't keep its start");
 		v.placeNote(at(.7, .6));
 		break;
@@ -379,7 +379,7 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(inkRows() == 2 && !v.m_notePlacing, "the arrow wasn't written");
+		check(inkRows() == 2 && !v.notePlacing(), "the arrow wasn't written");
 		// the arrow's box takes in its head, around its tip
 		v.requestAnnotationAt(at(.69, .6));
 		break;

@@ -166,7 +166,7 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 	const auto lifetime = get_strong();
 	try {
 		if (!existing.bounds || m_closed || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || notePlacing() ||
 		    m_passwordDialog || !XamlRoot() || !commentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			co_return;
@@ -345,7 +345,7 @@ fire_and_forget ViewerPage::editStampSize(pdf::Annotation existing) {
 	const auto lifetime = get_strong();
 	try {
 		if (!existing.bounds || m_closed || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || notePlacing() ||
 		    m_passwordDialog || !XamlRoot() || !commentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			co_return;
@@ -530,7 +530,7 @@ fire_and_forget ViewerPage::editLineLength(pdf::Annotation existing) {
 	try {
 		if (existing.line == pdf::LineKind::None || m_closed || !m_session ||
 		    !m_noteAllowed || m_noteBusy || m_noteSaving || m_noteDialog ||
-		    m_notePlacing || m_passwordDialog || !XamlRoot() ||
+		    notePlacing() || m_passwordDialog || !XamlRoot() ||
 		    !commentsOpen() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 			co_return;

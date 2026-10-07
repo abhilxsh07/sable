@@ -143,10 +143,29 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	helpers::SpreadMode spreadMode() const {
 		return m_spreadMode;
 	}
-	enum class CursorTool { Select, Hand };
+	enum class ActiveTool {
+		Select,
+		Hand,
+		Highlight,
+		Note,
+		TextBox,
+		Rectangle,
+		Ellipse,
+		Line,
+		Arrow,
+		Ink,
+		Stamp,
+		FillCheck,
+		FillCross,
+		FillText,
+		TypedSignature,
+		DrawnSignature
+	};
+	using CursorTool = ActiveTool;
 	void setCursorTool(CursorTool tool);
 	CursorTool cursorTool() const {
-		return m_cursorTool;
+		return m_activeTool == ActiveTool::Hand ? CursorTool::Hand
+		                                        : CursorTool::Select;
 	}
 	void stopPan(bool leaveViewport = false);
 	void print(void* owner, std::function<void()> done);
@@ -273,7 +292,6 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void movePan(winrt::Windows::Foundation::Point point);
 	void finishPan(winrt::Windows::Foundation::Point point);
 	void updatePanCursor();
-	CursorTool m_cursorTool = CursorTool::Select;
 	helpers::PanGesture m_pan;
 	std::optional<std::uint32_t> m_panPointer;
 	bool m_panHover = false, m_ignorePanTap = false;
@@ -286,24 +304,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		double x, y;
 		int rotation;
 	};
-	enum class PlacementTool {
-		Note,
-		TextBox,
-		Rectangle,
-		Ellipse,
-		// two clicks, drawn as ink in the current Drawing style
-		Line,
-		Arrow,
-		Ink,
-		Stamp,
-		FillCheck,
-		FillCross,
-		// the text-box writer, reached from Fill & Sign.
-		FillText,
-		// visual signatures: an image stamp of a typed name, or ink.
-		TypedSignature,
-		DrawnSignature
-	};
+	using PlacementTool = ActiveTool;
 	void beginNotePlacement(PlacementTool tool = PlacementTool::Note);
 	void placeLine(NoteTarget first, NoteTarget target, std::uint64_t revision);
 	bool canPickStamp();
@@ -333,8 +334,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>()>
 	    m_stampPicker;
 #endif
-	bool m_notePlacing = false;
-	PlacementTool m_placementTool = PlacementTool::Note;
+	ActiveTool m_activeTool = ActiveTool::Select;
+	bool notePlacing() const {
+		return m_activeTool >= ActiveTool::Note;
+	}
 	// the stroke under the pointer, in displayed page fractions
 	struct InkDrawing {
 		int page;
@@ -357,8 +360,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void finishInkStroke();
 	void dropInkStroke();
 	winrt::fire_and_forget
-	editTextBox(NoteTarget target,
-	            std::optional<pdf::Annotation> existing = {});
+	editTextBox(NoteTarget target, std::optional<pdf::Annotation> existing = {},
+	            bool fillText = false);
 	winrt::hstring m_textBoxDraft, m_textBoxAuthor;
 	winrt::fire_and_forget editShape(pdf::Annotation existing);
 	winrt::fire_and_forget editDrawing(pdf::Annotation existing);

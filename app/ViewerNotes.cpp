@@ -41,7 +41,7 @@ namespace winrt::Sable::implementation {
 bool ViewerPage::canPickStamp() {
 	return !m_closed && m_session && m_layout && m_noteAllowed && !m_noteBusy &&
 	       !m_noteSaving && !m_noteDialog && !m_passwordDialog &&
-	       !m_linkPending && !presenting() && commentsOpen() &&
+	       !m_linkPending && !presenting() &&
 	       Rail().Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());
@@ -52,7 +52,7 @@ fire_and_forget ViewerPage::pickStamp() {
 	std::uint64_t version = 0;
 	pdf::Session* session = nullptr;
 	try {
-		if (m_notePlacing && m_placementTool == PlacementTool::Stamp) {
+		if (notePlacing() && m_activeTool == PlacementTool::Stamp) {
 			cancelNotePlacement();
 			co_return;
 		}
@@ -95,8 +95,8 @@ fire_and_forget ViewerPage::pickStamp() {
 			self->m_stampPicking = false;
 			if (self->canPickStamp()) {
 				self->beginNotePlacement(PlacementTool::Stamp);
-				if (self->m_notePlacing &&
-				    self->m_placementTool == PlacementTool::Stamp) {
+				if (self->notePlacing() &&
+				    self->m_activeTool == PlacementTool::Stamp) {
 					self->m_stampImage = std::move(*image);
 				}
 			}
@@ -125,25 +125,27 @@ fire_and_forget ViewerPage::pickStamp() {
 
 void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	clearAnnotationSelection();
-	if (m_notePlacing && m_placementTool == tool) {
+	if (notePlacing() && m_activeTool == tool) {
 		cancelNotePlacement();
 		return;
 	}
 	if (m_closed || !m_layout || !m_noteAllowed || m_noteBusy || m_noteSaving ||
-	    m_noteDialog || m_linkPending || !commentsOpen() ||
+	    m_noteDialog || m_linkPending || organizing() || presenting() ||
+	    tool < ActiveTool::Note ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable())) {
 		return;
 	}
 	leavePageBox();
+	stopPan();
 	cancelSelectionDrag();
 	m_ignoreTextTap = false;
 	m_shapeStart.reset();
 	m_stampPicking = false;
 	m_stampImage.reset();
 	dropInkStroke();
-	m_placementTool = tool;
-	m_notePlacing = true;
+	m_activeTool = tool;
+	updatePanCursor();
 	showComments();
 	Scroller().Focus(FocusState::Programmatic);
 }
@@ -158,7 +160,10 @@ bool ViewerPage::cancelNotePlacement() {
 	m_shapeStart.reset();
 	m_stampImage.reset();
 	dropInkStroke();
-	const bool canceled = std::exchange(m_notePlacing, false);
+	const bool canceled = notePlacing();
+	if (canceled) {
+		m_activeTool = ActiveTool::Select;
+	}
 	const bool canceledPicker = std::exchange(m_stampPicking, false);
 	if ((canceled || canceledPicker) && !m_closed) {
 		showComments();
@@ -167,17 +172,17 @@ bool ViewerPage::cancelNotePlacement() {
 }
 
 bool ViewerPage::placeNote(Windows::Foundation::Point point) {
-	if (!m_notePlacing) {
+	if (!notePlacing()) {
 		return false;
 	}
-	if (m_closed || !m_layout || !commentsOpen() ||
+	if (m_closed || !m_layout ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 	    (m_notesAvailable && !m_notesAvailable())) {
 		cancelNotePlacement();
 		return true;
 	}
 	if (!std::isfinite(point.X) || !std::isfinite(point.Y) ||
-	    m_placementTool == PlacementTool::Ink) {
+	    m_activeTool == PlacementTool::Ink) {
 		// strokes come from the pointer handlers; a click ends its own.
 		return true;
 	}
@@ -190,29 +195,30 @@ bool ViewerPage::placeNote(Windows::Foundation::Point point) {
 		    y >= 0 && y <= 1) {
 			const NoteTarget target{static_cast<int>(page), x, y,
 			                        key(page).rotation};
-			if (m_placementTool == PlacementTool::Rectangle ||
-			    m_placementTool == PlacementTool::Ellipse ||
-			    m_placementTool == PlacementTool::Line ||
-			    m_placementTool == PlacementTool::Arrow ||
-			    m_placementTool == PlacementTool::Stamp) {
+			if (m_activeTool == PlacementTool::Rectangle ||
+			    m_activeTool == PlacementTool::Ellipse ||
+			    m_activeTool == PlacementTool::Line ||
+			    m_activeTool == PlacementTool::Arrow ||
+			    m_activeTool == PlacementTool::Stamp) {
 				placeShape(target);
 				break;
 			}
-			if (m_placementTool == PlacementTool::FillCheck ||
-			    m_placementTool == PlacementTool::FillCross) {
+			if (m_activeTool == PlacementTool::FillCheck ||
+			    m_activeTool == PlacementTool::FillCross) {
 				placeFillMark(target);
 				break;
 			}
-			if (m_placementTool == PlacementTool::TypedSignature ||
-			    m_placementTool == PlacementTool::DrawnSignature) {
+			if (m_activeTool == PlacementTool::TypedSignature ||
+			    m_activeTool == PlacementTool::DrawnSignature) {
 				placeSignature(target);
 				break;
 			}
-			m_notePlacing = false;
+			const auto tool = m_activeTool;
+			m_activeTool = ActiveTool::Select;
 			showComments();
-			if (m_placementTool == PlacementTool::TextBox ||
-			    m_placementTool == PlacementTool::FillText) {
-				editTextBox(target);
+			if (tool == PlacementTool::TextBox ||
+			    tool == PlacementTool::FillText) {
+				editTextBox(target, {}, tool == PlacementTool::FillText);
 			} else {
 				editNote(target);
 			}
@@ -252,10 +258,10 @@ void ViewerPage::placeFillMark(NoteTarget target) {
 		cancelNotePlacement();
 		return;
 	}
-	const auto mark = m_placementTool == PlacementTool::FillCheck
+	const auto mark = m_activeTool == PlacementTool::FillCheck
 	                      ? pdf::FillMark::Check
 	                      : pdf::FillMark::Cross;
-	m_notePlacing = false;
+	m_activeTool = ActiveTool::Select;
 	m_noteBusy = true;
 	try {
 		if (session->addFillMarkAt(
@@ -281,7 +287,7 @@ winrt::fire_and_forget ViewerPage::createSignature(PlacementTool tool) {
 	try {
 		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
 		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
-		    !commentsOpen() || !XamlRoot() ||
+		    !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable()) ||
 		    (tool != PlacementTool::TypedSignature &&
@@ -534,7 +540,7 @@ void ViewerPage::placeSignature(NoteTarget target) {
 		return;
 	}
 	const auto displayed = helpers::rotatedSize(m_sizes[page], target.rotation);
-	if (m_placementTool == PlacementTool::DrawnSignature) {
+	if (m_activeTool == PlacementTool::DrawnSignature) {
 		auto strokes = helpers::drawnSignatureStrokes(
 		    s_signatureStrokes, displayed, {target.x, target.y});
 		if (strokes.empty()) {
@@ -542,7 +548,7 @@ void ViewerPage::placeSignature(NoteTarget target) {
 			showNotice(L"Couldn't fit the signature on this page.");
 			return;
 		}
-		m_notePlacing = false;
+		m_activeTool = ActiveTool::Select;
 		m_noteBusy = true;
 		try {
 			// a signature keeps the default black 2 pt line, not the
@@ -578,7 +584,7 @@ void ViewerPage::placeSignature(NoteTarget target) {
 		showNotice(L"Couldn't fit the signature on this page.");
 		return;
 	}
-	m_notePlacing = false;
+	m_activeTool = ActiveTool::Select;
 	m_noteBusy = true;
 	try {
 		if (session->addStampAt(
@@ -603,7 +609,7 @@ void ViewerPage::placeSignature(NoteTarget target) {
 // restyles and deletes like any drawing.
 void ViewerPage::placeLine(NoteTarget first, NoteTarget target,
                            std::uint64_t revision) {
-	const bool arrow = m_placementTool == PlacementTool::Arrow;
+	const bool arrow = m_activeTool == PlacementTool::Arrow;
 	const auto session = m_session.get();
 	const auto page = static_cast<std::size_t>(target.page);
 	if (!session || !m_layout || page >= m_layout->pages().size() ||
@@ -628,7 +634,7 @@ void ViewerPage::placeLine(NoteTarget first, NoteTarget target,
 		return;
 	}
 	m_shapeStart.reset();
-	m_notePlacing = false;
+	m_activeTool = ActiveTool::Select;
 	m_noteBusy = true;
 	try {
 		if (session->addInkAt(
@@ -653,8 +659,8 @@ void ViewerPage::placeLine(NoteTarget first, NoteTarget target,
 	                 : L"Couldn't queue this line. Try again.");
 }
 void ViewerPage::placeShape(NoteTarget target) {
-	const bool ellipse = m_placementTool == PlacementTool::Ellipse;
-	const bool stamp = m_placementTool == PlacementTool::Stamp;
+	const bool ellipse = m_activeTool == PlacementTool::Ellipse;
+	const bool stamp = m_activeTool == PlacementTool::Stamp;
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
 	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
@@ -678,13 +684,13 @@ void ViewerPage::placeShape(NoteTarget target) {
 		showNotice(L"Choose the opposite corner on the same page.");
 		return;
 	}
-	if (m_placementTool == PlacementTool::Line ||
-	    m_placementTool == PlacementTool::Arrow) {
+	if (m_activeTool == PlacementTool::Line ||
+	    m_activeTool == PlacementTool::Arrow) {
 		placeLine(first, target, expected);
 		return;
 	}
 	m_shapeStart.reset();
-	m_notePlacing = false;
+	m_activeTool = ActiveTool::Select;
 	m_noteBusy = true;
 	try {
 		const auto write = ellipse ? &pdf::Session::addEllipseAt
@@ -731,9 +737,9 @@ bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
 	}
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
-	if (!m_notePlacing || m_placementTool != PlacementTool::Ink || m_closed ||
+	if (!notePlacing() || m_activeTool != PlacementTool::Ink || m_closed ||
 	    !m_layout || !revision || !m_noteAllowed || m_noteBusy ||
-	    m_noteSaving || m_noteDialog || m_passwordDialog || !commentsOpen() ||
+	    m_noteSaving || m_noteDialog || m_passwordDialog ||
 	    !std::isfinite(point.X) || !std::isfinite(point.Y)) {
 		return false;
 	}
@@ -820,8 +826,8 @@ void ViewerPage::finishInkStroke() {
 	auto stroke = std::move(*m_inkStroke);
 	m_inkStroke.reset();
 	const auto session = m_session.get();
-	if (m_closed || !session || !m_notePlacing ||
-	    m_placementTool != PlacementTool::Ink || stroke.points.empty() ||
+	if (m_closed || !session || !notePlacing() ||
+	    m_activeTool != PlacementTool::Ink || stroke.points.empty() ||
 	    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog) {
 		dropInkStroke();
 		return;
@@ -880,24 +886,20 @@ void ViewerPage::dropInkStroke() {
 	InkPreview().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
 }
 
-fire_and_forget
-ViewerPage::editTextBox(NoteTarget target,
-                        std::optional<pdf::Annotation> existing) {
+fire_and_forget ViewerPage::editTextBox(NoteTarget target,
+                                        std::optional<pdf::Annotation> existing,
+                                        bool fillText) {
 	const auto lifetime = get_strong();
 	try {
 		if ((existing && !existing->bounds) || m_closed || !m_layout ||
 		    !m_session || !m_noteAllowed || m_noteBusy || m_noteSaving ||
-		    m_noteDialog || m_passwordDialog || !commentsOpen() ||
-		    !XamlRoot() ||
+		    m_noteDialog || m_passwordDialog || !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {
 			co_return;
 		}
 		leavePageBox();
 		const auto session = m_session.get();
-		// Fill & Sign's Place text opens the same box under its own title.
-		const bool fillText =
-		    !existing && m_placementTool == PlacementTool::FillText;
 		std::uint64_t revision = existing ? existing->target.revision : 0;
 		if (!existing) {
 			struct Snapshot {
@@ -917,7 +919,7 @@ ViewerPage::editTextBox(NoteTarget target,
 			co_await resume_on_signal(snapshot->ready.get());
 			co_await ui;
 			m_noteBusy = false;
-			if (m_closed || m_session.get() != session || !commentsOpen() ||
+			if (m_closed || m_session.get() != session ||
 			    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 				co_return;
 			}
@@ -1305,7 +1307,7 @@ fire_and_forget ViewerPage::editNote(std::optional<NoteTarget> target) {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || notePlacing() ||
 		    m_passwordDialog || !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {
@@ -1382,7 +1384,7 @@ void ViewerPage::submitNote(int page, std::u16string text,
                             std::u16string author,
                             std::optional<NoteTarget> target) {
 	if (m_closed || !m_session || !m_noteAllowed || m_noteBusy ||
-	    m_noteSaving || m_notePlacing ||
+	    m_noteSaving || notePlacing() ||
 	    (m_notesAvailable && !m_notesAvailable())) {
 		return;
 	}
