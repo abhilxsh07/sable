@@ -93,11 +93,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="main.cpp" />
 		<ClCompile Include="sanity_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
+		<ClCompile Include="keybinds_test.cpp" />
 	</ItemGroup>
 	<!-- the code under test, built straight from app/helpers -->
 	<ItemGroup>
 		<ClInclude Include="..\app\helpers\version.h" />
 		<ClCompile Include="..\app\helpers\version.cpp" />
+		<ClInclude Include="..\app\helpers\keybinds.h" />
+		<ClCompile Include="..\app\helpers\keybinds.cpp" />
 	</ItemGroup>
 	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 	<ImportGroup Label="ExtensionTargets">
