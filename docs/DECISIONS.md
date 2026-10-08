@@ -97,6 +97,11 @@ combine files and export, all offline. Details in [DESIGN.md](DESIGN.md).
 - The classic File / Edit / View / Window / Help menu bar becomes a single
   Menu button.
 - Lots of tools NightPDF never had (see DESIGN.md).
+- Unknown command-line options are ignored like yargs did, but they don't
+  take the next argument as their value. In NightPDF `--foo file.pdf` meant
+  the file never opened.
+- Configs written by NightPDF get their Ctrl shortcuts back on load (NightPDF
+  never actually saved the Ctrl part).
 - `pull.yaml` also runs on pushes to main and by hand, not only on pull
   requests. It builds x64 and ARM64 on windows-2022 (windows-2025 only has VS 2026) and
   runs the tests on x64.

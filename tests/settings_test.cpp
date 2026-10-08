@@ -274,6 +274,29 @@ TEST(Migration, OlderVersionGetsUpdatedAndFixed) {
 	EXPECT_FALSE(helpers::migrateSettings(j, kVersion));
 }
 
+TEST(Migration, PutsBackTheCtrlNightPdfNeverSaved) {
+	Json j = defaultsJson();
+	// what NightPDF actually wrote: Ctrl missing everywhere
+	for (auto it = j["keybinds"].begin(); it != j["keybinds"].end(); ++it) {
+		for (auto& keybind : it.value()["keybind"]) {
+			keybind["modifiers"].erase("CommandOrControl");
+		}
+	}
+	// and one shortcut the user really changed to a plain key
+	j["keybinds"]["EndTab"]["keybind"][0] =
+	    Json{{"modifiers", Json::object()}, {"key", "E"}};
+
+	EXPECT_TRUE(helpers::migrateSettings(j, kVersion));
+	const Json defaults = defaultsJson();
+	EXPECT_EQ(j["keybinds"]["OpenWindow"], defaults["keybinds"]["OpenWindow"]);
+	EXPECT_EQ(j["keybinds"]["ReOpen"], defaults["keybinds"]["ReOpen"]);
+	EXPECT_EQ(j["keybinds"]["CloseWindow"],
+	          defaults["keybinds"]["CloseWindow"]);
+	EXPECT_TRUE(j["keybinds"]["EndTab"]["keybind"][0]["modifiers"].empty());
+
+	EXPECT_FALSE(helpers::migrateSettings(j, kVersion));
+}
+
 TEST(Migration, OldFileWithoutDisplayThumbs) {
 	Json j = Json{{"version", "0.5.0"},
 	              {"general", Json{{"MaximizeOnOpen", false}}}};

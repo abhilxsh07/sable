@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // https://github.com/Lunarequest/NightPDF/blob/mistress/app/helpers/settings.ts
 #include "settings.h"
 
+#include <cctype>
+
 #include <fstream>
 #include <iterator>
 #include <sstream>
@@ -377,6 +379,68 @@ bool isValidSection(const std::string& section, const Json& value) {
 	return false;
 }
 
+// NightPDF never actually saved Ctrl (fromTrigger dropped it), so a config
+// it wrote has "modifiers": {} for Open New PDF, just Shift for Reopen Tab,
+// and so on. Put Ctrl back when the rest of the shortcut is still the
+// default, otherwise "Ctrl+T" would load as a bare "T". Anything the user
+// changed to a different key is left alone.
+static bool repairDroppedCtrl(Json& json, const std::string& version) {
+	const auto keybinds = json.find("keybinds");
+	if (keybinds == json.end() || !keybinds->is_object()) {
+		return false;
+	}
+	Json defaults;
+	to_json(defaults, nightpdf_default_settings(version));
+	const Json& defaultKeybinds = defaults.at("keybinds");
+	auto lower = [](std::string text) {
+		for (auto& c : text) {
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		}
+		return text;
+	};
+
+	bool changed = false;
+	for (auto it = keybinds->begin(); it != keybinds->end(); ++it) {
+		const auto def = defaultKeybinds.find(it.key());
+		if (def == defaultKeybinds.end() || !it.value().is_object()) {
+			continue;
+		}
+		const auto stored = it.value().find("keybind");
+		if (stored == it.value().end() || !stored->is_array()) {
+			continue;
+		}
+		const Json& defList = def->at("keybind");
+		for (size_t k = 0; k < stored->size() && k < defList.size(); k++) {
+			Json& keybind = (*stored)[k];
+			const Json& wanted = defList[k];
+			const auto mods = keybind.find("modifiers");
+			const auto key = keybind.find("key");
+			if (mods == keybind.end() || !mods->is_object() ||
+			    key == keybind.end() || !key->is_string()) {
+				continue;
+			}
+			const Json& wantedMods = wanted.at("modifiers");
+			if (!wantedMods.contains("CommandOrControl") ||
+			    mods->contains("CommandOrControl") ||
+			    lower(key->get<std::string>()) !=
+			        lower(wanted.at("key").get<std::string>())) {
+				continue;
+			}
+			// same key and the same modifiers apart from Ctrl
+			bool sameOtherwise = mods->size() + 1 == wantedMods.size();
+			for (auto m = mods->begin(); sameOtherwise && m != mods->end();
+			     ++m) {
+				sameOtherwise = wantedMods.contains(m.key());
+			}
+			if (sameOtherwise) {
+				*mods = wantedMods;
+				changed = true;
+			}
+		}
+	}
+	return changed;
+}
+
 // port of app/main/app.ts store migration (L88-104)
 // in the future this can be use for migrations
 bool migrateSettings(Json& json, const std::string& version) {
@@ -401,6 +465,9 @@ bool migrateSettings(Json& json, const std::string& version) {
 		}
 	} else {
 		json["version"] = version;
+		changed = true;
+	}
+	if (repairDroppedCtrl(json, version)) {
 		changed = true;
 	}
 	return changed;
