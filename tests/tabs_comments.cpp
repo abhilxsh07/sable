@@ -1521,15 +1521,27 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 	case 1: {
 		check(v.placeNote({-1, -1}) && v.notePlacing() && !v.m_noteDialog,
 		      "page gap opened editor or activated a link");
+		const auto review = owner.confirmNotes(current);
+		check(review.Status() == Windows::Foundation::AsyncStatus::Completed &&
+		          review.GetResults() && !v.notePlacing(),
+		      "an armed tool refused a clean close");
+		v.beginNotePlacement();
+		v.m_noteBusy = true;
 		owner.closeTab(owner.m_tabs.front().tab);
-		check(owner.m_tabs.size() == 1 && v.notePlacing(),
-		      "close lost armed placement");
+		check(owner.m_tabs.size() == 1 && !v.notePlacing() &&
+		          owner.PickerError().IsOpen(),
+		      "tab close kept placement or lost the write guard");
+		v.m_noteBusy = false;
+		v.beginNotePlacement();
+		v.m_noteBusy = true;
 		HWND handle{};
 		check_hresult(
 		    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
 		SendMessageW(handle, WM_CLOSE, 0, 0);
-		check(!owner.m_closing && v.notePlacing(),
-		      "window close lost placement");
+		check(!owner.m_closing && !v.notePlacing(),
+		      "window close kept placement or lost the write guard");
+		v.m_noteBusy = false;
+		v.beginNotePlacement();
 		invoke(v.PlaceNoteButton());
 		check(!v.notePlacing() && !v.m_notesDirty,
 		      "Cancel placement changed PDF");
@@ -1551,10 +1563,12 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 	case 2:
 		v.zoomTo(1.5, {0, 0});
 		v.goToPage(1);
+		v.setCommentsOpen(false);
 		invoke(v.PlaceNoteButton());
 		check(v.placeNote(choosePoint()) && v.m_noteDialog &&
 		          !v.notePlacing() && !v.m_notesDirty,
 		      "chosen location mutated before Add");
+		v.setCommentsOpen(true);
 		break;
 	case 3: {
 		const auto fields = v.m_noteDialog.Content().as<StackPanel>();

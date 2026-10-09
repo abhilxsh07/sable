@@ -152,10 +152,10 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 
 bool ViewerPage::cancelNotePlacement() {
 	// Esc also drops a drawing being dragged, before it's written
-	if (m_annotationDrag && !m_annotationDrag->queued) {
+	const bool canceledDrag = m_annotationDrag && !m_annotationDrag->queued;
+	if (canceledDrag) {
 		dropAnnotationDrag();
 		Pages().ReleasePointerCaptures();
-		return true;
 	}
 	m_shapeStart.reset();
 	m_stampImage.reset();
@@ -168,7 +168,7 @@ bool ViewerPage::cancelNotePlacement() {
 	if ((canceled || canceledPicker) && !m_closed) {
 		showComments();
 	}
-	return canceled || canceledPicker;
+	return canceled || canceledPicker || canceledDrag;
 }
 
 bool ViewerPage::placeNote(Windows::Foundation::Point point) {

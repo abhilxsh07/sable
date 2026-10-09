@@ -592,8 +592,10 @@ void TabsTest::tick() {
 				sizingWindow->m_notesChoice = [] {
 					return notesChoice(ContentDialogResult::None);
 				};
+				pdf->m_activeTool = ViewerPage::ActiveTool::Note;
 				sizingWindow->closeTab(background);
-				check(sizingWindow->Tabs().SelectedItem() == selected &&
+				check(!pdf->notePlacing() &&
+				          sizingWindow->Tabs().SelectedItem() == selected &&
 				          sizingWindow->m_tabs.size() == 3 &&
 				          !sizingWindow->m_closePending,
 				      "canceling a background close changed the active tab");

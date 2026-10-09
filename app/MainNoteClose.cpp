@@ -32,6 +32,7 @@ namespace winrt::Sable::implementation {
 IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	const auto lifetime = get_strong();
 	const auto viewer = get_self<ViewerPage>(document);
+	viewer->cancelNotePlacement();
 	if (viewer->pageOperationBusy()) {
 		showShellError(
 		    L"Couldn't close the tab",
@@ -40,7 +41,7 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	}
 	const bool copying = m_saveCopyCancel && m_saveCopyViewer.get() == document;
 	if (viewer->m_noteBusy || (viewer->m_noteSaving && !copying) ||
-	    viewer->m_noteDialog || viewer->notePlacing() ||
+	    viewer->m_noteDialog ||
 	    (viewer->m_notesDirty && viewer->m_passwordDialog)) {
 		showShellError(L"Couldn't close the tab",
 		               L"Finish the open dialog or note operation first.");

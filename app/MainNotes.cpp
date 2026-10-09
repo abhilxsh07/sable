@@ -35,6 +35,7 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 	if (m_closing || viewer->m_closed) {
 		co_return false;
 	}
+	viewer->cancelNotePlacement();
 	if (m_notesSaving || viewer->m_noteSaving) {
 		showShellError(L"Save already in progress",
 		               L"Wait for the current save to finish, or cancel "
@@ -42,8 +43,7 @@ IAsyncOperation<bool> MainWindow::saveNotes(Sable::ViewerPage document) {
 		co_return false;
 	}
 	if (!viewer->m_session || !viewer->m_notesDirty || viewer->m_noteBusy ||
-	    viewer->m_noteDialog || viewer->notePlacing() ||
-	    viewer->pageOperationBusy()) {
+	    viewer->m_noteDialog || viewer->pageOperationBusy()) {
 		co_return false;
 	}
 	m_notesSaving = true;

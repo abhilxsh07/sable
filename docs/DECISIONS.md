@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Armed tools yield to save and close (2026-11-15)
+
+I drop an armed tool before Save Copy, saving edits, or reviewing a tab
+close. An unfinished stroke, shape corner or stamp choice is canceled;
+an actual queued write, save or dialog keeps its existing busy guard.
+Clean tabs can close without an extra prompt, and canceling a save picker
+keeps the PDF and dirty edits intact. Audit A-11 replaces the old rule
+that required Esc before saving or closing an otherwise idle document.
+
 ## One active pointer tool (2026-11-15)
 
 I keep the cursor and placement in one per-tab ActiveTool. Hand and Select

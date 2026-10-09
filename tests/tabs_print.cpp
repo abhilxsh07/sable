@@ -322,12 +322,15 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 		attachmentTarget = settingsPath;
 		attachmentTarget.replace_extension(L".pdf");
 		choose(L"");
+		v.beginNotePlacement();
+		check(v.notePlacing(), "save test didn't arm a note");
 		owner.onSaveCopy(nullptr, nullptr);
 		break;
 	case 1:
 		check(attachmentPicks == 1 && attachmentName == L"pages copy.pdf" &&
 		          !std::filesystem::exists(attachmentTarget) &&
-		          !v.Message().IsOpen() && owner.SaveCopyItem().IsEnabled(),
+		          !v.Message().IsOpen() && !v.notePlacing() &&
+		          owner.SaveCopyItem().IsEnabled(),
 		      "cancel changed document state or suggested name");
 		v.rotateView(1);
 		v.zoomIn();
@@ -405,13 +408,15 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 	case 6:
 		check(v.m_notesDirty, "copy test note did not become dirty");
 		chooseNotes(L"");
+		v.beginNotePlacement(ViewerPage::PlacementTool::Arrow);
+		check(v.notePlacing(), "edited-copy save didn't arm an arrow");
 		v.Scroller().Focus(FocusState::Programmatic);
 		check(owner.routeKey('S', helpers::SHORTCUT_CTRL),
 		      "Ctrl-S did not reach edited-copy saving");
 		break;
 	case 7:
-		check(v.m_notesDirty && !v.m_noteSaving && !owner.m_saveCopyCancel &&
-		          attachmentPicks == 5 &&
+		check(v.m_notesDirty && !v.notePlacing() && !v.m_noteSaving &&
+		          !owner.m_saveCopyCancel && attachmentPicks == 5 &&
 		          attachmentName == L"pages notes.pdf" &&
 		          bytes(attachmentTarget) == bytes(v.m_path),
 		      "dirty copy cancel lost notes or opened another picker");

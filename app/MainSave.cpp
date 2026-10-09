@@ -76,13 +76,14 @@ fire_and_forget MainWindow::saveCopy() {
 				viewer->showNotice(L"This PDF isn't ready to save yet.");
 				co_return;
 			}
+			viewer->cancelNotePlacement();
 			if (viewer->pageOperationBusy()) {
 				viewer->showNotice(
 				    L"Wait for the page operation to finish before saving.");
 				co_return;
 			}
 			if (viewer->m_noteBusy || viewer->m_noteSaving ||
-			    viewer->m_noteDialog || viewer->notePlacing()) {
+			    viewer->m_noteDialog) {
 				viewer->showNotice(L"Finish the open dialog or note operation "
 				                   L"before saving a copy.");
 				co_return;
