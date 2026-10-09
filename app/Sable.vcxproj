@@ -160,6 +160,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- helpers/ is plain C++ with no WinRT in it, so it stays out of the pch -->
 	<ItemGroup>
 		<ClInclude Include="helpers\version.h" />
+		<ClInclude Include="helpers\recents.h" />
 		<ClInclude Include="helpers\cli.h" />
 		<ClInclude Include="helpers\filter.h" />
 		<ClInclude Include="helpers\sliders.h" />
@@ -168,6 +169,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="helpers\version.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\recents.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\cli.cpp">
