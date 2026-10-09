@@ -93,37 +93,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</TitleBar.LeftHeader>
 		</TitleBar>
 
-		<!-- port of app/index.html (L100-110) and app/css/index.sass (L12-49) -->
-		<Grid x:Name="splashContainer" Grid.Row="1">
-			<!-- #splash: 300x232, 60px from the top, centred -->
-			<Grid x:Name="splash" Width="300" Height="232" Margin="0,60,0,0"
-				HorizontalAlignment="Center" VerticalAlignment="Top">
-				<!-- the dashed border is gradient3.svg in NightPDF, drawn here
-					instead of loaded. The svg strokes 3px centred on the edge of
-					its own viewport, so only the inner 1.5px ever shows, with
-					square corners. StrokeDashArray counts in stroke widths, so
-					"4 4" at 1.5px is the svg's "6 6" -->
-				<Rectangle StrokeThickness="1.5" StrokeDashArray="4 4">
-					<Rectangle.Stroke>
-						<LinearGradientBrush MappingMode="Absolute" StartPoint="156.079,232" EndPoint="143.921,0">
-							<GradientStop Offset="0" Color="#29c0ea" />
-							<GradientStop Offset="0.683" Color="#d773e9" />
-							<GradientStop Offset="1" Color="#fc515d" />
-						</LinearGradientBrush>
-					</Rectangle.Stroke>
-				</Rectangle>
-				<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-					<Image Source="ms-appx:///assets/icon2.png" Width="100" Margin="0,0,0,20" />
-					<!-- an h3 inside an 18px box: 1.17em, bold, 1em top margin -->
-					<TextBlock Text="Drop PDF here" FontSize="21" FontWeight="Bold"
-						Foreground="#cccccc" Margin="0,21,0,0" HorizontalAlignment="Center" />
-				</StackPanel>
-			</Grid>
-			<!-- #splash-extra: 316px from the top, h3 at 16.64px -->
-			<TextBlock x:Name="prompt" Text="Open File with CTRL+O" FontSize="16.64"
-				FontWeight="Bold" Foreground="#bbbbbb" Margin="0,333,0,0"
-				HorizontalAlignment="Center" VerticalAlignment="Top" />
-		</Grid>
+		<!-- Recent and Starred filter the same list, the tools are shortcuts
+			and don't stay selected. Below 1008px the pane folds down to icons;
+			it never hides completely, there's no button to bring it back. -->
+		<NavigationView x:Name="Nav" Grid.Row="1"
+			PaneDisplayMode="Auto" CompactModeThresholdWidth="0"
+			IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False"
+			IsSettingsVisible="False" IsTitleBarAutoPaddingEnabled="False"
+			OpenPaneLength="232" SelectionChanged="onNavSelectionChanged">
+			<NavigationView.MenuItems>
+				<NavigationViewItem Content="Recent" Tag="recent" IsSelected="True">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE823;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Starred" Tag="starred">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE734;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItemHeader Content="Tools" />
+				<NavigationViewItem Content="Organize pages" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8A9;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Combine files" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8C8;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Fill &amp; Sign" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE70F;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Comment" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Export" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xEDE1;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+				<NavigationViewItem Content="Read aloud" SelectsOnInvoked="False">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE767;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+			</NavigationView.MenuItems>
+			<NavigationView.FooterMenuItems>
+				<NavigationViewItem Content="Settings" SelectsOnInvoked="False" ToolTipService.ToolTip="Settings (Alt+S)">
+					<NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
+				</NavigationViewItem>
+			</NavigationView.FooterMenuItems>
+
+			<local:HomePage x:Name="Home" />
+		</NavigationView>
 	</Grid>
 </Window>
 <!--trans rights-->

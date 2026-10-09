@@ -38,6 +38,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<SolidColorBrush x:Key="SableTextBrush" Color="#e8e8e8" />
 			<SolidColorBrush x:Key="SableTextSecondaryBrush" Color="#a6a6a6" />
 			<SolidColorBrush x:Key="SableTextTertiaryBrush" Color="#7a7a7a" />
+
+			<!-- NavigationView's own keys, so the pane reads like part of the
+				app and not like the Settings app -->
+			<SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#1e1e1e" />
+			<SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#1e1e1e" />
+			<SolidColorBrush x:Key="NavigationViewContentBackground" Color="#232323" />
+			<SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#2f2f2f" />
+			<LinearGradientBrush x:Key="NavigationViewSelectionIndicatorForeground" StartPoint="0.5,1" EndPoint="0.5,0">
+				<GradientStop Offset="0" Color="#29c0ea" />
+				<GradientStop Offset="0.683" Color="#d773e9" />
+				<GradientStop Offset="1" Color="#fc515d" />
+			</LinearGradientBrush>
 		</ResourceDictionary>
 	</ResourceDictionary.ThemeDictionaries>
 
@@ -53,6 +65,104 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</LinearGradientBrush>
 
 	<CornerRadius x:Key="SableCardCornerRadius">8</CornerRadius>
+
+	<!-- the big "Open a PDF" button: the gradient, white text, a light wash
+		on hover -->
+	<Style x:Key="SableAccentButtonStyle" TargetType="Button">
+		<Setter Property="Foreground" Value="#ffffff" />
+		<Setter Property="Background" Value="{StaticResource SableAccentGradient}" />
+		<Setter Property="Padding" Value="22,9" />
+		<Setter Property="CornerRadius" Value="6" />
+		<Setter Property="FontSize" Value="14" />
+		<Setter Property="FontWeight" Value="SemiBold" />
+		<Setter Property="UseSystemFocusVisuals" Value="True" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Grid x:Name="Root" Background="{TemplateBinding Background}"
+						CornerRadius="{TemplateBinding CornerRadius}">
+						<VisualStateManager.VisualStateGroups>
+							<VisualStateGroup x:Name="CommonStates">
+								<VisualState x:Name="Normal" />
+								<VisualState x:Name="PointerOver">
+									<VisualState.Setters>
+										<Setter Target="Wash.Opacity" Value="0.14" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Pressed">
+									<VisualState.Setters>
+										<Setter Target="Wash.Opacity" Value="0.06" />
+										<Setter Target="Root.Opacity" Value="0.85" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Disabled">
+									<VisualState.Setters>
+										<Setter Target="Root.Opacity" Value="0.4" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+						</VisualStateManager.VisualStateGroups>
+						<Rectangle x:Name="Wash" Fill="White" Opacity="0" />
+						<ContentPresenter Padding="{TemplateBinding Padding}"
+							Foreground="{TemplateBinding Foreground}"
+							Content="{TemplateBinding Content}"
+							ContentTemplate="{TemplateBinding ContentTemplate}"
+							HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- NightPDF's preset buttons (index.sass L105-133): 14px, weight 600, 4px 8px
+		padding, 6px radius, 2px rgb(30,30,30) border that goes rgb(121,121,121)
+		on hover. Each button sets its own colours. -->
+	<Style x:Key="SablePresetButtonStyle" TargetType="Button">
+		<Setter Property="FontSize" Value="14" />
+		<Setter Property="FontWeight" Value="SemiBold" />
+		<Setter Property="Padding" Value="8,4" />
+		<Setter Property="CornerRadius" Value="6" />
+		<Setter Property="BorderThickness" Value="2" />
+		<Setter Property="BorderBrush" Value="#1e1e1e" />
+		<Setter Property="UseSystemFocusVisuals" Value="True" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Border x:Name="Chip" Background="{TemplateBinding Background}"
+						BorderBrush="{TemplateBinding BorderBrush}"
+						BorderThickness="{TemplateBinding BorderThickness}"
+						CornerRadius="{TemplateBinding CornerRadius}">
+						<VisualStateManager.VisualStateGroups>
+							<VisualStateGroup x:Name="CommonStates">
+								<VisualState x:Name="Normal" />
+								<VisualState x:Name="PointerOver">
+									<VisualState.Setters>
+										<Setter Target="Chip.BorderBrush" Value="#797979" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Pressed">
+									<VisualState.Setters>
+										<Setter Target="Chip.BorderBrush" Value="#797979" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+						</VisualStateManager.VisualStateGroups>
+						<ContentPresenter Padding="{TemplateBinding Padding}"
+							Foreground="{TemplateBinding Foreground}"
+							Content="{TemplateBinding Content}" />
+					</Border>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- the tools strip and other quiet buttons -->
+	<Style x:Key="SableFlatButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="10,8" />
+		<Setter Property="CornerRadius" Value="6" />
+	</Style>
 
 	<!-- flat buttons that sit in the title bar (the Menu button) -->
 	<Style x:Key="SableTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">

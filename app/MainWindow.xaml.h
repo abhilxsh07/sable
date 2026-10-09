@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "MainWindow.g.h"
+#include "HomePage.xaml.h"
 
 #include <winrt/Microsoft.UI.Windowing.h>
 
@@ -34,6 +35,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenLink(const winrt::Windows::Foundation::IInspectable& sender,
 	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onNavSelectionChanged(
+	    const winrt::Microsoft::UI::Xaml::Controls::NavigationView&,
+	    const winrt::Microsoft::UI::Xaml::Controls::
+	        NavigationViewSelectionChangedEventArgs& args);
 
   private:
 	void setupWindow();
