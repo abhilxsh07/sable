@@ -1373,10 +1373,9 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		invoke(v.DrawInkButton());
 		check(!v.notePlacing(), "Stop drawing kept the tool armed");
 		v.chooseInkStyle(std::nullopt, 1.f);
-		check(v.notePlacing() && v.s_inkStyle.width == 1 &&
+		check(!v.notePlacing() && v.s_inkStyle.width == 1 &&
 		          v.s_inkStyle.color.red == 235,
-		      "a style choice did not arm drawing or kept the old width");
-		invoke(v.DrawInkButton());
+		      "an idle style choice armed drawing or kept the old width");
 		check(!v.notePlacing() && v.SaveNotesButton().IsEnabled(),
 		      "Stop drawing did not allow saving");
 		notesPath =

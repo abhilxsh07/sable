@@ -353,6 +353,17 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		invokeElement(v.PlaceLineButton());
 		v.placeNote(at(.2, .2));
 		check(v.m_shapeStart.has_value(), "the line start wasn't kept");
+		{
+			const auto style = v.s_inkStyle;
+			const auto corner = v.m_shapeStart->corner;
+			v.chooseInkStyle(pdf::AnnotationColor{235, 73, 73, 255}, 4.f);
+			check(v.m_activeTool == ViewerPage::ActiveTool::Line &&
+			          v.m_shapeStart && v.m_shapeStart->corner.x == corner.x &&
+			          v.m_shapeStart->corner.y == corner.y &&
+			          v.s_inkStyle.width == 4 && v.s_inkStyle.color.red == 235,
+			      "a style choice replaced the line tool or its first point");
+			v.chooseInkStyle(style.color, style.width);
+		}
 		v.placeNote(at(.5, .3));
 		break;
 	case 1:
@@ -373,6 +384,9 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		v.placeNote(at(.3005, .6));
 		check(v.notePlacing() && v.m_shapeStart && !v.m_noteBusy,
 		      "a too-short arrow didn't keep its start");
+		v.chooseInkStyle(std::nullopt, v.s_inkStyle.width);
+		check(v.m_activeTool == ViewerPage::ActiveTool::Arrow && v.m_shapeStart,
+		      "a style choice replaced the arrow tool or its first point");
 		v.placeNote(at(.7, .6));
 		break;
 	case 2:

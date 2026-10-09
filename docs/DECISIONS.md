@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Drawing style keeps the tool (2026-11-15)
+
+I change only the shared pen color and width when choosing Drawing style.
+An idle style choice stays idle; a line or arrow keeps its first point,
+and a freehand stroke keeps the style it captured when it began. This
+replaces the 7 November choice that started Draw from a style item, as
+approved in audit A-38. The palette, widths and settings stay unchanged.
+
 ## Armed tools yield to save and close (2026-11-15)
 
 I drop an armed tool before Save Copy, saving edits, or reviewing a tab

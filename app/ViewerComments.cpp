@@ -317,7 +317,7 @@ static hstring inkStyleName(const pdf::InkStyle& style) {
 	       to_hstring(static_cast<int>(std::lround(style.width))) + L" pt";
 }
 
-// picking a style also starts drawing with it
+// a style choice leaves the tool and its draft alone
 void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
                                 std::optional<float> width) {
 	if (color) {
@@ -326,11 +326,7 @@ void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	if (width) {
 		s_inkStyle.width = *width;
 	}
-	if (notePlacing() && m_activeTool == PlacementTool::Ink) {
-		showComments();
-	} else {
-		beginNotePlacement(PlacementTool::Ink);
-	}
+	showComments();
 }
 void ViewerPage::closeComments() {
 	m_shapeStart.reset();
