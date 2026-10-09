@@ -60,6 +60,12 @@ std::filesystem::path exeDir() {
 namespace winrt::Sable::implementation {
 MainWindow::MainWindow() {
 	setupWindow();
+}
+
+// C++/WinRT loads the XAML after the constructor returns, so anything that
+// needs a named element has to wait until here
+void MainWindow::InitializeComponent() {
+	MainWindowT::InitializeComponent();
 	setupTitleBar();
 }
 

@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
+	void InitializeComponent();
 
 	void onToggleFullScreen(const winrt::Windows::Foundation::IInspectable&,
 	                        const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
