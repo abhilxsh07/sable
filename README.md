@@ -10,7 +10,9 @@ and command line as NightPDF. After that it grows into a full reader, with
 comments, Fill & Sign, page organizing and more, all offline. See
 [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: very early. Nothing runs yet.
+Status: early. The app opens to NightPDF's splash screen, and the core
+logic (settings, keybinds, presets, the filter math, the command line) is
+ported and tested. Opening PDFs is next.
 
 ## Credits
 
