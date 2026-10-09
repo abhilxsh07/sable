@@ -78,6 +78,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Link>
 	</ItemDefinitionGroup>
 
+	<!-- Files that don't use the pch (helpers/, the App SDK's auto-initializer
+		.cpp files) were writing into the same vc143.pdb as the pch, while it
+		was being built. /FS alone didn't stop it: builds kept dying with
+		C1041 and C2859 ("not the pdb file that was used when this precompiled
+		header was created"). Giving them their own pdb keeps the pch's pdb to
+		the files that actually use it. Only the app has a pch. -->
+	<Target Name="SeparatePdbForNoPch" BeforeTargets="ClCompile" Condition="'$(MSBuildProjectName)'=='Sable'">
+		<ItemGroup>
+			<ClCompile Condition="'%(ClCompile.PrecompiledHeader)'=='NotUsing'">
+				<ProgramDataBaseFileName>$(IntDir)nopch.pdb</ProgramDataBaseFileName>
+			</ClCompile>
+		</ItemGroup>
+	</Target>
+
+	<Target Name="CheckVcpkg" BeforeTargets="PrepareForBuild" Condition="'$(VcpkgEnableManifest)'=='true' and !Exists('$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.props')">
+		<Error Text="This project gets its libraries from the vcpkg that ships with Visual Studio, and it isn't installed. Add 'vcpkg package manager' (Desktop development with C++) in the Visual Studio Installer." />
+	</Target>
+
 	<Target Name="CheckWinAppSdkVersion" BeforeTargets="PrepareForBuild" Condition="'$(MSBuildProjectName)'=='Sable'">
 		<XmlPeek XmlInputPath="$(MSBuildProjectDirectory)\packages.config" Query="/packages/package[@id='Microsoft.WindowsAppSDK']/@version">
 			<Output TaskParameter="Result" PropertyName="_SablePackagesConfigSdk" />
