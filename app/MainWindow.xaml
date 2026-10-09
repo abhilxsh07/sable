@@ -28,10 +28,73 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	mc:Ignorable="d"
 	Title="Sable">
 
-	<!-- port of app/index.html (L100-110) and app/css/index.sass (L12-49).
-		Only the splash so far: no tabs, so NightPDF hides the header too. -->
-	<Grid Background="#1e1e1e">
-		<Grid x:Name="splashContainer">
+	<Grid RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}">
+		<!-- my own title bar instead of the system one. The Menu button takes
+			the place of NightPDF's menu bar (menutemplate.ts), same items, same
+			shortcuts. Tabs and the preset buttons move up here later. -->
+		<TitleBar x:Name="AppTitleBar" Title="Sable"
+			IsBackButtonVisible="False" IsPaneToggleButtonVisible="False"
+			Background="{ThemeResource SableTitleBarBrush}">
+			<TitleBar.IconSource>
+				<ImageIconSource ImageSource="ms-appx:///assets/icon.png" />
+			</TitleBar.IconSource>
+			<TitleBar.LeftHeader>
+				<Button x:Name="MenuButton" Style="{StaticResource SableTitleBarButtonStyle}"
+					Margin="4,0,0,0" ToolTipService.ToolTip="Menu"
+					AutomationProperties.Name="Menu">
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<FontIcon Glyph="&#xE700;" FontSize="14" />
+						<TextBlock Text="Menu" />
+					</StackPanel>
+					<Button.Flyout>
+						<MenuFlyout Placement="BottomEdgeAlignedLeft">
+							<MenuFlyoutSubItem Text="File">
+								<MenuFlyoutItem x:Name="OpenItem" Text="Open..." KeyboardAcceleratorTextOverride="Ctrl+O">
+									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
+								</MenuFlyoutItem>
+								<!-- disabled until a tab is open, like NightPDF -->
+								<MenuFlyoutItem Text="Print" KeyboardAcceleratorTextOverride="Ctrl+P" IsEnabled="False">
+									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE749;" /></MenuFlyoutItem.Icon>
+								</MenuFlyoutItem>
+								<MenuFlyoutItem x:Name="SettingsItem" Text="Settings" KeyboardAcceleratorTextOverride="Alt+S">
+									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+								</MenuFlyoutItem>
+							</MenuFlyoutSubItem>
+							<!-- Electron's edit and zoom roles act on the page, there's
+								no page on the home screen -->
+							<MenuFlyoutSubItem Text="Edit">
+								<MenuFlyoutItem Text="Undo" KeyboardAcceleratorTextOverride="Ctrl+Z" IsEnabled="False" />
+								<MenuFlyoutItem Text="Redo" KeyboardAcceleratorTextOverride="Ctrl+Y" IsEnabled="False" />
+								<MenuFlyoutSeparator />
+								<MenuFlyoutItem Text="Cut" KeyboardAcceleratorTextOverride="Ctrl+X" IsEnabled="False" />
+								<MenuFlyoutItem Text="Copy" KeyboardAcceleratorTextOverride="Ctrl+C" IsEnabled="False" />
+								<MenuFlyoutItem Text="Paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" />
+							</MenuFlyoutSubItem>
+							<MenuFlyoutSubItem Text="View">
+								<MenuFlyoutItem Text="Reset Zoom" KeyboardAcceleratorTextOverride="Ctrl+0" IsEnabled="False" />
+								<MenuFlyoutItem Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Plus" IsEnabled="False" />
+								<MenuFlyoutItem Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" IsEnabled="False" />
+								<MenuFlyoutSeparator />
+								<MenuFlyoutItem x:Name="FullScreenItem" Text="Toggle Full Screen" KeyboardAcceleratorTextOverride="F11" Click="onToggleFullScreen" />
+							</MenuFlyoutSubItem>
+							<MenuFlyoutSubItem Text="Window">
+								<MenuFlyoutItem x:Name="MinimizeItem" Text="Minimize" KeyboardAcceleratorTextOverride="Ctrl+M" Click="onMinimize" />
+							</MenuFlyoutSubItem>
+							<!-- upstream's links point at NightPDF, these at Sable's repo.
+								No Contact item until there's an address for it. -->
+							<MenuFlyoutSubItem Text="Help">
+								<MenuFlyoutItem x:Name="LearnMoreItem" Text="Learn More" Tag="https://github.com/abhilxsh07/sable" Click="onOpenLink" />
+								<MenuFlyoutItem x:Name="LicenseItem" Text="License" Tag="https://github.com/abhilxsh07/sable/blob/main/LICENSE" Click="onOpenLink" />
+								<MenuFlyoutItem x:Name="BugsItem" Text="Bugs" Tag="https://github.com/abhilxsh07/sable/issues" Click="onOpenLink" />
+							</MenuFlyoutSubItem>
+						</MenuFlyout>
+					</Button.Flyout>
+				</Button>
+			</TitleBar.LeftHeader>
+		</TitleBar>
+
+		<!-- port of app/index.html (L100-110) and app/css/index.sass (L12-49) -->
+		<Grid x:Name="splashContainer" Grid.Row="1">
 			<!-- #splash: 300x232, 60px from the top, centred -->
 			<Grid x:Name="splash" Width="300" Height="232" Margin="0,60,0,0"
 				HorizontalAlignment="Center" VerticalAlignment="Top">

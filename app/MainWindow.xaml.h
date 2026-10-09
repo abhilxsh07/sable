@@ -21,12 +21,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "MainWindow.g.h"
 
+#include <winrt/Microsoft.UI.Windowing.h>
+
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
 
+	void onToggleFullScreen(const winrt::Windows::Foundation::IInspectable&,
+	                        const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onMinimize(const winrt::Windows::Foundation::IInspectable&,
+	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onOpenLink(const winrt::Windows::Foundation::IInspectable& sender,
+	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+
   private:
 	void setupWindow();
+	void setupTitleBar();
+
+	// kept around so leaving full screen gets the same window back, minimum
+	// size and all
+	winrt::Microsoft::UI::Windowing::OverlappedPresenter m_presenter{nullptr};
 };
 } // namespace winrt::Sable::implementation
 

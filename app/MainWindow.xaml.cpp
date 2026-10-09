@@ -26,6 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <filesystem>
 #include <microsoft.ui.xaml.window.h>
+#include <shellapi.h>
+#include <winrt/Microsoft.UI.h>
 #include <winrt/Microsoft.UI.Windowing.h>
 
 using namespace winrt;
@@ -58,6 +60,7 @@ std::filesystem::path exeDir() {
 namespace winrt::Sable::implementation {
 MainWindow::MainWindow() {
 	setupWindow();
+	setupTitleBar();
 }
 
 // port of app/main/app.ts createWindow() (L135-148), just the window part.
@@ -78,10 +81,69 @@ void MainWindow::setupWindow() {
 		return static_cast<int32_t>(dip * scale + 0.5);
 	};
 
-	if (auto presenter = appWindow.Presenter().try_as<OverlappedPresenter>()) {
-		presenter.PreferredMinimumWidth(px(MIN_WIDTH));
-		presenter.PreferredMinimumHeight(px(MIN_HEIGHT));
-	}
+	m_presenter = OverlappedPresenter::Create();
+	m_presenter.PreferredMinimumWidth(px(MIN_WIDTH));
+	m_presenter.PreferredMinimumHeight(px(MIN_HEIGHT));
+	appWindow.SetPresenter(m_presenter);
+	// NightPDF's size is still what you get back when you restore the window,
+	// but it starts maximized now (docs/DECISIONS.md)
 	appWindow.Resize({px(WIDTH), px(HEIGHT)});
+	m_presenter.Maximize();
+}
+
+void MainWindow::setupTitleBar() {
+	ExtendsContentIntoTitleBar(true);
+	SetTitleBar(AppTitleBar());
+
+	// the min/max/close buttons are still drawn by Windows, match them to the
+	// bar. Tall so they line up with the 48px TitleBar control.
+	auto titleBar = AppWindow().TitleBar();
+	titleBar.PreferredHeightOption(TitleBarHeightOption::Tall);
+	const auto transparent = Microsoft::UI::Colors::Transparent();
+	titleBar.ButtonBackgroundColor(transparent);
+	titleBar.ButtonInactiveBackgroundColor(transparent);
+	titleBar.ButtonForegroundColor(Windows::UI::Color{255, 0xe8, 0xe8, 0xe8});
+	titleBar.ButtonInactiveForegroundColor(
+	    Windows::UI::Color{255, 0x7a, 0x7a, 0x7a});
+	titleBar.ButtonHoverBackgroundColor(
+	    Windows::UI::Color{255, 0x2d, 0x2d, 0x2d});
+	titleBar.ButtonHoverForegroundColor(
+	    Windows::UI::Color{255, 0xff, 0xff, 0xff});
+	titleBar.ButtonPressedBackgroundColor(
+	    Windows::UI::Color{255, 0x38, 0x38, 0x38});
+	titleBar.ButtonPressedForegroundColor(
+	    Windows::UI::Color{255, 0xff, 0xff, 0xff});
+}
+
+// View > Toggle Full Screen (Electron's togglefullscreen role)
+void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
+                                    const RoutedEventArgs&) {
+	auto appWindow = AppWindow();
+	if (appWindow.Presenter().Kind() == AppWindowPresenterKind::FullScreen) {
+		appWindow.SetPresenter(m_presenter);
+	} else {
+		appWindow.SetPresenter(FullScreenPresenter::Create());
+	}
+}
+
+// Window > Minimize
+void MainWindow::onMinimize(const Windows::Foundation::IInspectable&,
+                            const RoutedEventArgs&) {
+	m_presenter.Minimize();
+}
+
+// the Help items keep their link in Tag
+void MainWindow::onOpenLink(const Windows::Foundation::IInspectable& sender,
+                            const RoutedEventArgs&) {
+	auto item = sender.try_as<Controls::MenuFlyoutItem>();
+	if (!item) {
+		return;
+	}
+	const auto url = unbox_value_or<hstring>(item.Tag(), hstring{});
+	if (url.empty()) {
+		return;
+	}
+	ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr,
+	              SW_SHOWNORMAL);
 }
 } // namespace winrt::Sable::implementation
