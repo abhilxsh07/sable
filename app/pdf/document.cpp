@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <cassert>
 #include <fstream>
+#include <memory>
 #include <system_error>
 
 #include <fpdf_doc.h>
@@ -30,6 +31,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 namespace {
+// the biggest bitmap render() makes: 16384 on a side, 256 MB in all
+constexpr int MAX_SIDE = 16384;
+constexpr long long MAX_PIXELS = 64LL * 1024 * 1024;
+
+struct PageCloser {
+	void operator()(fpdf_page_t__* page) const {
+		FPDF_ClosePage(page);
+	}
+};
+struct BitmapDestroyer {
+	void operator()(fpdf_bitmap_t__* bitmap) const {
+		FPDFBitmap_Destroy(bitmap);
+	}
+};
+using PagePtr = std::unique_ptr<fpdf_page_t__, PageCloser>;
+using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
+
 // Every FPDF_* call has to happen on the PDFium thread. Off it, refuse
 // instead of messing up PDFium's state, and stop right there in debug builds.
 bool offThread() {
@@ -204,5 +222,42 @@ std::string Document::pageLabel(int index) const {
 	}
 	buffer.resize(bytes - 2);
 	return utf16ToUtf8(buffer);
+}
+std::optional<Bitmap> Document::render(int index, int width, int height,
+                                       int rotation) const {
+	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle)) {
+		return std::nullopt;
+	}
+	if (width <= 0 || height <= 0 || width > MAX_SIDE || height > MAX_SIDE ||
+	    static_cast<long long>(width) * height > MAX_PIXELS) {
+		return std::nullopt;
+	}
+	if (rotation < 0 || rotation > 3) {
+		return std::nullopt;
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return std::nullopt;
+	}
+
+	Bitmap out;
+	out.width = width;
+	out.height = height;
+	out.stride = width * 4;
+	out.pixels.resize(static_cast<std::size_t>(out.stride) *
+	                  static_cast<std::size_t>(height));
+	// PDFium draws straight into our buffer, no copy afterwards
+	BitmapPtr bitmap(FPDFBitmap_CreateEx(width, height, FPDFBitmap_BGRA,
+	                                     out.pixels.data(), out.stride));
+	if (!bitmap) {
+		return std::nullopt;
+	}
+	// white paper underneath, like PDF.js
+	FPDFBitmap_FillRect(bitmap.get(), 0, 0, width, height, 0xFFFFFFFF);
+	// No FPDF_LCD_TEXT: sub-pixel text has coloured fringes, and they get
+	// very visible once the night filter inverts or hue-rotates the page.
+	FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, height,
+	                      rotation, FPDF_ANNOT);
+	return out;
 }
 } // namespace pdf
