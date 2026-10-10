@@ -83,8 +83,7 @@ RecentFiles loadRecents(const std::filesystem::path& file);
 
 // writes "<file>.tmp" and renames it over the real file so a crash can't
 // leave half a list behind. false if anything failed.
-bool saveRecents(const std::filesystem::path& file,
-                 const RecentFiles& recents);
+bool saveRecents(const std::filesystem::path& file, const RecentFiles& recents);
 
 // "0 B", "512 B", "1 KB", "454 KB", "4.0 MB", "1.2 GB", "1.0 TB".
 // Steps of 1024, whole numbers for KB, one decimal above that. A value that
