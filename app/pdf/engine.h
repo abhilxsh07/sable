@@ -50,7 +50,8 @@ class Engine {
 
 	// queue work and get its result, or its exception, back as a future.
 	// Don't wait on the future from the UI thread, or from work already
-	// running on the PDFium thread (that one never finishes).
+	// running on the PDFium thread (that one never finishes). And don't
+	// hand a Document back through it, it has to die on the PDFium thread.
 	template <typename F>
 	auto run(F&& work) -> std::future<std::invoke_result_t<std::decay_t<F>&>> {
 		using Work = std::decay_t<F>;
@@ -76,6 +77,8 @@ class Engine {
 
 	// true on the PDFium thread, false everywhere else
 	static bool onThread();
+	// true while an Engine exists
+	static bool running();
 
   private:
 	void loop();
