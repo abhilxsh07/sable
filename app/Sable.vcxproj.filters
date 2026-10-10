@@ -73,6 +73,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="helpers\version.cpp">
 			<Filter>helpers</Filter>
 		</ClCompile>
+		<ClInclude Include="pdf\engine.h">
+			<Filter>pdf</Filter>
+		</ClInclude>
+		<ClCompile Include="pdf\engine.cpp">
+			<Filter>pdf</Filter>
+		</ClCompile>
 		<ClInclude Include="helpers\recents.h">
 			<Filter>helpers</Filter>
 		</ClInclude>
@@ -111,6 +117,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 	</ItemGroup>
 	<ItemGroup>
+		<Filter Include="pdf">
+			<UniqueIdentifier>{2D3D08EF-2463-41BF-9619-E1DF007DFFC5}</UniqueIdentifier>
+		</Filter>
 		<Filter Include="helpers">
 			<UniqueIdentifier>{2D7F4A91-6C3B-4E58-A1D0-8B5E3F7C9264}</UniqueIdentifier>
 		</Filter>

@@ -55,6 +55,22 @@ jobs:
           key: vcpkg-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
       - name: make vcpkg cache dir
         run: New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
+      # PDFium isn't in the repo, update_pdfium.py fetches the pinned build
+      - name: cache pdfium
+        id: pdfium-cache
+        uses: actions/cache@v6
+        with:
+          path: third_party/pdfium
+          key: pdfium-${{ hashFiles('.pdfium_version') }}
+      - uses: actions/setup-python@v7
+        if: steps.pdfium-cache.outputs.cache-hit != 'true'
+        with:
+          python-version-file: .python-version
+      - name: download pdfium
+        if: steps.pdfium-cache.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install requests
+          python update_pdfium.py --pinned
       - name: format
         if: matrix.platform == 'x64'
         run: ./scripts/format.ps1 -Check
