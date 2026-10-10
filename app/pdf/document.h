@@ -1,0 +1,95 @@
+/*
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+#pragma once
+
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+// PDFium's handle type, declared here so this header doesn't need fpdfview.h
+struct fpdf_document_t__;
+
+namespace pdf {
+enum class Error {
+	None,
+	File,             // the file couldn't be read
+	Format,           // not a PDF, or too damaged to open
+	PasswordRequired, // it's encrypted and no password was given
+	WrongPassword,
+	Security, // protected in a way PDFium can't open
+	Unknown,
+};
+
+// what to tell the user, in plain words ("" for None)
+std::string_view errorMessage(Error error);
+
+// in points (1/72 inch), the way the page is shown, so a page with /Rotate 90
+// comes back with width and height swapped
+struct PageSize {
+	float width = 0;
+	float height = 0;
+};
+
+class Document;
+
+struct OpenResult {
+	std::unique_ptr<Document> document; // null unless error is None
+	Error error = Error::None;
+};
+
+// Everything from here on only works on the PDFium thread, so call it from
+// Engine::run()/post(), and destroy documents there too. Anywhere else it
+// does nothing and returns an empty result (and asserts in debug builds).
+
+// opens a PDF that's already in memory. The document keeps the data, PDFium
+// reads from it for as long as the document is open.
+OpenResult openDocument(std::vector<std::uint8_t> data,
+                        const std::string& password = {});
+// reads the whole file into memory first, so it isn't kept open or locked
+OpenResult openFile(const std::filesystem::path& path,
+                    const std::string& password = {});
+
+class Document {
+  public:
+	~Document();
+
+	Document(const Document&) = delete;
+	Document& operator=(const Document&) = delete;
+
+	int pageCount() const;
+	// nullopt for an index that isn't a page
+	std::optional<PageSize> pageSize(int index) const;
+	// UTF-8, "" when the PDF doesn't label its pages
+	std::string pageLabel(int index) const;
+
+  private:
+	friend OpenResult openDocument(std::vector<std::uint8_t> data,
+	                               const std::string& password);
+	Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle);
+
+	// PDFium reads straight from this, so it's declared first and goes last
+	std::vector<std::uint8_t> m_data;
+	fpdf_document_t__* m_handle = nullptr;
+};
+} // namespace pdf
