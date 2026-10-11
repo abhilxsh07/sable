@@ -41,6 +41,12 @@ App::App() {
 
 void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 	window = make<MainWindow>();
+	// release the window while XAML is still up, not in App's destructor
+	window.Closed([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->window = nullptr;
+		}
+	});
 	window.Activate();
 }
 } // namespace winrt::Sable::implementation
