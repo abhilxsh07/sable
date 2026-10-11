@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -345,6 +346,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		std::uint64_t revision;
 		pdf::DisplayedStroke points;
 		pdf::InkStyle style;
+		std::uint64_t preview = 0;
 	};
 	// shared by every tab and window while Sable runs, and copied by each
 	// stroke when it starts. it isn't saved, so the settings stay NightPDF's.
@@ -355,9 +357,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	static winrt::Microsoft::UI::Xaml::Controls::IconElement
 	colorDot(winrt::Windows::UI::Color color);
 	std::optional<InkDrawing> m_inkStroke;
+	std::deque<InkDrawing> m_inkQueue;
+	bool m_inkWriting = false;
+	std::uint64_t m_inkRevision = 0, m_inkPreviewVersion = 0;
 	bool beginInkStroke(winrt::Windows::Foundation::Point point);
 	void extendInkStroke(winrt::Windows::Foundation::Point point);
 	void finishInkStroke();
+	void drainInkStrokes();
 	void dropInkStroke();
 	winrt::fire_and_forget
 	editTextBox(NoteTarget target, std::optional<pdf::Annotation> existing = {},

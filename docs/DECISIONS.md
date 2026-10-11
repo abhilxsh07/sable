@@ -2,6 +2,24 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued drawing strokes (2026-11-16)
+
+I keep completed pointer strokes in a per-tab FIFO, separate from the
+unfinished stroke. Each owns its page, displayed points, rotation and
+pen style. One write runs at a time; only that write's expected revision
+advance carries the remaining strokes forward. A foreign revision or
+failed write stops the remainder with a notice rather than rebasing it.
+The FIFO owns the note busy guard until it drains, so save, close and
+page edits cannot interleave. Another stroke can begin while it writes.
+
+Esc, tool changes, hiding a tab and view rotation drop only unfinished
+input; accepted strokes still drain. Preview versions keep an old reply
+from clearing a newer stroke. Forced teardown clears the FIFO and lets
+Session cancellation stop the write. I cap outstanding strokes at 64
+(each already has at most 4096 points) and refuse further presses with a
+notice until space is available. This replaces the dropped-press rule
+from 7 November, as approved in audit A-24; no settings keys change.
+
 ## Repeated Check and Cross placement (2026-11-15)
 
 Check and Cross stay armed after a mark is written. Esc, Hand, Select,

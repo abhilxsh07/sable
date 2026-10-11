@@ -734,18 +734,23 @@ void ViewerPage::placeShape(NoteTarget target) {
 // mouse and pen strokes each become one Ink annotation. touch keeps
 // scrolling the pages, as it does for text selection.
 bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
-	// a queued stroke keeps its preview until its write finishes
-	if (m_inkStroke) {
-		dropInkStroke();
-	}
 	const auto session = m_session.get();
-	const auto revision = session ? session->annotationRevision() : 0;
+	const auto revision = m_inkWriting ? m_inkRevision
+	                      : session    ? session->annotationRevision()
+	                                   : 0;
 	if (!notePlacing() || m_activeTool != PlacementTool::Ink || m_closed ||
-	    !m_layout || !revision || !m_noteAllowed || m_noteBusy ||
-	    m_noteSaving || m_noteDialog || m_passwordDialog ||
-	    !std::isfinite(point.X) || !std::isfinite(point.Y)) {
+	    !m_layout || !revision || !m_noteAllowed ||
+	    (m_noteBusy && !m_inkWriting) || m_noteSaving || m_noteDialog ||
+	    m_passwordDialog || !std::isfinite(point.X) ||
+	    !std::isfinite(point.Y)) {
 		return false;
 	}
+	if (m_inkQueue.size() + (m_inkWriting ? 1u : 0u) >= 64) {
+		showNotice(
+		    L"Wait for the queued drawings to finish before drawing more.");
+		return false;
+	}
+	dropInkStroke();
 	const auto& pages = m_layout->pages();
 	for (std::size_t page = 0; page < pages.size(); ++page) {
 		const auto& rect = pages[page];
@@ -755,7 +760,8 @@ bool ViewerPage::beginInkStroke(Windows::Foundation::Point point) {
 			                         key(page).rotation,
 			                         revision,
 			                         {},
-			                         s_inkStyle};
+			                         s_inkStyle,
+			                         m_inkPreviewVersion};
 			// the preview shows the color through the reading filter, the
 			// way the page will draw the saved line
 			const auto& color = s_inkStyle.color;
@@ -831,41 +837,108 @@ void ViewerPage::finishInkStroke() {
 	const auto session = m_session.get();
 	if (m_closed || !session || !notePlacing() ||
 	    m_activeTool != PlacementTool::Ink || stroke.points.empty() ||
-	    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog) {
+	    (m_noteBusy && !m_inkWriting) || m_noteSaving || m_noteDialog ||
+	    m_passwordDialog) {
 		dropInkStroke();
 		return;
 	}
-	if (session->annotationRevision() != stroke.revision) {
+	if ((m_inkWriting ? m_inkRevision : session->annotationRevision()) !=
+	    stroke.revision) {
 		dropInkStroke();
 		showNotice(L"The PDF changed. Draw the stroke again.");
 		return;
 	}
+	try {
+		m_inkQueue.push_back(std::move(stroke));
+	} catch (...) {
+		diagnostics::caught(diagnostics::Level::Error,
+		                    "Could not retain the drawing");
+		dropInkStroke();
+		showNotice(L"Couldn't queue this drawing. Try again.");
+		return;
+	}
+	drainInkStrokes();
+}
+
+void ViewerPage::drainInkStrokes() {
+	if (m_closed || m_inkWriting) {
+		return;
+	}
+	if (m_inkQueue.empty()) {
+		m_noteBusy = false;
+		showComments();
+		return;
+	}
+	auto stroke = std::move(m_inkQueue.front());
+	m_inkQueue.pop_front();
+	const auto session = m_session.get();
+	if (!session || session->annotationRevision() != stroke.revision) {
+		m_inkQueue.clear();
+		m_noteBusy = false;
+		dropInkStroke();
+		showComments();
+		showNotice(L"The PDF changed. The remaining drawings weren't added.");
+		return;
+	}
+	m_inkRevision = stroke.revision;
+	m_inkWriting = true;
 	m_noteBusy = true;
 	try {
 		if (session->addInkAt(
 		        stroke.page, {std::move(stroke.points)}, stroke.rotation,
 		        stroke.revision,
-		        [weak = get_weak(), queue = DispatcherQueue(),
-		         session](pdf::NoteResult result) {
-			        queue.TryEnqueue([weak, session, result] {
+		        [weak = get_weak(), queue = DispatcherQueue(), session,
+		         preview = stroke.preview](pdf::NoteResult result) {
+			        queue.TryEnqueue([weak, session, preview, result] {
 				        const auto self = weak.get();
 				        if (!self || self->m_closed ||
 				            self->m_session.get() != session) {
 					        return;
 				        }
-				        self->m_noteBusy = false;
-				        self->dropInkStroke();
+				        self->m_inkWriting = false;
+				        if (result.changed) {
+					        ++self->m_inkRevision;
+				        }
+				        const bool current = session->annotationRevision() ==
+				                             self->m_inkRevision;
+				        if (result.changed && current) {
+					        for (auto& pending : self->m_inkQueue) {
+						        pending.revision = self->m_inkRevision;
+					        }
+					        if (self->m_inkStroke) {
+						        self->m_inkStroke->revision =
+						            self->m_inkRevision;
+					        }
+				        } else {
+					        self->m_inkQueue.clear();
+					        self->dropInkStroke();
+				        }
+				        if (preview == self->m_inkPreviewVersion &&
+				            !self->m_inkStroke) {
+					        self->dropInkStroke();
+				        }
 				        self->m_notesDirty =
 				            self->m_notesDirty || result.changed;
 				        if (result.changed) {
 					        self->Message().IsOpen(false);
-					        self->refreshNotes(result.page);
-				        } else if (!result.canceled) {
+					        try {
+						        self->refreshNotes(result.page);
+					        } catch (...) {
+						        diagnostics::caught(
+						            diagnostics::Level::Error,
+						            "Could not refresh the drawing");
+					        }
+				        }
+				        if (!current) {
+					        self->showNotice(L"The PDF changed. The remaining "
+					                         L"drawings weren't added.");
+				        } else if (!result.changed && !result.canceled) {
 					        self->showNotice(writeNotice(
 					            result.refusal, L"Couldn't add this drawing. "
 					                            L"This PDF may restrict "
 					                            L"comments."));
 				        }
+				        self->drainInkStrokes();
 				        self->showComments();
 			        });
 		        },
@@ -877,6 +950,8 @@ void ViewerPage::finishInkStroke() {
 		diagnostics::caught(diagnostics::Level::Error,
 		                    "Could not queue the drawing");
 	}
+	m_inkWriting = false;
+	m_inkQueue.clear();
 	m_noteBusy = false;
 	dropInkStroke();
 	showComments();
@@ -884,6 +959,7 @@ void ViewerPage::finishInkStroke() {
 }
 
 void ViewerPage::dropInkStroke() {
+	++m_inkPreviewVersion;
 	m_inkStroke.reset();
 	InkPreviewLine().Points().Clear();
 	InkPreview().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);

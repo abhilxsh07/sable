@@ -1339,17 +1339,23 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		          v.m_inkStroke->points.back().x < 1,
 		      "off-page point was not kept inside the page");
 		v.finishInkStroke();
+		v.chooseInkStyle(pdf::AnnotationColor{37, 99, 235, 255}, 1.f);
 		check(v.m_noteBusy && !v.m_inkStroke && previewShown() &&
-		          !v.beginInkStroke(at(.6, .6)) && previewShown(),
-		      "queued stroke left input open or lost its preview");
+		          v.beginInkStroke(at(.6, .6)) && previewShown(),
+		      "the preceding write dropped a second stroke");
+		v.finishInkStroke();
+		v.chooseInkStyle(pdf::AnnotationColor{0, 0, 0, 255}, 2.f);
+		check(v.beginInkStroke(at(.65, .65)),
+		      "queued strokes blocked the next pointer draft");
 		break;
 	case 3:
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(v.m_notesDirty && v.notePlacing() && !previewShown() &&
-		          inkRows() == 1,
-		      "drawn stroke missing from Comments or ended drawing");
+		check(v.m_notesDirty && v.notePlacing() && v.m_inkStroke &&
+		          previewShown() && inkRows() == 2,
+		      "a completed stroke was lost or cleared the next pointer draft");
+		v.dropInkStroke();
 		{
 			// five pen colors, a separator and three widths
 			const auto items = v.InkStyleMenu().Items();
@@ -1389,13 +1395,24 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		}
 		v.finishInkStroke();
 		check(v.m_noteBusy, "dot was not queued");
+		check(v.cancelNotePlacement() && v.m_noteBusy,
+		      "Esc lost a completed drawing or its write guard");
+		owner.m_notesPicker = [](hstring) { return attachmentChoice({}, {}); };
+		owner.onSaveCopy({}, {});
+		{
+			const auto closeReview = owner.confirmNotes(current);
+			check(v.m_noteBusy && !v.m_noteSaving &&
+			          closeReview.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !closeReview.GetResults(),
+			      "save or close passed a queued drawing");
+		}
 		break;
 	case 4:
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(inkRows() == 2, "single tap did not add a drawing");
-		invoke(v.DrawInkButton());
+		check(inkRows() == 3, "single tap did not add a drawing");
 		check(!v.notePlacing(), "Stop drawing kept the tool armed");
 		v.chooseInkStyle(std::nullopt, 1.f);
 		check(!v.notePlacing() && v.s_inkStyle.width == 1 &&
@@ -1432,11 +1449,13 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 			          // the page turns 90 degrees, so the long stroke can
 			          // run along either PDF axis. the red dot is exactly
 			          // its 4 pt line width across.
-			          return ink.size() == 2 &&
+			          return ink.size() == 3 &&
 			                 (std::max)(ink[0].right - ink[0].left,
 			                            ink[0].top - ink[0].bottom) > 50 &&
-			                 std::abs(ink[1].right - ink[1].left - 4) < 1e-3 &&
-			                 std::abs(ink[1].top - ink[1].bottom - 4) < 1e-3;
+			                 std::abs(ink[1].right - ink[1].left - 1) < 1e-3 &&
+			                 std::abs(ink[1].top - ink[1].bottom - 1) < 1e-3 &&
+			                 std::abs(ink[2].right - ink[2].left - 4) < 1e-3 &&
+			                 std::abs(ink[2].top - ink[2].bottom - 4) < 1e-3;
 		          })
 		          .get(),
 		      "saved drawings lost their strokes");
@@ -1460,14 +1479,20 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(v.m_notesDirty && inkRows() == 1,
+		check(v.m_notesDirty && inkRows() == 2,
 		      "Delete kept the drawing or a clean savepoint");
 		invoke(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .6)),
 		      "stroke before close did not start");
+		v.finishInkStroke();
+		check(v.beginInkStroke(at(.3, .6)), "close test lost a second stroke");
+		v.finishInkStroke();
+		check(v.beginInkStroke(at(.4, .6)),
+		      "close test lost its pointer draft");
 		v.close();
-		check(!v.m_inkStroke && !v.notePlacing(),
-		      "forced close kept the stroke");
+		check(!v.m_inkStroke && !v.notePlacing() && v.m_inkQueue.empty() &&
+		          !v.m_inkWriting,
+		      "forced close kept drawing input or its queue");
 		status.Text(L"PASS: drawing arms and stops, cancels on Esc, tool "
 		            L"switch, hidden Comments and rotation, keeps strokes "
 		            L"on the page, styles the preview and the saved dot, "

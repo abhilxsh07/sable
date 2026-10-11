@@ -329,6 +329,8 @@ void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	showComments();
 }
 void ViewerPage::closeComments() {
+	m_inkQueue.clear();
+	m_inkWriting = false;
 	m_shapeStart.reset();
 	m_stampImage.reset();
 	m_stampPicking = false;
