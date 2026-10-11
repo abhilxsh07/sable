@@ -116,7 +116,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<Link>
 			<!-- ShellExecuteW, and the open dialog later on -->
-			<AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>shell32.lib;d2d1.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -174,6 +174,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\version.h" />
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="pdf\document.h" />
+		<ClInclude Include="pdf\page_filter.h" />
 		<ClInclude Include="pdf\engine.h" />
 		<ClInclude Include="helpers\recents.h" />
 		<ClInclude Include="helpers\cli.h" />
@@ -190,6 +191,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\page_filter.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\engine.cpp">
