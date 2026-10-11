@@ -914,13 +914,33 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		v.setCommentsOpen(true);
 		invoke(v.PlaceCheckButton());
 		place(0);
+		check(v.m_noteBusy &&
+		          v.m_activeTool == ViewerPage::ActiveTool::FillCheck,
+		      "placing a check disarmed it while saving");
+		place(0);
+		check(v.m_noteBusy &&
+		          v.m_activeTool == ViewerPage::ActiveTool::FillCheck,
+		      "a busy click dropped the check tool or its write guard");
 		break;
 	case 1:
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(v.m_notesDirty && !v.notePlacing() && inkOn(0) != rows.end(),
+		check(v.m_notesDirty && v.notePlacing() && inkOn(0) != rows.end(),
 		      "check mark did not refresh Comments");
+		{
+			const auto checks =
+			    std::count_if(rows.begin(), rows.end(), [](const auto& row) {
+				    return row.page == 0 && row.subtype == "Ink";
+			    });
+			if (checks == 1) {
+				place(0);
+				return;
+			}
+			check(checks == 2, "the repeated check was lost or duplicated");
+		}
+		check(v.cancelNotePlacement() && !v.notePlacing(),
+		      "Esc kept repeated check placement armed");
 		v.rotateView(1);
 		v.goToPage(1);
 		break;
@@ -933,13 +953,18 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
-		check(inkOn(0) != rows.end() && inkOn(1) != rows.end(),
+		check(v.m_activeTool == ViewerPage::ActiveTool::FillCross &&
+		          inkOn(0) != rows.end() && inkOn(1) != rows.end(),
 		      "cross did not land on the next page");
+		v.setCursorTool(ViewerPage::CursorTool::Hand);
+		check(!v.notePlacing(), "Hand kept the cross armed");
+		v.beginNotePlacement(ViewerPage::PlacementTool::FillCross);
 		notesPath = makeTempDir("fill_marks") / L"marked copy.pdf";
 		owner.m_notesPicker = [path = hstring(notesPath.wstring())](hstring) {
 			return attachmentChoice(path, {});
 		};
 		notesSave = owner.saveNotes(current);
+		check(!v.notePlacing(), "saving kept the cross armed");
 		break;
 	case 4:
 		check(notesSave.GetResults() && !v.m_notesDirty,
@@ -1045,7 +1070,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		check(std::count_if(rows.begin(), rows.end(),
 		                    [](const auto& r) {
 			                    return r.subtype == "Ink" && r.page == 0;
-		                    }) == 2,
+		                    }) == 3,
 		      "the drawn signature did not reach Comments");
 		v.close();
 		status.Text(L"PASS: fill marks, text and signatures placement, save "

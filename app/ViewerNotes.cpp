@@ -253,15 +253,18 @@ ViewerPage::placementReply(pdf::Session* session, const wchar_t* failure) {
 void ViewerPage::placeFillMark(NoteTarget target) {
 	const auto session = m_session.get();
 	const auto revision = session ? session->annotationRevision() : 0;
-	if (!revision || !m_noteAllowed || m_noteBusy || m_noteSaving ||
-	    m_noteDialog || m_passwordDialog) {
+	if (m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog) {
+		showNotice(L"Finish the open dialog or note operation before "
+		           L"placing another mark.");
+		return;
+	}
+	if (!revision || !m_noteAllowed) {
 		cancelNotePlacement();
 		return;
 	}
 	const auto mark = m_activeTool == PlacementTool::FillCheck
 	                      ? pdf::FillMark::Check
 	                      : pdf::FillMark::Cross;
-	m_activeTool = ActiveTool::Select;
 	m_noteBusy = true;
 	try {
 		if (session->addFillMarkAt(

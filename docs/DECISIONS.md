@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Repeated Check and Cross placement (2026-11-15)
+
+Check and Cross stay armed after a mark is written. Esc, Hand, Select,
+another tool, save or close drops them through the shared tool state.
+A click while a write or dialog is pending explains the refusal and
+keeps the chosen mark; it does not queue another write. This is audit
+A-46's approved replacement for the one-shot Fill & Sign marks.
+Completed freehand strokes get their own queue in the next batch 6 step.
+
 ## Drawing style keeps the tool (2026-11-15)
 
 I change only the shared pen color and width when choosing Drawing style.
