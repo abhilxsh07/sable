@@ -1,0 +1,76 @@
+/*
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+#pragma once
+
+#include <cstddef>
+#include <span>
+#include <vector>
+
+namespace helpers {
+// plain copies of the displayed page sizes, in points (1/72 inch)
+struct PageSize {
+	double width;
+	double height;
+};
+
+// page bounds in DIPs, relative to the document's top left
+struct PageRect {
+	double x;
+	double y;
+	double width;
+	double height;
+};
+
+struct PageRange {
+	std::size_t first = 0;
+	std::size_t end = 0; // exclusive; first == end means no pages
+	bool operator==(const PageRange&) const = default;
+};
+
+class PageLayout {
+  public:
+	// zoom 1 means 100%. Viewport width, gap and outer margin are in DIPs;
+	// only the pages scale with zoom. Invalid input throws invalid_argument,
+	// and geometry that can't fit in a double throws overflow_error.
+	PageLayout(std::span<const PageSize> sizes, double zoom,
+	           double viewportWidth, double gap, double margin);
+
+	std::span<const PageRect> pages() const {
+		return m_pages;
+	}
+	double width() const {
+		return m_width;
+	}
+	double height() const {
+		return m_height;
+	}
+
+	// vertical viewport in DIPs. Touching a page edge isn't an intersection.
+	// Overscan adds neighbours, including either side of a gap. A viewport
+	// outside the document or with invalid dimensions returns an empty range.
+	PageRange visiblePages(double top, double height,
+	                       std::size_t overscan = 1) const;
+
+  private:
+	std::vector<PageRect> m_pages;
+	double m_width = 0;
+	double m_height = 0;
+};
+} // namespace helpers
