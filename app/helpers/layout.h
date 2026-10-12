@@ -44,6 +44,24 @@ struct PageRange {
 	bool operator==(const PageRange&) const = default;
 };
 
+// a page's bounds in physical pixels
+struct PixelRect {
+	int x = 0;
+	int y = 0;
+	int width = 0;
+	int height = 0;
+	bool operator==(const PixelRect&) const = default;
+};
+
+// DIPs to pixels at a display scale. Each edge is rounded on its own, so
+// neighbouring rectangles never overlap or leave a hairline between them.
+// Edges past int's range throw overflow_error.
+PixelRect toPixels(const PageRect& rect, double scale);
+
+// which pages to render first: the visible ones top to bottom, then the
+// overscan pages below them, then the ones above
+std::vector<std::size_t> renderOrder(PageRange visible, PageRange overscanned);
+
 class PageLayout {
   public:
 	// zoom 1 means 100%. Viewport width, gap and outer margin are in DIPs;

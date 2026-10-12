@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace helpers {
@@ -91,5 +92,35 @@ PageRange PageLayout::visiblePages(double top, double height,
 	const auto endIndex = static_cast<std::size_t>(end - m_pages.begin());
 	return {firstIndex - std::min(overscan, firstIndex),
 	        endIndex + std::min(overscan, m_pages.size() - endIndex)};
+}
+
+PixelRect toPixels(const PageRect& rect, double scale) {
+	const auto edge = [scale](double dips) {
+		const double pixels = std::round(dips * scale);
+		if (!std::isfinite(pixels) ||
+		    pixels < std::numeric_limits<int>::min() ||
+		    pixels > std::numeric_limits<int>::max()) {
+			throw std::overflow_error("page edge doesn't fit in an int");
+		}
+		return static_cast<int>(pixels);
+	};
+	const int left = edge(rect.x);
+	const int top = edge(rect.y);
+	return {left, top, edge(rect.x + rect.width) - left,
+	        edge(rect.y + rect.height) - top};
+}
+
+std::vector<std::size_t> renderOrder(PageRange visible, PageRange overscanned) {
+	std::vector<std::size_t> order;
+	for (auto page = visible.first; page < visible.end; ++page) {
+		order.push_back(page);
+	}
+	for (auto page = visible.end; page < overscanned.end; ++page) {
+		order.push_back(page);
+	}
+	for (auto page = visible.first; page > overscanned.first; --page) {
+		order.push_back(page - 1);
+	}
+	return order;
 }
 } // namespace helpers

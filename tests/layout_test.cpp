@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 using helpers::PageLayout;
 using helpers::PageRange;
 using helpers::PageSize;
+using helpers::PixelRect;
 
 namespace {
 constexpr std::array<PageSize, 2> SIZES{{{72, 144}, {144, 72}}};
@@ -139,4 +140,45 @@ TEST(PageLayout, RejectsOverflowInsteadOfReturningInfiniteGeometry) {
 	const double huge = std::numeric_limits<double>::max();
 	EXPECT_THROW(PageLayout(SIZES, huge, 400, 10, 5), std::overflow_error);
 	EXPECT_THROW(PageLayout(SIZES, 1, 400, 10, huge), std::overflow_error);
+}
+
+TEST(PixelRects, OneToOneAtOneHundredPercent) {
+	EXPECT_EQ(helpers::toPixels({10, 20, 794, 1123}, 1.0),
+	          (PixelRect{10, 20, 794, 1123}));
+}
+
+TEST(PixelRects, NeighboursShareTheirEdgeAtFractionalScales) {
+	// rounding y and height separately would give 15 + 15 = 30 and leave a
+	// one pixel line before the next rectangle starts at 31
+	const auto a = helpers::toPixels({10.3, 10.3, 10.3, 10.3}, 1.5);
+	const auto b = helpers::toPixels({10.3, 20.6, 10.3, 10.3}, 1.5);
+	EXPECT_EQ(a.y, 15);
+	EXPECT_EQ(a.y + a.height, 31);
+	EXPECT_EQ(b.y, 31);
+	EXPECT_EQ(a.x + a.width, b.x + b.width);
+}
+
+TEST(PixelRects, TallDocumentsStayExact) {
+	// the last of 1,000 A4 pages at 400% on a 150% display
+	const auto rect = helpers::toPixels({10, 4'495'589, 3174.8, 4490.08}, 1.5);
+	EXPECT_EQ(rect.y, 6'743'384);
+	EXPECT_EQ(rect.height, 6'735);
+}
+
+TEST(PixelRects, EdgesPastIntThrow) {
+	EXPECT_THROW(helpers::toPixels({0, 3e9, 10, 10}, 1.0), std::overflow_error);
+	EXPECT_THROW(helpers::toPixels({0, 0, INF, 10}, 1.0), std::overflow_error);
+}
+
+TEST(RenderOrder, VisibleFirstThenBelowThenAbove) {
+	EXPECT_EQ(helpers::renderOrder({4, 6}, {3, 7}),
+	          (std::vector<std::size_t>{4, 5, 6, 3}));
+	EXPECT_EQ(helpers::renderOrder({4, 6}, {2, 8}),
+	          (std::vector<std::size_t>{4, 5, 6, 7, 3, 2}));
+}
+
+TEST(RenderOrder, StopsAtTheDocumentEnds) {
+	EXPECT_EQ(helpers::renderOrder({0, 2}, {0, 3}),
+	          (std::vector<std::size_t>{0, 1, 2}));
+	EXPECT_TRUE(helpers::renderOrder({0, 0}, {0, 0}).empty());
 }
