@@ -116,7 +116,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<Link>
 			<!-- ShellExecuteW, and the open dialog later on -->
-			<AdditionalDependencies>shell32.lib;d2d1.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>shell32.lib;d2d1.lib;d3d11.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -161,11 +161,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="HomePage.xaml.h">
 			<DependentUpon>HomePage.xaml</DependentUpon>
 		</ClInclude>
+		<ClInclude Include="ViewerPage.xaml.h">
+			<DependentUpon>ViewerPage.xaml</DependentUpon>
+		</ClInclude>
 	</ItemGroup>
 	<ItemGroup>
 		<ApplicationDefinition Include="App.xaml" />
 		<Page Include="MainWindow.xaml" />
 		<Page Include="HomePage.xaml" />
+		<Page Include="ViewerPage.xaml" />
 		<Page Include="styles\Theme.xaml" />
 	</ItemGroup>
 	<ItemGroup>
@@ -180,6 +184,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<ClCompile Include="HomePage.xaml.cpp">
 			<DependentUpon>HomePage.xaml</DependentUpon>
+		</ClCompile>
+		<ClCompile Include="ViewerPage.xaml.cpp">
+			<DependentUpon>ViewerPage.xaml</DependentUpon>
 		</ClCompile>
 		<ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
 	</ItemGroup>
@@ -253,6 +260,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Midl Include="HomePage.idl">
 			<SubType>Code</SubType>
 			<DependentUpon>HomePage.xaml</DependentUpon>
+		</Midl>
+		<Midl Include="ViewerPage.idl">
+			<SubType>Code</SubType>
+			<DependentUpon>ViewerPage.xaml</DependentUpon>
 		</Midl>
 	</ItemGroup>
 	<ItemGroup>

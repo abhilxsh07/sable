@@ -259,7 +259,16 @@ def build_pdf(
 
 
 def main() -> None:
+    # numbered, mixed sizes, with /Rotate on every third page
+    long_pages = []
+    for i in range(1000):
+        box, rotate, _ = (PAGE_1, PAGE_2, PAGE_3)[i % 3]
+        long_pages.append((box, rotate, content(
+            "0.8 0.2 0.1 rg 20 20 50 50 re f",
+            f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
+        )))
     files = {
+        "long.pdf": build_pdf("long.pdf", long_pages),
         "pages.pdf": build_pdf("pages.pdf", [PAGE_1, PAGE_2, PAGE_3], LABELS),
         "password.pdf": build_pdf(
             "password.pdf", [PAGE_1], security=(USER_PASSWORD, OWNER_PASSWORD, -4)

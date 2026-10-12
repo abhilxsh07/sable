@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Sable, a native port of NightPDF
+Copyright (C) 2021  Advaith Madhukar
+Copyright (C) 2026  Abhilash Kar
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; version 2
+of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+-->
+<Page
+	x:Class="Sable.ViewerPage"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:local="using:Sable">
+
+	<Grid Background="{ThemeResource SableViewerBrush}">
+		<!-- the surface is sized in physical pixels and the Image in DIPs, so
+			Fill maps one onto the other without blurring. Zoom comes later. -->
+		<ScrollViewer x:Name="Scroller" ZoomMode="Disabled"
+			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+			<Image x:Name="Pages" Stretch="Fill"
+				HorizontalAlignment="Center" VerticalAlignment="Top" />
+		</ScrollViewer>
+		<TextBlock x:Name="Message" Visibility="Collapsed"
+			HorizontalAlignment="Center" VerticalAlignment="Center"
+			MaxWidth="480" TextWrapping="Wrap" TextAlignment="Center"
+			Foreground="{ThemeResource SableTextSecondaryBrush}" />
+	</Grid>
+</Page>

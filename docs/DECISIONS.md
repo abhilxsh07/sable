@@ -128,6 +128,30 @@ instead of letting it throw. I haven't tried a 150% or 200% display yet.
 XAML's layout sizes are floats, which only resolve half a DIP at 4.5
 million DIPs.
 
+## First viewer slice (2026-10-12)
+
+A PDF passed on the command line now opens in a scrolling ViewerPage at
+100%, with the default night filter. `-p` chooses the starting page after
+XAML has measured the scroll extent. Applying it earlier silently sent me
+back to page 1 on a cold start.
+
+I keep unfiltered page rasters in a 256 MiB cache and GPU copies only near
+the viewport. One render runs at a time, with visible pages ahead of the
+neighbours. Closing releases the session and drawing resources, and late
+callbacks cannot reopen them. A stack over the surface limit shows an
+error for now.
+
+The generated `tests/fixtures/long.pdf` has 1,000 numbered pages, alternating
+portrait, landscape and rotated sizes. I checked starting at pages 500 and
+1,000, rapid scrolling, resizing, and closing. The three-page fixture also
+draws in the right order, and a password-protected file shows its error.
+Debug and Release x64 and ARM64 build without warnings; the 275 tests pass
+in both x64 configurations.
+
+This still opens only the first command-line file. Tabs, full CLI dispatch,
+password entry, zoom and display-scale changes are later steps. Preset
+controls aren't connected yet; the home screen still opens without a file.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

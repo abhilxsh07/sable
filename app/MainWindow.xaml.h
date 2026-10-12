@@ -21,13 +21,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "MainWindow.g.h"
 #include "HomePage.xaml.h"
+#include "ViewerPage.xaml.h"
 
+#include <filesystem>
+#include <optional>
 #include <winrt/Microsoft.UI.Windowing.h>
 
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
 	void InitializeComponent();
+
+	// shows path instead of the home screen, at page (1-based) if given
+	void openDocument(pdf::Engine& engine, const std::filesystem::path& path,
+	                  std::optional<int> page);
 
 	void onToggleFullScreen(const winrt::Windows::Foundation::IInspectable&,
 	                        const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
