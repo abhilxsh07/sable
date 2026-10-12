@@ -102,6 +102,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="filter_test.cpp" />
 		<ClCompile Include="page_filter_test.cpp" />
 		<ClCompile Include="page_cache_test.cpp" />
+		<ClCompile Include="session_test.cpp" />
 		<ClCompile Include="surface_util_test.cpp" />
 		<ClCompile Include="sliders_test.cpp" />
 		<ClCompile Include="settings_test.cpp" />
@@ -116,6 +117,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="..\app\pdf\document.h" />
 		<ClInclude Include="..\app\pdf\page_cache.h" />
 		<ClCompile Include="..\app\pdf\page_cache.cpp" />
+		<ClInclude Include="..\app\pdf\session.h" />
+		<ClCompile Include="..\app\pdf\session.cpp" />
 		<ClInclude Include="..\app\pdf\page_filter.h" />
 		<ClInclude Include="..\app\pdf\surface_util.h" />
 		<ClCompile Include="..\app\pdf\page_filter.cpp" />
