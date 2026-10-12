@@ -98,6 +98,36 @@ Close the test window, run `Remove-Item Env:SableSurfaceTest`, then build
 again to return to the home screen. The check only exists in Debug builds;
 a Release build stops with an error while the variable is set.
 
+## Surface size limit (2026-10-12)
+
+Microsoft's page for the [VirtualSurfaceImageSource constructor](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.imaging.virtualsurfaceimagesource.-ctor)
+says Windows checks that the width and height are under 17,000,000 pixels,
+and that a ScrollViewer "might further reduce the effective size", with no
+number given. DirectComposition's [CreateVirtualSurface](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-createvirtualsurface)
+caps each side at 16,777,216 (2^24), so I'm treating that as the limit.
+
+The case I care about is 1,000 A4 pages at 400% zoom on a 150% display. An
+A4 page is 841.89 points tall: 4,490 DIPs at 400%, 6,735 pixels at 150%.
+With 10 DIP gaps and margins the stack is 6,750,133 by 4,792 pixels, so it
+fits with about 2.5 times to spare.
+
+I checked it with the surface test window, changing its step locally (100%
+display scale, hardware path):
+
+- 6,750,000 pixels: jumps to the last position and draws it in the right
+  place, text sharp.
+- 16,700,000 pixels: the same.
+- 17,100,000 pixels: the surface can't be created, XAML throws and the app
+  closes (0xc000027b).
+
+So one surface is enough for the viewer and the per-page fallback can wait.
+The limit is still reachable at 400%: the A4 stack passes 2^24 pixels after
+about 2,485 pages at 150% and 1,864 at 200%, sooner with bigger pages. The
+viewer has to check the height before creating or resizing the surface
+instead of letting it throw. I haven't tried a 150% or 200% display yet.
+XAML's layout sizes are floats, which only resolve half a DIP at 4.5
+million DIPs.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.
@@ -106,6 +136,8 @@ a Release build stops with an error while the variable is set.
   ship.
 - PDFium's license file includes the Apache-2.0 text, see
   THIRD_PARTY_NOTICES.md.
+- What the viewer does when a document would be taller than one surface
+  allows: cap the zoom, or switch to one surface per page.
 
 ## Pinned versions
 
