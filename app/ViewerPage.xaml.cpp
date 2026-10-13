@@ -67,6 +67,9 @@ constexpr int MAX_PAGE_SIDE = 16384;
 // see:
 // https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/app_options.js
 constexpr std::chrono::milliseconds ZOOM_DELAY{400};
+// how long a jump gets to land before the current page goes by where the
+// view actually is
+constexpr std::chrono::milliseconds LANDING_TIME{300};
 
 bool sameSize(ID2D1Bitmap1& bitmap, const pdf::PageKey& key) {
 	const auto size = bitmap.GetPixelSize();
@@ -104,6 +107,9 @@ void ViewerPage::close() {
 	m_closed = true;
 	if (m_settle) {
 		m_settle.Stop();
+	}
+	if (m_land) {
+		m_land.Stop();
 	}
 	m_viewChanged.revoke();
 	m_sizeChanged.revoke();
@@ -159,13 +165,12 @@ void ViewerPage::zoomReset() {
 	}
 }
 
-// "auto" for the page at the top of the viewport, like pdf.js's current page
+// "auto" is worked out for pdf.js's current page
 void ViewerPage::fitAuto() {
-	if (!m_layout || m_sizes.empty()) {
+	if (!m_layout || m_current >= m_sizes.size()) {
 		return;
 	}
-	const auto page = m_layout->pageAt(Scroller().VerticalOffset());
-	setZoom(helpers::autoZoom(m_sizes[page], Scroller().ActualWidth(),
+	setZoom(helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
 	                          Scroller().ActualHeight()),
 	        {0, 0});
 }
@@ -185,20 +190,23 @@ bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
 		const double across = (x - before.x) / before.width;
 		const double down = (y - before.y) / before.height;
 
+		// the current page waits for the new offsets
+		m_holdCurrent = true;
 		if (!relayout(zoom)) {
+			m_holdCurrent = false;
 			return false;
 		}
 		// before the layout pass, so nothing it triggers starts a render
 		settle();
 		Scroller().UpdateLayout();
+		m_holdCurrent = false;
 		const auto& after = m_layout->pages()[page];
-		Scroller().ChangeView(
-		    (std::max)(0.0,
-		               after.x + across * after.width + imageLeft() - anchor.X),
-		    (std::max)(0.0, after.y + down * after.height - anchor.Y), nullptr,
-		    true);
+		jumpTo((std::max)(0.0, after.x + across * after.width + imageLeft() -
+		                           anchor.X),
+		       (std::max)(0.0, after.y + down * after.height - anchor.Y));
 		return true;
 	} catch (...) {
+		m_holdCurrent = false;
 		// relayout resizes the surface before it changes anything else, so
 		// a failure there leaves the old zoom in place; not worth losing the
 		// document over
@@ -222,6 +230,7 @@ bool ViewerPage::relayout(double zoom) {
 	m_zoom = zoom;
 	Pages().Width(width / m_scale);
 	Pages().Height(height / m_scale);
+	showPosition();
 	return true;
 }
 
@@ -250,6 +259,355 @@ void ViewerPage::settle() {
 	}
 	m_settle.Stop();
 	m_settle.Start();
+}
+
+// pdf_viewer.js currentPageNumber: the page becomes the current one, then it
+// is scrolled into view, even when it already was the current one
+void ViewerPage::goToPage(std::size_t page) {
+	if (!m_layout || page >= m_layout->pages().size()) {
+		return;
+	}
+	m_current = page;
+	showPosition();
+	scrollToPage(page);
+}
+
+// pdf_viewer.js #scrollIntoView and ui_utils.js scrollIntoView: the top of
+// the page (inside pdf.js's border) at the top of the view, and its left
+// edge at the left only when it doesn't already fit across
+void ViewerPage::scrollToPage(std::size_t page) {
+	const auto& rect = m_layout->pages()[page];
+	const double left = imageLeft() + rect.x;
+	const double scrollLeft = Scroller().HorizontalOffset();
+	std::optional<double> across;
+	if (left < scrollLeft ||
+	    left + rect.width > scrollLeft + Scroller().ViewportWidth()) {
+		across = left;
+	}
+	jumpTo(across, rect.y);
+}
+
+// ChangeView, with the current page worked out for where the view is going
+// until it gets there
+void ViewerPage::jumpTo(std::optional<double> x, double y) {
+	auto scroller = Scroller();
+	const double down =
+	    std::clamp(y, 0.0, (std::max)(0.0, scroller.ScrollableHeight()));
+	const double across =
+	    x ? std::clamp(*x, 0.0, (std::max)(0.0, scroller.ScrollableWidth()))
+	      : scroller.HorizontalOffset();
+	if (std::abs(down - scroller.VerticalOffset()) >= 0.5 ||
+	    std::abs(across - scroller.HorizontalOffset()) >= 0.5) {
+		m_landingAt = std::pair{across, down};
+		if (!m_land) {
+			m_land = DispatcherQueue().CreateTimer();
+			m_land.Interval(LANDING_TIME);
+			m_land.IsRepeating(false);
+			m_land.Tick([weak = get_weak()](auto&&, auto&&) {
+				if (auto self = weak.get()) {
+					self->m_landingAt.reset();
+					self->updateCurrentPage();
+				}
+			});
+		}
+		m_land.Stop();
+		m_land.Start();
+	} else {
+		m_landingAt.reset();
+	}
+	if (!scroller.ChangeView(x ? Windows::Foundation::IReference<double>(*x)
+	                           : nullptr,
+	                         y, nullptr, true)) {
+		m_landingAt.reset();
+	}
+}
+
+// pdf_viewer.js update(), run whenever the view moves
+void ViewerPage::updateCurrentPage() {
+	if (!m_layout || m_startPage || m_holdCurrent) {
+		return;
+	}
+	double left = Scroller().HorizontalOffset();
+	double top = Scroller().VerticalOffset();
+	if (m_landingAt) {
+		if (std::abs(left - m_landingAt->first) < 1 &&
+		    std::abs(top - m_landingAt->second) < 1) {
+			m_landingAt.reset();
+			m_land.Stop();
+		} else {
+			left = m_landingAt->first;
+			top = m_landingAt->second;
+		}
+	}
+	const helpers::Viewport view{left - imageLeft(), top,
+	                             Scroller().ViewportWidth(),
+	                             Scroller().ViewportHeight()};
+	const auto page = helpers::currentPage(*m_layout, view, m_current);
+	if (page != m_current) {
+		m_current = page;
+		showPosition();
+	}
+}
+
+// toolbar.js #updateUIState: the page box, "of N", and which buttons work
+void ViewerPage::showPosition() {
+	if (!m_layout) {
+		return;
+	}
+	const auto count = m_layout->pages().size();
+	const auto text = helpers::pageText(m_current, count, m_labels);
+	m_pageBoxText = to_hstring(text.box);
+	PageBox().Text(m_pageBoxText);
+	PageTotal().Text(to_hstring(text.total));
+	PreviousButton().IsEnabled(m_current > 0);
+	NextButton().IsEnabled(m_current + 1 < count);
+	ZoomOutButton().IsEnabled(m_zoom > helpers::MIN_ZOOM);
+	ZoomInButton().IsEnabled(m_zoom < helpers::MAX_ZOOM);
+}
+
+// app.js webViewerPageNumberChanged, for an edited page box: go there if
+// it names a page, and show the current page in the box either way
+void ViewerPage::commitPageBox() {
+	if (!m_layout) {
+		return;
+	}
+	const auto text = PageBox().Text();
+	// an input's change event only fires for an edit
+	if (text == m_pageBoxText) {
+		return;
+	}
+	if (!text.empty()) {
+		if (const auto page = helpers::pageFromText(to_string(text), m_labels,
+		                                            m_layout->pages().size())) {
+			goToPage(*page);
+		}
+	}
+	showPosition();
+}
+
+// pdf.js's buttons took the focus, so the box's change event went first.
+// These don't (the keys stay on the pages), so do it for them.
+void ViewerPage::leavePageBox() {
+	if (PageBox().FocusState() != FocusState::Unfocused) {
+		commitPageBox();
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
+                                  const Input::KeyRoutedEventArgs& args) {
+	using helpers::NavAction;
+	using helpers::NavFocus;
+	using helpers::NavKey;
+	using Windows::System::VirtualKey;
+	if (!m_layout || args.Handled()) {
+		return;
+	}
+	NavKey pressed = NavKey::Other;
+	switch (args.Key()) {
+	case VirtualKey::Up:
+		pressed = NavKey::Up;
+		break;
+	case VirtualKey::Down:
+		pressed = NavKey::Down;
+		break;
+	case VirtualKey::Left:
+		pressed = NavKey::Left;
+		break;
+	case VirtualKey::Right:
+		pressed = NavKey::Right;
+		break;
+	case VirtualKey::PageUp:
+		pressed = NavKey::PageUp;
+		break;
+	case VirtualKey::PageDown:
+		pressed = NavKey::PageDown;
+		break;
+	case VirtualKey::Home:
+		pressed = NavKey::Home;
+		break;
+	case VirtualKey::End:
+		pressed = NavKey::End;
+		break;
+	case VirtualKey::Space:
+		pressed = NavKey::Space;
+		break;
+	case VirtualKey::Enter:
+		pressed = NavKey::Enter;
+		break;
+	case VirtualKey::Back:
+		pressed = NavKey::Backspace;
+		break;
+	case VirtualKey::G:
+		pressed = NavKey::G;
+		break;
+	case VirtualKey::J:
+		pressed = NavKey::J;
+		break;
+	case VirtualKey::K:
+		pressed = NavKey::K;
+		break;
+	case VirtualKey::N:
+		pressed = NavKey::N;
+		break;
+	case VirtualKey::P:
+		pressed = NavKey::P;
+		break;
+	default:
+		return;
+	}
+	const auto held = [](int virtualKey) {
+		return (GetKeyState(virtualKey) & 0x8000) != 0;
+	};
+	const helpers::NavModifiers modifiers{held(VK_CONTROL), held(VK_MENU),
+	                                      held(VK_SHIFT)};
+	const auto source = args.OriginalSource();
+	auto focus = NavFocus::Viewer;
+	if (source.try_as<TextBox>()) {
+		focus = NavFocus::TextBox;
+	} else if (source.try_as<Primitives::ButtonBase>()) {
+		focus = NavFocus::Button;
+	}
+	const auto count = m_layout->pages().size();
+	// pdf.js's "page-fit" comes with the zoom presets; until then the
+	// scrolling keys only turn pages when there's nothing to scroll
+	const helpers::NavState state{
+	    m_current, count,
+	    Scroller().ComputedVerticalScrollBarVisibility() ==
+	        XVisibility::Visible,
+	    Scroller().ComputedHorizontalScrollBarVisibility() ==
+	        XVisibility::Visible,
+	    false};
+	const auto action = helpers::navAction(pressed, modifiers, focus, state);
+	switch (action) {
+	case NavAction::None:
+		break;
+	case NavAction::Previous:
+		if (m_current > 0) {
+			goToPage(m_current - 1);
+		}
+		break;
+	case NavAction::Next:
+		if (m_current + 1 < count) {
+			goToPage(m_current + 1);
+		}
+		break;
+	case NavAction::First:
+		goToPage(0);
+		break;
+	case NavAction::Last:
+		goToPage(count - 1);
+		break;
+	case NavAction::FocusPageBox:
+		PageBox().Focus(FocusState::Keyboard);
+		PageBox().SelectAll();
+		break;
+	}
+	if (action != NavAction::None) {
+		args.Handled(true);
+	}
+	// what the browser did with the keys pdf.js left alone. Space scrolled
+	// a page, which WinUI's ScrollViewer doesn't; a page is the viewport,
+	// as for its PageDown.
+	// see:
+	// https://raw.githubusercontent.com/microsoft/microsoft-ui-xaml/fe9d01273af3382ea570e203ab700772528d98df/dxaml/xcp/dxaml/lib/ScrollContentPresenter_Partial.cpp
+	if (action == NavAction::None && pressed == NavKey::Space &&
+	    focus == NavFocus::Viewer && !modifiers.ctrl && !modifiers.alt) {
+		const double page = Scroller().ViewportHeight();
+		Scroller().ChangeView(nullptr,
+		                      Scroller().VerticalOffset() +
+		                          (modifiers.shift ? -page : page),
+		                      nullptr, false);
+		args.Handled(true);
+	}
+	// app.js: the navigation keys bring the focus back to the pages
+	// (ensureViewerFocused), except from a text field
+	bool focusPages = action == NavAction::First || action == NavAction::Last;
+	if (action == NavAction::None && focus != NavFocus::TextBox) {
+		switch (pressed) {
+		case NavKey::PageUp:
+		case NavKey::PageDown:
+		case NavKey::Home:
+		case NavKey::End:
+		case NavKey::Up:
+		case NavKey::Down:
+		case NavKey::Left:
+		case NavKey::Right:
+			focusPages = true;
+			break;
+		case NavKey::Space:
+			focusPages = focus != NavFocus::Button;
+			break;
+		default:
+			break;
+		}
+	}
+	if (focusPages && focus != NavFocus::Viewer) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::onPageBoxKeyDown(const Windows::Foundation::IInspectable&,
+                                  const Input::KeyRoutedEventArgs& args) {
+	if (args.Key() == Windows::System::VirtualKey::Enter) {
+		commitPageBox();
+		args.Handled(true);
+	}
+}
+
+// tabbing into a text field selects it in a browser, and Ctrl+Alt+G does
+void ViewerPage::onPageBoxGotFocus(const Windows::Foundation::IInspectable&,
+                                   const RoutedEventArgs&) {
+	PageBox().SelectAll();
+}
+
+// LosingFocus rather than LostFocus, which comes later: by then a click on
+// the rail could have put the current page back in the box
+void ViewerPage::onPageBoxLosingFocus(const Windows::Foundation::IInspectable&,
+                                      const Input::LosingFocusEventArgs&) {
+	commitPageBox();
+}
+
+// the rail's buttons don't take the focus from the pages when clicked; if
+// one had it from the keyboard and just got disabled, it goes to the pages
+void ViewerPage::onPreviousPage(const Windows::Foundation::IInspectable&,
+                                const RoutedEventArgs&) {
+	leavePageBox();
+	if (m_current > 0) {
+		goToPage(m_current - 1);
+	}
+	if (!PreviousButton().IsEnabled()) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::onNextPage(const Windows::Foundation::IInspectable&,
+                            const RoutedEventArgs&) {
+	leavePageBox();
+	if (m_layout && m_current + 1 < m_layout->pages().size()) {
+		goToPage(m_current + 1);
+	}
+	if (!NextButton().IsEnabled()) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::onZoomIn(const Windows::Foundation::IInspectable&,
+                          const RoutedEventArgs&) {
+	leavePageBox();
+	zoomIn();
+	if (!ZoomInButton().IsEnabled()) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
+void ViewerPage::onZoomOut(const Windows::Foundation::IInspectable&,
+                           const RoutedEventArgs&) {
+	leavePageBox();
+	zoomOut();
+	if (!ZoomOutButton().IsEnabled()) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
 }
 
 // Ctrl+wheel, around the pointer (app.js webViewerWheel)
@@ -295,16 +653,19 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			sizes.push_back({size.width, size.height});
 		}
 		m_sizes = std::move(sizes);
+		m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 		m_scale = XamlRoot() ? XamlRoot().RasterizationScale() : 1.0;
+		// the page -p asks for, or the first; pdf.js ignores a page that
+		// isn't in the document
+		m_current =
+		    m_startPage && *m_startPage >= 1 &&
+		            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
+		        ? static_cast<std::size_t>(*m_startPage - 1)
+		        : 0;
 		if (m_autoZoom) {
-			// the page -p asks for, or the first
-			const auto first =
-			    m_startPage && *m_startPage >= 1 &&
-			            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
-			        ? static_cast<std::size_t>(*m_startPage - 1)
-			        : 0;
-			m_zoom = helpers::autoZoom(m_sizes[first], Scroller().ActualWidth(),
-			                           Scroller().ActualHeight());
+			m_zoom =
+			    helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
+			                      Scroller().ActualHeight());
 		}
 		m_layout.emplace(m_sizes, m_zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
 		m_fitPending = m_autoZoom;
@@ -333,20 +694,25 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Source(m_surface->source());
 		Pages().Width(width / m_scale);
 		Pages().Height(height / m_scale);
+		// the "auto" fit that's still to come takes the rail into account
+		Rail().Visibility(XVisibility::Visible);
+		showPosition();
 		m_viewChanged = Scroller().ViewChanged(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
-		// app.js webViewerResize: "auto" is worked out again for the new size
-		m_sizeChanged = SizeChanged(auto_revoke, [this](auto&&, auto&&) {
-			if (m_autoZoom) {
-				// after this layout pass, not inside it
-				DispatcherQueue().TryEnqueue([weak = get_weak()] {
-					if (auto self = weak.get(); self && self->m_autoZoom) {
-						self->fitAuto();
-					}
-				});
-			}
-			updateVisible();
-		});
+		// app.js webViewerResize: "auto" is worked out again for the new size.
+		// The scroller's size, so the rail and later the side panels count.
+		m_sizeChanged =
+		    Scroller().SizeChanged(auto_revoke, [this](auto&&, auto&&) {
+			    if (m_autoZoom) {
+				    // after this layout pass, not inside it
+				    DispatcherQueue().TryEnqueue([weak = get_weak()] {
+					    if (auto self = weak.get(); self && self->m_autoZoom) {
+						    self->fitAuto();
+					    }
+				    });
+			    }
+			    updateVisible();
+		    });
 		// handled events too: the ScrollViewer sees the wheel first
 		Scroller().AddHandler(
 		    UIElement::PointerWheelChangedEvent(),
@@ -357,10 +723,22 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			        }
 		        })),
 		    true);
+		// toolbar.js selects the page box's text on a click, after the
+		// TextBox has put the caret where it was clicked
+		PageBox().AddHandler(UIElement::PointerReleasedEvent(),
+		                     box_value(Input::PointerEventHandler(
+		                         [weak = get_weak()](auto&&, auto&&) {
+			                         if (auto self = weak.get()) {
+				                         self->PageBox().SelectAll();
+			                         }
+		                         })),
+		                     true);
 		// opening can finish before the window's first layout. Wait for the
 		// full extent before applying -p, rather than clamping it to zero.
 		m_layoutUpdated = LayoutUpdated(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
+		// app.js: the keys work as soon as the document is in
+		Scroller().Focus(FocusState::Programmatic);
 		updateVisible();
 	} catch (...) {
 		m_layout.reset();
@@ -373,6 +751,7 @@ void ViewerPage::showMessage(const hstring& text) {
 	Message().Text(text);
 	Message().Visibility(XVisibility::Visible);
 	Scroller().Visibility(XVisibility::Collapsed);
+	Rail().Visibility(XVisibility::Collapsed);
 }
 
 ViewerPage::Device ViewerPage::makeDevice() {
@@ -436,13 +815,8 @@ void ViewerPage::updateVisible() {
 	    Scroller().ExtentHeight() >= Pages().Height() - 1) {
 		if (std::exchange(m_fitPending, false) && m_autoZoom) {
 			// "auto" for the page -p asks for, or the first
-			const auto page =
-			    m_startPage && *m_startPage >= 1 &&
-			            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
-			        ? static_cast<std::size_t>(*m_startPage - 1)
-			        : 0;
 			const double zoom =
-			    helpers::autoZoom(m_sizes[page], Scroller().ActualWidth(),
+			    helpers::autoZoom(m_sizes[m_current], Scroller().ActualWidth(),
 			                      Scroller().ActualHeight());
 			try {
 				// -p waits for the new extent; asked for again in case the
@@ -461,15 +835,15 @@ void ViewerPage::updateVisible() {
 			}
 		}
 		m_layoutUpdated.revoke();
+		// pdf_link_service.js setHash: NightPDF passed -p as #page=, which
+		// goes to that page like the page box does, page 1 included
 		const auto start = std::exchange(m_startPage, std::nullopt);
 		if (start && *start >= 1 &&
 		    static_cast<std::size_t>(*start) <= m_layout->pages().size()) {
-			Scroller().ChangeView(
-			    nullptr,
-			    (std::max)(0.0, m_layout->pages()[*start - 1].y - PAGE_MARGIN),
-			    nullptr, true);
+			goToPage(static_cast<std::size_t>(*start - 1));
 		}
 	}
+	updateCurrentPage();
 	const double top = Scroller().VerticalOffset();
 	double height = Scroller().ViewportHeight();
 	if (height <= 0) {
