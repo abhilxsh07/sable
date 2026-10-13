@@ -58,6 +58,14 @@ struct PixelRect {
 // Edges past int's range throw overflow_error.
 PixelRect toPixels(const PageRect& rect, double scale);
 
+// the size to render a width x height page at: as is, unless it's over
+// maxPixels or a side is over maxSide, then scaled down to fit and
+// stretched when drawn. pdf.js caps its canvases at 2^25 pixels the same
+// way (maxCanvasPixels).
+// see:
+// https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/app_options.js
+PixelRect renderSize(int width, int height, long long maxPixels, int maxSide);
+
 // which pages to render first: the visible ones top to bottom, then the
 // overscan pages below them, then the ones above
 std::vector<std::size_t> renderOrder(PageRange visible, PageRange overscanned);
@@ -85,6 +93,9 @@ class PageLayout {
 	// outside the document or with invalid dimensions returns an empty range.
 	PageRange visiblePages(double top, double height,
 	                       std::size_t overscan = 1) const;
+	// the page at y, or the next one down when y is in a gap or the top
+	// margin, or the last page past the end. Needs at least one page.
+	std::size_t pageAt(double y) const;
 
   private:
 	std::vector<PageRect> m_pages;

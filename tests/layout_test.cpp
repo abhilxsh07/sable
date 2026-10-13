@@ -182,3 +182,36 @@ TEST(RenderOrder, StopsAtTheDocumentEnds) {
 	          (std::vector<std::size_t>{0, 1, 2}));
 	EXPECT_TRUE(helpers::renderOrder({0, 0}, {0, 0}).empty());
 }
+
+TEST(PageLayout, PageAtFindsThePageOrTheNextOneDown) {
+	// pages at 5..197 and 207..303
+	const PageLayout layout(SIZES, 1, 400, 10, 5);
+	EXPECT_EQ(layout.pageAt(0), 0u);
+	EXPECT_EQ(layout.pageAt(100), 0u);
+	EXPECT_EQ(layout.pageAt(197), 1u);
+	EXPECT_EQ(layout.pageAt(200), 1u);
+	EXPECT_EQ(layout.pageAt(250), 1u);
+	EXPECT_EQ(layout.pageAt(1000), 1u);
+}
+
+TEST(RenderSize, SmallPagesRenderAsTheyAre) {
+	EXPECT_EQ(helpers::renderSize(794, 1123, 1LL << 25, 16384),
+	          (PixelRect{0, 0, 794, 1123}));
+}
+
+TEST(RenderSize, BigPagesStayUnderTheCanvasLimit) {
+	// A4 at 1000%: pdf.js would render it smaller and stretch it
+	const auto size = helpers::renderSize(7937, 11225, 1LL << 25, 16384);
+	EXPECT_EQ(size, (PixelRect{0, 0, 4870, 6888}));
+	EXPECT_LE(static_cast<long long>(size.width) * size.height, 1LL << 25);
+}
+
+TEST(RenderSize, LongSidesStayUnderTheMaximum) {
+	EXPECT_EQ(helpers::renderSize(20000, 100, 1LL << 40, 16384),
+	          (PixelRect{0, 0, 16384, 81}));
+}
+
+TEST(RenderSize, EmptyStaysEmpty) {
+	EXPECT_EQ(helpers::renderSize(0, 100, 1LL << 25, 16384),
+	          (PixelRect{0, 0, 0, 100}));
+}

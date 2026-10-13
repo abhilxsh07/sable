@@ -123,4 +123,32 @@ std::vector<std::size_t> renderOrder(PageRange visible, PageRange overscanned) {
 	}
 	return order;
 }
+
+std::size_t PageLayout::pageAt(double y) const {
+	const auto below = std::partition_point(
+	    m_pages.begin(), m_pages.end(),
+	    [y](const PageRect& page) { return page.y + page.height <= y; });
+	if (below == m_pages.end()) {
+		return m_pages.size() - 1;
+	}
+	return static_cast<std::size_t>(below - m_pages.begin());
+}
+
+PixelRect renderSize(int width, int height, long long maxPixels, int maxSide) {
+	if (width <= 0 || height <= 0) {
+		return {0, 0, (std::max)(width, 0), (std::max)(height, 0)};
+	}
+	double scale = 1;
+	const double pixels = static_cast<double>(width) * height;
+	if (pixels > static_cast<double>(maxPixels)) {
+		scale = std::sqrt(static_cast<double>(maxPixels) / pixels);
+	}
+	scale = (std::min)({scale, static_cast<double>(maxSide) / width,
+	                    static_cast<double>(maxSide) / height});
+	if (scale >= 1) {
+		return {0, 0, width, height};
+	}
+	return {0, 0, (std::max)(1, static_cast<int>(std::floor(width * scale))),
+	        (std::max)(1, static_cast<int>(std::floor(height * scale)))};
+}
 } // namespace helpers
