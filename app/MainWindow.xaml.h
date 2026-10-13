@@ -25,7 +25,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
@@ -46,10 +49,34 @@ struct MainWindow : MainWindowT<MainWindow> {
 	    const winrt::Microsoft::UI::Xaml::Controls::NavigationView&,
 	    const winrt::Microsoft::UI::Xaml::Controls::
 	        NavigationViewSelectionChangedEventArgs& args);
+	void onPresetClick(const winrt::Windows::Foundation::IInspectable& sender,
+	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onHideConfigurator(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
+	void onKeepConfigurator(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs& args);
+	void onFilterKeyDown(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
 
   private:
 	void setupWindow();
 	void setupTitleBar();
+	void updateTitleBar();
+	void setupSliders();
+	void refreshSliders();
+	void updateFilter();
+	void toggleConfigurator();
+	void alignConfigurator();
+	helpers::SliderValues m_values;
+	std::string m_preset = "default";
+	bool m_settingSliders = false;
+	bool m_compactTitle = false;
+	winrt::Microsoft::UI::Xaml::Controls::IconSource m_titleIcon{nullptr};
+	std::vector<winrt::Microsoft::UI::Xaml::Controls::Slider> m_sliders;
+	std::vector<winrt::Microsoft::UI::Xaml::Controls::TextBlock> m_sliderLabels;
 
 	// kept around so leaving full screen gets the same window back, minimum
 	// size and all
