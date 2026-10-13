@@ -134,6 +134,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemGroup Condition="'$(SableSurfaceTest)'=='true' And '$(Configuration)'=='Debug'">
+		<ClCompile Include="..\tests\scale_test.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
 		<ClCompile Include="..\tests\surface_test.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>

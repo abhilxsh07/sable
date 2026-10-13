@@ -90,6 +90,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
+#ifdef SABLE_SURFACE_TEST
+	friend struct ScaleTest;
+#endif
 	struct Device {
 		winrt::com_ptr<ID2D1Device> device;
 		winrt::com_ptr<ID2D1DeviceContext> context;
@@ -100,6 +103,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
 	void opened(pdf::SessionInfo info);
 	bool relayout(double zoom);
+	void watchScale();
+	void queueScale();
+	bool setScale(double scale);
 	bool setZoom(double zoom, winrt::Windows::Foundation::Point anchor);
 	void fitAuto();
 	void settle();
@@ -155,6 +161,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	// while setZoom has the new layout but the old offsets
 	bool m_holdCurrent = false;
 	double m_scale = 1;
+	bool m_scaleQueued = false;
+	winrt::Microsoft::UI::Xaml::XamlRoot::Changed_revoker m_rootChanged;
+	winrt::Microsoft::UI::Xaml::FrameworkElement::Loaded_revoker m_loaded;
 	helpers::SliderValues m_values;
 	helpers::PageRange m_visible;
 	helpers::PageRange m_wanted;

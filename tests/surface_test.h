@@ -25,3 +25,4 @@ namespace pdf {
 class Engine;
 }
 winrt::Microsoft::UI::Xaml::Window surfaceTest(pdf::Engine& engine);
+winrt::Microsoft::UI::Xaml::Window scaleTest(pdf::Engine& engine);

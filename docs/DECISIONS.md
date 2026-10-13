@@ -152,6 +152,35 @@ This still opens only the first command-line file. Tabs, full CLI dispatch,
 password entry, zoom and display-scale changes are later steps. Preset
 controls aren't connected yet; the home screen still opens without a file.
 
+## Display-scale changes (2026-10-12)
+
+The viewer now watches XamlRoot.Changed and reads RasterizationScale after
+layout. A change resizes the surface in pixels while keeping the document
+layout, zoom and scroll offsets in DIPs. I keep the old page images up until
+the new renders are ready, with the same 400 ms settling delay as zoom.
+Renders from the old scale are cancelled or rejected when they arrive.
+Closing revokes the listener and queued work checks whether the viewer has
+already closed.
+
+The surface dimensions are checked before converting to integers, including
+non-finite values and overflow. If a larger scale would exceed the single
+surface limit, I keep the last working resolution. It can look softer on
+that monitor; the larger-document decision below is still open.
+
+The Debug scale probe uses the real viewer and long.pdf at page 500. It
+checks 150%, 200%, 125% and 100%, matching GPU raster dimensions after each
+change and keeping the page, zoom and offsets. It also changes scale during
+a render, rejects invalid scales and can close with callbacks pending.
+It injects scale values, so it doesn't prove Windows delivers a real
+monitor-change event. That hardware check is still outstanding.
+
+To run it, build with `SableSurfaceTest=true` as above, then set
+`$env:SableScaleTest = 'true'` before launching the Debug app from the repo
+root. The window reports PASS or FAIL. Close it and clear both variables
+with `Remove-Item Env:SableScaleTest, Env:SableSurfaceTest`, then rebuild.
+The ordinary surface/device-loss probe stays available when SableScaleTest
+isn't set.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.
