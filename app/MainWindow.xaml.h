@@ -51,6 +51,12 @@ struct MainWindow : MainWindowT<MainWindow> {
 	        NavigationViewSelectionChangedEventArgs& args);
 	void onPresetClick(const winrt::Windows::Foundation::IInspectable& sender,
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onResetZoom(const winrt::Windows::Foundation::IInspectable&,
+	                 const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onZoomIn(const winrt::Windows::Foundation::IInspectable&,
+	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onZoomOut(const winrt::Windows::Foundation::IInspectable&,
+	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onHideConfigurator(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -64,6 +70,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   private:
 	void setupWindow();
 	void setupTitleBar();
+	void setupZoomKeys();
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();

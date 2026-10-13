@@ -24,8 +24,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <d3d11.h>
+#include <winrt/Microsoft.UI.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Windows.System.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -55,6 +59,20 @@ constexpr D2D1_COLOR_F BACKGROUND{42 / 255.0f, 42 / 255.0f, 46 / 255.0f, 1};
 // unfiltered rasters kept for scrolling back. An A4 page at 100% is about
 // 3.5 MB, so this is a few dozen pages.
 constexpr std::size_t CACHE_BYTES = std::size_t{256} << 20;
+// pdf.js's maxCanvasPixels, and the largest side Document::render takes.
+// Bigger pages are rendered smaller and stretched.
+constexpr long long MAX_PAGE_PIXELS = 1LL << 25;
+constexpr int MAX_PAGE_SIDE = 16384;
+// pdf.js's defaultZoomDelay
+// see:
+// https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/app_options.js
+constexpr std::chrono::milliseconds ZOOM_DELAY{400};
+
+bool sameSize(ID2D1Bitmap1& bitmap, const pdf::PageKey& key) {
+	const auto size = bitmap.GetPixelSize();
+	return static_cast<int>(size.width) == key.width &&
+	       static_cast<int>(size.height) == key.height;
+}
 } // namespace
 
 namespace winrt::Sable::implementation {
@@ -84,6 +102,9 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 
 void ViewerPage::close() {
 	m_closed = true;
+	if (m_settle) {
+		m_settle.Stop();
+	}
 	m_viewChanged.revoke();
 	m_sizeChanged.revoke();
 	m_layoutUpdated.revoke();
@@ -118,6 +139,143 @@ void ViewerPage::setValues(const helpers::SliderValues& values) {
 	}
 }
 
+void ViewerPage::zoomIn(int steps) {
+	if (m_layout && setZoom(helpers::zoomIn(m_zoom, steps), {0, 0})) {
+		m_autoZoom = false;
+	}
+}
+
+void ViewerPage::zoomOut(int steps) {
+	if (m_layout && setZoom(helpers::zoomOut(m_zoom, steps), {0, 0})) {
+		m_autoZoom = false;
+	}
+}
+
+// pdf.js's zoomReset goes back to "auto", not to 100%
+void ViewerPage::zoomReset() {
+	if (m_layout) {
+		m_autoZoom = true;
+		fitAuto();
+	}
+}
+
+// "auto" for the page at the top of the viewport, like pdf.js's current page
+void ViewerPage::fitAuto() {
+	if (!m_layout || m_sizes.empty()) {
+		return;
+	}
+	const auto page = m_layout->pageAt(Scroller().VerticalOffset());
+	setZoom(helpers::autoZoom(m_sizes[page], Scroller().ActualWidth(),
+	                          Scroller().ActualHeight()),
+	        {0, 0});
+}
+
+// Lays the pages out at zoom and scrolls so the spot that was under anchor
+// (viewport DIPs) is under it again. pdf.js keeps the top left of the view
+// for keys and the menu, and the pointer for the wheel.
+bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
+	if (!m_layout || !m_surface || std::abs(zoom - m_zoom) < 1e-9) {
+		return false;
+	}
+	try {
+		const double x = Scroller().HorizontalOffset() + anchor.X - imageLeft();
+		const double y = Scroller().VerticalOffset() + anchor.Y;
+		const auto page = m_layout->pageAt(y);
+		const auto before = m_layout->pages()[page];
+		const double across = (x - before.x) / before.width;
+		const double down = (y - before.y) / before.height;
+
+		if (!relayout(zoom)) {
+			return false;
+		}
+		// before the layout pass, so nothing it triggers starts a render
+		settle();
+		Scroller().UpdateLayout();
+		const auto& after = m_layout->pages()[page];
+		Scroller().ChangeView(
+		    (std::max)(0.0,
+		               after.x + across * after.width + imageLeft() - anchor.X),
+		    (std::max)(0.0, after.y + down * after.height - anchor.Y), nullptr,
+		    true);
+		return true;
+	} catch (...) {
+		// relayout resizes the surface before it changes anything else, so
+		// a failure there leaves the old zoom in place; not worth losing the
+		// document over
+		return false;
+	}
+}
+
+// the pages at zoom, the surface and Image resized to match. False, and
+// nothing changed, if that's more than one surface can hold; for now the
+// zoom just stays, see "Still undecided" in DECISIONS.md.
+bool ViewerPage::relayout(double zoom) {
+	helpers::PageLayout next(m_sizes, zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
+	const double width = std::ceil(next.width() * m_scale);
+	const double height = std::ceil(next.height() * m_scale);
+	if (!pdf::fitsOneSurface(static_cast<long long>(width),
+	                         static_cast<long long>(height))) {
+		return false;
+	}
+	m_surface->resize(static_cast<int>(width), static_cast<int>(height));
+	m_layout = std::move(next);
+	m_zoom = zoom;
+	Pages().Width(width / m_scale);
+	Pages().Height(height / m_scale);
+	return true;
+}
+
+// the Image is centred in the scroller while it's narrower than it
+double ViewerPage::imageLeft() {
+	return (std::max)(0.0, (Scroller().ViewportWidth() - Pages().Width()) / 2);
+}
+
+// the old rasters stay up, stretched, until the zoom has been still for
+// pdf.js's 400 ms; only then are sharp pages rendered
+void ViewerPage::settle() {
+	m_settling = true;
+	if (m_session) {
+		m_session->cancelRender();
+	}
+	if (!m_settle) {
+		m_settle = DispatcherQueue().CreateTimer();
+		m_settle.Interval(ZOOM_DELAY);
+		m_settle.IsRepeating(false);
+		m_settle.Tick([weak = get_weak()](auto&&, auto&&) {
+			if (auto self = weak.get()) {
+				self->m_settling = false;
+				self->updateVisible();
+			}
+		});
+	}
+	m_settle.Stop();
+	m_settle.Start();
+}
+
+// Ctrl+wheel, around the pointer (app.js webViewerWheel)
+void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
+	using Windows::System::VirtualKeyModifiers;
+	if (!m_layout || (args.KeyModifiers() & VirtualKeyModifiers::Control) !=
+	                     VirtualKeyModifiers::Control) {
+		return;
+	}
+	const auto point = args.GetCurrentPoint(Scroller());
+	if (point.Properties().IsHorizontalMouseWheel()) {
+		return;
+	}
+	args.Handled(true);
+	UINT lines = 3;
+	SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+	const int ticks = m_wheelTicks.add(helpers::wheelTicks(
+	    point.Properties().MouseWheelDelta(),
+	    lines == WHEEL_PAGESCROLL ? 0 : static_cast<int>(lines)));
+	if (ticks != 0 && setZoom(ticks > 0 ? helpers::zoomIn(m_zoom, ticks)
+	                                    : helpers::zoomOut(m_zoom, -ticks),
+	                          point.Position())) {
+		m_autoZoom = false;
+	}
+}
+
 void ViewerPage::opened(pdf::SessionInfo info) {
 	if (m_closed || info.canceled) {
 		return;
@@ -136,8 +294,20 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		for (const auto& size : info.pages) {
 			sizes.push_back({size.width, size.height});
 		}
+		m_sizes = std::move(sizes);
 		m_scale = XamlRoot() ? XamlRoot().RasterizationScale() : 1.0;
-		m_layout.emplace(sizes, 1.0, 0.0, PAGE_GAP, PAGE_MARGIN);
+		if (m_autoZoom) {
+			// the page -p asks for, or the first
+			const auto first =
+			    m_startPage && *m_startPage >= 1 &&
+			            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
+			        ? static_cast<std::size_t>(*m_startPage - 1)
+			        : 0;
+			m_zoom = helpers::autoZoom(m_sizes[first], Scroller().ActualWidth(),
+			                           Scroller().ActualHeight());
+		}
+		m_layout.emplace(m_sizes, m_zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
+		m_fitPending = m_autoZoom;
 		const double width = std::ceil(m_layout->width() * m_scale);
 		const double height = std::ceil(m_layout->height() * m_scale);
 		if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 ||
@@ -165,8 +335,28 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Height(height / m_scale);
 		m_viewChanged = Scroller().ViewChanged(
 		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
-		m_sizeChanged = SizeChanged(
-		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
+		// app.js webViewerResize: "auto" is worked out again for the new size
+		m_sizeChanged = SizeChanged(auto_revoke, [this](auto&&, auto&&) {
+			if (m_autoZoom) {
+				// after this layout pass, not inside it
+				DispatcherQueue().TryEnqueue([weak = get_weak()] {
+					if (auto self = weak.get(); self && self->m_autoZoom) {
+						self->fitAuto();
+					}
+				});
+			}
+			updateVisible();
+		});
+		// handled events too: the ScrollViewer sees the wheel first
+		Scroller().AddHandler(
+		    UIElement::PointerWheelChangedEvent(),
+		    box_value(Input::PointerEventHandler(
+		        [weak = get_weak()](auto&&, const auto& args) {
+			        if (auto self = weak.get()) {
+				        self->onWheel(args);
+			        }
+		        })),
+		    true);
 		// opening can finish before the window's first layout. Wait for the
 		// full extent before applying -p, rather than clamping it to zero.
 		m_layoutUpdated = LayoutUpdated(
@@ -244,6 +434,32 @@ void ViewerPage::updateVisible() {
 	}
 	if (Scroller().ViewportHeight() > 0 &&
 	    Scroller().ExtentHeight() >= Pages().Height() - 1) {
+		if (std::exchange(m_fitPending, false) && m_autoZoom) {
+			// "auto" for the page -p asks for, or the first
+			const auto page =
+			    m_startPage && *m_startPage >= 1 &&
+			            static_cast<std::size_t>(*m_startPage) <= m_sizes.size()
+			        ? static_cast<std::size_t>(*m_startPage - 1)
+			        : 0;
+			const double zoom =
+			    helpers::autoZoom(m_sizes[page], Scroller().ActualWidth(),
+			                      Scroller().ActualHeight());
+			try {
+				// -p waits for the new extent; asked for again in case the
+				// size didn't change enough to start another layout pass
+				if (std::abs(zoom - m_zoom) > 1e-9 && relayout(zoom)) {
+					DispatcherQueue().TryEnqueue([weak = get_weak()] {
+						if (auto self = weak.get()) {
+							self->updateVisible();
+						}
+					});
+					return;
+				}
+			} catch (...) {
+				showMessage(L"Couldn't show this PDF: " + to_message());
+				return;
+			}
+		}
 		m_layoutUpdated.revoke();
 		const auto start = std::exchange(m_startPage, std::nullopt);
 		if (start && *start >= 1 &&
@@ -278,17 +494,20 @@ void ViewerPage::requestNext() {
 		return;
 	}
 	for (const auto page : helpers::renderOrder(m_visible, m_wanted)) {
-		if (m_device.bitmaps.contains(page)) {
+		const auto wanted = key(page);
+		// one from before a zoom is only stretched, it still needs a render
+		if (const auto found = m_device.bitmaps.find(page);
+		    found != m_device.bitmaps.end() &&
+		    sameSize(*found->second, wanted)) {
 			continue;
 		}
-		const auto wanted = key(page);
 		if (const auto* bitmap = m_cache.find(wanted)) {
 			if (upload(m_device, page, *bitmap)) {
 				invalidate(page);
 			}
 			continue;
 		}
-		if (m_rendering || m_failed.contains(wanted)) {
+		if (m_settling || m_rendering || m_failed.contains(wanted)) {
 			continue;
 		}
 		m_rendering = m_session->render(
@@ -378,14 +597,27 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 		const auto found = m_device.bitmaps.find(page);
 		if (found != m_device.bitmaps.end()) {
 			const auto size = found->second->GetPixelSize();
+			m_device.filter->setInput(found->second.get());
 			if (static_cast<int>(size.width) == at.width &&
 			    static_cast<int>(size.height) == at.height) {
-				m_device.filter->setInput(found->second.get());
 				context.DrawImage(m_device.filter->output(),
 				                  D2D1::Point2F(static_cast<float>(at.x),
 				                                static_cast<float>(at.y)));
-				continue;
+			} else {
+				// rendered before a zoom, or capped: stretched to fit
+				D2D1::Matrix3x2F base;
+				context.GetTransform(&base);
+				context.SetTransform(
+				    D2D1::Matrix3x2F::Scale(
+				        static_cast<float>(at.width) / size.width,
+				        static_cast<float>(at.height) / size.height) *
+				    D2D1::Matrix3x2F::Translation(static_cast<float>(at.x),
+				                                  static_cast<float>(at.y)) *
+				    base);
+				context.DrawImage(m_device.filter->output());
+				context.SetTransform(base);
 			}
+			continue;
 		}
 		context.FillRectangle(D2D1::RectF(static_cast<float>(at.x),
 		                                  static_cast<float>(at.y),
@@ -403,6 +635,8 @@ helpers::PixelRect ViewerPage::pixels(std::size_t page) const {
 
 pdf::PageKey ViewerPage::key(std::size_t page) const {
 	const auto rect = pixels(page);
-	return {static_cast<int>(page), rect.width, rect.height, 0};
+	const auto size = helpers::renderSize(rect.width, rect.height,
+	                                      MAX_PAGE_PIXELS, MAX_PAGE_SIDE);
+	return {static_cast<int>(page), size.width, size.height, 0};
 }
 } // namespace winrt::Sable::implementation

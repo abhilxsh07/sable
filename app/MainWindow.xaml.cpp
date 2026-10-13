@@ -71,6 +71,7 @@ void MainWindow::InitializeComponent() {
 	MainWindowT::InitializeComponent();
 	setupTitleBar();
 	setupSliders();
+	setupZoomKeys();
 	m_titleIcon = AppTitleBar().IconSource();
 	AppTitleBar().SizeChanged([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {
@@ -90,6 +91,9 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	Nav().Visibility(Visibility::Collapsed);
 	Viewer().Visibility(Visibility::Visible);
 	Presets().Visibility(Visibility::Visible);
+	ResetZoomItem().IsEnabled(true);
+	ZoomInItem().IsEnabled(true);
+	ZoomOutItem().IsEnabled(true);
 	updateTitleBar();
 	get_self<ViewerPage>(Viewer())->setValues(m_values);
 	get_self<ViewerPage>(Viewer())->open(engine, path, page);
@@ -156,6 +160,60 @@ void MainWindow::updateTitleBar() {
 		AppTitleBar().Title(compact ? L"" : L"Sable");
 		AppTitleBar().IconSource(compact ? nullptr : m_titleIcon);
 	}
+}
+
+// Electron's resetZoom, zoomIn and zoomOut accelerators, plus the keys
+// pdf.js took: Ctrl (or Ctrl+Shift) with =, numpad +, -, numpad -, 0. They
+// sit on the window's grid, since a closed menu's items aren't in the tree.
+void MainWindow::setupZoomKeys() {
+	using Windows::System::VirtualKey;
+	using Modifiers = Windows::System::VirtualKeyModifiers;
+	using Zoom = void (*)(ViewerPage&);
+	const auto add = [this](VirtualKey key, Controls::MenuFlyoutItem item,
+	                        Zoom zoom) {
+		for (const auto modifiers :
+		     {Modifiers::Control, Modifiers::Control | Modifiers::Shift}) {
+			Input::KeyboardAccelerator accelerator;
+			accelerator.Key(key);
+			accelerator.Modifiers(modifiers);
+			accelerator.Invoked(
+			    [weak = get_weak(), item, zoom](auto&&, const auto& args) {
+				    if (auto self = weak.get(); self && item.IsEnabled()) {
+					    zoom(*get_self<ViewerPage>(self->Viewer()));
+					    args.Handled(true);
+				    }
+			    });
+			RootGrid().KeyboardAccelerators().Append(accelerator);
+		}
+	};
+	// the = and - keys have no names in VirtualKey
+	const Zoom in = [](ViewerPage& viewer) { viewer.zoomIn(); };
+	const Zoom out = [](ViewerPage& viewer) { viewer.zoomOut(); };
+	const Zoom reset = [](ViewerPage& viewer) { viewer.zoomReset(); };
+	add(static_cast<VirtualKey>(VK_OEM_PLUS), ZoomInItem(), in);
+	add(VirtualKey::Add, ZoomInItem(), in);
+	add(static_cast<VirtualKey>(VK_OEM_MINUS), ZoomOutItem(), out);
+	add(VirtualKey::Subtract, ZoomOutItem(), out);
+	add(VirtualKey::Number0, ResetZoomItem(), reset);
+	add(VirtualKey::NumberPad0, ResetZoomItem(), reset);
+	// no hint bubbles for these on a grid
+	RootGrid().KeyboardAcceleratorPlacementMode(
+	    Input::KeyboardAcceleratorPlacementMode::Hidden);
+}
+
+void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
+                             const RoutedEventArgs&) {
+	get_self<ViewerPage>(Viewer())->zoomReset();
+}
+
+void MainWindow::onZoomIn(const Windows::Foundation::IInspectable&,
+                          const RoutedEventArgs&) {
+	get_self<ViewerPage>(Viewer())->zoomIn();
+}
+
+void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
+                           const RoutedEventArgs&) {
+	get_self<ViewerPage>(Viewer())->zoomOut();
 }
 
 // View > Toggle Full Screen (Electron's togglefullscreen role)

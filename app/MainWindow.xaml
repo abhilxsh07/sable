@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	mc:Ignorable="d"
 	Title="Sable">
 
-	<Grid RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}"
+	<Grid x:Name="RootGrid" RowDefinitions="Auto,*" Background="{ThemeResource SablePaneBrush}"
 		Tapped="onHideConfigurator" KeyDown="onFilterKeyDown">
 		<!-- my own title bar instead of the system one. The Menu button takes
 			the place of NightPDF's menu bar (menutemplate.ts), same items, same
@@ -72,9 +72,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<MenuFlyoutItem Text="Paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="View">
-								<MenuFlyoutItem Text="Reset Zoom" KeyboardAcceleratorTextOverride="Ctrl+0" IsEnabled="False" />
-								<MenuFlyoutItem Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Plus" IsEnabled="False" />
-								<MenuFlyoutItem Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" IsEnabled="False" />
+								<!-- they zoom the document, the way pdf.js's own Ctrl+0, Ctrl++
+									and Ctrl+- did. Enabled once a PDF is open. -->
+								<MenuFlyoutItem x:Name="ResetZoomItem" Text="Reset Zoom" KeyboardAcceleratorTextOverride="Ctrl+0" IsEnabled="False" Click="onResetZoom" />
+								<MenuFlyoutItem x:Name="ZoomInItem" Text="Zoom In" KeyboardAcceleratorTextOverride="Ctrl+Plus" IsEnabled="False" Click="onZoomIn" />
+								<MenuFlyoutItem x:Name="ZoomOutItem" Text="Zoom Out" KeyboardAcceleratorTextOverride="Ctrl+-" IsEnabled="False" Click="onZoomOut" />
 								<MenuFlyoutSeparator />
 								<MenuFlyoutItem x:Name="FullScreenItem" Text="Toggle Full Screen" KeyboardAcceleratorTextOverride="F11" Click="onToggleFullScreen" />
 							</MenuFlyoutSubItem>
