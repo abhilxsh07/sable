@@ -196,6 +196,25 @@ void MainWindow::setupZoomKeys() {
 	add(VirtualKey::Subtract, ZoomOutItem(), out);
 	add(VirtualKey::Number0, ResetZoomItem(), reset);
 	add(VirtualKey::NumberPad0, ResetZoomItem(), reset);
+	// a TextBox takes Ctrl+- for a soft hyphen before the accelerators see
+	// it, and pdf.js zoomed out from its page box too (app.js L2878-2915),
+	// so this one is caught on the way down
+	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
+		const auto key = args.Key();
+		if (args.Handled() ||
+		    (key != static_cast<VirtualKey>(VK_OEM_MINUS) &&
+		     key != VirtualKey::Subtract) ||
+		    (GetKeyState(VK_CONTROL) & 0x8000) == 0 ||
+		    (GetKeyState(VK_MENU) & 0x8000) != 0 ||
+		    (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
+		    (GetKeyState(VK_RWIN) & 0x8000) != 0) {
+			return;
+		}
+		if (auto self = weak.get(); self && self->ZoomOutItem().IsEnabled()) {
+			get_self<ViewerPage>(self->Viewer())->zoomOut();
+			args.Handled(true);
+		}
+	});
 	// no hint bubbles for these on a grid
 	RootGrid().KeyboardAcceleratorPlacementMode(
 	    Input::KeyboardAcceleratorPlacementMode::Hidden);
