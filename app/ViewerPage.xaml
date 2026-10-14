@@ -46,8 +46,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 		<!-- the right rail. Page number and zoom sit at the bottom, where
 			pdf.js had them in its toolbar: the page box, "of N", previous and
-			next page, zoom in and out. Thumbnails and the other panels go at
-			the top later. Tooltips are pdf.js's en-US titles. -->
+			next page, zoom in, the zoom menu and zoom out. Thumbnails and the
+			other panels go at the top later. Tooltips and menu entries are
+			pdf.js's en-US strings. -->
 		<Border x:Name="Rail" Grid.Column="1" Width="56" Visibility="Collapsed"
 			Background="{ThemeResource SablePaneBrush}"
 			BorderBrush="{ThemeResource SableDividerBrush}" BorderThickness="1,0,0,0">
@@ -83,6 +84,29 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					ToolTipService.ToolTip="Zoom In"
 					AutomationProperties.Name="Zoom In" Click="onZoomIn">
 					<FontIcon Glyph="&#xE8A3;" FontSize="14" />
+				</Button>
+				<!-- pdf.js's zoom menu (#scaleSelect), with its values as tags -->
+				<Button x:Name="ZoomButton" Style="{StaticResource SableRailButtonStyle}"
+					Width="52" ToolTipService.ToolTip="Zoom"
+					AutomationProperties.Name="Zoom">
+					<TextBlock x:Name="ZoomText" FontSize="11" />
+					<Button.Flyout>
+						<MenuFlyout x:Name="ZoomMenu" Placement="Left" Opening="onZoomMenuOpening">
+							<RadioMenuFlyoutItem Text="Automatic Zoom" Tag="auto" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="Actual Size" Tag="page-actual" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="Page Fit" Tag="page-fit" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="Page Width" Tag="page-width" GroupName="Zoom" Click="onZoomChoice" />
+							<MenuFlyoutSeparator />
+							<RadioMenuFlyoutItem Text="50%" Tag="0.5" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="75%" Tag="0.75" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="100%" Tag="1" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="125%" Tag="1.25" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="150%" Tag="1.5" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="200%" Tag="2" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="300%" Tag="3" GroupName="Zoom" Click="onZoomChoice" />
+							<RadioMenuFlyoutItem Text="400%" Tag="4" GroupName="Zoom" Click="onZoomChoice" />
+						</MenuFlyout>
+					</Button.Flyout>
 				</Button>
 				<Button x:Name="ZoomOutButton" Style="{StaticResource SableRailButtonStyle}"
 					ToolTipService.ToolTip="Zoom Out"
