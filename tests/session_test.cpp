@@ -233,6 +233,28 @@ TEST_F(SessionTest, AsksForAPassword) {
 	EXPECT_EQ(info.pages.size(), 1u);
 }
 
+TEST_F(SessionTest, EmptyAndNonPdfFilesAreFormatErrors) {
+	for (const auto name : {"empty.pdf", "not_pdf.pdf"}) {
+		pdf::Session session(engine);
+		const auto info = open(session, fixturePath(name));
+		EXPECT_EQ(info.error, pdf::Error::Format);
+		EXPECT_FALSE(info.canceled);
+		EXPECT_TRUE(info.pages.empty());
+		EXPECT_TRUE(info.labels.empty());
+		EXPECT_FALSE(session.render({0, 10, 10}, [](pdf::RenderResult) {}));
+	}
+}
+
+TEST_F(SessionTest, EmptyPageTreeHasNoPagesToRender) {
+	pdf::Session session(engine);
+	const auto info = open(session, fixturePath("no_pages.pdf"));
+	ASSERT_EQ(info.error, pdf::Error::None);
+	EXPECT_FALSE(info.canceled);
+	EXPECT_TRUE(info.pages.empty());
+	EXPECT_TRUE(info.labels.empty());
+	EXPECT_FALSE(render(session, {0, 10, 10}).bitmap);
+}
+
 TEST_F(SessionTest, OpensOnlyOnce) {
 	pdf::Session session(engine);
 	open(session, fixturePath("pages.pdf"));

@@ -217,6 +217,28 @@ After Cancel, pdf.js logged an error and left the viewer blank. Sable says
 "This PDF is protected with a password." in the viewer instead, like its
 other open errors. Closing the window while the prompt is up just closes it.
 
+## Viewer errors (2026-10-15)
+
+I show the existing open-error messages in an error InfoBar. It stays open
+because dismissing it would leave an empty viewer with no explanation.
+The page view, rail and thumbnails are hidden while it is up. Passwords
+still go through their prompt; cancelling it uses the same error display.
+If creating or queuing an open throws, that failure is shown here too.
+Closing clears the bar, and late results leave the closed viewer alone.
+
+The debugger gets the displayed reason through OutputDebugStringW. File
+logging is still part of P20.
+
+The fixture generator also writes an empty file, plain text with a PDF
+extension and an empty page tree. The Debug viewer error probe opens these
+and the damaged/missing files, injects the unsupported-protection and
+unknown results, checks cancelled/late results and password cancellation,
+then opens a normal document.
+
+Build with `SableSurfaceTest=true`, then launch from the repo root with
+`SableErrorTest=true`. Read the window's PASS or FAIL result before closing;
+exit 0 only checks shutdown. Clear both variables and rebuild afterwards.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

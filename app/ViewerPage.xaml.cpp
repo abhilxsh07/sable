@@ -102,17 +102,26 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 
 // a session opens once, so every password tried gets a new one
 void ViewerPage::startOpen(const std::string& password) {
-	m_session = std::make_unique<pdf::Session>(*m_engine);
-	m_session->open(
-	    m_path, password,
-	    [weak = get_weak(), queue = DispatcherQueue()](pdf::SessionInfo info) {
-		    auto result = std::make_shared<pdf::SessionInfo>(std::move(info));
-		    queue.TryEnqueue([weak, result] {
-			    if (auto self = weak.get()) {
-				    self->opened(std::move(*result));
-			    }
+	try {
+		m_session = std::make_unique<pdf::Session>(*m_engine);
+		const bool queued = m_session->open(
+		    m_path, password,
+		    [weak = get_weak(),
+		     queue = DispatcherQueue()](pdf::SessionInfo info) {
+			    auto result =
+			        std::make_shared<pdf::SessionInfo>(std::move(info));
+			    queue.TryEnqueue([weak, result] {
+				    if (auto self = weak.get()) {
+					    self->opened(std::move(*result));
+				    }
+			    });
 		    });
-	    });
+		if (!queued) {
+			showMessage(to_hstring(pdf::errorMessage(pdf::Error::Unknown)));
+		}
+	} catch (...) {
+		showMessage(L"Couldn't open this PDF: " + to_message());
+	}
 }
 
 // pdf.js's PasswordPrompt (password_prompt.js): the label, a masked box,
@@ -197,6 +206,7 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 
 void ViewerPage::close() {
 	m_closed = true;
+	Message().IsOpen(false);
 	m_promptLoaded.revoke();
 	m_passwordPending.reset();
 	if (m_passwordDialog) {
@@ -1316,12 +1326,17 @@ void ViewerPage::showMessage(const hstring& text) {
 	if (m_closed) {
 		return;
 	}
-	Message().Text(text);
+	Message().Message(text);
+	Message().IsOpen(true);
 	Message().Visibility(XVisibility::Visible);
 	Scroller().Visibility(XVisibility::Collapsed);
 	Rail().Visibility(XVisibility::Collapsed);
 	ThumbnailPanel().Visibility(XVisibility::Collapsed);
 	m_thumbScrollPending = false;
+	// file logging comes later; I can read the failure in the debugger now
+	OutputDebugStringW(L"Sable viewer: ");
+	OutputDebugStringW(text.c_str());
+	OutputDebugStringW(L"\n");
 }
 
 ViewerPage::Device ViewerPage::makeDevice() {

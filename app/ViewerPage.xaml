@@ -40,10 +40,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<Image x:Name="Pages" Stretch="Fill"
 				HorizontalAlignment="Center" VerticalAlignment="Top" />
 		</ScrollViewer>
-		<TextBlock x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
-			HorizontalAlignment="Center" VerticalAlignment="Center"
-			MaxWidth="480" TextWrapping="Wrap" TextAlignment="Center"
-			Foreground="{ThemeResource SableTextSecondaryBrush}" />
+		<InfoBar x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"
+			IsOpen="False" IsClosable="False" Severity="Error" Margin="24"
+			HorizontalAlignment="Stretch" VerticalAlignment="Top" MaxWidth="480" />
 
 		<!-- the right rail. Page number and zoom sit at the bottom, where
 			pdf.js had them in its toolbar: the page box, "of N", previous and

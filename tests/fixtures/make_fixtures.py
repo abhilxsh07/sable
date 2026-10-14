@@ -16,11 +16,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# Writes the four small PDFs the tests open, next to this script:
+# Writes the PDFs the tests open, next to this script:
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
 #   restricted.pdf  the same page, opens without a password, all permissions off
 #   broken.pdf      not a PDF at all
+#   empty.pdf       an empty file
+#   not_pdf.pdf     plain text with a PDF extension
+#   no_pages.pdf    a PDF with an empty page tree
 # The bytes are the same on every run (no dates, fixed ids), so a changed file
 # in git means the script changed. Only the standard library is used, so I wrote
 # RC4 and the key derivation out by hand. They follow ISO 32000-1 7.6.3 for the
@@ -278,6 +281,9 @@ def main() -> None:
             "restricted.pdf", [PAGE_1], security=(b"", OWNER_PASSWORD, -3904)
         ),
         "broken.pdf": b"%PDF-1.7\n" + b"this is not really a pdf\n" * 20,
+        "empty.pdf": b"",
+        "not_pdf.pdf": b"this file contains plain text, not a PDF\n",
+        "no_pages.pdf": build_pdf("no_pages.pdf", []),
     }
     for name, data in files.items():
         with open(os.path.join(HERE, name), "wb") as file:
