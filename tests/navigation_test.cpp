@@ -284,6 +284,24 @@ TEST(NavAction, HomeAndEnd) {
 	EXPECT_EQ(act(NavKey::End, SHIFT), NavAction::None);
 }
 
+TEST(NavAction, F4TogglesTheSidebar) {
+	EXPECT_EQ(act(NavKey::F4), NavAction::ToggleSidebar);
+	EXPECT_EQ(act(NavKey::F4, {}, NavFocus::Button), NavAction::ToggleSidebar);
+	// not from the page box, and not with Shift, Ctrl or Alt
+	EXPECT_EQ(act(NavKey::F4, {}, NavFocus::TextBox), NavAction::None);
+	EXPECT_EQ(act(NavKey::F4, SHIFT), NavAction::None);
+	EXPECT_EQ(act(NavKey::F4, CTRL), NavAction::None);
+	EXPECT_EQ(act(NavKey::F4, ALT), NavAction::None);
+}
+
+TEST(PageName, LabelOrGroupedNumber) {
+	EXPECT_EQ(helpers::pageName(2, NO_LABELS), "3");
+	EXPECT_EQ(helpers::pageName(999, NO_LABELS), "1,000");
+	const std::vector<std::string> labels = {"i", "", "1"};
+	EXPECT_EQ(helpers::pageName(0, labels), "i");
+	EXPECT_EQ(helpers::pageName(1, labels), "");
+}
+
 TEST(NavAction, OtherKeysAndAlt) {
 	EXPECT_EQ(act(NavKey::Other), NavAction::None);
 	EXPECT_EQ(act(NavKey::G), NavAction::None);

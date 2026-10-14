@@ -150,6 +150,14 @@ PageText pageText(std::size_t page, std::size_t count,
 	return {std::to_string(page + 1), "of " + grouped(count)};
 }
 
+// pdf_thumbnail_view.js #pageL10nArgs: this.pageLabel ?? this.id
+std::string pageName(std::size_t page, std::span<const std::string> labels) {
+	if (page < labels.size()) {
+		return labels[page];
+	}
+	return grouped(page + 1);
+}
+
 std::optional<std::size_t> pageFromText(std::string_view text,
                                         std::span<const std::string> labels,
                                         std::size_t count) {
@@ -302,6 +310,8 @@ NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
 		return hasPrevious ? NavAction::First : NavAction::None;
 	case NavKey::End:
 		return hasNext ? NavAction::Last : NavAction::None;
+	case NavKey::F4:
+		return NavAction::ToggleSidebar;
 	default:
 		break;
 	}
