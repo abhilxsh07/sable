@@ -93,11 +93,18 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 	if (m_closed || m_session) {
 		return;
 	}
+	m_engine = &engine;
+	m_path = path;
 	m_startPage = page;
 	setThumbnailsOpen(thumbnails);
-	m_session = std::make_unique<pdf::Session>(engine);
+	startOpen({});
+}
+
+// a session opens once, so every password tried gets a new one
+void ViewerPage::startOpen(const std::string& password) {
+	m_session = std::make_unique<pdf::Session>(*m_engine);
 	m_session->open(
-	    path, {},
+	    m_path, password,
 	    [weak = get_weak(), queue = DispatcherQueue()](pdf::SessionInfo info) {
 		    auto result = std::make_shared<pdf::SessionInfo>(std::move(info));
 		    queue.TryEnqueue([weak, result] {
@@ -108,8 +115,94 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 	    });
 }
 
+// pdf.js's PasswordPrompt (password_prompt.js): the label, a masked box,
+// Cancel and OK. OK does nothing until something's typed, Enter is OK and
+// Esc is Cancel. The password goes to the open and isn't kept.
+fire_and_forget ViewerPage::askPassword(bool incorrect) {
+	auto weak = get_weak();
+	if (m_closed) {
+		co_return;
+	}
+	if (!XamlRoot()) {
+		// opening can beat the window's first layout, and a dialog needs a
+		// root to show in
+		m_passwordPending = incorrect;
+		m_promptLoaded = Loaded(auto_revoke, [weak](auto&&, auto&&) {
+			if (auto self = weak.get()) {
+				self->m_promptLoaded.revoke();
+				if (const auto pending =
+				        std::exchange(self->m_passwordPending, std::nullopt)) {
+					self->askPassword(*pending);
+				}
+			}
+		});
+		co_return;
+	}
+	PasswordBox box{nullptr};
+	auto result = ContentDialogResult::None;
+	try {
+		// pdfjs-password-label and pdfjs-password-invalid
+		TextBlock label;
+		label.Text(incorrect ? L"Invalid password. Please try again."
+		                     : L"Enter the password to open this PDF file.");
+		label.TextWrapping(TextWrapping::Wrap);
+		box = PasswordBox();
+		Automation::AutomationProperties::SetName(box, label.Text());
+		StackPanel content;
+		content.Spacing(12);
+		content.Children().Append(label);
+		content.Children().Append(box);
+		ContentDialog dialog;
+		dialog.XamlRoot(XamlRoot());
+		dialog.Content(content);
+		dialog.PrimaryButtonText(L"OK");
+		dialog.CloseButtonText(L"Cancel");
+		dialog.DefaultButton(ContentDialogButton::Primary);
+		// #verify: an empty password isn't tried
+		dialog.PrimaryButtonClick(
+		    [box](auto&&, const ContentDialogButtonClickEventArgs& args) {
+			    if (box.Password().empty()) {
+				    args.Cancel(true);
+			    }
+		    });
+		dialog.Opened(
+		    [box](auto&&, auto&&) { box.Focus(FocusState::Programmatic); });
+		m_passwordDialog = dialog;
+		result = co_await dialog.ShowAsync();
+	} catch (...) {
+		// another dialog was up, or the window went away: like Cancel
+		result = ContentDialogResult::None;
+	}
+	auto self = weak.get();
+	if (!self || self->m_closed) {
+		co_return;
+	}
+	self->m_passwordDialog = nullptr;
+	try {
+		if (result == ContentDialogResult::Primary) {
+			self->startOpen(to_string(box.Password()));
+		} else {
+			// pdf.js logged the cancelled prompt and left the viewer empty;
+			// this says why it's empty instead
+			self->showMessage(
+			    to_hstring(pdf::errorMessage(pdf::Error::PasswordRequired)));
+		}
+	} catch (...) {
+		self->showMessage(L"Couldn't open this PDF: " + to_message());
+	}
+	if (box) {
+		box.Password(L"");
+	}
+}
+
 void ViewerPage::close() {
 	m_closed = true;
+	m_promptLoaded.revoke();
+	m_passwordPending.reset();
+	if (m_passwordDialog) {
+		m_passwordDialog.Hide();
+		m_passwordDialog = nullptr;
+	}
 	if (m_settle) {
 		m_settle.Stop();
 	}
@@ -1087,6 +1180,12 @@ void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
 
 void ViewerPage::opened(pdf::SessionInfo info) {
 	if (m_closed || info.canceled) {
+		return;
+	}
+	// app.js onPassword: the prompt, saying so if the last one was wrong
+	if (info.error == pdf::Error::PasswordRequired ||
+	    info.error == pdf::Error::WrongPassword) {
+		askPassword(info.error == pdf::Error::WrongPassword);
 		return;
 	}
 	if (info.error != pdf::Error::None) {

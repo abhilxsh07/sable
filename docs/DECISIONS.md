@@ -205,6 +205,18 @@ The scale probe now checks thumbnail raster sizes and that page 500's
 thumbnail stays in view at each injected scale. Real monitor moves still
 need checking.
 
+## Passwords (2026-10-14)
+
+An encrypted PDF asks for its password the way pdf.js's prompt did: the
+same two lines of text, a masked box, Cancel and OK. OK does nothing while
+the box is empty, Enter means OK and Esc means Cancel. A wrong password asks
+again with "Invalid password. Please try again." Each try opens the file in
+a new session, and the password only goes to that open; nothing keeps it.
+
+After Cancel, pdf.js logged an error and left the viewer blank. Sable says
+"This PDF is protected with a password." in the viewer instead, like its
+other open errors. Closing the window while the prompt is up just closes it.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.
@@ -245,6 +257,8 @@ need checking.
   the settings file stays the shape NightPDF wrote. Up to 50 files; starred
   ones are kept first and survive Clear recent.
 - Lots of tools NightPDF never had (see DESIGN.md).
+- Cancelling the password prompt shows why the viewer is empty instead of
+  leaving it blank.
 - Unknown command-line options are ignored like yargs did, but they don't
   take the next argument as their value. In NightPDF `--foo file.pdf` meant
   the file never opened.

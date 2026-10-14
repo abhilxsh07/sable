@@ -109,6 +109,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 		std::map<std::size_t, winrt::com_ptr<ID2D1Bitmap1>> bitmaps;
 	};
 
+	void startOpen(const std::string& password);
+	winrt::fire_and_forget askPassword(bool incorrect);
 	void opened(pdf::SessionInfo info);
 	bool relayout(double zoom);
 	void watchScale();
@@ -158,6 +160,14 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	pdf::PageKey key(std::size_t page) const;
 
 	std::unique_ptr<pdf::Session> m_session;
+	// what open() was given, to open again with a password
+	pdf::Engine* m_engine = nullptr;
+	std::filesystem::path m_path;
+	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_passwordDialog{
+	    nullptr};
+	// a prompt waiting for the page to be in the window (true: "invalid")
+	std::optional<bool> m_passwordPending;
+	winrt::Microsoft::UI::Xaml::FrameworkElement::Loaded_revoker m_promptLoaded;
 	// page sizes in points, to lay them out again at another zoom
 	std::vector<helpers::PageSize> m_sizes;
 	std::optional<helpers::PageLayout> m_layout;
