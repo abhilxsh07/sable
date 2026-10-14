@@ -2,6 +2,21 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Tool eligibility before editing (2026-11-16)
+
+I preflight editing on the engine thread while opening the PDF and retain
+the result alongside its permission bits. Signed, over-128 MiB and unsafe
+rewrites disable annotation tools before an editor opens. The preflight
+uses the existing cached write/serialization checks; I keep canWrite's
+existing verdict for documents I never rewrite.
+
+The launcher, quick strip, placement menus and Highlight use one reason
+for the refusal, with document/permission reasons before selection hints.
+Busy state uses the same gate; an armed tool can still be canceled.
+Form filling stays independent of annotation permission. Fill & Sign
+marks are annotations, so permission to fill fields alone cannot enable
+them. This follows audit A-28/A-36/A-37 without changing settings or keys.
+
 ## Queued drawing strokes (2026-11-16)
 
 I keep completed pointer strokes in a per-tab FIFO, separate from the

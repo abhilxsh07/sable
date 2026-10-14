@@ -25,8 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 using namespace winrt;
 namespace winrt::Sable::implementation {
 bool ViewerPage::canMarkSelection() const {
-	return hasTextSelection() && m_session && m_noteAllowed && !m_noteBusy &&
-	       !m_noteSaving && !m_noteDialog && !notePlacing() &&
+	return hasTextSelection() && !annotationRefusal() && !notePlacing() &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());
 }
@@ -34,6 +33,8 @@ bool ViewerPage::canMarkSelection() const {
 void ViewerPage::markSelection(pdf::TextMarkup markup,
                                pdf::HighlightColor color) {
 	if (!canMarkSelection()) {
+		const auto reason = annotationRefusal();
+		showNotice(reason ? reason : L"Select some text before marking it.");
 		return;
 	}
 	cancelSelectionDrag();

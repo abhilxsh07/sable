@@ -226,6 +226,8 @@ bool Session::open(const std::filesystem::path& path,
 						info.canCopy = opened.document->canCopy();
 						info.canAnnotate = opened.document->canAnnotate();
 						info.canFillForms = opened.document->canFillForms();
+						info.editRefusal = opened.document->editEligibility(
+						    [state] { return state->closed(); });
 						const int count = opened.document->pageCount();
 						for (int page = 0; page < count && !state->closed();
 						     ++page) {
@@ -251,6 +253,7 @@ bool Session::open(const std::filesystem::path& path,
 					info.labels.clear();
 					info.canAnnotate = false;
 					info.canFillForms = false;
+					info.editRefusal = WriteRefusal::Unavailable;
 				} else {
 					state->m_document = std::move(opened.document);
 					state->m_ready = state->m_document != nullptr;
@@ -1509,6 +1512,7 @@ void Session::finishPageEdit(State& state, PageEditResult& result,
 	result.info.canCopy = document.canCopy();
 	result.info.canAnnotate = document.canAnnotate();
 	result.info.canFillForms = document.canFillForms();
+	result.info.editRefusal = document.editEligibility(canceled);
 }
 
 bool Session::insertPages(std::filesystem::path file, std::vector<int> pages,

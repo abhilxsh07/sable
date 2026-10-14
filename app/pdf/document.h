@@ -249,6 +249,8 @@ class Document {
 	// Every write path asks this first. Signed covers signature fields,
 	// DocMDP and usage rights; Unavailable means it couldn't be checked.
 	WriteRefusal canWrite(const std::function<bool()>& canceled) const;
+	// preflight editing also requires a safe rewrite.
+	WriteRefusal editEligibility(const std::function<bool()>& canceled) const;
 	// The last answer canWrite reached, None before the first check.
 	WriteRefusal writeRefusal() const;
 	// Plain single-line text only. Refuses stale targets or incomplete writes.

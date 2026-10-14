@@ -525,6 +525,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	    winrt::Microsoft::UI::Xaml::Controls::Primitives::ToggleButton,
 	    std::wstring>>
 	    m_quickToolButtons;
+	std::vector<
+	    std::pair<winrt::Microsoft::UI::Xaml::Controls::Button, std::wstring>>
+	    m_allToolButtons;
 	bool m_toolSurfacesSetup = false, m_syncingQuickTools = false;
 	// shown or hidden for every tab until the app closes
 	static inline bool s_quickTools = true;
@@ -585,6 +588,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_noteAllowed = false, m_fillAllowed = false, m_noteBusy = false,
 	     m_notesDirty = false, m_formsDirty = false, m_pagesDirty = false,
 	     m_noteSaving = false;
+	pdf::WriteRefusal m_editRefusal = pdf::WriteRefusal::None;
+	const wchar_t* annotationRefusal() const;
 	std::uint64_t m_renderVersion = 0;
 	winrt::hstring m_noteDraft, m_noteAuthor;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_noteDialog{nullptr};

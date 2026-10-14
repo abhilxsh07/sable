@@ -1572,8 +1572,11 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		}
 		m_sizes = std::move(sizes);
 		m_copyAllowed = info.canCopy;
-		m_noteAllowed = info.canAnnotate;
-		m_fillAllowed = info.canFillForms;
+		m_editRefusal = info.editRefusal;
+		m_noteAllowed =
+		    info.canAnnotate && m_editRefusal == pdf::WriteRefusal::None;
+		m_fillAllowed =
+		    info.canFillForms && m_editRefusal == pdf::WriteRefusal::None;
 		m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 		m_scale = XamlRoot() ? XamlRoot().RasterizationScale() : 1.0;
 		// the page -p asks for, or the first; pdf.js ignores a page that

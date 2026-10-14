@@ -87,6 +87,10 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 	} else if (tool == L"export") {
 		exportPages();
 	} else if (tool == L"comment" || tool == L"fillsign") {
+		if (const auto reason = annotationRefusal()) {
+			showNotice(reason);
+			return;
+		}
 		setCommentsOpen(true);
 		if (tool == L"fillsign" && commentsOpen()) {
 			openFillSign();
@@ -682,6 +686,11 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 }
 
 void ViewerPage::pagesChanged(pdf::SessionInfo info) {
+	m_editRefusal = info.editRefusal;
+	m_noteAllowed =
+	    info.canAnnotate && m_editRefusal == pdf::WriteRefusal::None;
+	m_fillAllowed =
+	    info.canFillForms && m_editRefusal == pdf::WriteRefusal::None;
 	m_exportSelection.clear();
 	refreshExportSelection();
 	std::vector<helpers::PageSize> sizes;

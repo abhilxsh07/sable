@@ -39,6 +39,7 @@ struct SessionInfo {
 	bool canCopy = false;
 	bool canAnnotate = false;
 	bool canFillForms = false;
+	WriteRefusal editRefusal = WriteRefusal::Unavailable;
 };
 
 struct RenderResult {

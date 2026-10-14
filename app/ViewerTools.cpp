@@ -203,6 +203,7 @@ void ViewerPage::setupToolSurfaces() {
 			}
 		});
 		list.Append(button);
+		m_allToolButtons.emplace_back(button, entry.tool);
 	}
 	for (const auto& entry : QUICK_TOOLS) {
 		ToggleButton button;
@@ -516,7 +517,9 @@ void ViewerPage::runTool(std::wstring_view tool) {
 			setCursorTool(CursorTool::Hand);
 		} else if (tool == L"highlight") {
 			setCursorTool(CursorTool::Select);
-			if (hasTextSelection() && canMarkSelection()) {
+			if (const auto reason = annotationRefusal()) {
+				showNotice(reason);
+			} else if (hasTextSelection() && canMarkSelection()) {
 				markSelection(pdf::TextMarkup::Highlight);
 			} else {
 				showNotice(L"Select some text first, then Highlight marks it.");
@@ -553,8 +556,19 @@ void ViewerPage::updateQuickTools() {
 	m_syncingQuickTools = true;
 	BarQuickToolsItem().IsChecked(s_quickTools);
 	m_syncingQuickTools = false;
-	const bool canNote =
-	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog;
+	const auto reason = annotationRefusal();
+	const bool canNote = !reason;
+	for (const auto& [button, tool] : m_allToolButtons) {
+		if (tool == L"comment" || tool == L"fillsign") {
+			button.IsEnabled(canNote);
+			for (const auto& entry : ALL_TOOLS) {
+				if (entry.tool == tool) {
+					ToolTipService::SetToolTip(
+					    button, box_value(reason ? reason : entry.tip));
+				}
+			}
+		}
+	}
 	// setting IsChecked here mustn't start the tools again
 	m_syncingQuickTools = true;
 	for (const auto& [button, tool] : m_quickToolButtons) {
@@ -575,7 +589,18 @@ void ViewerPage::updateQuickTools() {
 		} else if (tool == L"readaloud") {
 			on = readingAloud();
 		} else if (tool == L"fillsign") {
-			enabled = m_noteAllowed || m_fillAllowed;
+			enabled = canNote;
+		} else if (tool == L"highlight") {
+			enabled = canNote;
+		}
+		if (tool == L"note" || tool == L"draw" || tool == L"textbox") {
+			enabled = on || canNote;
+		}
+		for (const auto& entry : QUICK_TOOLS) {
+			if (entry.tool == tool) {
+				ToolTipService::SetToolTip(
+				    button, box_value(!enabled && reason ? reason : entry.tip));
+			}
 		}
 		try {
 			button.IsChecked(on);

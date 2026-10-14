@@ -912,6 +912,22 @@ TEST_F(SessionTest, OpenReportsAnnotationPermissionIndependentlyOfCopying) {
 	EXPECT_FALSE(stopped->canFillForms);
 }
 
+TEST_F(SessionTest, OpenPreflightsEditingBeforeTheFirstWrite) {
+	for (const auto& [name, refusal] :
+	     {std::pair{"pages.pdf", pdf::WriteRefusal::None},
+	      std::pair{"note_signed.pdf", pdf::WriteRefusal::Signed},
+	      std::pair{"note_embedded.pdf", pdf::WriteRefusal::Unavailable},
+	      std::pair{"fill_allowed.pdf", pdf::WriteRefusal::None}}) {
+		pdf::Session session(engine);
+		const auto info = open(session, fixturePath(name));
+		ASSERT_EQ(info.error, pdf::Error::None) << name;
+		EXPECT_EQ(info.editRefusal, refusal) << name;
+	}
+	pdf::Session broken(engine);
+	const auto failed = open(broken, fixturePath("broken.pdf"));
+	EXPECT_EQ(failed.editRefusal, pdf::WriteRefusal::Unavailable);
+}
+
 TEST_F(SessionTest, NoteRequestsOwnTheirTextAndKeepQueueOrder) {
 	pdf::Session session(engine);
 	ASSERT_EQ(open(session, fixturePath("annotations.pdf")).error,

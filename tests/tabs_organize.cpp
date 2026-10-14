@@ -1033,6 +1033,26 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		const auto state = button.IsChecked();
 		return state && state.Value();
 	};
+	const auto refused = [&](const wchar_t* reason) {
+		for (const auto tool :
+		     {L"note", L"draw", L"textbox", L"highlight", L"fillsign"}) {
+			const auto button = quick(tool);
+			check(!button.IsEnabled() &&
+			          unbox_value_or<hstring>(
+			              ToolTipService::GetToolTip(button), L"") == reason,
+			      "a refused quick tool was enabled or had another reason");
+		}
+		for (const auto label : {L"Comment", L"Fill & Sign"}) {
+			const auto button = panelButton(label);
+			check(!button.IsEnabled() &&
+			          unbox_value_or<hstring>(
+			              ToolTipService::GetToolTip(button), L"") == reason,
+			      "a refused launcher tool was enabled or had another reason");
+		}
+		v.runTool(L"highlight");
+		check(v.Message().Message() == reason,
+		      "Highlight replaced the refusal with a selection hint");
+	};
 	switch (step) {
 	case 0: {
 		check(visible(v.DocumentBar()) && visible(v.QuickTools()) &&
@@ -1108,7 +1128,40 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		      "Hide quick tools didn't hide them or give the pages its room");
 		invoke(v.BarQuickToolsItem());
 		check(visible(v.QuickTools()), "quick tools didn't come back");
+		owner.openDocument(engine, L"tests/fixtures/note_signed.pdf", {});
+		break;
+	case 2:
+		refused(L"This PDF is signed; edits would break the signature.");
+		owner.openDocument(engine, L"tests/fixtures/fill_allowed.pdf", {});
+		break;
+	case 3:
+		check(v.m_fillAllowed && !v.m_noteAllowed,
+		      "form permission was tied to annotation permission");
+		refused(L"This PDF doesn't allow comments or Fill & Sign marks.");
+		owner.openDocument(engine, L"tests/fixtures/note_embedded.pdf", {});
+		break;
+	case 4: {
+		refused(L"This PDF can't be safely rewritten for editing.");
+		std::ifstream source("tests/fixtures/pages.pdf", std::ios::binary);
+		const std::string bytes((std::istreambuf_iterator<char>(source)), {});
+		const auto footer = bytes.rfind("startxref");
+		check(footer != std::string::npos, "large fixture has no xref footer");
+		attachmentTarget = makeTempDir("tool_eligibility") / L"large.pdf";
+		std::filesystem::copy_file("tests/fixtures/pages.pdf",
+		                           attachmentTarget);
+		std::filesystem::resize_file(attachmentTarget, 128 * 1024 * 1024 + 1);
+		{
+			std::ofstream out(attachmentTarget,
+			                  std::ios::binary | std::ios::app);
+			out << '\n' << bytes.substr(footer);
+		}
+		owner.openDocument(engine, attachmentTarget, {});
+		break;
+	}
+	case 5:
+		refused(L"This PDF is over 128 MiB, which is too large to edit.");
 		v.close();
+		std::filesystem::remove(attachmentTarget);
 		status.Text(L"PASS: command bar, All tools panel and quick tools");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();

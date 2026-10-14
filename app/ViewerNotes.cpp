@@ -39,9 +39,7 @@ using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 bool ViewerPage::canPickStamp() {
-	return !m_closed && m_session && m_layout && m_noteAllowed && !m_noteBusy &&
-	       !m_noteSaving && !m_noteDialog && !m_passwordDialog &&
-	       !m_linkPending && !presenting() &&
+	return !annotationRefusal() && !m_linkPending && !presenting() &&
 	       Rail().Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       Visibility() == Microsoft::UI::Xaml::Visibility::Visible &&
 	       (!m_notesAvailable || m_notesAvailable());
@@ -127,6 +125,10 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	clearAnnotationSelection();
 	if (notePlacing() && m_activeTool == tool) {
 		cancelNotePlacement();
+		return;
+	}
+	if (const auto reason = annotationRefusal()) {
+		showNotice(reason);
 		return;
 	}
 	if (m_closed || !m_layout || !m_noteAllowed || m_noteBusy || m_noteSaving ||

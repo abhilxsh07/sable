@@ -417,6 +417,14 @@ WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	return *m_writeRefusal;
 }
 
+WriteRefusal
+Document::editEligibility(const std::function<bool()>& canceled) const {
+	const auto refusal = canWrite(canceled);
+	return refusal != WriteRefusal::None ? refusal
+	       : canSerializeEdits(canceled) ? WriteRefusal::None
+	                                     : WriteRefusal::Unavailable;
+}
+
 const std::vector<std::uint8_t>*
 Document::canonicalBytes(const std::function<bool()>& canceled) const {
 	if (offThread() || (canceled && canceled())) {
