@@ -144,16 +144,30 @@ void ViewerPage::setupComments() {
 			self->showComments();
 		}
 	});
-	PlaceNoteButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->beginNotePlacement();
-		}
-	});
-	PlaceTextBoxButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->beginNotePlacement(PlacementTool::TextBox);
-		}
-	});
+	for (const auto& [button, tool] :
+	     {std::pair{PlaceNoteButton(), ActiveTool::Note},
+	      std::pair{PlaceTextBoxButton(), ActiveTool::TextBox},
+	      std::pair{DrawInkButton(), ActiveTool::Ink}}) {
+		const auto pressed = [weak, tool](auto&&, auto&&) {
+			if (const auto self = weak.get();
+			    self && !self->m_syncingQuickTools) {
+				self->beginNotePlacement(tool);
+			}
+		};
+		button.Checked(pressed);
+		button.Unchecked(pressed);
+	}
+	for (const auto& [button, markup] :
+	     {std::pair{CommentHighlightButton(), pdf::TextMarkup::Highlight},
+	      std::pair{CommentUnderlineButton(), pdf::TextMarkup::Underline},
+	      std::pair{CommentStrikeButton(), pdf::TextMarkup::StrikeOut}}) {
+		button.Click([weak, markup](auto&&, auto&&) {
+			if (const auto self = weak.get()) {
+				self->setCursorTool(CursorTool::Select);
+				self->markSelection(markup);
+			}
+		});
+	}
 	PlaceRectangleButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
 			self->beginNotePlacement(PlacementTool::Rectangle);
@@ -204,11 +218,6 @@ void ViewerPage::setupComments() {
 			self->createSignature(PlacementTool::DrawnSignature);
 		}
 	});
-	DrawInkButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->beginNotePlacement(PlacementTool::Ink);
-		}
-	});
 	for (const auto& [label, color] : INK_COLORS) {
 		RadioMenuFlyoutItem item;
 		item.Text(label);
@@ -237,11 +246,6 @@ void ViewerPage::setupComments() {
 		});
 		InkStyleMenu().Items().Append(item);
 	}
-	SaveNotesButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get(); self && self->m_saveNotes) {
-			self->m_saveNotes();
-		}
-	});
 	CommentsRetry().Click([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->m_commentScan.retry();
@@ -381,15 +385,8 @@ void ViewerPage::showComments() {
 	const bool canUseTools = !annotationRefusal();
 	PlaceNoteButton().IsEnabled(canUseTools ||
 	                            m_activeTool == ActiveTool::Note);
-	PlaceNoteButton().Text(notePlacing() && m_activeTool == PlacementTool::Note
-	                           ? L"Cancel placement"
-	                           : L"Place note on page");
 	PlaceTextBoxButton().IsEnabled(canUseTools ||
 	                               m_activeTool == ActiveTool::TextBox);
-	PlaceTextBoxButton().Text(notePlacing() &&
-	                                  m_activeTool == PlacementTool::TextBox
-	                              ? L"Cancel text box placement"
-	                              : L"Place text box on page");
 	PlaceRectangleButton().IsEnabled(canUseTools ||
 	                                 m_activeTool == ActiveTool::Rectangle);
 	PlaceRectangleButton().Text(notePlacing() &&
@@ -412,14 +409,9 @@ void ViewerPage::showComments() {
 	}
 	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
 	FillMarksMenu().IsEnabled(canUseTools);
-	PlaceStampButton().Text(notePlacing() &&
-	                                m_activeTool == PlacementTool::Stamp
-	                            ? L"Cancel image stamp placement"
-	                            : L"Place image stamp");
+	PlaceStampButton().Content(box_value(
+	    m_activeTool == ActiveTool::Stamp ? L"Cancel stamp" : L"Stamp\u2026"));
 	DrawInkButton().IsEnabled(canUseTools || m_activeTool == ActiveTool::Ink);
-	DrawInkButton().Text(notePlacing() && m_activeTool == PlacementTool::Ink
-	                         ? L"Stop drawing"
-	                         : L"Draw on page");
 	// another tab or window may have changed the shared style
 	const auto styles = InkStyleMenu().Items();
 	constexpr auto colors = static_cast<std::uint32_t>(std::size(INK_COLORS));
@@ -436,10 +428,6 @@ void ViewerPage::showComments() {
 		}
 	}
 	AddNoteButton().IsEnabled(canUseTools && !notePlacing());
-	SaveNotesButton().Content(box_value(
-	    m_formsDirty || m_pagesDirty ? L"Save changes" : L"Save notes"));
-	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
-	                            !notePlacing());
 	const auto selected = CommentsList().SelectedIndex();
 	const auto& notes = m_commentScan.rows();
 	const bool selectedMarkup =

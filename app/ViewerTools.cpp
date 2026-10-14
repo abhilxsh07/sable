@@ -70,10 +70,6 @@ constexpr ToolEntry QUICK_TOOLS[] = {
      L"Highlight the selected text"},
     {L"", L"Draw", L"\uE76D", L"draw", L"Draw on page"},
     {L"", L"Text box", L"\uE8D2", L"textbox", L"Place a text box on the page"},
-    {L"", L"Fill & Sign", L"\uE70F", L"fillsign",
-     L"Add text, checks and a signature"},
-    {L"", L"Read aloud", L"\uE767", L"readaloud",
-     L"Listen to the PDF with a Windows voice"},
 };
 
 // the narrowest the pages may get before the tool pane and a side panel
@@ -516,6 +512,7 @@ void ViewerPage::runTool(std::wstring_view tool) {
 		} else if (tool == L"hand") {
 			setCursorTool(CursorTool::Hand);
 		} else if (tool == L"highlight") {
+			m_toolRow = ToolRow::Comment;
 			setCursorTool(CursorTool::Select);
 			if (const auto reason = annotationRefusal()) {
 				showNotice(reason);
@@ -549,6 +546,10 @@ void ViewerPage::updateQuickTools() {
 	}
 	// no command bar (a tab that failed or is still loading): no strip
 	const bool chrome = DocumentBar().Visibility() == Visibility::Visible;
+	CommentTools().Visibility(chrome && !presenting() && !organizing() &&
+	                                  m_toolRow == ToolRow::Comment
+	                              ? Visibility::Visible
+	                              : Visibility::Collapsed);
 	QuickTools().Visibility(s_quickTools && chrome && !presenting() &&
 	                                !organizing()
 	                            ? Visibility::Visible
@@ -609,6 +610,29 @@ void ViewerPage::updateQuickTools() {
 			m_syncingQuickTools = false;
 			throw;
 		}
+	}
+	try {
+		for (const auto& [button, tool] :
+		     {std::pair{PlaceNoteButton(), ActiveTool::Note},
+		      std::pair{PlaceTextBoxButton(), ActiveTool::TextBox},
+		      std::pair{DrawInkButton(), ActiveTool::Ink}}) {
+			const bool on = m_activeTool == tool;
+			button.IsChecked(on);
+			button.IsEnabled(on || canNote);
+		}
+		for (const auto& button :
+		     {CommentHighlightButton(), CommentUnderlineButton(),
+		      CommentStrikeButton(), CommentShapeButton(),
+		      CommentStyleButton()}) {
+			const bool style = button == CommentStyleButton();
+			const bool enabled = canNote || (style && m_inkWriting);
+			button.IsEnabled(enabled);
+			ToolTipService::SetToolTip(
+			    button, !enabled && reason ? box_value(reason) : nullptr);
+		}
+	} catch (...) {
+		m_syncingQuickTools = false;
+		throw;
 	}
 	m_syncingQuickTools = false;
 }

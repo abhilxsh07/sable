@@ -146,6 +146,8 @@ void ViewerPage::beginNotePlacement(PlacementTool tool) {
 	m_stampPicking = false;
 	m_stampImage.reset();
 	dropInkStroke();
+	m_toolRow =
+	    tool >= ActiveTool::FillCheck ? ToolRow::FillSign : ToolRow::Comment;
 	m_activeTool = tool;
 	updatePanCursor();
 	showComments();

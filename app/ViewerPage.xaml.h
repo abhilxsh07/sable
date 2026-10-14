@@ -516,6 +516,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	double m_paneDragWidth = 0;
 	void runTool(std::wstring_view tool);
 	void updateQuickTools();
+	enum class ToolRow { None, Comment, FillSign };
+	ToolRow m_toolRow = ToolRow::None;
 	// the tool pane and a side panel share the width left of the rail
 	bool crowded(double pane, double side);
 	void makeRoomForPanel(double width);
@@ -593,7 +595,6 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::uint64_t m_renderVersion = 0;
 	winrt::hstring m_noteDraft, m_noteAuthor;
 	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_noteDialog{nullptr};
-	std::function<void()> m_saveNotes;
 	std::function<bool()> m_notesAvailable;
 	void followComment(int index);
 	void closeComments();

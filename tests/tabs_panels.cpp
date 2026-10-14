@@ -285,6 +285,7 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		}
 	};
 	const auto reset = [&] {
+		v.m_toolRow = ViewerPage::ToolRow::None;
 		if (v.organizing()) {
 			v.closeOrganize();
 		}
@@ -320,7 +321,7 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			v.setOutlineOpen(true);
 			break;
 		case 2:
-			v.setCommentsOpen(true);
+			v.requestTool(L"comment");
 			break;
 		case 3:
 			v.setAttachmentsOpen(true);
@@ -338,12 +339,12 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			v.showNotice(L"A PDF needs at least one page.");
 			break;
 		case 8:
-			v.setCommentsOpen(true);
+			v.requestTool(L"comment");
 			v.setAllToolsOpen(true);
 			break;
 		case 9:
 			// the widest the pane goes, where the pages can spare it
-			v.setCommentsOpen(true);
+			v.requestTool(L"comment");
 			v.setAllToolsOpen(true);
 			v.resizePane(helpers::paneMaxWidth, false);
 			break;
@@ -400,6 +401,18 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			expect(!shown(button), {},
 			       where + ": find, save, print or More is still showing");
 		}
+	};
+	const auto commentBar = [&](const std::string& where) {
+		const auto bar = box(v.DocumentBar());
+		const auto row = box(v.CommentTools());
+		expect(shown(v.CommentTools()) && inside(row, bar), {},
+		       where + ": Comment actions aren't inside the command bar");
+		expect(row.X >= box(v.AllToolsButton()).X +
+		                    box(v.AllToolsButton()).Width &&
+		           row.X + row.Width <= box(v.BarActions()).X + 1,
+		       {}, where + ": Comment actions overlap the fixed commands");
+		expect(inside(box(v.CommentStyleButton()), row), {},
+		       where + ": the last Comment action can't be reached");
 	};
 	// every open fault has to have shown up, and nothing else may
 	const auto finish = [&](const wchar_t* checked) {
@@ -473,6 +486,15 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		if (state == 6) {
 			organizeBar(where);
 		}
+		if (state == 2 || state == 8 || state == 9) {
+			if (v.CommentTools().HorizontalOffset() <
+			    v.CommentTools().ScrollableWidth() - 1) {
+				v.CommentTools().ChangeView(v.CommentTools().ScrollableWidth(),
+				                            nullptr, nullptr, true);
+				return;
+			}
+			commentBar(where);
+		}
 		measure(where);
 		reset();
 		expect(v.mode() == ViewerMode::Read, {},
@@ -533,6 +555,17 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		if (&v != first.get() || !ready(v) || ticks < 6) {
 			return;
 		}
+		if (v.m_toolRow != ViewerPage::ToolRow::Comment) {
+			v.requestTool(L"comment");
+			return;
+		}
+		if (v.CommentTools().HorizontalOffset() <
+		    v.CommentTools().ScrollableWidth() - 1) {
+			v.CommentTools().ChangeView(v.CommentTools().ScrollableWidth(),
+			                            nullptr, nullptr, true);
+			return;
+		}
+		commentBar("minimum size");
 		const auto scale = root.XamlRoot().RasterizationScale();
 		const auto outer = owner.AppWindow().Size();
 		expect(outer.Width >= 720 * scale - 1 &&

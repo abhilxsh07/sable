@@ -22,6 +22,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Windows.Storage.Streams.h>
 
 namespace winrt::Sable::implementation {
+namespace {
+void invokeCommentTool(const FrameworkElement& element) {
+	using namespace Microsoft::UI::Xaml::Automation;
+	const auto peer =
+	    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element);
+	if (const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle)) {
+		toggle.as<Provider::IToggleProvider>().Toggle();
+	} else {
+		peer.GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+	}
+}
+} // namespace
 void TabsTest::commentLocationsTick(MainWindow& owner) {
 	const auto current = owner.Viewer();
 	if (!current) {
@@ -1002,7 +1016,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 			return;
 		}
 		check(inkOn(0) != rows.end() && inkOn(1) != rows.end() &&
-		          !v.SaveNotesButton().IsEnabled(),
+		          !v.m_notesDirty && !v.m_noteSaving,
 		      "the reopened copy lost a mark or was dirty");
 		v.CommentsList().SelectedIndex(
 		    static_cast<int>(inkOn(1) - rows.begin()));
@@ -1162,8 +1176,8 @@ void TabsTest::stampTick(MainWindow& owner) {
 		break;
 	case 5:
 		check(v.notePlacing() && v.m_stampImage && v.m_stampImage->valid() &&
-		          v.PlaceStampButton().Text() ==
-		              L"Cancel image stamp placement",
+		          unbox_value<hstring>(v.PlaceStampButton().Content()) ==
+		              L"Cancel stamp",
 		      "a valid PNG did not arm placement");
 		v.placeNote(at(1, .25, .25));
 		v.placeNote(at(0, .6, .6));
@@ -1280,18 +1294,19 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		v.setCommentsOpen(true);
 		v.zoomTo(1.5, {0, 0});
 		v.goToPage(1);
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(v.notePlacing() &&
 		          v.m_activeTool == ViewerPage::PlacementTool::Ink &&
-		          v.DrawInkButton().Text() == L"Stop drawing" &&
+		          unbox_value_or<bool>(v.DrawInkButton().IsChecked(), false) &&
 		          !v.m_notesDirty,
 		      "drawing did not arm");
-		invoke(v.DrawInkButton());
-		check(!v.notePlacing() && v.DrawInkButton().Text() == L"Draw on page",
+		invokeCommentTool(v.DrawInkButton());
+		check(!v.notePlacing() &&
+		          !unbox_value_or<bool>(v.DrawInkButton().IsChecked(), false),
 		      "Stop drawing kept the tool armed");
 		break;
 	case 1:
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(!v.beginInkStroke({-1, -1}) && !v.m_inkStroke,
 		      "a page gap started a stroke");
 		check(v.placeNote(at(.3, .3)) && !v.m_inkStroke && !v.m_noteDialog &&
@@ -1303,20 +1318,20 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		check(v.cancelNotePlacement() && !v.m_inkStroke && !previewShown() &&
 		          !v.m_notesDirty,
 		      "Esc kept the stroke or wrote it");
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .3)), "second stroke did not start");
 		invoke(v.PlaceRectangleButton());
 		check(!v.m_inkStroke && !previewShown() &&
 		          v.m_activeTool == ViewerPage::PlacementTool::Rectangle,
 		      "tool switch kept the stroke");
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .3)), "third stroke did not start");
 		v.setCommentsOpen(false);
 		check(v.m_inkStroke && v.notePlacing() && previewShown(),
 		      "closing Comments dropped the drawing tool");
 		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .3)), "fourth stroke did not start");
 		v.rotateView(1);
 		check(!v.m_inkStroke && v.notePlacing() && !previewShown(),
@@ -1418,7 +1433,8 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		check(!v.notePlacing() && v.s_inkStyle.width == 1 &&
 		          v.s_inkStyle.color.red == 235,
 		      "an idle style choice armed drawing or kept the old width");
-		check(!v.notePlacing() && v.SaveNotesButton().IsEnabled(),
+		check(!v.notePlacing() && v.BarSaveButton().IsEnabled() &&
+		          v.m_notesDirty,
 		      "Stop drawing did not allow saving");
 		notesPath =
 		    std::filesystem::temp_directory_path() /
@@ -1481,7 +1497,7 @@ void TabsTest::inkDrawingTick(MainWindow& owner) {
 		}
 		check(v.m_notesDirty && inkRows() == 2,
 		      "Delete kept the drawing or a clean savepoint");
-		invoke(v.DrawInkButton());
+		invokeCommentTool(v.DrawInkButton());
 		check(v.beginInkStroke(at(.2, .6)),
 		      "stroke before close did not start");
 		v.finishInkStroke();
@@ -1562,7 +1578,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		v.setCommentsOpen(true);
-		invoke(v.PlaceNoteButton());
+		invokeCommentTool(v.PlaceNoteButton());
 		check(v.notePlacing() && !v.m_notesDirty &&
 		          !v.AddNoteButton().IsEnabled(),
 		      "placement did not arm independently of centered Add");
@@ -1591,7 +1607,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		      "window close kept placement or lost the write guard");
 		v.m_noteBusy = false;
 		v.beginNotePlacement();
-		invoke(v.PlaceNoteButton());
+		invokeCommentTool(v.PlaceNoteButton());
 		check(!v.notePlacing() && !v.m_notesDirty,
 		      "Cancel placement changed PDF");
 		v.openFind();
@@ -1613,7 +1629,7 @@ void TabsTest::notePlacementTick(MainWindow& owner) {
 		v.zoomTo(1.5, {0, 0});
 		v.goToPage(1);
 		v.setCommentsOpen(false);
-		invoke(v.PlaceNoteButton());
+		invokeCommentTool(v.PlaceNoteButton());
 		check(v.placeNote(choosePoint()) && v.m_noteDialog &&
 		          !v.notePlacing() && !v.m_notesDirty,
 		      "chosen location mutated before Add");
@@ -2079,7 +2095,7 @@ void TabsTest::notesTick(MainWindow& owner) {
 			return;
 		}
 		check(v.m_notesDirty && v.m_renderVersion > 0 &&
-		          v.SaveNotesButton().IsEnabled() &&
+		          v.BarSaveButton().IsEnabled() &&
 		          v.NotesState().Text() == L"Unsaved changes",
 		      "completed note did not mark unsaved state");
 		check(std::any_of(v.m_commentScan.rows().begin(),

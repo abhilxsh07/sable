@@ -281,9 +281,8 @@ void TabsTest::organizeTick(MainWindow& owner) {
 			check(ticks < 40, "Fill & Sign did not open its menu");
 			return;
 		}
-		check(unbox_value<hstring>(v.SaveNotesButton().Content()) ==
-		          L"Save changes",
-		      "Comments described page edits as notes");
+		check(!v.FindName(L"SaveNotesButton") && v.BarSaveButton().IsEnabled(),
+		      "Comments kept a duplicate Save or lost command-bar saving");
 		v.CommentsMoreButton().Flyout().Hide();
 		v.openOrganize();
 		v.close();
@@ -1034,8 +1033,7 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		return state && state.Value();
 	};
 	const auto refused = [&](const wchar_t* reason) {
-		for (const auto tool :
-		     {L"note", L"draw", L"textbox", L"highlight", L"fillsign"}) {
+		for (const auto tool : {L"note", L"draw", L"textbox", L"highlight"}) {
 			const auto button = quick(tool);
 			check(!button.IsEnabled() &&
 			          unbox_value_or<hstring>(
@@ -1057,7 +1055,7 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 	case 0: {
 		check(visible(v.DocumentBar()) && visible(v.QuickTools()) &&
 		          !visible(v.AllToolsPanel()) &&
-		          v.m_quickToolButtons.size() == 8u,
+		          v.m_quickToolButtons.size() == 6u,
 		      "the command bar or quick tools are missing");
 		invoke(v.AllToolsButton());
 		int buttons = 0;
@@ -1082,6 +1080,15 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		          v.m_activeTool == ViewerPage::PlacementTool::Note &&
 		          checked(quick(L"note")),
 		      "the sticky note quick tool didn't arm");
+		check(
+		    visible(v.CommentTools()) &&
+		        unbox_value_or<bool>(v.PlaceNoteButton().IsChecked(), false) &&
+		        !v.FindName(L"SaveNotesButton"),
+		    "the Comment row did not follow the strip or kept duplicate Save");
+		invoke(v.PlaceTextBoxButton());
+		check(checked(quick(L"textbox")) && !checked(quick(L"note")),
+		      "the row's Text box did not replace the strip's Note");
+		invoke(v.PlaceNoteButton());
 		invoke(quick(L"hand"));
 		check(!v.notePlacing() && checked(quick(L"hand")) &&
 		          !checked(quick(L"note")),
@@ -1111,11 +1118,10 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 			return;
 		}
 		invoke(panelButton(L"Read aloud"));
-		check(v.readingAloud() && checked(quick(L"readaloud")),
-		      "All tools didn't start Read aloud");
+		check(v.readingAloud(), "All tools didn't start Read aloud");
 		v.stopReadAloud();
 		v.updateQuickTools();
-		check(!checked(quick(L"readaloud")), "Read aloud stayed checked");
+		check(!v.readingAloud(), "Read aloud did not stop");
 		invoke(v.BarFindButton());
 		check(visible(v.FindBar()), "the command bar's Find didn't open");
 		v.closeFind();
@@ -1132,6 +1138,10 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		break;
 	case 2:
 		refused(L"This PDF is signed; edits would break the signature.");
+		check(!v.CommentHighlightButton().IsEnabled() &&
+		          !v.CommentUnderlineButton().IsEnabled() &&
+		          !v.CommentStrikeButton().IsEnabled(),
+		      "signed PDF command-row markup stayed enabled");
 		owner.openDocument(engine, L"tests/fixtures/fill_allowed.pdf", {});
 		break;
 	case 3:

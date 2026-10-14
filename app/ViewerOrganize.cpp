@@ -91,6 +91,12 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 			showNotice(reason);
 			return;
 		}
+		if (tool == L"comment") {
+			if (m_toolRow != ToolRow::Comment) {
+				cancelNotePlacement();
+			}
+			m_toolRow = ToolRow::Comment;
+		}
 		setCommentsOpen(true);
 		if (tool == L"fillsign" && commentsOpen()) {
 			openFillSign();

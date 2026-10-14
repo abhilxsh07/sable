@@ -76,6 +76,59 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<TextBlock x:Name="OrganizeStatus" Margin="8,0,0,0"
 					VerticalAlignment="Center" />
 			</StackPanel>
+			<ScrollViewer Grid.Column="1" x:Name="CommentTools"
+				Height="36" Margin="8,0,0,0" Visibility="Collapsed"
+				VerticalAlignment="Center"
+				HorizontalScrollBarVisibility="Hidden"
+				HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled"
+				VerticalScrollBarVisibility="Disabled">
+				<StackPanel x:Name="CommentCommands" Orientation="Horizontal"
+					Spacing="4" VerticalAlignment="Center">
+					<ToggleButton x:Name="PlaceNoteButton" Content="Note"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Sticky note" />
+					<Button x:Name="CommentHighlightButton" Content="Highlight"
+						MinWidth="0" Padding="6,2" FontSize="12" />
+					<Button x:Name="CommentUnderlineButton" Content="Underline"
+						MinWidth="0" Padding="6,2" FontSize="12" />
+					<Button x:Name="CommentStrikeButton" Content="Strike"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Strike through" />
+					<ToggleButton x:Name="PlaceTextBoxButton" Content="Text box"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Text box" />
+					<ToggleButton x:Name="DrawInkButton" Content="Draw"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Draw" />
+					<Button x:Name="CommentShapeButton" Content="Shape"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Shapes">
+						<Button.Flyout>
+							<MenuFlyout>
+								<MenuFlyoutItem x:Name="PlaceRectangleButton"
+								Text="Place rectangle on page" />
+								<MenuFlyoutItem x:Name="PlaceEllipseButton"
+								Text="Place ellipse on page" />
+								<MenuFlyoutItem x:Name="PlaceLineButton"
+								Text="Place line on page" />
+								<MenuFlyoutItem x:Name="PlaceArrowButton"
+								Text="Place arrow on page" />
+							</MenuFlyout>
+						</Button.Flyout>
+					</Button>
+					<Button x:Name="PlaceStampButton" Content="Stamp&#x2026;"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Place image stamp" />
+					<Button x:Name="CommentStyleButton" Content="Style"
+						MinWidth="0" Padding="6,2" FontSize="12"
+						AutomationProperties.Name="Drawing style">
+						<Button.Flyout>
+							<!-- filled in with the shared ink palette -->
+							<MenuFlyout x:Name="InkStyleMenu" />
+						</Button.Flyout>
+					</Button>
+				</StackPanel>
+			</ScrollViewer>
 			<!-- Done takes the place of find, save, print and More -->
 			<Button Grid.Column="2" x:Name="OrganizeDone" Content="Done"
 				VerticalAlignment="Center" Visibility="Collapsed"
@@ -554,39 +607,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					<Grid ColumnSpacing="6">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="*" />
 							<ColumnDefinition Width="Auto" />
 						</Grid.ColumnDefinitions>
 						<Button x:Name="AddNoteButton" Content="Add note"
 							HorizontalAlignment="Stretch" Padding="8,5" />
-						<Button x:Name="SaveNotesButton" Grid.Column="1"
-							Content="Save"
-							AutomationProperties.Name="Save comments"
-							HorizontalAlignment="Stretch" Padding="8,5" />
-						<Button x:Name="CommentsMoreButton" Grid.Column="2"
+						<Button x:Name="CommentsMoreButton" Grid.Column="1"
 							Padding="7,5"
 							AutomationProperties.Name="More comment actions"
 							ToolTipService.ToolTip="More comment actions">
 							<SymbolIcon Symbol="More" />
 							<Button.Flyout>
 								<MenuFlyout>
-									<MenuFlyoutItem x:Name="PlaceNoteButton"
-										Text="Place note on page" />
-									<MenuFlyoutItem x:Name="PlaceTextBoxButton"
-										Text="Place text box on page" />
-									<MenuFlyoutItem
-										x:Name="PlaceRectangleButton"
-										Text="Place rectangle on page" />
-									<MenuFlyoutItem x:Name="PlaceEllipseButton"
-										Text="Place ellipse on page" />
-									<MenuFlyoutItem x:Name="PlaceLineButton"
-										Text="Place line on page" />
-									<MenuFlyoutItem x:Name="PlaceArrowButton"
-										Text="Place arrow on page" />
-									<MenuFlyoutItem x:Name="DrawInkButton"
-										Text="Draw on page" />
-									<MenuFlyoutItem x:Name="PlaceStampButton"
-										Text="Place image stamp" />
 									<MenuFlyoutSubItem x:Name="FillMarksMenu"
 										Text="Fill &amp; Sign">
 										<MenuFlyoutItem
@@ -605,10 +636,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 											x:Name="PlaceDrawnSignatureButton"
 											Text="Place drawn signature&#x2026;" />
 									</MenuFlyoutSubItem>
-									<!-- filled in by setupComments with the ink
-									palette -->
-									<MenuFlyoutSubItem x:Name="InkStyleMenu"
-										Text="Drawing style" />
 								</MenuFlyout>
 							</Button.Flyout>
 						</Button>

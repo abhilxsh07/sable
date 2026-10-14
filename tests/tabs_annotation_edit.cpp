@@ -23,10 +23,15 @@ namespace winrt::Sable::implementation {
 namespace {
 using namespace Microsoft::UI::Xaml::Automation;
 void invokeElement(const FrameworkElement& element) {
-	Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element)
-	    .GetPattern(Peers::PatternInterface::Invoke)
-	    .as<Provider::IInvokeProvider>()
-	    .Invoke();
+	const auto peer =
+	    Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element);
+	if (const auto toggle = peer.GetPattern(Peers::PatternInterface::Toggle)) {
+		toggle.as<Provider::IToggleProvider>().Toggle();
+	} else {
+		peer.GetPattern(Peers::PatternInterface::Invoke)
+		    .as<Provider::IInvokeProvider>()
+		    .Invoke();
+	}
 }
 Button primaryButton(const DependencyObject& node) {
 	if (const auto button = node.try_as<Button>();

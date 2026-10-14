@@ -2,6 +2,22 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Comment actions in the command bar (2026-11-16)
+
+Comment opens its right-hand list and a contextual row in the existing
+40 px command bar. Note, Highlight, Underline, Strike, Text box, Draw,
+Shape, Stamp and Drawing style live there. The row scrolls horizontally
+when narrow, keeping All tools and the fixed commands in place. Its
+Note/Text box/Draw toggles and the six-button quick strip read ActiveTool.
+The row context only chooses options to show; it never arms a pointer tool.
+
+The strip now keeps Select, Hand, Note, Highlight, Draw and Text box.
+Comments keeps Add/Edit/Delete and the dirty line; its duplicate Save and
+callback are gone. Command-bar saving still uses the existing save flow.
+More temporarily keeps only Fill & Sign until its row in batch 6 step 8;
+no command is lost between commits. This implements audit 6.3.7/15/17's
+Comment portion. Home's Tools group and all settings/shortcuts stay.
+
 ## Tool eligibility before editing (2026-11-16)
 
 I preflight editing on the engine thread while opening the PDF and retain

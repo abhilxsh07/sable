@@ -604,13 +604,6 @@ void MainWindow::openDocument(pdf::Engine& engine,
 		const auto self = weak.get();
 		return self && !self->m_closing && !self->m_closePending;
 	};
-	pdf->m_saveNotes = [weak = get_weak(), document = make_weak(viewer)] {
-		const auto self = weak.get();
-		const auto current = document.get();
-		if (self && current && !self->m_closePending) {
-			self->saveNotes(current);
-		}
-	};
 	get_self<ViewerPage>(viewer)->setValues(m_values);
 	if (!m_toolNext.empty()) {
 		get_self<ViewerPage>(viewer)->requestTool(
