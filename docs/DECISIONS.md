@@ -290,6 +290,19 @@ window. Build with SableSurfaceTest=true, set `$env:SableTabsTest = 'true'`,
 then launch from the repo root. Read the result before closing; exit 0 only
 confirms shutdown. Clear both variables and rebuild afterwards.
 
+## Opening PDFs from the shell (2026-10-15)
+
+The File menu, tab strip's +, Ctrl+O, Ctrl+T and home Open controls use the
+same multi-select picker, filtered to .pdf, like openNewPDF in app.ts.
+Clicking the splash card opens it too. I use the Windows App SDK picker
+with this window's AppWindow ID; it returns paths to the existing tab
+opening code, so duplicates still select their tab. No extra dependency.
+
+Only one picker runs per window. Cancelling leaves the tabs as they were;
+results arriving after the window closes are ignored. A picker failure
+gets an InfoBar instead of escaping the event handler. Opened PDFs keep
+their own file-error banners. Runtime keybind customization comes later.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

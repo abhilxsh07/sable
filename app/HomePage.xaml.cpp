@@ -149,6 +149,19 @@ void HomePage::InitializeComponent() {
 	rebuildList();
 }
 
+void HomePage::onOpen(const Windows::Foundation::IInspectable&,
+                      const RoutedEventArgs&) {
+	if (m_openRequested) {
+		m_openRequested();
+	}
+}
+
+void HomePage::onOpenTapped(const Windows::Foundation::IInspectable& sender,
+                            const Input::TappedRoutedEventArgs& args) {
+	args.Handled(true);
+	onOpen(sender, args);
+}
+
 void HomePage::ShowStarredOnly(bool starredOnly) {
 	if (m_starredOnly == starredOnly) {
 		return;

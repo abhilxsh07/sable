@@ -72,6 +72,7 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 	window = surfaceTest(m_pdf);
 #else
 	auto main = make_self<MainWindow>();
+	main->setEngine(m_pdf);
 	// port of app.ts's startup (L394-410): each file opens at -p.
 	// --help and --version wait for the rest of the CLI dispatch.
 	const auto cli = helpers::parseCli(commandLineArgs());

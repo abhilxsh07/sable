@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.System.h>
+#include <winrt/Microsoft.Windows.Storage.Pickers.h>
 
 #include "helpers/settings.h"
 #include "helpers/version.h"
@@ -91,6 +92,7 @@ void MainWindow::InitializeComponent() {
 	setupSliders();
 	setupZoomKeys();
 	setupTabKeys();
+	setupOpen();
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
 	Tabs().SelectionChanged([weak = get_weak()](auto&&, auto&&) {
@@ -123,6 +125,66 @@ void MainWindow::InitializeComponent() {
 		Tabs().TabItems().Clear();
 		m_tabs.clear();
 	});
+}
+
+// port of app/main/app.ts openNewPDF() (L284-309): one PDF picker
+// for the menu, tab button, splash and OpenWindow shortcut.
+void MainWindow::setupOpen() {
+	const auto request = [weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->pickDocuments();
+		}
+	};
+	OpenItem().Click(request);
+	Tabs().AddTabButtonClick(request);
+	get_self<HomePage>(Home())->OpenRequested([weak = get_weak()] {
+		if (auto self = weak.get()) {
+			self->pickDocuments();
+		}
+	});
+	for (const auto key :
+	     {Windows::System::VirtualKey::O, Windows::System::VirtualKey::T}) {
+		Input::KeyboardAccelerator accelerator;
+		accelerator.Key(key);
+		accelerator.Modifiers(Windows::System::VirtualKeyModifiers::Control);
+		accelerator.Invoked([weak = get_weak()](auto&&, const auto& args) {
+			if (auto self = weak.get()) {
+				self->pickDocuments();
+				args.Handled(true);
+			}
+		});
+		RootGrid().KeyboardAccelerators().Append(accelerator);
+	}
+}
+
+fire_and_forget MainWindow::pickDocuments() {
+	if (m_closing || m_picking || !m_engine) {
+		co_return;
+	}
+	m_picking = true;
+	PickerError().IsOpen(false);
+	auto weak = get_weak();
+	try {
+		// see:
+		// https://learn.microsoft.com/en-us/windows/apps/develop/files/using-file-folder-pickers
+		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
+		    AppWindow().Id());
+		picker.FileTypeFilter().Append(L".pdf");
+		const auto files = co_await picker.PickMultipleFilesAsync();
+		if (auto self = weak.get(); self && !self->m_closing) {
+			self->m_picking = false;
+			for (const auto& file : files) {
+				self->openDocument(*self->m_engine, file.Path().c_str(),
+				                   std::nullopt);
+			}
+		}
+	} catch (const hresult_error& error) {
+		if (auto self = weak.get(); self && !self->m_closing) {
+			self->m_picking = false;
+			self->PickerError().Message(error.message());
+			self->PickerError().IsOpen(true);
+		}
+	}
 }
 
 void MainWindow::openDocument(pdf::Engine& engine,

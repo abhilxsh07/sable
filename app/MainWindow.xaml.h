@@ -35,6 +35,10 @@ struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
 	void InitializeComponent();
 
+	void setEngine(pdf::Engine& engine) {
+		m_engine = &engine;
+	}
+
 	// adds a document tab, or selects the one already open for this path
 	void openDocument(pdf::Engine& engine, const std::filesystem::path& path,
 	                  std::optional<int> page);
@@ -79,11 +83,14 @@ struct MainWindow : MainWindowT<MainWindow> {
 		bool opened = false;
 	};
 	winrt::Sable::ViewerPage Viewer();
+	winrt::fire_and_forget pickDocuments();
+	void setupOpen();
 	void selectTab();
 	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
 	std::vector<DocumentTab> m_tabs;
 	pdf::Engine* m_engine = nullptr;
 	bool m_closing = false;
+	bool m_picking = false;
 	void setupWindow();
 	void setupTitleBar();
 	void setupZoomKeys();

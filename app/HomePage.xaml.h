@@ -20,10 +20,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "HomePage.g.h"
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <functional>
+#include <utility>
 
 #include "helpers/recents.h"
 #include "helpers/sliders.h"
@@ -34,6 +37,14 @@ struct HomePage : HomePageT<HomePage> {
 	void InitializeComponent();
 
 	void ShowStarredOnly(bool starredOnly);
+	void OpenRequested(std::function<void()> handler) {
+		m_openRequested = std::move(handler);
+	}
+	void onOpen(const winrt::Windows::Foundation::IInspectable&,
+	            const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onOpenTapped(
+	    const winrt::Windows::Foundation::IInspectable&,
+	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs& args);
 
 	void onPresetClick(const winrt::Windows::Foundation::IInspectable& sender,
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
@@ -56,6 +67,7 @@ struct HomePage : HomePageT<HomePage> {
 	void toggleStar(const std::filesystem::path& path);
 	void save();
 
+	std::function<void()> m_openRequested;
 	helpers::RecentFiles m_recents;
 	std::filesystem::path m_recentsFile;
 	helpers::SliderValues m_values;
