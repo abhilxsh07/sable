@@ -23,7 +23,7 @@ Windows' own Fluent icons. No copied icons or branding.
 
 ```
 +-----------------------------------------------------------------------+
-| [Menu]  [tab][tab][+]                  Default Sepia Redeye Custom _ □ x|  title bar
+| [Menu]  [tab][tab][+]          [music] Default Sepia Redeye Custom _ □ x|  title bar
 +-----------------------------------------------------------------------+
 | [All tools]                          find  save  print   ...          |  command bar
 +------+----+--------------------------------------------------+--------+
@@ -38,8 +38,8 @@ Windows' own Fluent icons. No copied icons or branding.
 ```
 
 - **Title bar**: a Menu button (replaces NightPDF's File / Edit / View /
-  Window / Help bar, same items inside, same shortcuts), the tabs, and the
-  preset buttons on the right where they always were.
+  Window / Help bar, same items inside, same shortcuts), the tabs, the music
+  button, and the preset buttons on the right where they always were.
 - **Command bar**: the All tools toggle on the left, find / save / print and an
   overflow menu on the right. Only shows while a document is open.
 - **All tools panel** (left, collapsible): every tool in one list, grouped.
@@ -70,13 +70,38 @@ Not doing, at least for now: OCR, redaction, adding passwords, compression,
 cloud sharing and e-signature requests. Either the licences don't fit a GPLv2
 app, PDFium can't do them properly, or they need a server.
 
+## Music
+
+Pausing or skipping a song shouldn't mean leaving the document. A music
+button sits in the title bar, just left of the presets, and only shows up
+while Spotify or Apple Music has something playing or paused. Clicking it
+drops down a small pane with:
+
+- the album art, the song, the artist and which app is playing
+- previous, play/pause and next
+- a seek bar with the elapsed and remaining time
+- shuffle and repeat, when the app lets them be changed from outside
+
+The pane is frosted glass tinted with the colour of the current song's art,
+and the tint fades over to the next song's colour when the track changes.
+The colour is darkened or lightened as needed so the text on it stays
+readable, and it falls back to NightPDF's grey when a song has no art.
+Clicking anywhere else or pressing Esc closes it, like the configurator.
+
+It goes through Windows' own media controls (the ones behind the media
+flyout), so it can only do what the player exposes there. If an app doesn't
+take seek requests, the seek bar still shows the time but can't be dragged.
+No volume slider: Windows doesn't offer per-app volume through the same
+controls. Other players, like a browser tab or VLC, are left alone for now.
+
 ## Build order
 
 1. Core logic: settings, keybinds, presets, filter math, command line
 2. PDF engine: PDFium on its own thread, opening files, rendering pages
 3. Viewer: layout, zoom, navigation, the night filter on the GPU
 4. Shell: title bar, tabs, Menu, presets, settings window, splash, drag and drop
-5. Reading tools: find, text selection, thumbnails, bookmarks, properties, print
-6. Comments, then Fill & Sign, then saving annotations back to the file
-7. Organize pages, combine files, export
-8. Read Aloud, presentation mode, the rest of the polish
+5. Music pane: Spotify and Apple Music controls in the title bar
+6. Reading tools: find, text selection, thumbnails, bookmarks, properties, print
+7. Comments, then Fill & Sign, then saving annotations back to the file
+8. Organize pages, combine files, export
+9. Read Aloud, presentation mode, the rest of the polish

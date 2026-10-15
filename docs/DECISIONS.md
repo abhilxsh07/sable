@@ -336,6 +336,30 @@ SableTabsTest=true and SableShortcutTest=true. The two focus buttons and
 status use WinUI FocusManager, so the page box cannot mask the document
 focus in an accessibility snapshot. Clear all three variables afterwards.
 
+## Music pane (2026-10-15)
+
+Neither NightPDF nor Acrobat has this; it's an extra. A button in the title
+bar opens a glass pane for Spotify and Apple Music: previous, play/pause,
+next, seek, and shuffle and repeat where the app allows them. It goes in the
+build order right after the shell, since it lives in the title bar. Details
+in [DESIGN.md](DESIGN.md).
+
+- It uses Windows.Media.Control
+  (GlobalSystemMediaTransportControlsSessionManager), which has been part of
+  Windows since 1809, so there's no new dependency and nothing new to
+  license.
+- It only follows Spotify's and Apple Music's sessions, picked by app ID.
+  Anything else that plays is ignored.
+- Seeking is up to the app. When an app ignores it, the seek bar is
+  read-only. I'm not reaching for Spotify's Web API to get around that: it
+  needs a Spotify login and a network connection, and Sable doesn't do
+  accounts.
+- The tint is worked out in helpers/ so it can be tested: the main colour of
+  a small copy of the art, clamped in lightness so white text stays
+  readable.
+- No new setting. The button only shows while one of the two apps has a
+  session, so there's nothing to switch off.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.
