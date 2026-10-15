@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Windows.System.h>
+#include <winrt/Windows.Storage.h>
 #include <winrt/Microsoft.Windows.Storage.Pickers.h>
 
 #include "helpers/settings.h"
@@ -210,6 +211,28 @@ void MainWindow::setupOpen() {
 			self->pickDocuments();
 		}
 	});
+	// port of app/render/index.ts splash drop handlers (L436-473)
+	// see:
+	// https://learn.microsoft.com/en-us/windows/apps/design/input/drag-and-drop
+	const auto card = get_self<HomePage>(Home())->DropCard();
+	card.DragOver([weak = get_weak()](auto&&, const DragEventArgs& args) {
+		using namespace Windows::ApplicationModel::DataTransfer;
+		auto operation = DataPackageOperation::None;
+		if (auto self = weak.get();
+		    self && !self->m_closing && self->m_engine &&
+		    self->m_tabs.empty() &&
+		    args.DataView().Contains(StandardDataFormats::StorageItems())) {
+			operation = DataPackageOperation::Copy;
+		}
+		args.AcceptedOperation(operation);
+		args.Handled(true);
+	});
+	card.Drop([weak = get_weak()](auto&&, const DragEventArgs& args) {
+		args.Handled(true);
+		if (auto self = weak.get()) {
+			self->dropDocuments(args.DataView());
+		}
+	});
 	for (const auto key : {Windows::System::VirtualKey::O}) {
 		Input::KeyboardAccelerator accelerator;
 		accelerator.Key(key);
@@ -273,6 +296,58 @@ fire_and_forget MainWindow::pickDocuments() {
 		report(L"Couldn't open the selected PDFs.");
 	} catch (...) {
 		report(L"Couldn't open the selected PDFs: unknown error.");
+	}
+}
+
+fire_and_forget MainWindow::dropDocuments(
+    Windows::ApplicationModel::DataTransfer::DataPackageView data) {
+	weak_ref<MainWindow> weak;
+	const auto report = [&weak](const wchar_t* message) noexcept {
+		OutputDebugStringW(L"Dropped files: ");
+		OutputDebugStringW(message);
+		OutputDebugStringW(L"\n");
+		try {
+			if (auto self = weak.get(); self && !self->m_closing) {
+				self->PickerError().Message(message);
+				self->PickerError().IsOpen(true);
+			}
+		} catch (...) {
+			OutputDebugStringW(L"Couldn't show the dropped-file error.\n");
+		}
+	};
+	try {
+		weak = get_weak();
+		using Windows::ApplicationModel::DataTransfer::StandardDataFormats;
+		if (m_closing || !m_engine || !m_tabs.empty() ||
+		    !data.Contains(StandardDataFormats::StorageItems())) {
+			co_return;
+		}
+		PickerError().IsOpen(false);
+		const auto items = co_await data.GetStorageItemsAsync();
+		// the home screen may have gone away while the source supplied files
+		if (auto self = weak.get();
+		    self && !self->m_closing && self->m_tabs.empty()) {
+			for (const auto& item : items) {
+				const auto path = item.Path();
+				if (path.empty()) {
+					report(
+					    L"Couldn't open a dropped item without a local path.");
+					continue;
+				}
+				self->openDocument(*self->m_engine, path.c_str(), std::nullopt);
+			}
+		}
+	} catch (const hresult_error& error) {
+		try {
+			report(error.message().c_str());
+		} catch (...) {
+			report(L"Couldn't read the dropped files.");
+		}
+	} catch (const std::exception& error) {
+		OutputDebugStringA(error.what());
+		report(L"Couldn't open the dropped files.");
+	} catch (...) {
+		report(L"Couldn't open the dropped files: unknown error.");
 	}
 }
 

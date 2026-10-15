@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
@@ -85,6 +86,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	};
 	winrt::Sable::ViewerPage Viewer();
 	winrt::fire_and_forget pickDocuments();
+	winrt::fire_and_forget dropDocuments(
+	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
 	void setupOpen();
 	void selectTab();
 	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
