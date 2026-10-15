@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "HomePage.xaml.h"
 #include "ViewerPage.xaml.h"
 #include "helpers/keybinds.h"
+#include "helpers/settings.h"
 
 #include <filesystem>
 #include <optional>
@@ -35,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
+	explicit MainWindow(helpers::NightPDFSettings settings);
 	void InitializeComponent();
 
 	void setEngine(pdf::Engine& engine) {
@@ -110,6 +112,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setupTabKeys();
 	void dispatchShortcut(const helpers::Shortcut& shortcut);
 	std::vector<helpers::Shortcut> m_shortcuts;
+	const helpers::NightPDFSettings m_settings;
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();

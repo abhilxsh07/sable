@@ -48,6 +48,7 @@ struct TabsTest {
 	Windows::Foundation::IAsyncOperation<DropView> dropSetup{nullptr};
 	DropView dropData{nullptr};
 	com_ptr<MainWindow> closedDropWindow;
+	com_ptr<MainWindow> sizingWindow;
 
 	static Windows::Foundation::IAsyncOperation<DropView> makeDropData() {
 		using namespace Windows::Storage;
@@ -349,10 +350,59 @@ struct TabsTest {
 			case 16:
 				check(closedDropWindow->m_closing &&
 				      closedDropWindow->m_tabs.empty());
+				{
+					auto settings = self->m_settings;
+					settings.general.MaximizeOnOpen = false;
+					sizingWindow = make_self<MainWindow>(settings);
+					sizingWindow->setEngine(engine);
+					sizingWindow->Activate();
+				}
+				break;
+			case 17:
+				check(sizingWindow->m_presenter.State() ==
+				      Microsoft::UI::Windowing::OverlappedPresenterState::
+				          Restored);
+				check(sizingWindow->m_tabs.empty());
+				sizingWindow->openDocument(engine, L"tests/fixtures/pages.pdf",
+				                           {});
+				break;
+			case 18:
+				if (!ready(*get_self<ViewerPage>(sizingWindow->Viewer()))) {
+					return;
+				}
+				check(sizingWindow->m_presenter.State() ==
+				      Microsoft::UI::Windowing::OverlappedPresenterState::
+				          Restored);
+				sizingWindow->Close();
+				{
+					auto settings = self->m_settings;
+					settings.general.MaximizeOnOpen = true;
+					sizingWindow = make_self<MainWindow>(settings);
+					sizingWindow->setEngine(engine);
+					sizingWindow->Activate();
+				}
+				break;
+			case 19:
+				check(sizingWindow->m_presenter.State() ==
+				      Microsoft::UI::Windowing::OverlappedPresenterState::
+				          Maximized);
+				check(sizingWindow->m_tabs.empty());
+				sizingWindow->openDocument(engine, L"tests/fixtures/pages.pdf",
+				                           {});
+				break;
+			case 20:
+				if (!ready(*get_self<ViewerPage>(sizingWindow->Viewer()))) {
+					return;
+				}
+				check(sizingWindow->m_presenter.State() ==
+				      Microsoft::UI::Windowing::OverlappedPresenterState::
+				          Maximized);
+				sizingWindow->Close();
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
-				    L"order, drag lifecycle, width cap, splash drop");
+				    L"order, drag lifecycle, width cap, splash drop, startup "
+				    L"size");
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;

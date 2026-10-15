@@ -416,8 +416,15 @@ in [DESIGN.md](DESIGN.md).
 - The classic File / Edit / View / Window / Help menu bar becomes a single
   Menu button. Help points at Sable's repo instead of NightPDF's, and there's
   no Contact item for now.
-- The window opens maximized. Restoring it still gives NightPDF's 550x420
-  (565 wide really, because of the minimum width).
+- With `general.MaximizeOnOpen=true`, new windows open maximized, including
+  the home screen. NightPDF only maximized when opening a file. I keep the
+  existing home-screen choice, but false now leaves new windows restored.
+  Opening a file later doesn't change the window state; NightPDF's picker
+  could maximize an existing window. This is a startup preference here, so
+  opening another tab doesn't undo a manual restore. Startup sizing and tab
+  bindings share one settings snapshot; edits apply after a restart (Q7).
+  Restoring still gives NightPDF's 550x420 (565 wide really, because of the
+  minimum width).
 - The title bar is drawn by the app (WinUI's TitleBar control) so the Menu
   button, and later the tabs and presets, can live in it.
 - With nothing open you get a home screen instead of the bare splash: a pane

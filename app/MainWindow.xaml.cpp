@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <charconv>
 #include <exception>
 #include <filesystem>
+#include <utility>
 #include <microsoft.ui.xaml.window.h>
 #include <ShlObj.h>
 #include <shellapi.h>
@@ -80,6 +81,21 @@ std::filesystem::path configFile() {
 	return dir.empty() ? std::filesystem::path{}
 	                   : dir / L"Sable" / L"config.json";
 }
+
+helpers::NightPDFSettings windowSettings() {
+	auto settings =
+	    helpers::nightpdf_default_settings(helpers::versionString());
+	try {
+		const auto file = configFile();
+		if (!file.empty()) {
+			settings = helpers::loadSettings(file, helpers::versionString());
+		}
+	} catch (...) {
+		OutputDebugStringW(L"Couldn't load window settings; using defaults.\n");
+	}
+	return settings;
+}
+
 // see:
 // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 unsigned shortcutKey(const std::string& name) {
@@ -119,7 +135,10 @@ unsigned shortcutKey(const std::string& name) {
 } // namespace
 
 namespace winrt::Sable::implementation {
-MainWindow::MainWindow() {
+MainWindow::MainWindow() : MainWindow(windowSettings()) {}
+
+MainWindow::MainWindow(helpers::NightPDFSettings settings)
+    : m_settings(std::move(settings)) {
 	setupWindow();
 }
 
@@ -409,18 +428,8 @@ winrt::Sable::ViewerPage MainWindow::Viewer() {
 }
 
 void MainWindow::setupTabKeys() {
-	auto settings =
-	    helpers::nightpdf_default_settings(helpers::versionString());
-	try {
-		const auto file = configFile();
-		if (!file.empty()) {
-			settings = helpers::loadSettings(file, helpers::versionString());
-		}
-	} catch (...) {
-		OutputDebugStringW(L"Couldn't load shortcuts; using defaults.\n");
-	}
 	m_shortcuts = helpers::buildShortcuts(
-	    helpers::KeybindsHelper(settings.keybinds, "win32"), shortcutKey);
+	    helpers::KeybindsHelper(m_settings.keybinds, "win32"), shortcutKey);
 	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
 		auto self = weak.get();
 		if (!self || self->m_closing || args.Handled()) {
@@ -647,11 +656,11 @@ void MainWindow::setupWindow() {
 	m_presenter.PreferredMinimumWidth(px(MIN_WIDTH));
 	m_presenter.PreferredMinimumHeight(px(MIN_HEIGHT));
 	appWindow.SetPresenter(m_presenter);
-	// NightPDF's size is still what you get back when you restore the window,
-	// but it starts maximized now (docs/DECISIONS.md)
+	// i keep the home-screen startup choice too (docs/DECISIONS.md)
 	appWindow.Resize({px(WIDTH), px(HEIGHT)});
-	// @todo: honor general.MaximizeOnOpen when the setting is wired
-	m_presenter.Maximize();
+	if (m_settings.general.MaximizeOnOpen) {
+		m_presenter.Maximize();
+	}
 }
 
 void MainWindow::setupTitleBar() {
