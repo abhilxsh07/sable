@@ -436,3 +436,14 @@ in [DESIGN.md](DESIGN.md).
   version.
 - I generate the test PDFs with `tests/fixtures/make_fixtures.py` instead of
   copying PDF.js's sample, so there's no borrowed fixture licence to sort out.
+
+## Asynchronous picker and password errors (2026-10-15)
+
+I catch WinRT, standard and unknown exceptions around the whole picker and
+password coroutine, including setup and completion. Each catch logs first,
+then tries to show its banner without letting a reporting error escape.
+Completion still uses a weak reference, so a closed window isn't revived.
+The password box is cleared before trying the supplied password again.
+
+A failed password dialog now reports its actual failure instead of looking
+like Cancel. Cancelling normally still shows the protected-document message.

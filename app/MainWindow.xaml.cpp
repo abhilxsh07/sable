@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <algorithm>
 #include <charconv>
+#include <exception>
 #include <filesystem>
 #include <microsoft.ui.xaml.window.h>
 #include <ShlObj.h>
@@ -194,13 +195,30 @@ void MainWindow::setupOpen() {
 }
 
 fire_and_forget MainWindow::pickDocuments() {
-	if (m_closing || m_picking || !m_engine) {
-		co_return;
-	}
-	m_picking = true;
-	PickerError().IsOpen(false);
-	auto weak = get_weak();
+	weak_ref<MainWindow> weak;
+	const auto report = [&weak](const wchar_t* message) noexcept {
+		OutputDebugStringW(L"PDF picker: ");
+		OutputDebugStringW(message);
+		OutputDebugStringW(L"\n");
+		try {
+			if (auto self = weak.get()) {
+				self->m_picking = false;
+				if (!self->m_closing) {
+					self->PickerError().Message(message);
+					self->PickerError().IsOpen(true);
+				}
+			}
+		} catch (...) {
+			OutputDebugStringW(L"Couldn't show the PDF picker error.\n");
+		}
+	};
 	try {
+		weak = get_weak();
+		if (m_closing || m_picking || !m_engine) {
+			co_return;
+		}
+		m_picking = true;
+		PickerError().IsOpen(false);
 		// see:
 		// https://learn.microsoft.com/en-us/windows/apps/develop/files/using-file-folder-pickers
 		Microsoft::Windows::Storage::Pickers::FileOpenPicker picker(
@@ -215,11 +233,16 @@ fire_and_forget MainWindow::pickDocuments() {
 			}
 		}
 	} catch (const hresult_error& error) {
-		if (auto self = weak.get(); self && !self->m_closing) {
-			self->m_picking = false;
-			self->PickerError().Message(error.message());
-			self->PickerError().IsOpen(true);
+		try {
+			report(error.message().c_str());
+		} catch (...) {
+			report(L"Couldn't open the PDF picker.");
 		}
+	} catch (const std::exception& error) {
+		OutputDebugStringA(error.what());
+		report(L"Couldn't open the selected PDFs.");
+	} catch (...) {
+		report(L"Couldn't open the selected PDFs: unknown error.");
 	}
 }
 
