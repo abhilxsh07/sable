@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/pch.h"
+#include "../app/App.xaml.h"
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
 #include "surface_test.h"
@@ -36,6 +37,7 @@ namespace winrt::Sable::implementation {
 struct TabsTest {
 	weak_ref<MainWindow> window;
 	pdf::Engine& engine;
+	App& app;
 	TextBlock status;
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
 	bool shortcuts = false;
@@ -49,6 +51,8 @@ struct TabsTest {
 	DropView dropData{nullptr};
 	com_ptr<MainWindow> closedDropWindow;
 	com_ptr<MainWindow> sizingWindow;
+	com_ptr<MainWindow> peerWindow;
+	double peerZoom = 0;
 
 	static Windows::Foundation::IAsyncOperation<DropView> makeDropData() {
 		using namespace Windows::Storage;
@@ -65,8 +69,8 @@ struct TabsTest {
 	bool positioned = false;
 	com_ptr<ViewerPage> first;
 
-	TabsTest(MainWindow& owner, pdf::Engine& pdf)
-	    : window(owner.get_weak()), engine(pdf) {}
+	TabsTest(MainWindow& owner, pdf::Engine& pdf, App& application)
+	    : window(owner.get_weak()), engine(pdf), app(application) {}
 
 	void focus(bool pageBox) {
 		if (auto owner = window.get()) {
@@ -398,14 +402,71 @@ struct TabsTest {
 				      Microsoft::UI::Windowing::OverlappedPresenterState::
 				          Maximized);
 				sizingWindow->Close();
+				{
+					check(app.m_windows.size() == 1);
+					sizingWindow =
+					    app.createWindow({L"tests/fixtures/pages.pdf"}, 1);
+					peerWindow =
+					    app.createWindow({L"tests/fixtures/pages.pdf"}, 2);
+					check(app.m_windows.size() == 3);
+				}
+				break;
+			case 21: {
+				auto left = get_self<ViewerPage>(sizingWindow->Viewer());
+				auto right = get_self<ViewerPage>(peerWindow->Viewer());
+				if (!ready(*left) || !ready(*right)) {
+					return;
+				}
+				check(left->m_current == 0 && right->m_current == 1);
+				check(sizingWindow->m_tabs.size() == 1 &&
+				      peerWindow->m_tabs.size() == 1);
+				check(sizingWindow->m_engine == &engine &&
+				      peerWindow->m_engine == &engine);
+				sizingWindow->onPresetClick(sizingWindow->SepiaPreset(), {});
+				sizingWindow->m_sliders[0].Value(42);
+				check(sizingWindow->m_preset == "sepia" &&
+				      peerWindow->m_preset == "default");
+				check(left->m_values == sizingWindow->m_values &&
+				      right->m_values == peerWindow->m_values &&
+				      left->m_values != right->m_values &&
+				      left->m_values.brightness == 42);
+				sizingWindow->openDocument(engine,
+				                           L"tests/fixtures/missing.pdf", {});
+				sizingWindow->Close();
+				check(app.m_windows.size() == 2);
+				check(sizingWindow->m_closing && sizingWindow->m_tabs.empty());
+				peerZoom = right->m_zoom;
+				right->zoomIn();
+				right->goToPage(2);
+				break;
+			}
+			case 22: {
+				auto right = get_self<ViewerPage>(peerWindow->Viewer());
+				if (!ready(*right)) {
+					return;
+				}
+				check(right->m_current == 2 && right->m_zoom > peerZoom);
+				check(!peerWindow->m_closing &&
+				      peerWindow->m_preset == "default");
+				sizingWindow = app.createWindow();
+				check(app.m_windows.size() == 3);
+				check(sizingWindow->m_tabs.empty() &&
+				      sizingWindow->m_closedTabs.empty() &&
+				      sizingWindow->m_preset == "default");
+				sizingWindow->Close();
+				check(app.m_windows.size() == 2);
+				peerWindow->Close();
+				check(app.m_windows.size() == 1 &&
+				      app.m_windows.front() == self.as<Window>());
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
 				    L"order, drag lifecycle, width cap, splash drop, startup "
-				    L"size");
+				    L"size, independent windows");
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;
+			}
 			}
 			++step;
 			ticks = 0;
@@ -425,10 +486,10 @@ struct TabsTest {
 };
 } // namespace winrt::Sable::implementation
 
-Window tabsTest(pdf::Engine& engine) {
+Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	auto window = make_self<Sable::implementation::MainWindow>();
 	auto state =
-	    std::make_shared<Sable::implementation::TabsTest>(*window, engine);
+	    std::make_shared<Sable::implementation::TabsTest>(*window, engine, app);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&

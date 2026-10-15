@@ -22,18 +22,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "App.xaml.g.h"
 
 #include "pdf/engine.h"
+#include <filesystem>
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace winrt::Sable::implementation {
+struct MainWindow;
+
 struct App : AppT<App> {
 	App();
 
 	void OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
+	winrt::com_ptr<MainWindow>
+	createWindow(const std::vector<std::filesystem::path>& files = {},
+	             std::optional<int> page = {});
 
   private:
+#ifdef SABLE_SURFACE_TEST
+	friend struct TabsTest;
+#endif
+	void trackWindow(const winrt::Microsoft::UI::Xaml::Window& window);
 	// only document windows need PDFium. Declared first so it's torn down
-	// last, after the window and anything it holds.
+	// last, after every window and anything they hold.
 	std::unique_ptr<pdf::Engine> m_pdf;
-	winrt::Microsoft::UI::Xaml::Window window{nullptr};
+	std::vector<winrt::Microsoft::UI::Xaml::Window> m_windows;
 };
 } // namespace winrt::Sable::implementation
