@@ -40,6 +40,9 @@ struct TabsTest {
 	bool shortcuts = false;
 	int step = 0;
 	int ticks = 0;
+	int dragStarts = 0;
+	int dragFinishes = 0;
+	int dragResult = 0;
 	double zoom = 0;
 	bool positioned = false;
 	com_ptr<ViewerPage> first;
@@ -98,7 +101,10 @@ struct TabsTest {
 				}
 				status.Text(L"Focus: " + where + L"; tab " +
 				            to_hstring(self->Tabs().SelectedIndex() + 1) +
-				            L" of " + to_hstring(self->m_tabs.size()));
+				            L" of " + to_hstring(self->m_tabs.size()) +
+				            L"; drag events " + to_hstring(dragStarts) + L"/" +
+				            to_hstring(dragFinishes) + L"; result " +
+				            to_hstring(dragResult));
 				return;
 			}
 			if (++ticks > 120) {
@@ -327,6 +333,17 @@ Window tabsTest(pdf::Engine& engine) {
 	StackPanel controls;
 	controls.Children().Append(state->status);
 	if (state->shortcuts) {
+		window->Tabs().TabDragStarting([weak](auto&&, auto&&) {
+			if (auto state = weak.lock()) {
+				++state->dragStarts;
+			}
+		});
+		window->Tabs().TabDragCompleted([weak](auto&&, const auto& args) {
+			if (auto state = weak.lock()) {
+				++state->dragFinishes;
+				state->dragResult = static_cast<int>(args.DropResult());
+			}
+		});
 		for (const bool pageBox : {false, true}) {
 			Button focus;
 			focus.Content(
