@@ -319,7 +319,7 @@ Ctrl+Shift+Home/End move it to the first/last position. Missing positions
 and moves past either end do nothing. These use the visible strip's order,
 not the order documents were opened. Moving a header keeps the same viewer
 selected and skips intermediate selection events, so another tab's password
-prompt can't open during the move. Drag reordering is still to come.
+prompt can't open during the move. Drag reordering followed in P08 below.
 
 The SableTabsTest probe also checks fresh reopening from home, LIFO history,
 already-open paths, empty history, moves in both directions and invalid
@@ -410,7 +410,8 @@ in [DESIGN.md](DESIGN.md).
   has no start-ellipsis option. I use the proper closing U+202C rather than
   NightPDF's second U+202A. Only the display text has these marks; paths,
   tooltips and accessible names keep the plain filename/path. The header's
-  200 px MaxWidth is a temporary stand-in for the 15% window-width limit.
+  former 200 px MaxWidth was a temporary stand-in; the whole tab now has a
+  15% window-width cap (P08).
 - The UI font is Manrope, not Arial (see above).
 - The classic File / Edit / View / Window / Help menu bar becomes a single
   Menu button. Help points at Sable's repo instead of NightPDF's, and there's
@@ -454,3 +455,27 @@ The password box is cleared before trying the supplied password again.
 
 A failed password dialog now reports its actual failure instead of looking
 like Cancel. Cancelling normally still shows the protected-document message.
+
+## Dragging and tab width (2026-10-15)
+
+I use TabView's native reordering within a window. The visible strip is the
+order used by position and move shortcuts; the document viewers stay mounted.
+Selection changes during a drag are held until completion, including a
+cancelled drag, so a passing password tab doesn't activate its prompt.
+
+The whole tab, including the close button, is capped at 15% of the window's
+logical width and updates on resize. Equal sizing can make tabs smaller when
+the strip is crowded. The old 200 px limit on the title text is gone.
+TabView's built-in Ctrl+F4/Tab accelerators are disabled: settings own those
+shortcuts with focus in the header too, including cleared bindings.
+
+The TitleBar treated the filename TextBlocks as window-drag regions, so the
+first real mouse drag moved the window. I explicitly make the tab strip
+interactive with TitleBar.IsDragRegion=False and refresh regions when its
+size changes. The unused title bar space still moves the window.
+
+The tab probe checks laid-out widths at 900, 1200 and 565 physical pixels,
+plus reorder completion and cancellation with the same mounted viewer.
+Its interactive shortcut mode has a button to clear only that window's
+bindings and focus the header. Ctrl+F4/Tab/Shift+Tab must then leave it alone;
+fixed Ctrl+1-9 still works. This doesn't write the settings file.

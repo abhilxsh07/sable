@@ -59,6 +59,13 @@ struct TabsTest {
 			}
 		}
 	}
+	void clearBindings() {
+		if (auto owner = window.get()) {
+			owner->m_shortcuts.clear();
+			owner->Tabs().SelectedItem().as<TabViewItem>().Focus(
+			    FocusState::Programmatic);
+		}
+	}
 	void check(bool condition) {
 		if (!condition) {
 			throw std::runtime_error("tab check failed");
@@ -85,7 +92,9 @@ struct TabsTest {
 					const auto v = get_self<ViewerPage>(current);
 					where = focus == v->Scroller()  ? L"document"
 					        : focus == v->PageBox() ? L"page box"
-					                                : L"other";
+					        : focus == self->Tabs().SelectedItem()
+					            ? L"tab header"
+					            : L"other";
 				}
 				status.Text(L"Focus: " + where + L"; tab " +
 				            to_hstring(self->Tabs().SelectedIndex() + 1) +
@@ -114,6 +123,12 @@ struct TabsTest {
 					return;
 				}
 				check(viewer->m_current == 2);
+				check(self->Tabs().CanDragTabs() &&
+				      self->Tabs().CanReorderTabs());
+				for (const auto& accelerator :
+				     self->Tabs().KeyboardAccelerators()) {
+					check(!accelerator.IsEnabled());
+				}
 				zoom = viewer->m_zoom;
 				self->Tabs().SelectedItem(self->m_tabs[1].tab);
 				break;
@@ -212,6 +227,20 @@ struct TabsTest {
 				self->selectTabPosition(8);
 				self->selectTabPosition(-1);
 				order(a, b, c);
+				// the native drag temporarily changes selection while
+				// reordering
+				self->beginTabDrag();
+				items.RemoveAt(0);
+				items.Append(a);
+				self->Tabs().SelectedItem(b);
+				check(saved.Visibility() == Visibility::Visible);
+				self->endTabDrag();
+				order(b, c, a);
+				self->beginTabDrag();
+				self->endTabDrag();
+				order(b, c, a);
+				self->moveTab(0);
+				order(a, b, c);
 				self->selectTabPosition(2);
 				check(self->Tabs().SelectedItem() == c);
 				self->closeTab(c.as<TabViewItem>());
@@ -229,6 +258,28 @@ struct TabsTest {
 				break;
 			}
 			case 8:
+				self->m_presenter.Restore();
+				self->AppWindow().Resize({900, 700});
+				break;
+			case 9:
+			case 11:
+			case 13:
+				if (self->RootGrid().ActualWidth() <= 0) {
+					return;
+				}
+				for (const auto& entry : self->m_tabs) {
+					check(entry.tab.ActualWidth() > 0);
+					check(entry.tab.ActualWidth() <=
+					      self->RootGrid().ActualWidth() * 0.15 + 1);
+				}
+				break;
+			case 10:
+				self->AppWindow().Resize({1200, 700});
+				break;
+			case 12:
+				self->AppWindow().Resize({565, 700});
+				break;
+			case 14:
 				if (!viewer || !viewer->Message().IsOpen()) {
 					return;
 				}
@@ -239,7 +290,7 @@ struct TabsTest {
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
-				    L"order");
+				    L"order, drag lifecycle, width cap");
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;
@@ -287,6 +338,14 @@ Window tabsTest(pdf::Engine& engine) {
 			});
 			controls.Children().Append(focus);
 		}
+		Button clear;
+		clear.Content(box_value(L"Clear tab bindings and focus header"));
+		clear.Click([weak](auto&&, auto&&) {
+			if (auto state = weak.lock()) {
+				state->clearBindings();
+			}
+		});
+		controls.Children().Append(clear);
 	}
 	report.Child(controls);
 	report.Background(
