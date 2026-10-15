@@ -450,8 +450,25 @@ winrt::Sable::ViewerPage MainWindow::Viewer() {
 }
 
 void MainWindow::setupTabKeys() {
-	m_shortcuts = helpers::buildShortcuts(
-	    helpers::KeybindsHelper(m_settings.keybinds, "win32"), shortcutKey);
+	const helpers::KeybindsHelper keybinds(m_settings.keybinds, "win32");
+	m_shortcuts = helpers::buildShortcuts(keybinds, shortcutKey);
+	// browser key names share characters with the numeric keypad
+	// see:
+	// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-mapvirtualkeyexw
+	for (unsigned key = VK_NUMPAD0; key <= VK_DIVIDE; ++key) {
+		const auto character =
+		    MapVirtualKeyExW(key, MAPVK_VK_TO_CHAR, GetKeyboardLayout(0));
+		if (!character || character > 0xffff) {
+			continue;
+		}
+		const wchar_t text[] = {static_cast<wchar_t>(character), 0};
+		const auto name = winrt::to_string(text);
+		const auto aliases = helpers::buildShortcuts(
+		    keybinds, [key, name](const std::string& stored) {
+			    return stored == name ? key : 0;
+		    });
+		m_shortcuts.insert(m_shortcuts.end(), aliases.begin(), aliases.end());
+	}
 	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
 		auto self = weak.get();
 		if (!self || self->m_closing || args.Handled()) {

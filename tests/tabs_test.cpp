@@ -45,6 +45,7 @@ struct TabsTest {
 	Border report;
 	Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
 	bool shortcuts = false;
+	bool settingsOnly = false;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -121,6 +122,99 @@ struct TabsTest {
 		return viewer.m_layout && !viewer.m_startPage && !viewer.m_settling &&
 		       !viewer.m_landingAt;
 	}
+	void keybindSettings(SettingsWindow& settings) {
+		settings.select("keybinds");
+		check(settings.m_bindingScroll.Visibility() == Visibility::Visible);
+		check(settings.m_keybinds.Children().Size() ==
+		          uiStore->get().keybinds.size(),
+		      "missing keybind rows");
+		const auto snapshot = uiStore->get();
+		settings.edit("OpenWindow", 0);
+		check(!settings.m_saveBinding.IsEnabled());
+		BYTE original[256]{};
+		check(GetKeyboardState(original) != FALSE);
+		struct RestoreKeyboard {
+			BYTE* state;
+			~RestoreKeyboard() {
+				SetKeyboardState(state);
+			}
+		} restore{original};
+		BYTE state[256]{};
+		state[VK_CONTROL] = 0x80;
+		state[VK_SHIFT] = 0x80;
+		check(SetKeyboardState(state) != FALSE);
+		check(settings.capture(VK_CONTROL, true));
+		check(!settings.m_saveBinding.IsEnabled(), "modifier-only save");
+		settings.capture(VK_SHIFT, true);
+		settings.capture('Q', true);
+		check(settings.m_saveBinding.IsEnabled(),
+		      "capture did not enable save");
+		settings.capture('Q', true, true);
+		check(settings.m_capture.binding().key == "Q", "shifted letter");
+		state[VK_SHIFT] = 0;
+		check(SetKeyboardState(state) != FALSE);
+		settings.capture(VK_SHIFT, false);
+		settings.capture('Q', false);
+		settings.capture('W', true);
+		check(settings.m_capture.binding().key == "w", "stale released key");
+		settings.capture('E', true);
+		check(!settings.m_saveBinding.IsEnabled() &&
+		          settings.m_captureText.Text() == L"Invalid",
+		      "two-key capture");
+		settings.capture(VK_ESCAPE, true);
+		check(SetKeyboardState(original) != FALSE);
+		check(uiStore->get() == snapshot, "cancel saved a binding");
+		check(settings.m_overlay.Visibility() == Visibility::Collapsed &&
+		      settings.m_capture.display().empty());
+		settings.edit("OpenWindow", 1);
+		settings.m_capture.press("Alt");
+		settings.m_capture.press("F8");
+		check(
+		    settings.saveBinding("OpenWindow", 1, settings.m_capture.binding()),
+		    "secondary binding save");
+		settings.dismiss();
+		check(uiStore->get().keybinds.at("OpenWindow").keybind.size() == 2);
+		check(settings.saveBinding("OpenWindow", 0, std::nullopt));
+		check(helpers::KeybindHelper::fromKeybind(
+		          uiStore->get().keybinds.at("OpenWindow").keybind.front(),
+		          "win32")
+		              .toTrigger() == "Alt+F8",
+		      "clear did not shift secondary");
+		check(settings.saveBinding("OpenWindow", 0, std::nullopt));
+		check(uiStore->get().keybinds.at("OpenWindow").keybind.empty());
+		check(helpers::loadSettings(settingsPath, helpers::versionString()) ==
+		          uiStore->get(),
+		      "cleared binding not persisted");
+		settings.edit("OpenWindow", 1);
+		check(settings.saveBinding(
+		    "OpenWindow", 1,
+		    helpers::KeybindHelper::fromTrigger("Alt+F8", "win32")
+		        .getKeybind()));
+		settings.dismiss();
+		check(uiStore->get().keybinds.at("OpenWindow").keybind.size() == 1,
+		      "empty secondary did not become primary");
+		check(uiStore->get().general == snapshot.general);
+		auto numeric = uiStore->get();
+		numeric.keybinds.at("OpenWindow").keybind =
+		    helpers::KeybindHelper::keybindFromTriggerArray({"Alt+1", "Alt+Q"});
+		// '+' is a key here, not a separator in a trigger string
+		numeric.keybinds.at("OpenWindow").keybind[1].key = "+";
+		auto reader = make_self<MainWindow>(numeric);
+		check(helpers::matchShortcut(reader->m_shortcuts, VK_NUMPAD1,
+		                             helpers::SHORTCUT_ALT) != nullptr,
+		      "numeric keypad digit");
+		check(helpers::matchShortcut(reader->m_shortcuts, VK_ADD,
+		                             helpers::SHORTCUT_ALT) != nullptr,
+		      "numeric keypad add");
+		reader->Close();
+		numeric.keybinds.at("OpenWindow").keybind =
+		    helpers::KeybindHelper::keybindFromTriggerArray({"Alt+="});
+		reader = make_self<MainWindow>(numeric);
+		check(helpers::matchShortcut(reader->m_shortcuts, VK_ADD,
+		                             helpers::SHORTCUT_ALT) == nullptr,
+		      "numeric keypad add matched equals");
+		reader->Close();
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -154,6 +248,13 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (settingsOnly && step == 0) {
+				self->m_presenter.Maximize();
+				clearBindings();
+				self->onOpenSettings({}, {});
+				step = 23;
+				return;
 			}
 			auto current = self->Viewer();
 			auto* viewer = current ? get_self<ViewerPage>(current) : nullptr;
@@ -518,6 +619,7 @@ struct TabsTest {
 				                            helpers::versionString()) ==
 				          uiStore->get(),
 				      "general values were not persisted");
+				keybindSettings(*settings);
 				settings->window.Close();
 				check(!self->m_settingsWindow && IsWindowEnabled(owner),
 				      "settings close did not restore owner");
@@ -543,6 +645,10 @@ struct TabsTest {
 				          failing->m_checks[0].IsChecked().Value() &&
 				          blocked.get().general.MaximizeOnOpen,
 				      "failed settings save was not restored");
+				const auto saved = blocked.get();
+				check(!failing->saveBinding("CloseWindow", 0, std::nullopt));
+				check(failing->m_error.IsOpen() && blocked.get() == saved,
+				      "failed keybind save changed the store");
 				closedDropWindow->Close();
 				check(!closedDropWindow->m_settingsWindow &&
 				      app.m_windows.size() == 1);
@@ -550,7 +656,12 @@ struct TabsTest {
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
 				    L"order, drag lifecycle, width cap, splash drop, startup "
-				    L"size, independent windows, general settings");
+				    L"size, independent windows, general/keybind settings");
+				if (settingsOnly) {
+					status.Text(
+					    L"PASS: settings owner, General, keybind "
+					    L"capture, persistence, clear and failed saves");
+				}
 				probePass(self.as<Window>());
 				timer.Stop();
 				return;
@@ -581,9 +692,16 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
+	state->settingsOnly =
+	    GetEnvironmentVariableW(L"SableSettingsTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	state->dropSetup = state->makeDropData();
+	if (state->settingsOnly) {
+		state->shortcuts = false;
+	} else {
+		state->dropSetup = state->makeDropData();
+	}
 	state->status.Text(L"Checking document tabs");
 	state->status.TextWrapping(TextWrapping::Wrap);
 	Border report;
@@ -630,9 +748,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
-	window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
-	window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);
+	if (!state->settingsOnly) {
+		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
+		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
+		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);
+	}
 	state->timer = window->DispatcherQueue().CreateTimer();
 	state->timer.Interval(std::chrono::milliseconds(250));
 	state->timer.Tick([weak](auto&&, auto&&) {
