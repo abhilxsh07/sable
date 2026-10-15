@@ -232,6 +232,20 @@ std::string helpText(const std::string& programName, int year) {
 	return out;
 }
 
+// see:
+// https://raw.githubusercontent.com/yargs/yargs/v17.7.2/lib/yargs-factory.ts
+std::optional<std::string> cliText(const CliArgs& args,
+                                   const std::string& programName,
+                                   const std::string& version, int year) {
+	if (args.showHelp) {
+		return helpText(programName, year);
+	}
+	if (args.showVersion) {
+		return version;
+	}
+	return std::nullopt;
+}
+
 // the bug in app.ts: `fileToOpen.replace("file://", "")` for a single path
 // threw the result away, so file:// urls only worked in the multi-file case,
 // and nothing ever decoded the %20s
