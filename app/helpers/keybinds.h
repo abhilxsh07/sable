@@ -273,6 +273,25 @@ class KeybindsHelper {
 	const Keybinds& removeActionKeybind(const std::string& action,
 	                                    std::size_t index);
 };
+// port of app/render/settings.ts overlay capture (L136-281)
+class KeybindCapture {
+  public:
+	void press(const std::string& key);
+	void release(const std::string& key);
+	void reset();
+	const Keybind& binding() const {
+		return m_binding;
+	}
+	const std::string& display() const {
+		return m_display;
+	}
+
+  private:
+	OrderedMap<bool> m_held;
+	Keybind m_binding;
+	std::string m_display;
+};
+
 // Windows modifier bits, kept independent of WinRT for the tests
 constexpr unsigned SHORTCUT_CTRL = 1, SHORTCUT_ALT = 2, SHORTCUT_SHIFT = 4,
                    SHORTCUT_WIN = 8;

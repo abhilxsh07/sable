@@ -273,6 +273,44 @@ TEST(OrderedMap, KeepsInsertionOrder) {
 	EXPECT_EQ(map.size(), 1u);
 }
 
+TEST(KeybindCapture, RequiresAModifierAndOneNormalKey) {
+	helpers::KeybindCapture capture;
+	capture.press("Control");
+	EXPECT_EQ(capture.display(), "Ctrl + ");
+	EXPECT_FALSE(capture.binding().key);
+	capture.press("q");
+	EXPECT_EQ(capture.display(), "Ctrl + q");
+	EXPECT_EQ(capture.binding().key, "q");
+	EXPECT_TRUE(capture.binding().modifiers.contains("Control"));
+	capture.release("q");
+	capture.release("Control");
+	EXPECT_EQ(capture.display(), "Ctrl + q");
+	EXPECT_EQ(capture.binding().key, "q");
+	capture.press("x");
+	EXPECT_FALSE(capture.binding().key);
+	EXPECT_TRUE(capture.display().empty());
+}
+
+TEST(KeybindCapture, RepeatIsIgnoredAndTwoNormalKeysAreInvalid) {
+	helpers::KeybindCapture capture;
+	capture.press("Alt");
+	capture.press("F8");
+	capture.press("F8");
+	EXPECT_EQ(capture.binding().key, "F8");
+	capture.press("F9");
+	EXPECT_EQ(capture.display(), "Invalid");
+	EXPECT_FALSE(capture.binding().key);
+	capture.release("F9");
+	EXPECT_FALSE(capture.binding().key);
+	capture.reset();
+	EXPECT_TRUE(capture.display().empty());
+	capture.press("Meta");
+	capture.press("Shift");
+	capture.press("ArrowLeft");
+	EXPECT_EQ(capture.display(), "Win + Shift + ArrowLeft");
+	EXPECT_EQ(capture.binding().modifiers.size(), 2u);
+}
+
 namespace {
 unsigned testKey(const std::string& key) {
 	if (key.size() == 1) {

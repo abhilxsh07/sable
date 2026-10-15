@@ -589,6 +589,21 @@ bool SettingsStore::setGeneral(const std::string& key, bool value) {
 	return true;
 }
 
+bool SettingsStore::setKeybind(const std::string& id, const Keybinds& command) {
+	if (!m_settings.keybinds.contains(id)) {
+		return false;
+	}
+	auto settings = m_settings;
+	setkeybind(settings, id, command);
+	const Json json = settings;
+	if (!isValidSection("keybinds", json.at("keybinds")) ||
+	    !saveSettings(m_path, settings)) {
+		return false;
+	}
+	m_settings = std::move(settings);
+	return true;
+}
+
 // port of app/main/app.ts setkeybind() (L115-125)
 void setkeybind(NightPDFSettings& settings, const std::string& id,
                 const Keybinds& command) {

@@ -102,6 +102,7 @@ class SettingsStore {
 	}
 	// a failed save leaves the current settings alone
 	bool setGeneral(const std::string& key, bool value);
+	bool setKeybind(const std::string& id, const Keybinds& command);
 
   private:
 	std::filesystem::path m_path;

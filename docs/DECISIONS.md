@@ -569,3 +569,10 @@ shared store. Reopening Settings shows the saved values. A failed write
 restores the checkbox and opens an error banner; NightPDF didn't explain a
 failed save here. This avoids showing a value that won't survive a restart.
 Changes don't resize an existing reader or change its shortcut snapshot.
+
+## Saving keybind edits (2026-10-16)
+
+The shared store validates a keybind command before saving the whole config.
+Edits and clears use the same atomic writer as General. I only replace the
+in-memory settings after the write succeeds, so a failed save keeps the old
+bindings. Readers keep their startup snapshots; edits apply after restart.
