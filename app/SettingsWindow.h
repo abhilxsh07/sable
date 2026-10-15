@@ -20,7 +20,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "helpers/settings.h"
+#include <array>
 #include <memory>
+#include <vector>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 
 namespace winrt::Sable::implementation {
@@ -41,6 +43,11 @@ struct SettingsWindow : std::enable_shared_from_this<SettingsWindow> {
 	void initialize(const winrt::Microsoft::UI::Xaml::Window& owner,
 	                const std::filesystem::path& icon);
 	void select(const std::string& section);
+	void save(const winrt::Microsoft::UI::Xaml::Controls::CheckBox& box);
 	helpers::SettingsStore& m_store;
 	winrt::Microsoft::UI::Xaml::Controls::TextBlock m_version;
+	winrt::Microsoft::UI::Xaml::Controls::StackPanel m_general;
+	winrt::Microsoft::UI::Xaml::Controls::InfoBar m_error;
+	std::array<winrt::Microsoft::UI::Xaml::Controls::CheckBox, 2> m_checks;
+	std::vector<winrt::Microsoft::UI::Xaml::Controls::Button> m_sections;
 };

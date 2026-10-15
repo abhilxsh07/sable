@@ -560,5 +560,12 @@ The native check found the owner still enabled, so I also disable it while
 Settings is open and restore its previous enabled state on close (guide 6.8).
 Closing the reader closes its settings child before releasing the readers.
 The version panel and lowercase menu follow render/settings.ts and the
-reference screenshot. General and keybinds are temporarily disabled while
-their controls are added in separate commits to keep each change small.
+reference screenshot. Keybinds stays disabled until its controls are added.
+
+## General settings controls (2026-10-16)
+
+The two checkboxes keep NightPDF's names and save immediately through the
+shared store. Reopening Settings shows the saved values. A failed write
+restores the checkbox and opens an error banner; NightPDF didn't explain a
+failed save here. This avoids showing a value that won't survive a restart.
+Changes don't resize an existing reader or change its shortcut snapshot.
