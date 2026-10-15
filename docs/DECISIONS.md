@@ -404,6 +404,13 @@ in [DESIGN.md](DESIGN.md).
 
 ## Differences from NightPDF
 
+- Tab headers keep U+202A/U+202C around the filename and right-to-left flow
+  to put the ellipsis at the start. This departs from Q11's no-control-marks
+  rule: WinUI's [TextTrimming enum](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.texttrimming?view=windows-app-sdk-2.0)
+  has no start-ellipsis option. I use the proper closing U+202C rather than
+  NightPDF's second U+202A. Only the display text has these marks; paths,
+  tooltips and accessible names keep the plain filename/path. The header's
+  200 px MaxWidth is a temporary stand-in for the 15% window-width limit.
 - The UI font is Manrope, not Arial (see above).
 - The classic File / Edit / View / Window / Help menu bar becomes a single
   Menu button. Help points at Sable's repo instead of NightPDF's, and there's
