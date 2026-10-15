@@ -550,3 +550,15 @@ whole validated config through the existing atomic writer, keeping keybinds
 and the other general value. A failed save leaves the store unchanged so the
 checkbox can return to its saved value rather than claiming an unsaved edit
 worked. Reader windows keep their own startup/shortcut snapshots (Q7).
+
+## Settings window frame (2026-10-16)
+
+Settings opens from Menu, the home footer and fixed Alt+S. Each reader owns
+one settings window; opening it again activates that window. Its native
+owner is set before IsModal, following [Microsoft's window guidance](https://learn.microsoft.com/en-us/windows/apps/develop/ui/manage-app-windows).
+The native check found the owner still enabled, so I also disable it while
+Settings is open and restore its previous enabled state on close (guide 6.8).
+Closing the reader closes its settings child before releasing the readers.
+The version panel and lowercase menu follow render/settings.ts and the
+reference screenshot. General and keybinds are temporarily disabled while
+their controls are added in separate commits to keep each change small.

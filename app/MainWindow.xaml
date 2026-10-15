@@ -61,7 +61,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 								<MenuFlyoutItem Text="Print" KeyboardAcceleratorTextOverride="Ctrl+P" IsEnabled="False">
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE749;" /></MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
-								<MenuFlyoutItem x:Name="SettingsItem" Text="Settings" KeyboardAcceleratorTextOverride="Alt+S">
+								<MenuFlyoutItem x:Name="SettingsItem" Text="Settings" KeyboardAcceleratorTextOverride="Alt+S" Click="onOpenSettings">
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
 							</MenuFlyoutSubItem>
@@ -157,7 +157,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				</NavigationViewItem>
 			</NavigationView.MenuItems>
 			<NavigationView.FooterMenuItems>
-				<NavigationViewItem Content="Settings" SelectsOnInvoked="False" ToolTipService.ToolTip="Settings (Alt+S)">
+				<NavigationViewItem Content="Settings" Tag="settings" SelectsOnInvoked="False" ToolTipService.ToolTip="Settings (Alt+S)">
 					<NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
 				</NavigationViewItem>
 			</NavigationView.FooterMenuItems>

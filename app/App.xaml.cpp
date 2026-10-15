@@ -147,8 +147,13 @@ App::createWindow(const std::vector<std::filesystem::path>& files,
 	if (!m_pdf) {
 		m_pdf = std::make_unique<pdf::Engine>();
 	}
-	auto main = make_self<MainWindow>();
+	if (!m_settings) {
+		m_settings = std::make_unique<helpers::SettingsStore>(
+		    MainWindow::settingsPath(), helpers::versionString());
+	}
+	auto main = make_self<MainWindow>(m_settings->get());
 	main->setEngine(*m_pdf);
+	main->setSettingsStore(*m_settings);
 	trackWindow(main.as<Window>());
 	try {
 		for (const auto& file : files) {

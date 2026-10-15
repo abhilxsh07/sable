@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/settings.h"
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -33,11 +34,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
+struct SettingsWindow;
+
 namespace winrt::Sable::implementation {
 struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
 	explicit MainWindow(helpers::NightPDFSettings settings);
 	void InitializeComponent();
+	static std::filesystem::path settingsPath();
+	void setSettingsStore(helpers::SettingsStore& store) {
+		m_settingsStore = &store;
+	}
+	void onOpenSettings(const winrt::Windows::Foundation::IInspectable&,
+	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
 	void setEngine(pdf::Engine& engine) {
 		m_engine = &engine;
@@ -113,6 +122,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void dispatchShortcut(const helpers::Shortcut& shortcut);
 	std::vector<helpers::Shortcut> m_shortcuts;
 	const helpers::NightPDFSettings m_settings;
+	helpers::SettingsStore* m_settingsStore = nullptr;
+	std::shared_ptr<::SettingsWindow> m_settingsWindow;
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();

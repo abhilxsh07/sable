@@ -19,12 +19,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/pch.h"
 #include "../app/App.xaml.h"
+#include "../app/SettingsWindow.h"
+#include "../app/helpers/version.h"
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
 #include "surface_test.h"
 
 #include <chrono>
 #include <memory>
+#include <microsoft.ui.xaml.window.h>
 #include <stdexcept>
 #include <string_view>
 #include <winrt/Windows.Storage.h>
@@ -52,6 +55,8 @@ struct TabsTest {
 	com_ptr<MainWindow> closedDropWindow;
 	com_ptr<MainWindow> sizingWindow;
 	com_ptr<MainWindow> peerWindow;
+	std::filesystem::path settingsPath;
+	std::unique_ptr<helpers::SettingsStore> uiStore;
 	double peerZoom = 0;
 
 	static Windows::Foundation::IAsyncOperation<DropView> makeDropData() {
@@ -70,7 +75,21 @@ struct TabsTest {
 	com_ptr<ViewerPage> first;
 
 	TabsTest(MainWindow& owner, pdf::Engine& pdf, App& application)
-	    : window(owner.get_weak()), engine(pdf), app(application) {}
+	    : window(owner.get_weak()), engine(pdf), app(application) {
+		settingsPath =
+		    std::filesystem::temp_directory_path() /
+		    ("sable_settings_ui_" + std::to_string(GetCurrentProcessId()) +
+		     "_" +
+		     std::to_string(
+		         std::chrono::steady_clock::now().time_since_epoch().count()) +
+		     ".json");
+		uiStore = std::make_unique<helpers::SettingsStore>(
+		    settingsPath, helpers::versionString());
+	}
+	~TabsTest() {
+		std::error_code ignored;
+		std::filesystem::remove(settingsPath, ignored);
+	}
 
 	void focus(bool pageBox) {
 		if (auto owner = window.get()) {
@@ -91,9 +110,9 @@ struct TabsTest {
 			    FocusState::Programmatic);
 		}
 	}
-	void check(bool condition) {
+	void check(bool condition, const char* message = "tab check failed") {
 		if (!condition) {
-			throw std::runtime_error("tab check failed");
+			throw std::runtime_error(message);
 		}
 	}
 	bool ready(ViewerPage& viewer) {
@@ -458,6 +477,35 @@ struct TabsTest {
 				peerWindow->Close();
 				check(app.m_windows.size() == 1 &&
 				      app.m_windows.front() == self.as<Window>());
+				self->onOpenSettings({}, {});
+				break;
+			}
+			case 23: {
+				const auto settings = self->m_settingsWindow;
+				check(settings != nullptr, "settings did not open");
+				check(settings->m_version.Text() ==
+				          to_hstring(helpers::versionString()),
+				      "settings version");
+				HWND owner{}, child{};
+				check_hresult(
+				    self.as<::IWindowNative>()->get_WindowHandle(&owner));
+				check_hresult(
+				    settings->window.as<::IWindowNative>()->get_WindowHandle(
+				        &child));
+				check(GetWindow(child, GW_OWNER) == owner, "settings owner");
+				check(!IsWindowEnabled(owner), "settings owner is not blocked");
+				self->onOpenSettings({}, {});
+				check(self->m_settingsWindow == settings, "duplicate settings");
+				settings->window.Close();
+				check(!self->m_settingsWindow && IsWindowEnabled(owner),
+				      "settings close did not restore owner");
+				closedDropWindow = app.createWindow();
+				closedDropWindow->setSettingsStore(*uiStore);
+				closedDropWindow->onOpenSettings({}, {});
+				check(closedDropWindow->m_settingsWindow != nullptr);
+				closedDropWindow->Close();
+				check(!closedDropWindow->m_settingsWindow &&
+				      app.m_windows.size() == 1);
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
@@ -490,6 +538,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	auto window = make_self<Sable::implementation::MainWindow>();
 	auto state =
 	    std::make_shared<Sable::implementation::TabsTest>(*window, engine, app);
+	window->setSettingsStore(*state->uiStore);
 	std::weak_ptr<Sable::implementation::TabsTest> weak = state;
 	wchar_t mode[8]{};
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
