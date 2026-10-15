@@ -87,10 +87,15 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setupOpen();
 	void selectTab();
 	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	void reopenTab();
+	void selectTabPosition(int index);
+	void moveTab(int index);
 	std::vector<DocumentTab> m_tabs;
+	std::vector<std::filesystem::path> m_closedTabs;
 	pdf::Engine* m_engine = nullptr;
 	bool m_closing = false;
 	bool m_picking = false;
+	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();
 	void setupZoomKeys();

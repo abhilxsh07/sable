@@ -143,11 +143,72 @@ struct TabsTest {
 				break;
 			case 6:
 				check(self->m_tabs.size() == 1 && self->Viewer());
+				self->m_closedTabs.clear();
 				self->closeTab(self->m_tabs.front().tab);
 				check(self->m_tabs.empty() && !self->Viewer());
+				check(self->m_closedTabs.size() == 1);
+				self->reopenTab();
+				check(self->m_tabs.size() == 1 && self->m_closedTabs.empty());
+				break;
+			case 7: {
+				if (!viewer || !ready(*viewer)) {
+					return;
+				}
+				check(viewer->m_current == 0 && viewer != first.get());
+				const auto saved = self->Viewer();
+				const auto a = self->Tabs().SelectedItem();
+				self->openDocument(engine, L"tests/fixtures/long.pdf", {});
+				const auto b = self->Tabs().SelectedItem();
+				self->openDocument(engine, L"tests/fixtures/missing.pdf", {});
+				const auto c = self->Tabs().SelectedItem();
+				auto items = self->Tabs().TabItems();
+				auto order = [&](const auto& x, const auto& y, const auto& z) {
+					check(items.Size() == 3 && items.GetAt(0) == x &&
+					      items.GetAt(1) == y && items.GetAt(2) == z);
+					check(self->Tabs().SelectedItem() == a &&
+					      self->Viewer() == saved);
+				};
+				self->selectTabPosition(0);
+				self->moveTab(2);
+				order(b, c, a);
+				self->moveTab(0);
+				order(a, b, c);
+				self->moveTab(1);
+				order(b, a, c);
+				self->moveTab(0);
+				self->moveTab(-1);
+				self->moveTab(3);
+				self->selectTabPosition(8);
+				self->selectTabPosition(-1);
+				order(a, b, c);
+				self->selectTabPosition(2);
+				check(self->Tabs().SelectedItem() == c);
+				self->closeTab(c.as<TabViewItem>());
+				self->closeTab(b.as<TabViewItem>());
+				self->reopenTab();
+				check(self->m_tabs.back().path.filename() == L"long.pdf");
+				self->reopenTab();
+				check(self->m_tabs.back().path.filename() == L"missing.pdf");
+				self->closeTab(self->m_tabs.back().tab);
+				self->openDocument(engine, L"tests/fixtures/missing.pdf", {});
+				self->reopenTab();
+				check(self->m_tabs.size() == 3 && self->m_closedTabs.empty());
+				self->reopenTab();
+				check(self->m_tabs.size() == 3);
+				break;
+			}
+			case 8:
+				if (!viewer || !viewer->Message().IsOpen()) {
+					return;
+				}
+				while (!self->m_tabs.empty()) {
+					self->closeTab(self->m_tabs.back().tab);
+				}
+				check(!self->Viewer());
 				status.Text(
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
-				    L"error isolation, password activation, close/open, home");
+				    L"error isolation, password activation, home, reopen, "
+				    L"order");
 				timer.Stop();
 				return;
 			}

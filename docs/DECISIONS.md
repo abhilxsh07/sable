@@ -303,6 +303,26 @@ results arriving after the window closes are ignored. A picker failure
 gets an InfoBar instead of escaping the event handler. Opened PDFs keep
 their own file-error banners. Runtime keybind customization comes later.
 
+## Reopening and moving tabs (2026-10-15)
+
+Ctrl+Shift+T pops the last closed path from this window's history, including
+when the home screen is showing. Like NightPDF, it opens a fresh document
+at the default page and zoom; I don't keep the old viewer or password.
+An already-open path selects its tab and still consumes the history entry.
+Closing the window doesn't add its documents to the history.
+
+Ctrl+1 through Ctrl+8 select that position, Ctrl+9 selects the last tab.
+Ctrl+Shift+PageUp/PageDown move the current tab left/right, and
+Ctrl+Shift+Home/End move it to the first/last position. Missing positions
+and moves past either end do nothing. These use the visible strip's order,
+not the order documents were opened. Moving a header keeps the same viewer
+selected and skips intermediate selection events, so another tab's password
+prompt can't open during the move. Drag reordering is still to come.
+
+The SableTabsTest probe also checks fresh reopening from home, LIFO history,
+already-open paths, empty history, moves in both directions and invalid
+positions. The real keyboard checks cover the key mapping separately.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.

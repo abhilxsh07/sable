@@ -248,7 +248,7 @@ void MainWindow::setupTabKeys() {
 	using Windows::System::VirtualKey;
 	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
 		auto self = weak.get();
-		if (!self || !self->Viewer() || args.Handled() ||
+		if (!self || self->m_closing || args.Handled() ||
 		    (GetKeyState(VK_CONTROL) & 0x8000) == 0 ||
 		    (GetKeyState(VK_MENU) & 0x8000) != 0 ||
 		    (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
@@ -257,7 +257,34 @@ void MainWindow::setupTabKeys() {
 		}
 		const auto key = args.Key();
 		const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-		if (!shift && (key == VirtualKey::W || key == VirtualKey::F4)) {
+		// port of app/render/index.ts reopen/switch/move-tab (L214-328),
+		// with the default triggers in helpers/settings.cpp
+		if (shift && key == VirtualKey::T) {
+			self->reopenTab();
+			args.Handled(true);
+			return;
+		}
+		if (!self->Viewer()) {
+			return;
+		}
+		const int current = self->Tabs().SelectedIndex();
+		const int last = static_cast<int>(self->Tabs().TabItems().Size()) - 1;
+		if (!shift && key >= VirtualKey::Number1 &&
+		    key <= VirtualKey::Number9) {
+			const int position =
+			    static_cast<int>(key) - static_cast<int>(VirtualKey::Number1);
+			self->selectTabPosition(position == 8 ? last : position);
+			args.Handled(true);
+		} else if (shift &&
+		           (key == VirtualKey::PageUp || key == VirtualKey::PageDown ||
+		            key == VirtualKey::Home || key == VirtualKey::End)) {
+			const int target = key == VirtualKey::Home     ? 0
+			                   : key == VirtualKey::End    ? last
+			                   : key == VirtualKey::PageUp ? current - 1
+			                                               : current + 1;
+			self->moveTab(target);
+			args.Handled(true);
+		} else if (!shift && (key == VirtualKey::W || key == VirtualKey::F4)) {
 			self->closeTab(
 			    self->Tabs().SelectedItem().as<Controls::TabViewItem>());
 			args.Handled(true);
@@ -265,10 +292,7 @@ void MainWindow::setupTabKeys() {
 		           (!shift && (key == VirtualKey::PageUp ||
 		                       key == VirtualKey::PageDown))) {
 			const int direction = shift || key == VirtualKey::PageUp ? -1 : 1;
-			const int index = self->Tabs().SelectedIndex() + direction;
-			if (index >= 0 && index < static_cast<int>(self->m_tabs.size())) {
-				self->Tabs().SelectedIndex(index);
-			}
+			self->selectTabPosition(current + direction);
 			// TabView wraps by default; electron-tabs stopped at either end
 			args.Handled(true);
 		}
@@ -276,7 +300,7 @@ void MainWindow::setupTabKeys() {
 }
 
 void MainWindow::selectTab() {
-	if (m_closing) {
+	if (m_closing || m_movingTab) {
 		return;
 	}
 	const auto viewer = Viewer();
@@ -329,6 +353,8 @@ void MainWindow::closeTab(Controls::TabViewItem tab) {
 	if (m_closing || found == m_tabs.end()) {
 		return;
 	}
+	// port of app/helpers/file.ts close handler (L125-132)
+	m_closedTabs.push_back(found->path);
 	get_self<ViewerPage>(found->viewer)->close();
 	uint32_t index = 0;
 	if (Documents().Children().IndexOf(found->viewer, index)) {
@@ -338,6 +364,46 @@ void MainWindow::closeTab(Controls::TabViewItem tab) {
 	if (Tabs().TabItems().IndexOf(tab, index)) {
 		Tabs().TabItems().RemoveAt(index);
 	}
+	selectTab();
+}
+
+// the history holds paths, not viewers, passwords or old reading positions
+void MainWindow::reopenTab() {
+	if (m_closing || !m_engine || m_closedTabs.empty()) {
+		return;
+	}
+	auto path = std::move(m_closedTabs.back());
+	m_closedTabs.pop_back();
+	openDocument(*m_engine, path, std::nullopt);
+}
+
+void MainWindow::selectTabPosition(int index) {
+	if (!m_closing && index >= 0 &&
+	    index < static_cast<int>(Tabs().TabItems().Size())) {
+		Tabs().SelectedIndex(index);
+	}
+}
+
+void MainWindow::moveTab(int index) {
+	auto items = Tabs().TabItems();
+	const int current = Tabs().SelectedIndex();
+	if (m_closing || current < 0 || index == current || index < 0 ||
+	    index >= static_cast<int>(items.Size())) {
+		return;
+	}
+	const auto selected = Tabs().SelectedItem();
+	// only the strip changes order; the viewers stay mounted. Don't activate
+	// an intervening tab (and its password prompt) while I move the header.
+	m_movingTab = true;
+	try {
+		items.RemoveAt(static_cast<uint32_t>(current));
+		items.InsertAt(static_cast<uint32_t>(index), selected);
+		Tabs().SelectedItem(selected);
+	} catch (...) {
+		m_movingTab = false;
+		throw;
+	}
+	m_movingTab = false;
 	selectTab();
 }
 
