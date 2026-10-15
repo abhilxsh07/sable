@@ -93,6 +93,21 @@ loadSettings(const std::filesystem::path& path, const std::string& version,
 bool saveSettings(const std::filesystem::path& path,
                   const NightPDFSettings& settings);
 
+// one store per app, shared by its settings windows. Readers keep snapshots.
+class SettingsStore {
+  public:
+	SettingsStore(std::filesystem::path path, const std::string& version);
+	const NightPDFSettings& get() const {
+		return m_settings;
+	}
+	// a failed save leaves the current settings alone
+	bool setGeneral(const std::string& key, bool value);
+
+  private:
+	std::filesystem::path m_path;
+	NightPDFSettings m_settings;
+};
+
 // port of app/main/app.ts setkeybind() (L115-125)
 void setkeybind(NightPDFSettings& settings, const std::string& id,
                 const Keybinds& command);

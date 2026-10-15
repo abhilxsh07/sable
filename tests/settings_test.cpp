@@ -391,6 +391,39 @@ TEST_F(SettingsFiles, CorruptJsonGivesDefaults) {
 	          helpers::nightpdf_default_settings(kVersion));
 }
 
+TEST_F(SettingsFiles, StoreSavesGeneralWithoutReplacingKeybinds) {
+	auto settings = helpers::nightpdf_default_settings(kVersion);
+	settings.keybinds.at("OpenWindow").keybind =
+	    helpers::KeybindHelper::keybindFromTriggerArray({"Alt+O"});
+	ASSERT_TRUE(helpers::saveSettings(file(), settings));
+	helpers::SettingsStore store(file(), kVersion);
+	const auto snapshot = store.get();
+	ASSERT_TRUE(store.setGeneral("MaximizeOnOpen", false));
+	ASSERT_TRUE(store.setGeneral("DisplayThumbs", false));
+	EXPECT_EQ(store.get().keybinds, settings.keybinds);
+	EXPECT_TRUE(snapshot.general.MaximizeOnOpen);
+	EXPECT_TRUE(snapshot.general.DisplayThumbs);
+	EXPECT_FALSE(store.get().general.MaximizeOnOpen);
+	EXPECT_FALSE(store.get().general.DisplayThumbs);
+	EXPECT_EQ(helpers::loadSettings(file(), kVersion), store.get());
+	EXPECT_EQ(helpers::SettingsStore(file(), kVersion).get(), store.get());
+}
+
+TEST_F(SettingsFiles, StoreDoesNotWriteForAnUnknownKey) {
+	helpers::SettingsStore store(file(), kVersion);
+	EXPECT_FALSE(store.setGeneral("DisplayThumbnails", false));
+	EXPECT_FALSE(fs::exists(file()));
+	EXPECT_EQ(store.get(), helpers::nightpdf_default_settings(kVersion));
+}
+
+TEST_F(SettingsFiles, StoreKeepsItsStateWhenSavingFails) {
+	write(file("blocked"), "not a directory");
+	helpers::SettingsStore store(file("blocked") / "config.json", kVersion);
+	EXPECT_FALSE(store.setGeneral("MaximizeOnOpen", false));
+	EXPECT_TRUE(store.get().general.MaximizeOnOpen);
+	EXPECT_EQ(read(file("blocked")), "not a directory");
+}
+
 TEST_F(SettingsFiles, LoadMigratesAnOlderFile) {
 	Json j = defaultsJson();
 	j["version"] = "0.9.0";
