@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include "keybinds.h"
 #include "settings.h"
 
@@ -269,4 +271,70 @@ TEST(OrderedMap, KeepsInsertionOrder) {
 	EXPECT_TRUE(map.erase("b"));
 	EXPECT_FALSE(map.erase("b"));
 	EXPECT_EQ(map.size(), 1u);
+}
+
+namespace {
+unsigned testKey(const std::string& key) {
+	if (key.size() == 1) {
+		return static_cast<unsigned>(
+		    std::toupper(static_cast<unsigned char>(key[0])));
+	}
+	const std::vector<std::string> keys = {"Tab", "PageDown", "PageUp", "Home",
+	                                       "End", "F4",       "F8"};
+	const auto found = std::find(keys.begin(), keys.end(), key);
+	return found == keys.end()
+	           ? 0
+	           : 256 + static_cast<unsigned>(found - keys.begin());
+}
+} // namespace
+TEST(Shortcuts, EveryDefaultTriggerDispatchesItsActionAndData) {
+	const auto bindings =
+	    helpers::buildShortcuts(defaultsHelper("win32"), testKey);
+	std::size_t count = 0;
+	for (const auto& row : expectedDefaults()) {
+		for (const auto& trigger : row.triggers) {
+			const auto key = KeybindHelper::fromTrigger(trigger, "win32");
+			const unsigned modifiers =
+			    helpers::SHORTCUT_CTRL |
+			    (trigger.find("Shift") != std::string::npos
+			         ? helpers::SHORTCUT_SHIFT
+			         : 0);
+			const auto* match = helpers::matchShortcut(
+			    bindings, testKey(*key.getKey()), modifiers);
+			ASSERT_NE(match, nullptr) << trigger;
+			EXPECT_EQ(match->action, row.action);
+			EXPECT_EQ(match->data, row.data
+			                           ? std::optional<std::string>(row.data)
+			                           : std::nullopt);
+			++count;
+		}
+	}
+	EXPECT_EQ(bindings.size(), count);
+}
+TEST(Shortcuts, EditedClearedAndNullBindingsReplaceDefaultsOnRestart) {
+	auto settings = defaultsHelper("win32");
+	const auto old = helpers::buildShortcuts(settings, testKey);
+	settings.config.at("OpenWindow").keybind =
+	    KeybindHelper::keybindFromTriggerArray({"Alt+F8"});
+	settings.config.at("CloseWindow").keybind.clear();
+	settings.config.at("ReOpen").keybind = {helpers::Keybind{}};
+	const auto edited = helpers::buildShortcuts(settings, testKey);
+	EXPECT_EQ(helpers::matchShortcut(edited, 'T', helpers::SHORTCUT_CTRL),
+	          nullptr);
+	EXPECT_EQ(helpers::matchShortcut(edited, 'W', helpers::SHORTCUT_CTRL),
+	          nullptr);
+	EXPECT_EQ(helpers::matchShortcut(edited, 'T',
+	                                 helpers::SHORTCUT_CTRL |
+	                                     helpers::SHORTCUT_SHIFT),
+	          nullptr);
+	const auto* match =
+	    helpers::matchShortcut(edited, testKey("F8"), helpers::SHORTCUT_ALT);
+	ASSERT_NE(match, nullptr);
+	EXPECT_EQ(match->action, "openNewPDF");
+	EXPECT_EQ(
+	    helpers::matchShortcut(edited, testKey("F8"),
+	                           helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT),
+	    nullptr);
+	EXPECT_NE(helpers::matchShortcut(old, 'T', helpers::SHORTCUT_CTRL),
+	          nullptr);
 }

@@ -323,6 +323,19 @@ The SableTabsTest probe also checks fresh reopening from home, LIFO history,
 already-open paths, empty history, moves in both directions and invalid
 positions. The real keyboard checks cover the key mapping separately.
 
+## Configured window shortcuts (2026-10-15)
+
+I load the keybind store once per window and dispatch its action/data from
+PreviewKeyDown, ahead of document keys. Changes take effect after restart
+(Q7). Cleared bindings stay cleared. Ctrl+1-9 and the menu's Ctrl+O/P and
+Alt+S stay fixed; Print and Settings still wait for their UI. The settings
+window isn't needed to read an existing config.json. Windows resolves
+character keys using the active layout when the window is created.
+For a focus check, build with SableSurfaceTest=true and run with both
+SableTabsTest=true and SableShortcutTest=true. The two focus buttons and
+status use WinUI FocusManager, so the page box cannot mask the document
+focus in an accessibility snapshot. Clear all three variables afterwards.
+
 ## Still undecided
 
 - Whether to import settings from an existing NightPDF install.
