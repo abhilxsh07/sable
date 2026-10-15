@@ -18,9 +18,25 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
+#include "probe_result.h"
 
 // nothing to test yet, this just proves the test project builds and runs.
 // the real ones come with helpers/ (settings, keybinds, filter math)
 TEST(Sanity, GoogleTestRuns) {
 	EXPECT_EQ(2 + 2, 4);
+}
+
+TEST(ProbeResult, PendingAndFailedChecksCannotBecomeSuccessful) {
+	ProbeResult result;
+	EXPECT_NE(result.exitCode(), 0);
+	result.pass();
+	EXPECT_EQ(result.exitCode(), 0);
+	result.fail();
+	EXPECT_NE(result.exitCode(), 0);
+	result.pass();
+	EXPECT_NE(result.exitCode(), 0);
+	ProbeResult failed;
+	failed.fail();
+	failed.pass();
+	EXPECT_NE(failed.exitCode(), 0);
 }

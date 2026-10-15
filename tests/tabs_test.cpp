@@ -75,6 +75,7 @@ struct TabsTest {
 			return;
 		}
 		try {
+			check(probeCheck());
 			if (shortcuts) {
 				const auto current = self->Viewer();
 				const auto focus = Input::FocusManager::GetFocusedElement(
@@ -239,13 +240,15 @@ struct TabsTest {
 				    L"PASS: duplicate paths, per-tab page/zoom, shared filter, "
 				    L"error isolation, password activation, home, reopen, "
 				    L"order");
+				probePass(self.as<Window>());
 				timer.Stop();
 				return;
 			}
 			++step;
 			ticks = 0;
 		} catch (...) {
-			status.Text(L"FAIL at step " + to_hstring(step));
+			status.Text(L"FAIL at step " + to_hstring(step) + L": " +
+			            to_message());
 			if (auto current = self->Viewer()) {
 				const auto* viewer = get_self<ViewerPage>(current);
 				status.Text(status.Text() + L", page " +
@@ -253,6 +256,7 @@ struct TabsTest {
 				            to_hstring(viewer->m_zoom));
 			}
 			timer.Stop();
+			probeFail(status.Text());
 		}
 	}
 };
