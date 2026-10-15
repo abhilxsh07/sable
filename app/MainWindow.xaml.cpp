@@ -90,6 +90,20 @@ void MainWindow::InitializeComponent() {
 	setupTitleBar();
 	setupSliders();
 	setupZoomKeys();
+	setupTabKeys();
+	// see:
+	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view
+	Tabs().SelectionChanged([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->selectTab();
+		}
+	});
+	Tabs().TabCloseRequested([weak = get_weak()](auto&&, const auto& args) {
+		if (auto self = weak.get()) {
+			self->closeTab(args.Tab());
+		}
+	});
+
 	m_titleIcon = AppTitleBar().IconSource();
 	AppTitleBar().SizeChanged([weak = get_weak()](auto&&, auto&&) {
 		if (auto self = weak.get()) {
@@ -100,34 +114,169 @@ void MainWindow::InitializeComponent() {
 		}
 	});
 	// the document goes before App's PDFium engine does
-	Closed([this](auto&&, auto&&) { get_self<ViewerPage>(Viewer())->close(); });
+	Closed([this](auto&&, auto&&) {
+		m_closing = true;
+		for (const auto& entry : m_tabs) {
+			get_self<ViewerPage>(entry.viewer)->close();
+		}
+		Documents().Children().Clear();
+		Tabs().TabItems().Clear();
+		m_tabs.clear();
+	});
 }
 
 void MainWindow::openDocument(pdf::Engine& engine,
                               const std::filesystem::path& path,
                               std::optional<int> page) {
-	Nav().Visibility(Visibility::Collapsed);
-	Viewer().Visibility(Visibility::Visible);
-	Presets().Visibility(Visibility::Visible);
-	ResetZoomItem().IsEnabled(true);
-	ZoomInItem().IsEnabled(true);
-	ZoomOutItem().IsEnabled(true);
-	updateTitleBar();
-	get_self<ViewerPage>(Viewer())->setValues(m_values);
-	// app/helpers/file.ts openFile() (L60-66): DisplayThumbs added
-	// pagemode=thumbs, which opened pdf.js's sidebar on its thumbnails.
-	// Read only; nothing writes the file until the settings window does.
-	bool thumbnails = true;
-	try {
-		const auto file = configFile();
-		if (!file.empty()) {
-			thumbnails = helpers::loadSettings(file, helpers::versionString())
-			                 .general.DisplayThumbs;
-		}
-	} catch (...) {
-		// the defaults, like a missing file
+	if (m_closing) {
+		return;
 	}
-	get_self<ViewerPage>(Viewer())->open(engine, path, page, thumbnails);
+	m_engine = &engine;
+	// port of app/helpers/file.ts openFile() (L44-55): path.resolve, then
+	// select an existing tab rather than opening another copy
+	std::error_code ec;
+	auto resolved = std::filesystem::absolute(path, ec);
+	resolved = (ec ? path : resolved).lexically_normal();
+	for (const auto& entry : m_tabs) {
+		if (entry.path == resolved) {
+			Tabs().SelectedItem(entry.tab);
+			return;
+		}
+	}
+	auto viewer = make<ViewerPage>();
+	viewer.Visibility(Visibility::Collapsed);
+	viewer.Loaded([weak = get_weak()](auto&&, auto&&) {
+		if (auto self = weak.get()) {
+			self->DispatcherQueue().TryEnqueue([weak] {
+				if (auto window = weak.get()) {
+					window->selectTab();
+				}
+			});
+		}
+	});
+	Controls::TabViewItem tab;
+	Controls::TextBlock title;
+	// RTL puts the ellipsis at the start; the directional marks keep the
+	// filename's own text direction, as in file.ts
+	title.Text(L"\u202a" + path.filename().wstring() + L"\u202c");
+	title.FlowDirection(FlowDirection::RightToLeft);
+	title.TextTrimming(TextTrimming::CharacterEllipsis);
+	title.MaxWidth(200);
+	tab.Header(title);
+	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
+	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
+	get_self<ViewerPage>(viewer)->setValues(m_values);
+	m_tabs.push_back({resolved, tab, viewer, page});
+	Documents().Children().Append(viewer);
+	Tabs().TabItems().Append(tab);
+	Tabs().SelectedItem(tab);
+	selectTab();
+}
+
+winrt::Sable::ViewerPage MainWindow::Viewer() {
+	for (const auto& entry : m_tabs) {
+		if (entry.tab == Tabs().SelectedItem()) {
+			return entry.viewer;
+		}
+	}
+	return nullptr;
+}
+
+void MainWindow::setupTabKeys() {
+	using Windows::System::VirtualKey;
+	RootGrid().PreviewKeyDown([weak = get_weak()](auto&&, const auto& args) {
+		auto self = weak.get();
+		if (!self || !self->Viewer() || args.Handled() ||
+		    (GetKeyState(VK_CONTROL) & 0x8000) == 0 ||
+		    (GetKeyState(VK_MENU) & 0x8000) != 0 ||
+		    (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
+		    (GetKeyState(VK_RWIN) & 0x8000) != 0) {
+			return;
+		}
+		const auto key = args.Key();
+		const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+		if (!shift && (key == VirtualKey::W || key == VirtualKey::F4)) {
+			self->closeTab(
+			    self->Tabs().SelectedItem().as<Controls::TabViewItem>());
+			args.Handled(true);
+		} else if (key == VirtualKey::Tab ||
+		           (!shift && (key == VirtualKey::PageUp ||
+		                       key == VirtualKey::PageDown))) {
+			const int direction = shift || key == VirtualKey::PageUp ? -1 : 1;
+			const int index = self->Tabs().SelectedIndex() + direction;
+			if (index >= 0 && index < static_cast<int>(self->m_tabs.size())) {
+				self->Tabs().SelectedIndex(index);
+			}
+			// TabView wraps by default; electron-tabs stopped at either end
+			args.Handled(true);
+		}
+	});
+}
+
+void MainWindow::selectTab() {
+	if (m_closing) {
+		return;
+	}
+	const auto viewer = Viewer();
+	const bool hasDocument = viewer != nullptr;
+	Nav().Visibility(hasDocument ? Visibility::Collapsed : Visibility::Visible);
+	Documents().Visibility(hasDocument ? Visibility::Visible
+	                                   : Visibility::Collapsed);
+	Tabs().Visibility(hasDocument ? Visibility::Visible
+	                              : Visibility::Collapsed);
+	Presets().Visibility(hasDocument ? Visibility::Visible
+	                                 : Visibility::Collapsed);
+	ResetZoomItem().IsEnabled(hasDocument);
+	ZoomInItem().IsEnabled(hasDocument);
+	ZoomOutItem().IsEnabled(hasDocument);
+	DarkConfigurator().Visibility(Visibility::Collapsed);
+	updateTitleBar();
+	for (auto& entry : m_tabs) {
+		const bool selected = entry.viewer == viewer;
+		entry.viewer.Visibility(selected ? Visibility::Visible
+		                                 : Visibility::Collapsed);
+		if (!entry.viewer.IsLoaded()) {
+			continue;
+		}
+		if (!entry.opened) {
+			entry.opened = true;
+			bool thumbnails = true;
+			try {
+				const auto file = configFile();
+				if (!file.empty()) {
+					thumbnails =
+					    helpers::loadSettings(file, helpers::versionString())
+					        .general.DisplayThumbs;
+				}
+			} catch (...) {
+				// the defaults, like a missing file
+			}
+			get_self<ViewerPage>(entry.viewer)
+			    ->open(*m_engine, entry.path, entry.page, thumbnails);
+		}
+		if (selected) {
+			get_self<ViewerPage>(entry.viewer)->activate();
+		}
+	}
+}
+
+void MainWindow::closeTab(Controls::TabViewItem tab) {
+	const auto found =
+	    std::find_if(m_tabs.begin(), m_tabs.end(),
+	                 [&tab](const auto& entry) { return entry.tab == tab; });
+	if (m_closing || found == m_tabs.end()) {
+		return;
+	}
+	get_self<ViewerPage>(found->viewer)->close();
+	uint32_t index = 0;
+	if (Documents().Children().IndexOf(found->viewer, index)) {
+		Documents().Children().RemoveAt(index);
+	}
+	m_tabs.erase(found);
+	if (Tabs().TabItems().IndexOf(tab, index)) {
+		Tabs().TabItems().RemoveAt(index);
+	}
+	selectTab();
 }
 
 // port of app/main/app.ts createWindow() (L135-148), just the window part.
@@ -253,17 +402,23 @@ void MainWindow::setupZoomKeys() {
 
 void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
                              const RoutedEventArgs&) {
-	get_self<ViewerPage>(Viewer())->zoomReset();
+	if (auto viewer = Viewer()) {
+		get_self<ViewerPage>(viewer)->zoomReset();
+	}
 }
 
 void MainWindow::onZoomIn(const Windows::Foundation::IInspectable&,
                           const RoutedEventArgs&) {
-	get_self<ViewerPage>(Viewer())->zoomIn();
+	if (auto viewer = Viewer()) {
+		get_self<ViewerPage>(viewer)->zoomIn();
+	}
 }
 
 void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
                            const RoutedEventArgs&) {
-	get_self<ViewerPage>(Viewer())->zoomOut();
+	if (auto viewer = Viewer()) {
+		get_self<ViewerPage>(viewer)->zoomOut();
+	}
 }
 
 // View > Toggle Full Screen (Electron's togglefullscreen role)
@@ -369,7 +524,9 @@ void MainWindow::refreshSliders() {
 }
 
 void MainWindow::updateFilter() {
-	get_self<ViewerPage>(Viewer())->setValues(m_values);
+	for (const auto& entry : m_tabs) {
+		get_self<ViewerPage>(entry.viewer)->setValues(m_values);
+	}
 }
 
 // port of app/render/index.ts preset click handlers (L329-417)

@@ -152,6 +152,11 @@ struct State {
 // build with SableSurfaceTest=true, run from the repo root, then rebuild
 // without it. One fixture raster is repeated, not a 1,000-page PDF.
 Window surfaceTest(pdf::Engine& engine) {
+	wchar_t tabsProbe[5]{};
+	if (GetEnvironmentVariableW(L"SableTabsTest", tabsProbe, 5) == 4 &&
+	    std::wstring_view(tabsProbe) == L"true") {
+		return tabsTest(engine);
+	}
 	wchar_t errorProbe[5]{};
 	if (GetEnvironmentVariableW(L"SableErrorTest", errorProbe, 5) == 4 &&
 	    std::wstring_view(errorProbe) == L"true") {

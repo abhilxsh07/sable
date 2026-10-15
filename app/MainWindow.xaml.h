@@ -35,7 +35,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	MainWindow();
 	void InitializeComponent();
 
-	// shows path instead of the home screen, at page (1-based) if given
+	// adds a document tab, or selects the one already open for this path
 	void openDocument(pdf::Engine& engine, const std::filesystem::path& path,
 	                  std::optional<int> page);
 
@@ -68,9 +68,26 @@ struct MainWindow : MainWindowT<MainWindow> {
 	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
 
   private:
+#ifdef SABLE_SURFACE_TEST
+	friend struct TabsTest;
+#endif
+	struct DocumentTab {
+		std::filesystem::path path;
+		winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab;
+		winrt::Sable::ViewerPage viewer;
+		std::optional<int> page;
+		bool opened = false;
+	};
+	winrt::Sable::ViewerPage Viewer();
+	void selectTab();
+	void closeTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab);
+	std::vector<DocumentTab> m_tabs;
+	pdf::Engine* m_engine = nullptr;
+	bool m_closing = false;
 	void setupWindow();
 	void setupTitleBar();
 	void setupZoomKeys();
+	void setupTabKeys();
 	void updateTitleBar();
 	void setupSliders();
 	void refreshSliders();

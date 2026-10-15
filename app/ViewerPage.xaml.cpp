@@ -124,12 +124,27 @@ void ViewerPage::startOpen(const std::string& password) {
 	}
 }
 
+void ViewerPage::activate() {
+	if (m_closed || Visibility() != XVisibility::Visible) {
+		return;
+	}
+	if (const auto pending = std::exchange(m_passwordPending, std::nullopt)) {
+		askPassword(*pending);
+	} else if (m_layout && !m_passwordDialog) {
+		Scroller().Focus(FocusState::Programmatic);
+	}
+}
+
 // pdf.js's PasswordPrompt (password_prompt.js): the label, a masked box,
 // Cancel and OK. OK does nothing until something's typed, Enter is OK and
 // Esc is Cancel. The password goes to the open and isn't kept.
 fire_and_forget ViewerPage::askPassword(bool incorrect) {
 	auto weak = get_weak();
-	if (m_closed) {
+	if (m_closed || m_passwordDialog) {
+		co_return;
+	}
+	if (Visibility() != XVisibility::Visible) {
+		m_passwordPending = incorrect;
 		co_return;
 	}
 	if (!XamlRoot()) {

@@ -72,12 +72,11 @@ void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {
 	window = surfaceTest(m_pdf);
 #else
 	auto main = make_self<MainWindow>();
-	// port of app.ts's startup (L394-410): open the first PDF given, at -p.
-	// --help, --version and more than one file wait for the shell.
+	// port of app.ts's startup (L394-410): each file opens at -p.
+	// --help and --version wait for the rest of the CLI dispatch.
 	const auto cli = helpers::parseCli(commandLineArgs());
-	if (!cli.files.empty()) {
-		main->openDocument(m_pdf, to_hstring(cli.files.front()).c_str(),
-		                   cli.page);
+	for (const auto& file : cli.files) {
+		main->openDocument(m_pdf, to_hstring(file).c_str(), cli.page);
 	}
 	window = main.as<Window>();
 #endif
