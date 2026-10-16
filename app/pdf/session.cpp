@@ -177,6 +177,33 @@ bool Session::render(PageKey key, std::function<void(RenderResult)> callback) {
 	return true;
 }
 
+bool Session::linkAt(int page, double x, double y,
+                     std::function<void(LinkResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, page, x, y, callback = std::move(callback)] {
+		LinkResult result;
+		try {
+			if (!state->closed()) {
+				result.link = state->m_document->linkAt(page, x, y);
+			}
+		} catch (...) {
+			result.link.reset();
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.link.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 void Session::cancelRender() {
 	std::lock_guard lock(m_state->m_mutex);
 	++m_state->m_generation;

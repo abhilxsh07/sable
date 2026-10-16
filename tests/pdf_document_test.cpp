@@ -322,6 +322,65 @@ TEST_F(PdfDocumentTest, ABufferTakesAPasswordToo) {
 	EXPECT_EQ(opened.pageCount, 1);
 }
 
+TEST_F(PdfDocumentTest, LinksUseDisplayedCoordinatesAndRejectOtherActions) {
+	const auto links =
+	    engine
+	        .run([] {
+		        auto opened = pdf::openFile("tests/fixtures/links.pdf");
+		        std::vector<std::optional<pdf::Link>> result;
+		        if (!opened.document) {
+			        return result;
+		        }
+		        for (int row = 0; row < 7; ++row) {
+			        result.push_back(opened.document->linkAt(
+			            0, 80.0 / 360, (570.0 - (520 - row * 80)) / 540));
+		        }
+		        result.push_back(
+		            opened.document->linkAt(1, 140.0 / 500, 60.0 / 300));
+		        result.push_back(
+		            opened.document->linkAt(1, 140.0 / 500, 160.0 / 300));
+		        result.push_back(
+		            opened.document->linkAt(1, 250.0 / 500, 60.0 / 300));
+		        result.push_back(opened.document->linkAt(0, 0.9, 0.1));
+		        result.push_back(opened.document->linkAt(-1, 0, 0));
+		        result.push_back(opened.document->linkAt(2, 0, 0));
+		        result.push_back(opened.document->linkAt(0, -0.1, 0));
+		        return result;
+	        })
+	        .get();
+	ASSERT_EQ(links.size(), 14u);
+	ASSERT_TRUE(links[0]);
+	EXPECT_EQ(links[0]->uri, "https://example.com/sable?x=1#part");
+	ASSERT_TRUE(links[1] && links[1]->destination);
+	const auto xyz = *links[1]->destination;
+	EXPECT_EQ(xyz.page, 1);
+	ASSERT_TRUE(xyz.x && xyz.y && xyz.zoom);
+	EXPECT_NEAR(*xyz.x, 0.8, 0.00001);
+	EXPECT_NEAR(*xyz.y, 0.2, 0.00001);
+	EXPECT_EQ(*xyz.zoom, 2);
+	ASSERT_TRUE(links[2] && links[2]->destination);
+	EXPECT_EQ(links[2]->destination->fit, pdf::LinkFit::Page);
+	ASSERT_TRUE(links[3] && links[3]->destination);
+	EXPECT_EQ(links[3]->destination->fit, pdf::LinkFit::Width);
+	EXPECT_FALSE(links[4]);
+	EXPECT_FALSE(links[5]);
+	EXPECT_FALSE(links[6]);
+	ASSERT_TRUE(links[7]);
+	EXPECT_EQ(links[7]->uri, "HTTP://example.com/rotated");
+	ASSERT_TRUE(links[8] && links[8]->destination);
+	EXPECT_FALSE(links[8]->destination->x);
+	EXPECT_FALSE(links[8]->destination->zoom);
+	ASSERT_TRUE(links[8]->destination->y);
+	EXPECT_NEAR(*links[8]->destination->y, 370.0 / 540, 0.00001);
+	ASSERT_TRUE(links[9] && links[9]->destination);
+	EXPECT_EQ(links[9]->destination->fit, pdf::LinkFit::Rectangle);
+	EXPECT_NEAR(links[9]->destination->width, 160.0 / 360, 0.00001);
+	EXPECT_NEAR(links[9]->destination->height, 300.0 / 540, 0.00001);
+	for (std::size_t i = 10; i < links.size(); ++i) {
+		EXPECT_FALSE(links[i]);
+	}
+}
+
 // None is the first error in the enum and Unknown the last. errorMessage never
 // touches PDFium, but it goes through the engine like the rest so every pdf::
 // call in this file follows the same rule.

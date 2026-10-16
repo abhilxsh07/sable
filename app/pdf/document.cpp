@@ -20,11 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "document.h"
 
 #include <cassert>
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <fstream>
 #include <memory>
 #include <system_error>
 
 #include <fpdf_doc.h>
+#include <fpdf_edit.h>
 #include <fpdfview.h>
 
 #include "engine.h"
@@ -272,5 +276,138 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, height,
 	                      rotation, FPDF_ANNOT);
 	return out;
+}
+std::optional<Link> Document::linkAt(int index, double x, double y) const {
+	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle) ||
+	    !std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 ||
+	    y > 1) {
+		return std::nullopt;
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	// a fixed device grid preserves sub-pixel accuracy without UI/DPI state
+	constexpr int GRID = 1 << 20;
+	double px = 0, py = 0;
+	if (!page ||
+	    !FPDF_DeviceToPage(page.get(), 0, 0, GRID, GRID, 0,
+	                       static_cast<int>(std::lround(x * GRID)),
+	                       static_cast<int>(std::lround(y * GRID)), &px, &py)) {
+		return std::nullopt;
+	}
+	const auto link = FPDFLink_GetLinkAtPoint(page.get(), px, py);
+	if (!link) {
+		return std::nullopt;
+	}
+	auto dest = FPDFLink_GetDest(m_handle, link);
+	const auto action = FPDFLink_GetAction(link);
+	const auto type =
+	    action ? FPDFAction_GetType(action) : PDFACTION_UNSUPPORTED;
+	if (action && type != PDFACTION_GOTO && type != PDFACTION_URI) {
+		return std::nullopt;
+	}
+	if (!dest && type == PDFACTION_GOTO) {
+		dest = FPDFAction_GetDest(m_handle, action);
+	}
+	if (!dest) {
+		if (type != PDFACTION_URI) {
+			return std::nullopt;
+		}
+		const auto size = FPDFAction_GetURIPath(m_handle, action, nullptr, 0);
+		if (size < 2 || size > 1024 * 1024) {
+			return std::nullopt;
+		}
+		std::string uri(size, '\0');
+		if (FPDFAction_GetURIPath(m_handle, action, uri.data(), size) != size ||
+		    uri.back() != '\0') {
+			return std::nullopt;
+		}
+		uri.pop_back();
+		if (std::any_of(uri.begin(), uri.end(), [](unsigned char c) {
+			    return c < 0x20 || c == 0x7f;
+		    })) {
+			return std::nullopt;
+		}
+		auto prefix = uri.substr(0, 8);
+		std::transform(
+		    prefix.begin(), prefix.end(), prefix.begin(),
+		    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (!prefix.starts_with("https://") && !prefix.starts_with("http://")) {
+			return std::nullopt;
+		}
+		return Link{std::nullopt, std::move(uri)};
+	}
+	LinkDestination target;
+	target.page = FPDFDest_GetDestPageIndex(m_handle, dest);
+	if (target.page < 0 || target.page >= FPDF_GetPageCount(m_handle)) {
+		return std::nullopt;
+	}
+	PagePtr destination(FPDF_LoadPage(m_handle, target.page));
+	if (!destination) {
+		return std::nullopt;
+	}
+	unsigned long count = 0;
+	float params[4]{};
+	const auto view = FPDFDest_GetView(dest, &count, params);
+	if (count > 4 || !std::all_of(params, params + count, [](float value) {
+		    return std::isfinite(value);
+	    })) {
+		return std::nullopt;
+	}
+	if (!FPDF_DeviceToPage(destination.get(), 0, 0, GRID, GRID, 0, 0, 0, &px,
+	                       &py)) {
+		return std::nullopt;
+	}
+	FPDF_BOOL hasX = false, hasY = false, hasZoom = false;
+	float dx = 0, dy = 0, zoom = 0;
+	if (view == PDFDEST_VIEW_XYZ) {
+		FPDFDest_GetLocationInPage(dest, &hasX, &hasY, &hasZoom, &dx, &dy,
+		                           &zoom);
+		if (hasZoom && std::isfinite(zoom) && zoom > 0) {
+			target.zoom = zoom;
+		}
+	} else if (view == PDFDEST_VIEW_FIT || view == PDFDEST_VIEW_FITB) {
+		target.fit = LinkFit::Page;
+	} else if (view == PDFDEST_VIEW_FITH || view == PDFDEST_VIEW_FITBH) {
+		target.fit = LinkFit::Width;
+		hasY = count > 0;
+		dy = params[0];
+	} else if (view == PDFDEST_VIEW_FITV || view == PDFDEST_VIEW_FITBV) {
+		target.fit = LinkFit::Height;
+		hasX = count > 0;
+		dx = params[0];
+	} else if (view == PDFDEST_VIEW_FITR && count == 4) {
+		target.fit = LinkFit::Rectangle;
+	}
+	if ((hasX && !std::isfinite(dx)) || (hasY && !std::isfinite(dy))) {
+		return std::nullopt;
+	}
+	int ax = 0, ay = 0, bx = 0, by = 0;
+	if (target.fit == LinkFit::Rectangle) {
+		if (!FPDF_PageToDevice(destination.get(), 0, 0, GRID, GRID, 0,
+		                       params[0], params[1], &ax, &ay) ||
+		    !FPDF_PageToDevice(destination.get(), 0, 0, GRID, GRID, 0,
+		                       params[2], params[3], &bx, &by)) {
+			return std::nullopt;
+		}
+		target.x = static_cast<double>((std::min)(ax, bx)) / GRID;
+		target.y = static_cast<double>((std::min)(ay, by)) / GRID;
+		target.width = std::abs(static_cast<double>(bx) - ax) / GRID;
+		target.height = std::abs(static_cast<double>(by) - ay) / GRID;
+		if (target.width <= 0 || target.height <= 0) {
+			return std::nullopt;
+		}
+	} else if (hasX || hasY) {
+		if (!FPDF_PageToDevice(destination.get(), 0, 0, GRID, GRID, 0,
+		                       hasX ? dx : px, hasY ? dy : py, &ax, &ay)) {
+			return std::nullopt;
+		}
+		const bool swapped = FPDFPage_GetRotation(destination.get()) % 2 != 0;
+		if (swapped ? hasY : hasX) {
+			target.x = static_cast<double>(ax) / GRID;
+		}
+		if (swapped ? hasX : hasY) {
+			target.y = static_cast<double>(ay) / GRID;
+		}
+	}
+	return Link{target, {}};
 }
 } // namespace pdf

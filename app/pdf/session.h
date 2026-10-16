@@ -39,6 +39,10 @@ struct RenderResult {
 	std::optional<Bitmap> bitmap;
 	bool canceled = false;
 };
+struct LinkResult {
+	std::optional<Link> link;
+	bool canceled = false;
+};
 
 // The UI owns this, but the document stays on the engine thread. Engine must
 // outlive the session and its callbacks; work posted while it shuts down is
@@ -57,6 +61,8 @@ class Session {
 	// Callbacks run once on the engine thread, also for errors/cancellation.
 	// A callback may request the next render; its exceptions stop only itself.
 	bool render(PageKey key, std::function<void(RenderResult)> callback);
+	bool linkAt(int page, double x, double y,
+	            std::function<void(LinkResult)> callback);
 	// doesn't interrupt PDFium; it discards that job's result when it finishes.
 	// The slot stays busy until the canceled job calls back. A render that had
 	// already finished can still arrive uncanceled, so check its key.

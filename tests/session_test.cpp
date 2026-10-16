@@ -173,6 +173,37 @@ class SessionTest : public ::testing::Test {
 	std::vector<fs::path> m_dirs;
 };
 
+TEST_F(SessionTest, LinksReturnOnTheEngineThreadAndCloseCancelsQueuedClicks) {
+	pdf::Session session(engine);
+	Reply<pdf::LinkResult> unused;
+	EXPECT_FALSE(session.linkAt(0, 0, 0, unused.callback()));
+	ASSERT_EQ(open(session, fixturePath("links.pdf")).error, pdf::Error::None);
+	Reply<pdf::LinkResult> reply;
+	auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.linkAt(
+	    0, 80.0 / 360, 50.0 / 540,
+	    [onThread, callback = reply.callback()](pdf::LinkResult result) {
+		    *onThread = pdf::Engine::onThread();
+		    callback(std::move(result));
+	    }));
+	const auto result = reply.wait();
+	ASSERT_TRUE(result && result->link);
+	EXPECT_TRUE(*onThread);
+	EXPECT_FALSE(result->canceled);
+	EXPECT_EQ(result->link->uri, "https://example.com/sable?x=1#part");
+	Gate gate(engine);
+	Reply<pdf::LinkResult> canceled;
+	ASSERT_TRUE(
+	    session.linkAt(0, 80.0 / 360, 130.0 / 540, canceled.callback()));
+	session.close();
+	gate.open();
+	const auto late = canceled.wait();
+	ASSERT_TRUE(late);
+	EXPECT_TRUE(late->canceled);
+	EXPECT_FALSE(late->link);
+	EXPECT_FALSE(session.linkAt(0, 0, 0, unused.callback()));
+}
+
 TEST_F(SessionTest, OpensAFileAndListsItsPages) {
 	pdf::Session session(engine);
 	const auto info = open(session, fixturePath("pages.pdf"));
