@@ -624,3 +624,33 @@ The generated links.pdf fixture has cropped and rotated pages, internal and
 external targets, null XYZ values and unsupported actions. SableLinkTest=true
 with SableTabsTest=true runs the native check without WinRT drop-file access.
 That build intercepts browser launches so the check cannot open web pages.
+
+## Unfiltered printing (2026-10-16)
+
+Menu > File > Print and the fixed Ctrl+P shortcut print the active tab. The
+classic PrintDlgExW dialog runs on the UI thread with the reader as owner;
+PDFium rendering and GDI spooling run on the engine thread. This keeps the
+native modal dialog on its owning UI thread and every PDFium call serialized.
+The selected document and current page are captured before the dialog opens.
+
+All pages, current page and up to 32 native page ranges are supported. Ranges
+use physical 1-based page numbers and overlapping ranges print each page once.
+The returned printer DC handles copies and collation through
+[PD_USEDEVMODECOPIESANDCOLLATE](https://learn.microsoft.com/en-us/windows/win32/api/commdlg/ns-commdlg-printdlgexw).
+Each page fits and centers inside the printable area, preserving physical
+aspect even when horizontal and vertical printer DPI differ. Paper size and
+orientation come from the printer dialog; mixed-size pages fit that paper.
+
+FPDF_RenderPage uses FPDF_ANNOT | FPDF_PRINTING directly on the printer DC.
+Neither the GPU filter nor the screen cache enters this path. The print.pdf
+fixture verifies original red/green colors and excludes a screen-only blue
+annotation; another check covers page rotation. Render, StartPage, EndPage
+and EndDoc failures abort the job. Closing the document cancels queued jobs
+and aborts an active job between pages; it cannot interrupt a blocking driver
+call. A long print job occupies the shared engine until it finishes or aborts.
+
+SablePrintTest=true with SableTabsTest=true checks menu/accelerator wiring,
+active-document snapshots, cancel/reentry, error recovery and home state.
+It substitutes dialog results and never submits a printer job. Windows denies
+printer discovery through CIM in this sandbox, so actual dialog interaction,
+copies/collation, paper output and virtual PDF-printer output remain unverified.
