@@ -162,6 +162,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ClInclude Include="pch.h" />
 		<ClInclude Include="SettingsWindow.h" />
+		<ClInclude Include="Notifications.h" />
 		<ClInclude Include="App.xaml.h">
 			<DependentUpon>App.xaml</DependentUpon>
 		</ClInclude>
@@ -190,6 +191,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<DependentUpon>App.xaml</DependentUpon>
 		</ClCompile>
 		<ClCompile Include="SettingsWindow.cpp" />
+		<ClCompile Include="Notifications.cpp" />
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
 		</ClCompile>
@@ -204,6 +206,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- helpers/ is plain C++ with no WinRT in it, so it stays out of the pch -->
 	<ItemGroup>
 		<ClInclude Include="helpers\version.h" />
+		<ClInclude Include="helpers\logging.h" />
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="helpers\zoom.h" />
 		<ClInclude Include="helpers\navigation.h" />
@@ -225,6 +228,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<ItemGroup>
 		<ClCompile Include="helpers\version.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="helpers\logging.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="helpers\layout.cpp">

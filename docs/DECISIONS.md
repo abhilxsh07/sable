@@ -654,3 +654,34 @@ active-document snapshots, cancel/reentry, error recovery and home state.
 It substitutes dialog results and never submits a printer job. Windows denies
 printer discovery through CIM in this sandbox, so actual dialog interaction,
 copies/collation, paper output and virtual PDF-printer output remain unverified.
+
+## File diagnostics and notification shortcut (2026-10-17)
+
+The reader uses spdlog's thread-safe rotating file sink under
+%LOCALAPPDATA%\Sable\logs. Files are separate per process so independent
+reader launches cannot race each other's rotation. Each process keeps a
+2 MiB file and three backups; old process logs are retained. Nonempty DEBUG
+enables debug entries, including the value "0", matching Node's environment
+truthiness. Debug builds also use the debugger sink. Writes flush immediately
+and failures remain nonfatal. Startup, reader lifetime, session failures,
+settings saves, viewer notices and uncaught engine/XAML exceptions are logged.
+
+Only logging.cpp includes spdlog, in header-only mode with std::format and
+wide filenames. This supports Unicode log paths without mixing the installed
+spdlog binary's narrow-filename configuration into the app. CLI help/version
+return before log or notification initialization.
+
+Nonempty EASTER_EGG adds Shift+Alt+T to each reader. Repeat keydown is ignored,
+and the original title/body, including the flag's exact Unicode code points,
+are retained. The Windows App SDK service is shared by the application. It
+registers before activation arguments are read, so notification activation
+opens or focuses a reader rather than treating activation arguments as files.
+Live activation returns through the UI dispatcher; shutdown unregisters the
+handler. Registration/display failures are logged without terminating the app.
+Native checks substitute the send callback and verify the real SDK payload;
+actual Windows notification delivery and click activation remain unverified.
+
+Printing and browser-launch failures now use a closable notice. The previous
+fatal viewer error path hid the pages and rail. Fatal open/render failures
+retain that behavior; native checks verify that recoverable failures leave
+the PDF visible, and the last-tab state restores home with Print disabled.

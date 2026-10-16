@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include "MainWindow.g.h"
+#include <functional>
 #include "HomePage.xaml.h"
 #include "ViewerPage.xaml.h"
 #include "helpers/keybinds.h"
@@ -49,6 +50,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onPrint(const winrt::Windows::Foundation::IInspectable&,
 	             const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void setEasterEgg(std::function<void()> notify);
 
 	void setEngine(pdf::Engine& engine) {
 		m_engine = &engine;
@@ -117,6 +119,9 @@ struct MainWindow : MainWindowT<MainWindow> {
 	bool m_closing = false;
 	bool m_picking = false;
 	bool m_printing = false;
+	std::function<void()> m_easterEgg;
+	bool m_easterEggInstalled = false;
+	void showEasterEgg();
 	bool m_movingTab = false;
 	void setupWindow();
 	void setupTitleBar();

@@ -41,7 +41,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "helpers/settings.h"
 #include "helpers/version.h"
+#include "helpers/logging.h"
 #include "SettingsWindow.h"
+#include "Notifications.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Windowing;
@@ -313,6 +315,8 @@ void MainWindow::setupOpen() {
 fire_and_forget MainWindow::pickDocuments() {
 	weak_ref<MainWindow> weak;
 	const auto report = [&weak](const wchar_t* message) noexcept {
+		diagnostics::write(diagnostics::Level::Error,
+		                   "Couldn't open the PDF picker");
 		OutputDebugStringW(L"PDF picker: ");
 		OutputDebugStringW(message);
 		OutputDebugStringW(L"\n");
@@ -367,6 +371,8 @@ fire_and_forget MainWindow::dropDocuments(
     Windows::ApplicationModel::DataTransfer::DataPackageView data) {
 	weak_ref<MainWindow> weak;
 	const auto report = [&weak](const wchar_t* message) noexcept {
+		diagnostics::write(diagnostics::Level::Error,
+		                   "Couldn't read dropped files");
 		OutputDebugStringW(L"Dropped files: ");
 		OutputDebugStringW(message);
 		OutputDebugStringW(L"\n");
@@ -506,6 +512,14 @@ void MainWindow::setupTabKeys() {
 		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
 		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
 		const auto key = static_cast<unsigned>(args.Key());
+		if (self->m_easterEgg && key == 'T' &&
+		    modifiers == (helpers::SHORTCUT_ALT | helpers::SHORTCUT_SHIFT)) {
+			if (!args.KeyStatus().WasKeyDown) {
+				self->showEasterEgg();
+			}
+			args.Handled(true);
+			return;
+		}
 		// these belong to NightPDF's fixed menu, not the settings store
 		if (modifiers == helpers::SHORTCUT_CTRL && key >= '1' && key <= '9') {
 			self->selectTabPosition(
@@ -706,6 +720,34 @@ void MainWindow::updateTabWidths() {
 
 std::filesystem::path MainWindow::settingsPath() {
 	return configFile();
+}
+
+void MainWindow::setEasterEgg(std::function<void()> notify) {
+	m_easterEgg = std::move(notify);
+	if (m_easterEggInstalled || !m_easterEgg) {
+		return;
+	}
+	m_easterEggInstalled = true;
+	Input::KeyboardAccelerator key;
+	key.Key(Windows::System::VirtualKey::T);
+	key.Modifiers(Windows::System::VirtualKeyModifiers::Shift |
+	              Windows::System::VirtualKeyModifiers::Menu);
+	key.Invoked([weak = get_weak()](auto&&, const auto& args) {
+		if (auto self = weak.get(); self && self->m_easterEgg) {
+			self->showEasterEgg();
+			args.Handled(true);
+		}
+	});
+	RootGrid().KeyboardAccelerators().Append(key);
+}
+
+void MainWindow::showEasterEgg() {
+	if (m_closing || !m_easterEgg) {
+		return;
+	}
+	diagnostics::write(diagnostics::Level::Info,
+	                   winrt::to_string(notices::BODY));
+	m_easterEgg();
 }
 
 void MainWindow::onPrint(const Windows::Foundation::IInspectable&,

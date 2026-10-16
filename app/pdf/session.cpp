@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "engine.h"
 #include "printing.h"
+#include "../helpers/logging.h"
 
 namespace pdf {
 struct Session::State {
@@ -120,6 +121,13 @@ bool Session::open(const std::filesystem::path& path,
 			}
 			// failed/canceled documents die here, before the callback
 			opened.document.reset();
+			if (!info.canceled) {
+				diagnostics::write(
+				    info.error == Error::None ? diagnostics::Level::Debug
+				                              : diagnostics::Level::Warning,
+				    info.error == Error::None ? "PDF session opened"
+				                              : errorMessage(info.error));
+			}
 			callback(std::move(info));
 		});
 	} catch (...) {

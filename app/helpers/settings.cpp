@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // see:
 // https://github.com/Lunarequest/NightPDF/blob/mistress/app/helpers/settings.ts
 #include "settings.h"
+#include "logging.h"
 
 #include <cctype>
 
@@ -583,9 +584,12 @@ bool SettingsStore::setGeneral(const std::string& key, bool value) {
 		return false;
 	}
 	if (!saveSettings(m_path, settings)) {
+		diagnostics::write(diagnostics::Level::Error,
+		                   "Couldn't save General settings");
 		return false;
 	}
 	m_settings = std::move(settings);
+	diagnostics::write(diagnostics::Level::Debug, "General settings saved");
 	return true;
 }
 
@@ -598,9 +602,12 @@ bool SettingsStore::setKeybind(const std::string& id, const Keybinds& command) {
 	const Json json = settings;
 	if (!isValidSection("keybinds", json.at("keybinds")) ||
 	    !saveSettings(m_path, settings)) {
+		diagnostics::write(diagnostics::Level::Error,
+		                   "Couldn't save keybind settings");
 		return false;
 	}
 	m_settings = std::move(settings);
+	diagnostics::write(diagnostics::Level::Debug, "Keybind settings saved");
 	return true;
 }
 

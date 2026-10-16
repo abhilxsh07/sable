@@ -21,17 +21,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../app/App.xaml.h"
 #include "../app/SettingsWindow.h"
 #include "../app/helpers/version.h"
+#include "../app/helpers/logging.h"
 #include "../app/MainWindow.xaml.h"
 #include "../app/pdf/engine.h"
 #include "../app/pdf/printing.h"
 #include "surface_test.h"
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <microsoft.ui.xaml.window.h>
 #include <stdexcept>
 #include <string_view>
 #include <winrt/Windows.Storage.h>
+#include <winrt/Windows.System.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 
 using namespace winrt;
@@ -51,6 +55,7 @@ struct TabsTest {
 	bool filtersOnly = false;
 	bool linksOnly = false;
 	bool printOnly = false;
+	bool finishOnly = false;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -513,6 +518,10 @@ struct TabsTest {
 			owner.onPrint({}, {});
 			check(!owner.m_printing && viewer.Message().IsOpen(),
 			      "print dialog failure");
+			check(viewer.Scroller().Visibility() == Visibility::Visible &&
+			          viewer.Rail().Visibility() == Visibility::Visible &&
+			          viewer.Message().IsClosable(),
+			      "print failure hid the document");
 			viewer.Message().IsOpen(false);
 			viewer.m_printDialog = [](void*, int, int, const std::wstring&) {
 				pdf::PrintJob job;
@@ -529,11 +538,22 @@ struct TabsTest {
 		case 2:
 			check(viewer.Message().IsOpen() && owner.PrintItem().IsEnabled(),
 			      "print job failure/reset");
+			check(viewer.Scroller().Visibility() == Visibility::Visible,
+			      "spool failure hid the document");
+			viewer.Message().IsOpen(false);
+			viewer.openLink("");
+			check(viewer.Message().IsOpen() && viewer.Message().IsClosable() &&
+			          viewer.Scroller().Visibility() == Visibility::Visible,
+			      "invalid browser link hid the document");
 			viewer.m_printDialog = {};
 			while (!owner.m_tabs.empty()) {
 				owner.closeTab(owner.m_tabs.back().tab);
 			}
 			check(!owner.PrintItem().IsEnabled(), "print enabled on home");
+			check(owner.Tabs().Visibility() == Visibility::Collapsed &&
+			          owner.Nav().Visibility() == Visibility::Visible &&
+			          owner.Documents().Visibility() == Visibility::Collapsed,
+			      "last-tab home state");
 			owner.onPrint({}, {});
 			check(!owner.m_printing, "print without document");
 			status.Text(L"PASS: print menu/accelerator, active tab/current "
@@ -544,6 +564,67 @@ struct TabsTest {
 		}
 		++step;
 		ticks = 0;
+	}
+	void finishTick(MainWindow& owner) {
+		check(Application::Current().RequestedTheme() ==
+		              ApplicationTheme::Dark &&
+		          owner.RootGrid().ActualTheme() == ElementTheme::Dark,
+		      "reader did not force dark theme");
+		const auto xml = notices::Service::notification().Payload();
+		const std::wstring_view payload(xml.c_str(), xml.size());
+		check(payload.find(notices::TITLE) != std::wstring_view::npos &&
+		          payload.find(notices::BODY) != std::wstring_view::npos,
+		      "notification payload changed");
+		check(!owner.m_easterEgg, "notification enabled without opt-in");
+		owner.showEasterEgg();
+		int calls = 0;
+		const auto before = owner.RootGrid().KeyboardAccelerators().Size();
+		owner.setEasterEgg([&calls] { ++calls; });
+		owner.setEasterEgg([&calls] { ++calls; });
+		check(owner.RootGrid().KeyboardAccelerators().Size() == before + 1,
+		      "duplicate notification accelerator");
+		const auto key = owner.RootGrid().KeyboardAccelerators().GetAt(before);
+		check(key.Key() == Windows::System::VirtualKey::T &&
+		          key.Modifiers() ==
+		              (Windows::System::VirtualKeyModifiers::Shift |
+		               Windows::System::VirtualKeyModifiers::Menu),
+		      "notification shortcut");
+		owner.showEasterEgg();
+		check(calls == 1, "notification dispatch");
+		owner.setEasterEgg({});
+		owner.showEasterEgg();
+		check(calls == 1, "disabled notification dispatch");
+		check(!diagnostics::environmentEnabled(L"EASTER_EGG"),
+		      "finish test requires EASTER_EGG unset");
+		peerWindow = app.createWindow();
+		check(!peerWindow->m_easterEgg,
+		      "app enabled notification without environment flag");
+		peerWindow->Close();
+		SetEnvironmentVariableW(L"EASTER_EGG", L"0");
+		try {
+			peerWindow = app.createWindow();
+		} catch (...) {
+			SetEnvironmentVariableW(L"EASTER_EGG", nullptr);
+			throw;
+		}
+		SetEnvironmentVariableW(L"EASTER_EGG", nullptr);
+		check(static_cast<bool>(peerWindow->m_easterEgg),
+		      "app ignored nonempty notification environment flag");
+		peerWindow->Close();
+		diagnostics::write(diagnostics::Level::Info, "native logging marker");
+		const auto file =
+		    std::filesystem::temp_directory_path() / L"Sable-probe-logs" /
+		    (L"Sable-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+		std::ifstream input(file, std::ios::binary);
+		const std::string log{std::istreambuf_iterator<char>(input), {}};
+		check(log.find("native logging marker") != std::string::npos &&
+		          log.find("Verbose logging enabled") != std::string::npos &&
+		          log.find(to_string(notices::BODY)) != std::string::npos,
+		      "startup/debug/notification file logging");
+		status.Text(L"PASS: opt-in notification shortcut/payload and "
+		            L"startup/debug/file logging");
+		probePass(owner.get_strong().as<Window>());
+		timer.Stop();
 	}
 	void tick() {
 		auto self = window.get();
@@ -578,6 +659,10 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (finishOnly) {
+				finishTick(*self);
+				return;
 			}
 			if (printOnly) {
 				printTick(*self);
@@ -1043,10 +1128,12 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                   std::wstring_view(mode) == L"true";
 	state->printOnly = GetEnvironmentVariableW(L"SablePrintTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->finishOnly = GetEnvironmentVariableW(L"SableFinishTest", mode, 8) &&
+	                    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
-	    state->printOnly) {
+	    state->printOnly || state->finishOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1102,7 +1189,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/print.pdf", {});
 	} else if (state->linksOnly) {
 		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
-	} else if (!state->settingsOnly) {
+	} else if (!state->settingsOnly && !state->finishOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
 		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);

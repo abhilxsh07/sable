@@ -76,7 +76,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		</ClCompile>
 		<Link>
 			<SubSystem>Console</SubSystem>
-			<AdditionalDependencies>gtest.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalDependencies>gtest.lib;shell32.lib;ole32.lib;comdlg32.lib;gdi32.lib;d2d1.lib;d3d11.lib;dxguid.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
 		</Link>
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -93,6 +93,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="main.cpp" />
 		<ClCompile Include="sanity_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
+		<ClCompile Include="logging_test.cpp" />
 		<ClCompile Include="layout_test.cpp" />
 		<ClCompile Include="zoom_test.cpp" />
 		<ClCompile Include="navigation_test.cpp" />
@@ -115,6 +116,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<!-- the code under test, built straight from app/helpers -->
 	<ItemGroup>
 		<ClInclude Include="..\app\helpers\version.h" />
+		<ClInclude Include="..\app\helpers\logging.h" />
+		<ClCompile Include="..\app\helpers\logging.cpp" />
 		<ClCompile Include="..\app\helpers\version.cpp" />
 		<ClInclude Include="..\app\helpers\layout.h" />
 		<ClCompile Include="..\app\helpers\layout.cpp" />

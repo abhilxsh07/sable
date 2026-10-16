@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <atomic>
 #include <cassert>
+#include "../helpers/logging.h"
 
 #include <fpdfview.h>
 
@@ -83,6 +84,7 @@ void Engine::loop() {
 	FPDF_LIBRARY_CONFIG config{};
 	config.version = 2;
 	FPDF_InitLibraryWithConfig(&config);
+	diagnostics::write(diagnostics::Level::Debug, "PDFium engine initialized");
 
 	for (;;) {
 		std::function<void()> work;
@@ -100,12 +102,14 @@ void Engine::loop() {
 		try {
 			work();
 		} catch (...) {
-			// @todo: log it once logging is in. run() hands its exceptions
-			// back through the future, so this is only post() work.
+			diagnostics::write(
+			    diagnostics::Level::Error,
+			    "Unhandled exception in a PDFium engine callback");
 		}
 	}
 
 	FPDF_DestroyLibrary();
+	diagnostics::write(diagnostics::Level::Debug, "PDFium engine stopped");
 	t_onPdfiumThread = false;
 }
 } // namespace pdf

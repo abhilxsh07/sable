@@ -10,9 +10,12 @@ and command line as NightPDF. After that it grows into a full reader, with
 comments, Fill & Sign, page organizing and more, all offline. See
 [docs/DESIGN.md](docs/DESIGN.md).
 
-Status: early. The app opens to NightPDF's splash screen, and the core
-logic (settings, keybinds, presets, the filter math, the command line) is
-ported and tested. Opening PDFs is next.
+Status: early, with the native reader working. PDFs open in tabs with zoom,
+page labels, thumbnails, password prompts, night filters and internal/web
+links. Settings and keybind edits persist, and printing uses original colors.
+Physical drag, monitor moves, printer output and notification delivery still
+need verification. The Edit menu remains incomplete; see
+[docs/PORTING_STATUS.md](docs/PORTING_STATUS.md) for the current handoff.
 
 ## Credits
 
@@ -46,6 +49,18 @@ Run `uv run update_pdfium.py` without `--pinned` to move to the latest
 
 The pre-commit hook checks formatting. Turn it on with
 `git config core.hooksPath .githooks`.
+
+## Diagnostics and optional notification
+
+Logs are written under `%LOCALAPPDATA%\Sable\logs`, with one
+`Sable-<process-id>.log` per process. Each file rotates at 2 MiB with three
+backups. Old process logs are retained. Set `DEBUG` to a nonempty value for
+debug-level entries; even `DEBUG=0` enables them, matching NightPDF.
+An unavailable log folder does not stop the reader.
+
+Set `EASTER_EGG` to a nonempty value before launching to enable
+Shift+Alt+T and NightPDF's original notification. The shortcut is disabled by
+default. Windows controls whether the notification is displayed.
 
 ## Licenses
 
