@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ScrollViewer x:Name="Scroller" ZoomMode="Disabled"
 			HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
 			IsTabStop="True" UseSystemFocusVisuals="False">
-			<Image x:Name="Pages" Stretch="Fill"
+			<Image x:Name="Pages" Stretch="Fill" Tapped="onPageTapped"
 				HorizontalAlignment="Center" VerticalAlignment="Top" />
 		</ScrollViewer>
 		<InfoBar x:Name="Message" Grid.ColumnSpan="3" Visibility="Collapsed"

@@ -519,6 +519,121 @@ void ViewerPage::settle() {
 	m_settle.Start();
 }
 
+void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
+                              const Input::TappedRoutedEventArgs& args) {
+	requestLink(args.GetPosition(Pages()));
+}
+
+// Image-local DIPs already account for scrolling and display scale. Only the
+// fractions within the displayed page cross over to the PDFium thread.
+void ViewerPage::requestLink(Windows::Foundation::Point point) {
+	if (m_closed || m_linkPending || !m_layout || !m_session ||
+	    Visibility() != XVisibility::Visible) {
+		return;
+	}
+	const auto page = m_layout->pageAt(point.Y);
+	const auto& rect = m_layout->pages()[page];
+	const double x = (point.X - rect.x) / rect.width;
+	const double y = (point.Y - rect.y) / rect.height;
+	if (x < 0 || x > 1 || y < 0 || y > 1) {
+		return;
+	}
+	m_linkPending = true;
+	try {
+		const auto session = m_session.get();
+		if (session->linkAt(
+		        static_cast<int>(page), x, y,
+		        [weak = get_weak(), queue = DispatcherQueue(),
+		         session](pdf::LinkResult result) {
+			        auto reply =
+			            std::make_shared<pdf::LinkResult>(std::move(result));
+			        queue.TryEnqueue([weak, session, reply] {
+				        if (auto self = weak.get()) {
+					        self->m_linkPending = false;
+					        if (self->m_closed ||
+					            self->m_session.get() != session ||
+					            self->Visibility() != XVisibility::Visible ||
+					            reply->canceled || !reply->link) {
+						        return;
+					        }
+					        if (reply->link->destination) {
+						        self->followLink(*reply->link->destination);
+					        } else {
+						        self->openLink(std::move(reply->link->uri));
+					        }
+				        }
+			        });
+		        })) {
+			return;
+		}
+	} catch (...) {
+		// A failed lookup leaves the document where it was.
+	}
+	m_linkPending = false;
+}
+
+void ViewerPage::followLink(const pdf::LinkDestination& target) {
+	if (!m_layout || target.page < 0 ||
+	    static_cast<std::size_t>(target.page) >= m_sizes.size()) {
+		return;
+	}
+	m_current = static_cast<std::size_t>(target.page);
+	if (target.fit == pdf::LinkFit::Page) {
+		setPreset(helpers::ZoomPreset::PageFit);
+	} else if (target.fit == pdf::LinkFit::Width) {
+		setPreset(helpers::ZoomPreset::PageWidth);
+	} else if (target.fit == pdf::LinkFit::Height ||
+	           target.fit == pdf::LinkFit::Rectangle) {
+		const auto& rect = m_layout->pages()[m_current];
+		const double height =
+		    target.fit == pdf::LinkFit::Rectangle ? target.height : 1;
+		double zoom = m_zoom *
+		              (std::max)(1.0, Scroller().ViewportHeight() - 5) /
+		              (rect.height * height);
+		if (target.fit == pdf::LinkFit::Rectangle) {
+			zoom = (std::min)(
+			    zoom, m_zoom *
+			              (std::max)(1.0, Scroller().ViewportWidth() - 40) /
+			              (rect.width * target.width));
+		}
+		zoomTo(std::clamp(zoom, helpers::MIN_ZOOM, helpers::MAX_ZOOM), {0, 0});
+	} else if (target.zoom) {
+		zoomTo(std::clamp(*target.zoom, helpers::MIN_ZOOM, helpers::MAX_ZOOM),
+		       {0, 0});
+	}
+	goToPage(static_cast<std::size_t>(target.page));
+	const auto& rect = m_layout->pages()[target.page];
+	std::optional<double> x;
+	if (target.x) {
+		x = imageLeft() + rect.x + *target.x * rect.width;
+	}
+	jumpTo(x, rect.y + target.y.value_or(0) * rect.height);
+}
+
+fire_and_forget ViewerPage::openLink(std::string uri) {
+	const auto weak = get_weak();
+	try {
+		Windows::Foundation::Uri address(to_hstring(uri));
+		if ((address.SchemeName() != L"http" &&
+		     address.SchemeName() != L"https") ||
+		    address.Host().empty()) {
+			co_return;
+		}
+#ifdef SABLE_SURFACE_TEST
+		m_launchedUri = std::move(uri);
+		co_return;
+#else
+		if (co_await Windows::System::Launcher::LaunchUriAsync(address)) {
+			co_return;
+		}
+#endif
+	} catch (...) {
+	}
+	if (auto self = weak.get(); self && !self->m_closed) {
+		self->showMessage(L"Couldn't open this link in your browser.");
+	}
+}
+
 // pdf_viewer.js currentPageNumber: the page becomes the current one, then it
 // is scrolled into view, even when it already was the current one
 void ViewerPage::goToPage(std::size_t page) {

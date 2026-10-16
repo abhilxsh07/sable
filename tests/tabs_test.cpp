@@ -48,6 +48,7 @@ struct TabsTest {
 	bool shortcuts = false;
 	bool settingsOnly = false;
 	bool filtersOnly = false;
+	bool linksOnly = false;
 	int step = 0;
 	int ticks = 0;
 	int dragStarts = 0;
@@ -360,6 +361,102 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void linkTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& viewer = *get_self<ViewerPage>(current);
+		if ((step != 10 && !ready(viewer)) || viewer.m_linkPending) {
+			return;
+		}
+		const auto click = [&viewer](std::size_t page, double x, double y) {
+			const auto& rect = viewer.m_layout->pages()[page];
+			viewer.requestLink({static_cast<float>(rect.x + x * rect.width),
+			                    static_cast<float>(rect.y + y * rect.height)});
+		};
+		switch (step) {
+		case 0:
+			owner.m_presenter.Restore();
+			owner.AppWindow().Resize({1000, 800});
+			check(viewer.setScale(1.5), "link display scale");
+			click(0, 80.0 / 360, 50.0 / 540);
+			break;
+		case 1:
+			check(viewer.m_launchedUri == "https://example.com/sable?x=1#part",
+			      "external PDF link");
+			viewer.m_launchedUri.clear();
+			click(0, 80.0 / 360, 130.0 / 540);
+			break;
+		case 2: {
+			check(std::abs(viewer.m_zoom - 2) < 0.001 && viewer.m_current == 1,
+			      "XYZ page and zoom");
+			const auto& rect = viewer.m_layout->pages()[1];
+			const double expected =
+			    (std::min)(viewer.imageLeft() + rect.x + 0.8 * rect.width,
+			               viewer.Scroller().ScrollableWidth());
+			check(std::abs(viewer.Scroller().HorizontalOffset() - expected) < 1,
+			      "rotated XYZ horizontal destination");
+			click(1, 0.28, 0.2);
+			break;
+		}
+		case 3:
+			check(viewer.m_launchedUri == "HTTP://example.com/rotated",
+			      "rotated external PDF link");
+			viewer.m_launchedUri.clear();
+			click(1, 0.28, 160.0 / 300);
+			break;
+		case 4:
+			check(viewer.m_current == 0 && std::abs(viewer.m_zoom - 2) < 0.001,
+			      "null XYZ zoom");
+			click(0, 80.0 / 360, 210.0 / 540);
+			break;
+		case 5:
+			check(viewer.m_current == 1 &&
+			          viewer.m_preset == helpers::ZoomPreset::PageFit,
+			      "Fit destination");
+			click(0, 80.0 / 360, 290.0 / 540);
+			break;
+		case 6:
+			check(viewer.m_preset == helpers::ZoomPreset::PageWidth,
+			      "named FitH destination");
+			click(1, 0.5, 0.2);
+			break;
+		case 7:
+			check(viewer.m_current == 0 &&
+			          viewer.m_preset == helpers::ZoomPreset::None,
+			      "FitR destination");
+			zoom = viewer.m_zoom;
+			click(0, 80.0 / 360, 370.0 / 540);
+			break;
+		case 8:
+			check(viewer.m_launchedUri.empty() && viewer.m_zoom == zoom &&
+			          viewer.m_current == 0,
+			      "unsupported action navigated");
+			viewer.requestLink({-1, -1});
+			check(!viewer.m_linkPending, "page gap queried");
+			click(0, 80.0 / 360, 50.0 / 540);
+			viewer.Visibility(Visibility::Collapsed);
+			break;
+		case 9:
+			check(viewer.m_launchedUri.empty(), "hidden viewer launched link");
+			viewer.Visibility(Visibility::Visible);
+			// Even a result already queued for the UI must not act after close.
+			click(0, 80.0 / 360, 50.0 / 540);
+			viewer.close();
+			break;
+		case 10:
+			check(viewer.m_launchedUri.empty(), "closed viewer launched link");
+			status.Text(
+			    L"PASS: PDF links, rotated/cropped hit tests, XYZ, Fit, "
+			    L"named FitH, FitR, unsupported actions and close");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -393,6 +490,10 @@ struct TabsTest {
 			}
 			if (++ticks > 120) {
 				throw std::runtime_error("tab check timed out");
+			}
+			if (linksOnly) {
+				linkTick(*self);
+				return;
 			}
 			if (filtersOnly) {
 				filterTick(*self);
@@ -846,9 +947,11 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	    std::wstring_view(mode) == L"true";
 	state->filtersOnly = GetEnvironmentVariableW(L"SableFilterTest", mode, 8) &&
 	                     std::wstring_view(mode) == L"true";
+	state->linksOnly = GetEnvironmentVariableW(L"SableLinkTest", mode, 8) &&
+	                   std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	if (state->settingsOnly || state->filtersOnly) {
+	if (state->settingsOnly || state->filtersOnly || state->linksOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -899,7 +1002,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (!state->settingsOnly) {
+	if (state->linksOnly) {
+		window->openDocument(engine, L"tests/fixtures/links.pdf", {});
+	} else if (!state->settingsOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 		window->openDocument(engine, L"tests/fixtures/long.pdf", 500);
 		window->openDocument(engine, L"tests/fixtures/./pages.pdf", 1);
