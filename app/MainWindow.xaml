@@ -45,6 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</TitleBar.IconSource>
 			<TitleBar.LeftHeader>
 				<Button x:Name="MenuButton" Style="{StaticResource SableTitleBarButtonStyle}"
+					AllowFocusOnInteraction="False"
 					Margin="4,0,0,0" ToolTipService.ToolTip="Menu"
 					AutomationProperties.Name="Menu">
 					<StackPanel Orientation="Horizontal" Spacing="8">
@@ -52,7 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<TextBlock Text="Menu" />
 					</StackPanel>
 					<Button.Flyout>
-						<MenuFlyout Placement="BottomEdgeAlignedLeft">
+						<MenuFlyout x:Name="MainMenu" Placement="BottomEdgeAlignedLeft">
 							<MenuFlyoutSubItem Text="File">
 								<MenuFlyoutItem x:Name="OpenItem" Text="Open..." KeyboardAcceleratorTextOverride="Ctrl+O">
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
@@ -65,15 +66,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 									<MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
 								</MenuFlyoutItem>
 							</MenuFlyoutSubItem>
-							<!-- Electron's edit and zoom roles act on the page, there's
-								no page on the home screen -->
+							<!-- Native edit roles act on the focused text field. -->
 							<MenuFlyoutSubItem Text="Edit">
-								<MenuFlyoutItem Text="Undo" KeyboardAcceleratorTextOverride="Ctrl+Z" IsEnabled="False" />
-								<MenuFlyoutItem Text="Redo" KeyboardAcceleratorTextOverride="Ctrl+Y" IsEnabled="False" />
+								<MenuFlyoutItem x:Name="UndoItem" Text="Undo" Tag="undo" KeyboardAcceleratorTextOverride="Ctrl+Z" IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="RedoItem" Text="Redo" Tag="redo" KeyboardAcceleratorTextOverride="Ctrl+Y" IsEnabled="False" Click="onEditCommand" />
 								<MenuFlyoutSeparator />
-								<MenuFlyoutItem Text="Cut" KeyboardAcceleratorTextOverride="Ctrl+X" IsEnabled="False" />
-								<MenuFlyoutItem Text="Copy" KeyboardAcceleratorTextOverride="Ctrl+C" IsEnabled="False" />
-								<MenuFlyoutItem Text="Paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" />
+								<MenuFlyoutItem x:Name="CutItem" Text="Cut" Tag="cut" KeyboardAcceleratorTextOverride="Ctrl+X" IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="CopyItem" Text="Copy" Tag="copy" KeyboardAcceleratorTextOverride="Ctrl+C" IsEnabled="False" Click="onEditCommand" />
+								<MenuFlyoutItem x:Name="PasteItem" Text="Paste" Tag="paste" KeyboardAcceleratorTextOverride="Ctrl+V" IsEnabled="False" Click="onEditCommand" />
 							</MenuFlyoutSubItem>
 							<MenuFlyoutSubItem Text="View">
 								<!-- they zoom the document, the way pdf.js's own Ctrl+0, Ctrl++
