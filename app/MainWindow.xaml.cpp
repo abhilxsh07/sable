@@ -55,6 +55,26 @@ constexpr int HEIGHT = 420;
 constexpr int MIN_WIDTH = 565;
 constexpr int MIN_HEIGHT = 200;
 
+struct SliderToolTip : implements<SliderToolTip, Data::IValueConverter> {
+	explicit SliderToolTip(helpers::SliderSpec spec) : m_spec(spec) {}
+	Windows::Foundation::IInspectable
+	Convert(const Windows::Foundation::IInspectable& value,
+	        const Windows::UI::Xaml::Interop::TypeName&,
+	        const Windows::Foundation::IInspectable&, const hstring&) {
+		return box_value(to_hstring(
+		    helpers::sliderTooltip(m_spec, unbox_value<double>(value))));
+	}
+	Windows::Foundation::IInspectable
+	ConvertBack(const Windows::Foundation::IInspectable&,
+	            const Windows::UI::Xaml::Interop::TypeName&,
+	            const Windows::Foundation::IInspectable&, const hstring&) {
+		throw hresult_not_implemented();
+	}
+
+  private:
+	helpers::SliderSpec m_spec;
+};
+
 std::filesystem::path exeDir() {
 	// GetModuleFileNameW truncates instead of failing when the buffer is too
 	// small, so keep growing it until the whole path fits
@@ -906,7 +926,8 @@ void MainWindow::setupSliders() {
 		slider.Maximum(spec.max);
 		slider.StepFrequency(spec.step);
 		slider.SmallChange(spec.step);
-		slider.IsThumbToolTipEnabled(false);
+		slider.IsThumbToolTipEnabled(true);
+		slider.ThumbToolTipValueConverter(make<SliderToolTip>(spec));
 		Automation::AutomationProperties::SetName(slider,
 		                                          to_hstring(spec.label));
 		slider.ValueChanged(
