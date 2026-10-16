@@ -196,6 +196,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="Notifications.cpp" />
 		<ClCompile Include="MusicSession.cpp" />
 		<ClCompile Include="MusicPane.cpp" />
+		<ClCompile Include="ViewerSelection.cpp" />
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
 		</ClCompile>
@@ -217,6 +218,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\navigation.h" />
 		<ClInclude Include="helpers\thumbnails.h" />
 		<ClInclude Include="pdf\document.h" />
+		<ClInclude Include="pdf\text.h" />
 		<ClInclude Include="pdf\printing.h" />
 		<ClInclude Include="pdf\page_cache.h" />
 		<ClInclude Include="pdf\session.h" />
@@ -254,6 +256,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\document.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="pdf\text.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\printing.cpp">

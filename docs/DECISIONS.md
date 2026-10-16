@@ -741,3 +741,38 @@ hardware acrylic appearance and physical pointer/keyboard input remain open.
 The read-only media-manager probe returns access denied (0x80070005) in this
 environment. Broker discovery is therefore unverified with live players here;
 the reader leaves the button hidden and logs an unavailable service nonfatally.
+
+## Text selection and copy (2026-10-17)
+
+PDFium loads text pages on the engine thread, then returns character codes
+and loose glyph boxes as plain data. Boxes use fractions of the displayed
+page after cropping and intrinsic rotation, independent of zoom and display
+scale. PDFium's character order is retained, including generated spaces and
+line breaks; rotated pages can have a different order. Unicode mappings,
+including supplementary characters, become UTF-8 at the engine boundary.
+
+Mouse and pen drags select inclusive character ranges across pages. Touch
+continues to pan. Pointer capture keeps a drag alive outside the page, with
+edge scrolling while the pointer is held. A plain click keeps link behavior;
+a selection drag suppresses its subsequent tap. Zoom cancels an unfinished
+drag but retains completed character ranges. Blue highlight rectangles draw
+after the page filter, leaving cached rasters, thumbnails and printing intact.
+
+Ctrl+C, Edit > Copy and the page context menu copy a selection. Ctrl+A and
+context Select All select the document; Escape clears the selection. Native
+text fields keep their edit keys. PDF copy permissions gate copying without
+preventing selection. Copy runs asynchronously and checks the session,
+selection version, visibility and close state before writing the clipboard.
+Clipboard data is text only. No text editing or OCR is involved.
+
+Character geometry is loaded on demand, with a 64-page/24 MiB data cache and
+selection endpoints retained. Geometry is limited to 200,000 characters per
+page, extraction for copy to 1,000,000 per page, and copied text to 16 MiB.
+Visible selection pages are fetched once per viewport range to prevent a
+dense selection from continually evicting and reloading itself.
+
+The text.pdf fixture has cropped pages at every quarter-turn and a ToUnicode
+mapping for Greek, accented text and an emoji. SableSelectionTest=true with
+SableTabsTest=true checks native drag/copy, menu/context gating, zoom, reverse
+page ranges, Select All, permissions and stale callbacks. It intercepts copied
+text; actual clipboard transfer and physical pointer/keyboard input remain open.

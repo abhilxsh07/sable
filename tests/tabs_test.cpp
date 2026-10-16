@@ -60,6 +60,9 @@ struct TabsTest {
 	bool finishOnly = false;
 	bool editOnly = false;
 	bool musicOnly = false;
+	bool selectionOnly = false;
+	std::string copiedText;
+	int copyCalls = 0;
 	music::Snapshot musicSnapshot;
 	Windows::Foundation::IAsyncOperation<
 	    Windows::Storage::Streams::IRandomAccessStreamReference>
@@ -943,6 +946,126 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void selectionTick(MainWindow& owner) {
+		if (step == 10) {
+			check(copyCalls == 4, "closed viewer copied text");
+			status.Text(
+			    L"PASS: text drag/copy, menu/context, zoom, reverse "
+			    L"multi-page, Unicode, permissions and stale callbacks");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& viewer = *get_self<ViewerPage>(current);
+		if (!ready(viewer) || viewer.m_copying) {
+			return;
+		}
+		const auto point = [&viewer](int page, int index) {
+			const auto& box =
+			    viewer.m_text.at(page).text->characters.at(index).box;
+			const auto& rect = viewer.m_layout->pages()[page];
+			return Windows::Foundation::Point{
+			    static_cast<float>(rect.x +
+			                       (box.left + box.right) * .5 * rect.width),
+			    static_cast<float>(rect.y +
+			                       (box.top + box.bottom) * .5 * rect.height)};
+		};
+		switch (step) {
+		case 0:
+			viewer.m_copySink = [this](const std::string& text) {
+				copiedText = text;
+				++copyCalls;
+			};
+			viewer.requestText(0);
+			break;
+		case 1:
+			if (!viewer.m_text.contains(0)) {
+				return;
+			}
+			viewer.beginSelection(point(0, 0));
+			viewer.extendSelection(point(0, 4));
+			viewer.endSelection();
+			check(viewer.canCopySelection() && viewer.m_ignoreTextTap,
+			      "drag did not select text or suppress link taps");
+			viewer.copySelection();
+			break;
+		case 2:
+			check(copiedText == "Alpha" && copyCalls == 1,
+			      "selected word copy");
+			viewer.Scroller().Focus(FocusState::Programmatic);
+			owner.MainMenu().ShowAt(owner.MenuButton());
+			check(owner.CopyItem().IsEnabled() &&
+			          !owner.CutItem().IsEnabled() &&
+			          !owner.UndoItem().IsEnabled() &&
+			          !owner.PasteItem().IsEnabled(),
+			      "PDF Edit menu gates");
+			owner.onEditCommand(owner.CopyItem(), {});
+			owner.MainMenu().Hide();
+			break;
+		case 3:
+			check(copiedText == "Alpha" && copyCalls == 2, "PDF Edit Copy");
+			viewer.zoomIn();
+			viewer.requestText(1);
+			break;
+		case 4:
+			if (!viewer.m_text.contains(1)) {
+				return;
+			}
+			check(viewer.m_selection == pdf::TextSelection{{0, 0}, {0, 4}},
+			      "zoom changed selected characters");
+			viewer.m_textMenu.ShowAt(viewer.Scroller());
+			check(viewer.m_textCopy.IsEnabled(), "PDF context Copy");
+			viewer.m_textMenu.Hide();
+			viewer.beginSelection(point(1, 4));
+			viewer.extendSelection(point(0, 6));
+			viewer.endSelection();
+			check(viewer.m_selection == pdf::TextSelection{{1, 4}, {0, 6}},
+			      "reverse page drag");
+			viewer.copySelection();
+			break;
+		case 5:
+			check(copiedText == "beta\r\nSecond line\r\nSecon" &&
+			          copyCalls == 3,
+			      "reverse multi-page copy");
+			viewer.selectAllText();
+			viewer.copySelection();
+			break;
+		case 6:
+			check(copyCalls == 4 && copiedText.starts_with("Alpha") &&
+			          copiedText.find("\xCE\xA9\xF0\x9F\x98\x80\xC3\xA9") !=
+			              std::string::npos,
+			      "select-all Unicode copy");
+			viewer.copySelection();
+			viewer.clearTextSelection();
+			break;
+		case 7:
+			check(!viewer.hasTextSelection() && copyCalls == 4,
+			      "cleared selection copied late");
+			owner.openDocument(engine, L"tests/fixtures/restricted.pdf", {});
+			break;
+		case 8:
+			viewer.m_copySink = [](const auto&) {
+				probeFail(L"restricted PDF copied text");
+			};
+			viewer.selectAllText();
+			check(viewer.hasTextSelection() && !viewer.canCopySelection(),
+			      "PDF copy permission");
+			viewer.copySelection();
+			owner.closeTab(owner.m_tabs.back().tab);
+			break;
+		case 9:
+			viewer.selectAllText();
+			viewer.copySelection();
+			owner.closeTab(owner.m_tabs.front().tab);
+			break;
+		}
+		++step;
+		ticks = 0;
+	}
 	void tick() {
 		auto self = window.get();
 		if (!self) {
@@ -983,6 +1106,10 @@ struct TabsTest {
 			}
 			if (musicOnly) {
 				musicTick(*self);
+				return;
+			}
+			if (selectionOnly) {
+				selectionTick(*self);
 				return;
 			}
 			if (finishOnly) {
@@ -1459,11 +1586,14 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                  std::wstring_view(mode) == L"true";
 	state->musicOnly = GetEnvironmentVariableW(L"SableMusicTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
+	state->selectionOnly =
+	    GetEnvironmentVariableW(L"SableSelectionTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
 	    state->printOnly || state->finishOnly || state->editOnly ||
-	    state->musicOnly) {
+	    state->musicOnly || state->selectionOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1514,7 +1644,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->editOnly) {
+	if (state->selectionOnly) {
+		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
+	} else if (state->editOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
 	} else if (state->printOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);

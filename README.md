@@ -13,11 +13,12 @@ comments, Fill & Sign, page organizing and more, all offline. See
 Status: early, with the native reader working. PDFs open in tabs with zoom,
 page labels, thumbnails, password prompts, night filters and internal/web
 links. Settings and keybind edits persist, printing uses original colors,
-and the Edit menu works on focused text fields.
+and text can be selected and copied across pages. The Edit menu works on
+focused text fields and PDF selections.
 Spotify and Apple Music sessions add a music button with playback controls,
 track information, artwork and a seek bar when the player supports it.
 Physical drag, monitor moves, printer output, notification delivery and live
-music control still need verification. PDF text selection is still planned; see
+music control still need verification. Find and outlines are still planned; see
 [docs/PORTING_STATUS.md](docs/PORTING_STATUS.md) for the current handoff.
 
 ## Credits

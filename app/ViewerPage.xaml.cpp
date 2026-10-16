@@ -260,6 +260,12 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 
 void ViewerPage::close() {
 	m_closed = true;
+	cancelSelectionDrag();
+	m_selection.reset();
+	m_text.clear();
+	if (m_textMenu) {
+		m_textMenu.Hide();
+	}
 	Message().IsOpen(false);
 	m_promptLoaded.revoke();
 	m_passwordPending.reset();
@@ -415,6 +421,7 @@ bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
 // nothing changed, if that's more than one surface can hold; for now the
 // zoom just stays, see "Still undecided" in DECISIONS.md.
 bool ViewerPage::relayout(double zoom) {
+	cancelSelectionDrag();
 	helpers::PageLayout next(m_sizes, zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
 	const auto size =
 	    pdf::scaledSurfaceSize(next.width(), next.height(), m_scale);
@@ -576,6 +583,9 @@ void ViewerPage::print(void* owner, std::function<void()> done) {
 
 void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
                               const Input::TappedRoutedEventArgs& args) {
+	if (m_ignoreTextTap) {
+		return;
+	}
 	requestLink(args.GetPosition(Pages()));
 }
 
@@ -1451,6 +1461,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			sizes.push_back({size.width, size.height});
 		}
 		m_sizes = std::move(sizes);
+		m_copyAllowed = info.canCopy;
 		m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 		m_scale = XamlRoot() ? XamlRoot().RasterizationScale() : 1.0;
 		// the page -p asks for, or the first; pdf.js ignores a page that
@@ -1490,6 +1501,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Source(m_surface->source());
 		Pages().Width(size->cx / m_scale);
 		Pages().Height(size->cy / m_scale);
+		setupSelection();
 		m_loaded = Loaded(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
 			if (auto self = weak.get()) {
 				self->watchScale();
@@ -1610,6 +1622,8 @@ ViewerPage::Device ViewerPage::makeDevice() {
 	check_hresult(device.context->CreateSolidColorBrush(
 	    D2D1::ColorF(blank.r / 255.0f, blank.g / 255.0f, blank.b / 255.0f),
 	    device.placeholder.put()));
+	check_hresult(device.context->CreateSolidColorBrush(
+	    D2D1::ColorF(0.20f, 0.50f, 1.0f, 0.40f), device.selection.put()));
 	return device;
 }
 
@@ -1684,6 +1698,7 @@ void ViewerPage::updateVisible() {
 	}
 	m_visible = m_layout->visiblePages(top, height, 0);
 	m_wanted = m_layout->visiblePages(top, height, 1);
+	prefetchSelectedText();
 	// GPU copies only for the pages near the viewport; the rest stay cached
 	std::erase_if(m_device.bitmaps, [this](const auto& entry) {
 		return entry.first < m_wanted.first || entry.first >= m_wanted.end;
@@ -1886,6 +1901,28 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 	}
 	// the effect mustn't keep the last page alive after the GPU cache drops it
 	m_device.filter->setInput(nullptr);
+	if (m_selection) {
+		for (auto page = pages.first; page < pages.end; ++page) {
+			const auto found = m_text.find(static_cast<int>(page));
+			if (found == m_text.end()) {
+				continue;
+			}
+			const auto& text = *found->second.text;
+			const auto [first, end] =
+			    pdf::textSpan(*m_selection, static_cast<int>(page),
+			                  static_cast<int>(text.characters.size()));
+			const auto at = pixels(page);
+			for (const auto& box : pdf::textRects(text, first, end)) {
+				context.FillRectangle(
+				    D2D1::RectF(
+				        static_cast<float>(at.x + box.left * at.width),
+				        static_cast<float>(at.y + box.top * at.height),
+				        static_cast<float>(at.x + box.right * at.width),
+				        static_cast<float>(at.y + box.bottom * at.height)),
+				    m_device.selection.get());
+			}
+		}
+	}
 }
 
 helpers::PixelRect ViewerPage::pixels(std::size_t page) const {

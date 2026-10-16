@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <fpdf_doc.h>
 #include <fpdf_edit.h>
+#include <fpdf_text.h>
 #include <fpdfview.h>
 
 #include "engine.h"
@@ -51,6 +52,12 @@ struct BitmapDestroyer {
 };
 using PagePtr = std::unique_ptr<fpdf_page_t__, PageCloser>;
 using BitmapPtr = std::unique_ptr<fpdf_bitmap_t__, BitmapDestroyer>;
+struct TextCloser {
+	void operator()(fpdf_textpage_t__* text) const {
+		FPDFText_ClosePage(text);
+	}
+};
+using TextPtr = std::unique_ptr<fpdf_textpage_t__, TextCloser>;
 
 // Every FPDF_* call has to happen on the PDFium thread. Off it, refuse
 // instead of messing up PDFium's state, and stop right there in debug builds.
@@ -276,6 +283,81 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, height,
 	                      rotation, FPDF_ANNOT);
 	return out;
+}
+
+bool Document::canCopy() const {
+	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x10) != 0;
+}
+
+std::optional<TextPage> Document::textPage(int index) const {
+	if (offThread() || index < 0 || index >= pageCount()) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	TextPtr text(FPDFText_LoadPage(page.get()));
+	if (!text) {
+		return {};
+	}
+	const int count = FPDFText_CountChars(text.get());
+	if (count < 0 || count > 200'000) {
+		return {};
+	}
+	TextPage result;
+	result.characters.reserve(count);
+	constexpr int grid = 1 << 20;
+	for (int i = 0; i < count; ++i) {
+		TextChar character;
+		character.unicode = FPDFText_GetUnicode(text.get(), i);
+		FS_RECTF box{};
+		if (FPDFText_GetLooseCharBox(text.get(), i, &box) &&
+		    std::isfinite(box.left) && std::isfinite(box.right) &&
+		    std::isfinite(box.top) && std::isfinite(box.bottom)) {
+			int ax = 0, ay = 0, bx = 0, by = 0;
+			if (FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0, box.left,
+			                      box.top, &ax, &ay) &&
+			    FPDF_PageToDevice(page.get(), 0, 0, grid, grid, 0, box.right,
+			                      box.bottom, &bx, &by)) {
+				character.box = {
+				    std::clamp((std::min)(ax, bx) / double(grid), 0., 1.),
+				    std::clamp((std::min)(ay, by) / double(grid), 0., 1.),
+				    std::clamp((std::max)(ax, bx) / double(grid), 0., 1.),
+				    std::clamp((std::max)(ay, by) / double(grid), 0., 1.)};
+			}
+		}
+		result.characters.push_back(character);
+	}
+	return result;
+}
+
+std::optional<std::string> Document::textRange(int index, int first,
+                                               int end) const {
+	if (offThread() || !canCopy() || index < 0 || index >= pageCount() ||
+	    first < 0 || end < first) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return {};
+	}
+	TextPtr text(FPDFText_LoadPage(page.get()));
+	if (!text) {
+		return {};
+	}
+	const int count = FPDFText_CountChars(text.get());
+	if (count < 0 || count > 1'000'000) {
+		return {};
+	}
+	std::u32string result;
+	first = (std::min)(first, count);
+	end = (std::min)(end, count);
+	result.reserve(end - first);
+	for (int i = first; i < end; ++i) {
+		result += FPDFText_GetUnicode(text.get(), i);
+	}
+	return textUtf8(result);
 }
 bool Document::printPage(int index, void* device, int x, int y, int width,
                          int height) const {

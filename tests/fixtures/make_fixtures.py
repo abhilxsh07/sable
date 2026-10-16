@@ -19,6 +19,7 @@
 # Writes the PDFs the tests open, next to this script:
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
+#   text.pdf        cropped pages at four rotations and Unicode text mappings
 #   print.pdf       original colors, print-visible and screen-only annotations
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
 #   restricted.pdf  the same page, opens without a password, all permissions off
@@ -303,6 +304,31 @@ def link_pdf() -> bytes:
     return w.finish(1, 8)
 
 
+def text_pdf() -> bytes:
+    w = Writer(md5(b"sable text.pdf"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R 12 0 R] /Count 5 >>")
+    w.add(3, FONT)
+    for i, rotation in enumerate((0, 90, 180, 270, 0)):
+        page = 4 + 2 * i
+        font = 14 if i == 4 else 3
+        w.add(page, f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] "
+              f"/CropBox [20 30 380 270] /Rotate {rotation} "
+              f"/Resources << /Font << /F1 {font} 0 R >> >> /Contents {page + 1} 0 R >>")
+        text = "(ABC) Tj" if i == 4 else "(Alpha beta) Tj 0 -40 Td (Second line) Tj"
+        w.add_stream(page + 1, content(f"BT /F1 20 Tf 40 230 Td {text} ET"))
+    w.add(14, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+          "/Encoding /WinAnsiEncoding /ToUnicode 15 0 R >>")
+    w.add_stream(15, content("/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+        "/CMapName /SableUnicode def /CMapType 2 def",
+        "1 begincodespacerange <00> <FF> endcodespacerange",
+        "3 beginbfchar <41> <03A9> <42> <D83DDE00> <43> <00E9> endbfchar",
+        "endcmap CMapName currentdict /CMap defineresource pop end end"))
+    w.add(16, "<< /Title (Sable text fixtures) >>")
+    return w.finish(1, 16)
+
+
 def print_pdf() -> bytes:
     w = Writer(md5(b"sable print.pdf"))
     w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -337,6 +363,7 @@ def main() -> None:
         "print.pdf": print_pdf(),
         "long.pdf": build_pdf("long.pdf", long_pages),
         "pages.pdf": build_pdf("pages.pdf", [PAGE_1, PAGE_2, PAGE_3], LABELS),
+        "text.pdf": text_pdf(),
         "password.pdf": build_pdf(
             "password.pdf", [PAGE_1], security=(USER_PASSWORD, OWNER_PASSWORD, -4)
         ),

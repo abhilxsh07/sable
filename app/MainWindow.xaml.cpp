@@ -519,11 +519,15 @@ void MainWindow::setupTabKeys() {
 		    (held(VK_SHIFT) ? helpers::SHORTCUT_SHIFT : 0) |
 		    (held(VK_LWIN) || held(VK_RWIN) ? helpers::SHORTCUT_WIN : 0);
 		const auto key = static_cast<unsigned>(args.Key());
+		const auto focused =
+		    Input::FocusManager::GetFocusedElement(self->RootGrid().XamlRoot());
+		const bool editing = focused.try_as<Controls::TextBox>() ||
+		                     focused.try_as<Controls::PasswordBox>() ||
+		                     focused.try_as<Controls::RichEditBox>();
 		if (modifiers == helpers::SHORTCUT_CTRL &&
 		    (key == 'Z' || key == 'Y' || key == 'X' || key == 'C' ||
-		     key == 'V') &&
-		    Input::FocusManager::GetFocusedElement(self->RootGrid().XamlRoot())
-		        .try_as<Controls::TextBox>()) {
+		     key == 'V' || key == 'A') &&
+		    editing) {
 			// The text field's native edit keys take priority while editing.
 			return;
 		}
@@ -534,6 +538,28 @@ void MainWindow::setupTabKeys() {
 			}
 			args.Handled(true);
 			return;
+		}
+		if (!editing) {
+			if (const auto active = self->Viewer()) {
+				const auto pdf = get_self<ViewerPage>(active);
+				if (modifiers == helpers::SHORTCUT_CTRL && key == 'A') {
+					pdf->selectAllText();
+					args.Handled(true);
+					return;
+				}
+				if (modifiers == helpers::SHORTCUT_CTRL && key == 'C' &&
+				    pdf->hasTextSelection()) {
+					pdf->copySelection();
+					args.Handled(true);
+					return;
+				}
+				if (modifiers == 0 && key == VK_ESCAPE &&
+				    pdf->hasTextSelection()) {
+					pdf->clearTextSelection();
+					args.Handled(true);
+					return;
+				}
+			}
 		}
 		// these belong to NightPDF's fixed menu, not the settings store
 		if (modifiers == helpers::SHORTCUT_CTRL && key >= '1' && key <= '9') {
@@ -814,6 +840,9 @@ void MainWindow::beginEditMenu() {
 			get_self<ViewerPage>(viewer)->holdPageEdit(true);
 			m_editViewer = make_weak(viewer);
 		}
+	} else if (const auto viewer = Viewer();
+	           viewer && get_self<ViewerPage>(viewer)->hasTextSelection()) {
+		m_editPdf = make_weak(viewer);
 	}
 	updateEditMenu();
 }
@@ -826,6 +855,9 @@ void MainWindow::endEditMenu() {
 		box.Focus(FocusState::Programmatic);
 		box.Select(m_editSelectionStart, m_editSelectionLength);
 	}
+	if (const auto pdf = m_editPdf.get(); pdf && pdf == Viewer()) {
+		get_self<ViewerPage>(pdf)->Scroller().Focus(FocusState::Programmatic);
+	}
 	commitMenuEdit();
 }
 
@@ -835,6 +867,7 @@ void MainWindow::commitMenuEdit() {
 	}
 	m_editTarget = nullptr;
 	m_editViewer = nullptr;
+	m_editPdf = nullptr;
 }
 
 void MainWindow::updateEditMenu() {
@@ -844,7 +877,10 @@ void MainWindow::updateEditMenu() {
 	UndoItem().IsEnabled(writable && box.CanUndo());
 	RedoItem().IsEnabled(writable && box.CanRedo());
 	CutItem().IsEnabled(writable && selection);
-	CopyItem().IsEnabled(selection);
+	const auto pdf = m_editPdf.get();
+	CopyItem().IsEnabled(selection ||
+	                     (pdf && pdf == Viewer() &&
+	                      get_self<ViewerPage>(pdf)->canCopySelection()));
 	bool paste = false;
 	if (writable) {
 		try {
@@ -866,7 +902,15 @@ void MainWindow::onEditCommand(const Windows::Foundation::IInspectable& sender,
 	}
 	const auto item = sender.try_as<Controls::MenuFlyoutItem>();
 	const auto box = editTarget();
-	if (!item || !item.IsEnabled() || !box) {
+	if (!item || !item.IsEnabled()) {
+		return;
+	}
+	if (!box) {
+		const auto pdf = m_editPdf.get();
+		if (pdf && pdf == Viewer() &&
+		    unbox_value_or<hstring>(item.Tag(), L"") == L"copy") {
+			get_self<ViewerPage>(pdf)->copySelection();
+		}
 		return;
 	}
 	try {
