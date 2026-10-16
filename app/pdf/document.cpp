@@ -277,6 +277,20 @@ std::optional<Bitmap> Document::render(int index, int width, int height,
 	                      rotation, FPDF_ANNOT);
 	return out;
 }
+bool Document::printPage(int index, void* device, int x, int y, int width,
+                         int height) const {
+	if (offThread() || !device || index < 0 ||
+	    index >= FPDF_GetPageCount(m_handle) || width <= 0 || height <= 0) {
+		return false;
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	if (!page) {
+		return false;
+	}
+	return FPDF_RenderPage(static_cast<HDC>(device), page.get(), x, y, width,
+	                       height, 0, FPDF_ANNOT | FPDF_PRINTING) != 0;
+}
+
 std::optional<Link> Document::linkAt(int index, double x, double y) const {
 	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle) ||
 	    !std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 ||

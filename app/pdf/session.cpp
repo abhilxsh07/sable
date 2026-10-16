@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <utility>
 
 #include "engine.h"
+#include "printing.h"
 
 namespace pdf {
 struct Session::State {
@@ -38,6 +39,7 @@ struct Session::State {
 	bool m_ready = false;
 	bool m_closed = false;
 	bool m_rendering = false;
+	bool m_printing = false;
 	std::uint64_t m_generation = 0;
 	// only the engine thread touches the document
 	std::unique_ptr<Document> m_document;
@@ -201,6 +203,46 @@ bool Session::linkAt(int page, double x, double y,
 		}
 		callback(std::move(result));
 	});
+	return true;
+}
+
+bool Session::print(PrintJob job, std::function<void(PrintResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !job.device || job.pages.empty() || !state->m_ready ||
+		    state->m_closed || state->m_printing) {
+			return false;
+		}
+		state->m_printing = true;
+	}
+	try {
+		state->m_engine.post([state, job = std::move(job),
+		                      callback = std::move(callback)] {
+			PrintResult result = PrintResult::Failed;
+			try {
+				if (state->closed()) {
+					result = PrintResult::Canceled;
+				} else {
+					result = printDocument(*state->m_document, job,
+					                       [state] { return state->closed(); });
+				}
+			} catch (...) {
+			}
+			{
+				std::lock_guard lock(state->m_mutex);
+				state->m_printing = false;
+				if (state->m_closed) {
+					result = PrintResult::Canceled;
+				}
+			}
+			callback(result);
+		});
+	} catch (...) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_printing = false;
+		throw;
+	}
 	return true;
 }
 

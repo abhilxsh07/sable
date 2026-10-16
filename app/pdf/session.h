@@ -26,6 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 namespace pdf {
 class Engine;
+struct PrintJob;
+enum class PrintResult;
 
 struct SessionInfo {
 	Error error = Error::None;
@@ -63,6 +65,8 @@ class Session {
 	bool render(PageKey key, std::function<void(RenderResult)> callback);
 	bool linkAt(int page, double x, double y,
 	            std::function<void(LinkResult)> callback);
+	// One print job per session, independent of the screen render slot.
+	bool print(PrintJob job, std::function<void(PrintResult)> callback);
 	// doesn't interrupt PDFium; it discards that job's result when it finishes.
 	// The slot stays busy until the canceled job calls back. A render that had
 	// already finished can still arrive uncanceled, so check its key.

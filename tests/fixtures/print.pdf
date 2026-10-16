@@ -1,0 +1,55 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents 4 0 R /Annots [5 0 R 6 0 R] >>
+endobj
+4 0 obj
+<< /Length 25 >>
+stream
+1 0 0 rg 10 10 30 30 re f
+endstream
+endobj
+5 0 obj
+<< /Type /Annot /Subtype /Square /Rect [50 10 80 40] /F 4 /AP << /N 7 0 R >> >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Square /Rect [10 50 40 80] /F 0 /AP << /N 8 0 R >> >>
+endobj
+7 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 30 30] /Resources << >> /Length 23 >>
+stream
+0 1 0 rg 0 0 30 30 re f
+endstream
+endobj
+8 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 30 30] /Resources << >> /Length 23 >>
+stream
+0 0 1 rg 0 0 30 30 re f
+endstream
+endobj
+9 0 obj
+<< /Title (Sable print fixture) >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000322 00000 n 
+0000000417 00000 n 
+0000000512 00000 n 
+0000000650 00000 n 
+0000000788 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R /Info 9 0 R /ID [<5047636c5f9ada7cf1e97871d5f67b7b> <5047636c5f9ada7cf1e97871d5f67b7b>] >>
+startxref
+838
+%%EOF
