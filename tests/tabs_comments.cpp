@@ -912,12 +912,13 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		v.setCommentsOpen(true);
-		check(v.FillMarksMenu().IsEnabled(), "fill marks are disabled");
-		invoke(v.PlaceCheckButton());
+		v.requestTool(L"fillsign");
+		check(v.FillSignActions().IsEnabled(), "fill marks are disabled");
+		invokeCommentTool(v.PlaceCheckButton());
 		check(v.notePlacing() && v.placeNote({-1, -1}) && v.notePlacing() &&
 		          v.cancelNotePlacement() && !v.m_notesDirty,
 		      "page gap or Escape changed the PDF");
-		invoke(v.PlaceCrossButton());
+		invokeCommentTool(v.PlaceCrossButton());
 		check(v.notePlacing() &&
 		          v.m_activeTool == ViewerPage::PlacementTool::FillCross,
 		      "cross command did not arm placement");
@@ -926,7 +927,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		      "closing Comments dropped the mark");
 		v.cancelNotePlacement();
 		v.setCommentsOpen(true);
-		invoke(v.PlaceCheckButton());
+		invokeCommentTool(v.PlaceCheckButton());
 		place(0);
 		check(v.m_noteBusy &&
 		          v.m_activeTool == ViewerPage::ActiveTool::FillCheck,
@@ -960,7 +961,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		break;
 	case 2:
 		check(v.m_rotation == 1, "cross placement did not rotate");
-		invoke(v.PlaceCrossButton());
+		invokeCommentTool(v.PlaceCrossButton());
 		place(1);
 		break;
 	case 3:
@@ -1031,7 +1032,7 @@ void TabsTest::fillMarksTick(MainWindow& owner) {
 		check(v.m_notesDirty && inkOn(0) != rows.end() &&
 		          inkOn(1) == rows.end(),
 		      "removing the cross lost the check mark or kept the cross");
-		invoke(v.PlaceFillTextButton());
+		invokeCommentTool(v.PlaceFillTextButton());
 		check(v.notePlacing() &&
 		          v.m_activeTool == ViewerPage::PlacementTool::FillText &&
 		          v.cancelNotePlacement(),

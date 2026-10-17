@@ -274,16 +274,20 @@ void TabsTest::organizeTick(MainWindow& owner) {
 		check(v.commentsOpen(), "Comment did not open Comments");
 		v.setCommentsOpen(false);
 		owner.openTool(L"fillsign");
-		check(v.commentsOpen(), "Fill & Sign did not open Comments");
+		check(!v.commentsOpen() &&
+		          v.FillSignTools().Visibility() == Visibility::Visible,
+		      "Fill & Sign replaced the reading panel");
 		break;
 	case 6:
-		if (!v.CommentsMoreButton().Flyout().IsOpen()) {
-			check(ticks < 40, "Fill & Sign did not open its menu");
+		if (v.FillSignTools().Visibility() != Visibility::Visible) {
+			check(ticks < 40, "Fill & Sign did not open its row");
 			return;
 		}
 		check(!v.FindName(L"SaveNotesButton") && v.BarSaveButton().IsEnabled(),
 		      "Comments kept a duplicate Save or lost command-bar saving");
-		v.CommentsMoreButton().Flyout().Hide();
+		check(!v.FindName(L"CommentsMoreButton"),
+		      "Comments kept the moved commands");
+		invoke(v.FillSignCloseButton());
 		v.openOrganize();
 		v.close();
 		check(!v.m_organizeTimer.IsRunning() &&
@@ -1134,6 +1138,13 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		      "Hide quick tools didn't hide them or give the pages its room");
 		invoke(v.BarQuickToolsItem());
 		check(visible(v.QuickTools()), "quick tools didn't come back");
+		v.runTool(L"fillsign");
+		{
+			const auto row =
+			    v.FindName(L"FillSignTools").try_as<FrameworkElement>();
+			check(row && visible(row) && !v.commentsOpen(),
+			      "Fill & Sign opened Comments instead of its command row");
+		}
 		owner.openDocument(engine, L"tests/fixtures/note_signed.pdf", {});
 		break;
 	case 2:
@@ -1142,6 +1153,12 @@ void TabsTest::toolSurfacesTick(MainWindow& owner) {
 		          !v.CommentUnderlineButton().IsEnabled() &&
 		          !v.CommentStrikeButton().IsEnabled(),
 		      "signed PDF command-row markup stayed enabled");
+		v.openFillSign();
+		check(visible(v.FillSignTools()) && !v.FillSignActions().IsEnabled() &&
+		          v.FillSignCloseButton().IsEnabled() && !v.commentsOpen(),
+		      "a refused Fill & Sign row trapped Close or replaced a panel");
+		invoke(v.FillSignCloseButton());
+		check(!visible(v.FillSignTools()), "Close did not dismiss Fill & Sign");
 		owner.openDocument(engine, L"tests/fixtures/fill_allowed.pdf", {});
 		break;
 	case 3:

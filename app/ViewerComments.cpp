@@ -147,7 +147,10 @@ void ViewerPage::setupComments() {
 	for (const auto& [button, tool] :
 	     {std::pair{PlaceNoteButton(), ActiveTool::Note},
 	      std::pair{PlaceTextBoxButton(), ActiveTool::TextBox},
-	      std::pair{DrawInkButton(), ActiveTool::Ink}}) {
+	      std::pair{DrawInkButton(), ActiveTool::Ink},
+	      std::pair{PlaceFillTextButton(), ActiveTool::FillText},
+	      std::pair{PlaceCheckButton(), ActiveTool::FillCheck},
+	      std::pair{PlaceCrossButton(), ActiveTool::FillCross}}) {
 		const auto pressed = [weak, tool](auto&&, auto&&) {
 			if (const auto self = weak.get();
 			    self && !self->m_syncingQuickTools) {
@@ -193,19 +196,12 @@ void ViewerPage::setupComments() {
 			self->pickStamp();
 		}
 	});
-	PlaceCheckButton().Click([weak](auto&&, auto&&) {
+	FillSignCloseButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->beginNotePlacement(PlacementTool::FillCheck);
-		}
-	});
-	PlaceCrossButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->beginNotePlacement(PlacementTool::FillCross);
-		}
-	});
-	PlaceFillTextButton().Click([weak](auto&&, auto&&) {
-		if (const auto self = weak.get()) {
-			self->beginNotePlacement(PlacementTool::FillText);
+			self->cancelNotePlacement();
+			self->m_toolRow = ToolRow::None;
+			self->updateQuickTools();
+			self->Scroller().Focus(FocusState::Programmatic);
 		}
 	});
 	PlaceTypedSignatureButton().Click([weak](auto&&, auto&&) {
@@ -352,6 +348,7 @@ void ViewerPage::chooseInkStyle(std::optional<pdf::AnnotationColor> color,
 	showComments();
 }
 void ViewerPage::closeComments() {
+	m_toolRow = ToolRow::None;
 	m_inkQueue.clear();
 	m_inkWriting = false;
 	m_shapeStart.reset();
@@ -408,7 +405,6 @@ void ViewerPage::showComments() {
 		                : L"Place " + hstring(text) + L" on page");
 	}
 	PlaceStampButton().IsEnabled(canPickStamp() && !m_stampPicking);
-	FillMarksMenu().IsEnabled(canUseTools);
 	PlaceStampButton().Content(box_value(
 	    m_activeTool == ActiveTool::Stamp ? L"Cancel stamp" : L"Stamp\u2026"));
 	DrawInkButton().IsEnabled(canUseTools || m_activeTool == ActiveTool::Ink);
@@ -477,7 +473,7 @@ void ViewerPage::showComments() {
 	                            PlaceArrowButton().as<FrameworkElement>(),
 	                            PlaceStampButton().as<FrameworkElement>(),
 	                            DrawInkButton().as<FrameworkElement>(),
-	                            FillMarksMenu().as<FrameworkElement>(),
+	                            FillSignActions().as<FrameworkElement>(),
 	                            AddNoteButton().as<FrameworkElement>()}) {
 		const auto reason = annotationRefusal();
 		ToolTipService::SetToolTip(control,

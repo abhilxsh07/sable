@@ -2,6 +2,18 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Fill & Sign in the command bar (2026-11-16)
+
+Fill & Sign now opens Text, Check, Cross and the two existing signature
+editors in a contextual row. It leaves the reading panel alone. The
+actions share ActiveTool and edit eligibility; an unavailable row gives
+the same reason in the notice and accessibility help. Close stays outside
+the disabled group and scrollable actions, so it remains usable.
+The old Comments More menu is now gone; its final commands moved here.
+Form fields still use the existing click-to-fill path. This completes
+audit 6.3.7/17's Fill & Sign portion; no signature format, settings or
+shortcut changes are included.
+
 ## Comment actions in the command bar (2026-11-16)
 
 Comment opens its right-hand list and a contextual row in the existing

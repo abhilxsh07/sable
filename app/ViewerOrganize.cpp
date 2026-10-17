@@ -86,47 +86,49 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 		openCombine();
 	} else if (tool == L"export") {
 		exportPages();
-	} else if (tool == L"comment" || tool == L"fillsign") {
+	} else if (tool == L"fillsign") {
+		openFillSign();
+	} else if (tool == L"comment") {
 		if (const auto reason = annotationRefusal()) {
 			showNotice(reason);
 			return;
 		}
-		if (tool == L"comment") {
-			if (m_toolRow != ToolRow::Comment) {
-				cancelNotePlacement();
-			}
-			m_toolRow = ToolRow::Comment;
+		if (m_toolRow != ToolRow::Comment) {
+			cancelNotePlacement();
 		}
+		m_toolRow = ToolRow::Comment;
 		setCommentsOpen(true);
-		if (tool == L"fillsign" && commentsOpen()) {
-			openFillSign();
-		}
 	}
 }
 
-// Home's Fill & Sign opens Comments' More menu with its Fill & Sign entry
-// focused. The panel has only just appeared, so the menu waits a turn for
-// the button to be laid out.
+// the row leaves the reading panel alone; focus waits for its layout.
 void ViewerPage::openFillSign() {
+	if (m_closed) {
+		return;
+	}
+	if (m_toolRow != ToolRow::FillSign) {
+		cancelNotePlacement();
+		m_toolRow = ToolRow::FillSign;
+	}
+	updateQuickTools();
+	if (const auto reason = annotationRefusal()) {
+		showNotice(reason);
+	}
 	DispatcherQueue().TryEnqueue(
 	    Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
 	    [weak = get_weak()] {
 		    const auto self = weak.get();
-		    if (!self || self->m_closed || !self->commentsOpen()) {
+		    if (!self || self->m_closed ||
+		        self->Visibility() != XVisibility::Visible ||
+		        self->m_toolRow != ToolRow::FillSign || self->organizing() ||
+		        self->presenting()) {
 			    return;
 		    }
-		    const auto more = self->CommentsMoreButton();
-		    const auto flyout = more.Flyout().as<Controls::MenuFlyout>();
-		    // focus only lands once the menu is in its popup; the handler
-		    // removes itself on the first open.
-		    auto token = std::make_shared<event_token>();
-		    *token = flyout.Opened([weak, token](const auto& sender, auto&&) {
-			    sender.template as<Controls::MenuFlyout>().Opened(*token);
-			    if (const auto page = weak.get()) {
-				    page->FillMarksMenu().Focus(FocusState::Keyboard);
-			    }
-		    });
-		    flyout.ShowAt(more);
+		    const auto target =
+		        self->FillSignActions().IsEnabled()
+		            ? self->PlaceFillTextButton().as<Controls::Control>()
+		            : self->FillSignCloseButton().as<Controls::Control>();
+		    target.Focus(FocusState::Keyboard);
 	    });
 }
 

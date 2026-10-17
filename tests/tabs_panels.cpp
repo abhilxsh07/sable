@@ -39,7 +39,7 @@ constexpr std::array<std::string_view, 1> OPEN_FAULTS = {"min-size"};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
-constexpr std::array<const wchar_t*, 10> STATES = {
+constexpr std::array<const wchar_t*, 11> STATES = {
     L"thumbnails",
     L"outline",
     L"comments",
@@ -49,7 +49,8 @@ constexpr std::array<const wchar_t*, 10> STATES = {
     L"Organize",
     L"notice",
     L"All tools + comments",
-    L"All tools at 480 px + comments"};
+    L"All tools at 480 px + comments",
+    L"Fill & Sign"};
 
 std::string text(const wchar_t* value) {
 	return to_string(value);
@@ -348,6 +349,9 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			v.setAllToolsOpen(true);
 			v.resizePane(helpers::paneMaxWidth, false);
 			break;
+		case 10:
+			v.requestTool(L"fillsign");
+			break;
 		default:
 			break;
 		}
@@ -494,6 +498,22 @@ void TabsTest::panelsTick(MainWindow& owner) {
 				return;
 			}
 			commentBar(where);
+		}
+		if (state == 10) {
+			if (v.FillSignScroller().HorizontalOffset() <
+			    v.FillSignScroller().ScrollableWidth() - 1) {
+				v.FillSignScroller().ChangeView(
+				    v.FillSignScroller().ScrollableWidth(), nullptr, nullptr,
+				    true);
+				return;
+			}
+			expect(shown(v.FillSignTools()) &&
+			           inside(box(v.FillSignTools()), box(v.DocumentBar())) &&
+			           inside(box(v.FillSignCloseButton()),
+			                  box(v.FillSignTools())) &&
+			           inside(box(v.PlaceDrawnSignatureButton()),
+			                  box(v.FillSignScroller())),
+			       {}, where + ": Fill & Sign overlaps or hides an action");
 		}
 		measure(where);
 		reset();

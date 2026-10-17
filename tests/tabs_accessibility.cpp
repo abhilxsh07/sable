@@ -268,7 +268,6 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			break;
 		case 4:
 			findings += auditSurface(current, L"Fill & Sign", false);
-			v.CommentsMoreButton().Flyout().Hide();
 			v.closeComments();
 			v.startReadAloud();
 			break;

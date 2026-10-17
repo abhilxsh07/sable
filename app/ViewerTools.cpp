@@ -550,6 +550,10 @@ void ViewerPage::updateQuickTools() {
 	                                  m_toolRow == ToolRow::Comment
 	                              ? Visibility::Visible
 	                              : Visibility::Collapsed);
+	FillSignTools().Visibility(chrome && !presenting() && !organizing() &&
+	                                   m_toolRow == ToolRow::FillSign
+	                               ? Visibility::Visible
+	                               : Visibility::Collapsed);
 	QuickTools().Visibility(s_quickTools && chrome && !presenting() &&
 	                                !organizing()
 	                            ? Visibility::Visible
@@ -559,6 +563,9 @@ void ViewerPage::updateQuickTools() {
 	m_syncingQuickTools = false;
 	const auto reason = annotationRefusal();
 	const bool canNote = !reason;
+	FillSignActions().IsEnabled(canNote);
+	Automation::AutomationProperties::SetHelpText(FillSignActions(),
+	                                              reason ? reason : L"");
 	for (const auto& [button, tool] : m_allToolButtons) {
 		if (tool == L"comment" || tool == L"fillsign") {
 			button.IsEnabled(canNote);
@@ -615,7 +622,10 @@ void ViewerPage::updateQuickTools() {
 		for (const auto& [button, tool] :
 		     {std::pair{PlaceNoteButton(), ActiveTool::Note},
 		      std::pair{PlaceTextBoxButton(), ActiveTool::TextBox},
-		      std::pair{DrawInkButton(), ActiveTool::Ink}}) {
+		      std::pair{DrawInkButton(), ActiveTool::Ink},
+		      std::pair{PlaceFillTextButton(), ActiveTool::FillText},
+		      std::pair{PlaceCheckButton(), ActiveTool::FillCheck},
+		      std::pair{PlaceCrossButton(), ActiveTool::FillCross}}) {
 			const bool on = m_activeTool == tool;
 			button.IsChecked(on);
 			button.IsEnabled(on || canNote);
