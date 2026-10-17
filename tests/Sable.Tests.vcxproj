@@ -92,6 +92,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	<ItemGroup>
 		<ClCompile Include="main.cpp" />
 		<ClCompile Include="sanity_test.cpp" />
+		<ClCompile Include="attachment_file_test.cpp" />
 		<ClCompile Include="version_test.cpp" />
 		<ClCompile Include="logging_test.cpp" />
 		<ClCompile Include="music_test.cpp" />
@@ -118,6 +119,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<!-- the code under test, built straight from app/helpers -->
 	<ItemGroup>
+		<ClInclude Include="..\app\helpers\attachment_file.h" />
+		<ClCompile Include="..\app\helpers\attachment_file.cpp" />
 		<ClInclude Include="..\app\helpers\version.h" />
 		<ClInclude Include="..\app\helpers\logging.h" />
 		<ClInclude Include="..\app\helpers\music.h" />
