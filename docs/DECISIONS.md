@@ -816,6 +816,20 @@ this sandbox; a local build with WholeProgramOptimization=false passes. The
 project keeps its normal optimization settings. Its standard ARM64 Release
 link still needs verification outside this environment.
 
+## Attachment sidebar (2026-10-17)
+
+The right rail switches between thumbnails, outline and a native attachment
+list. Each tab loads names on demand and retains the list through zoom and
+sidebar changes. F4 remembers the last panel. Native list keys stay with the
+list, and closing it moves focus back to the reader. Load errors offer Retry;
+an empty document has a separate message. Each row keeps its PDF index, so
+duplicate names will not select the wrong embedded file. Save As follows in
+the next step; this step only lists the files.
+
+SableAttachmentsTest=true with SableTabsTest=true checks names, cached rows,
+panel switching, empty/error/retry and late replies after close. Physical
+pointer/keyboard interaction and appearance remain separate checks.
+
 ## Attachment extraction (2026-10-17)
 
 Attachment handles stay on the engine thread. The viewer receives names and
