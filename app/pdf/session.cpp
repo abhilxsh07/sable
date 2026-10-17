@@ -372,6 +372,63 @@ bool Session::outlineLink(std::size_t index,
 	return true;
 }
 
+bool Session::attachments(std::function<void(AttachmentsResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, callback = std::move(callback)] {
+		AttachmentsResult result;
+		try {
+			if (!state->closed()) {
+				result.attachments = state->m_document->attachments(
+				    [state] { return state->closed(); });
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't read PDF attachments.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.attachments.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
+bool Session::attachment(int index,
+                         std::function<void(AttachmentResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, index, callback = std::move(callback)] {
+		AttachmentResult result;
+		try {
+			if (!state->closed()) {
+				result.bytes = state->m_document->attachment(
+				    index, [state] { return state->closed(); });
+			}
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't extract a PDF attachment.");
+		}
+		result.canceled = state->closed();
+		if (result.canceled) {
+			result.bytes.reset();
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::outline(std::function<void(OutlineResult)> callback) {
 	const auto state = m_state;
 	{

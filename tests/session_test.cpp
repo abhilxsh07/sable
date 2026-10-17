@@ -586,6 +586,44 @@ TEST_F(SessionTest, FindSupersedesQueuedQueryAndRejectsInvalidInput) {
 	EXPECT_TRUE(rejected->failed);
 }
 
+TEST_F(SessionTest, AttachmentsStayOnTheEngineThreadAndCloseDiscardsData) {
+	pdf::Session session(engine);
+	Reply<pdf::AttachmentsResult> unopened;
+	EXPECT_FALSE(session.attachments(unopened.callback()));
+	EXPECT_FALSE(session.attachment(0, {}));
+	ASSERT_EQ(open(session, fixturePath("attachments.pdf")).error,
+	          pdf::Error::None);
+	Reply<pdf::AttachmentsResult> list;
+	ASSERT_TRUE(session.attachments(list.callback()));
+	const auto found = list.wait();
+	ASSERT_TRUE(found && found->attachments);
+	EXPECT_EQ(found->attachments->entries.size(), 4u);
+	Reply<pdf::AttachmentResult> data;
+	const auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(session.attachment(0, [onThread, cb = data.callback()](auto r) {
+		*onThread = pdf::Engine::onThread();
+		cb(std::move(r));
+	}));
+	const auto extracted = data.wait();
+	ASSERT_TRUE(extracted && extracted->bytes);
+	EXPECT_EQ(extracted->bytes->size(), 8u);
+	EXPECT_TRUE(*onThread);
+	Gate gate(engine);
+	Reply<pdf::AttachmentResult> canceled;
+	Reply<pdf::AttachmentsResult> canceledList;
+	ASSERT_TRUE(session.attachment(0, canceled.callback()));
+	ASSERT_TRUE(session.attachments(canceledList.callback()));
+	session.close();
+	gate.open();
+	const auto closed = canceled.wait();
+	const auto closedList = canceledList.wait();
+	ASSERT_TRUE(closed && closedList);
+	EXPECT_TRUE(closed->canceled && closedList->canceled);
+	EXPECT_FALSE(closed->bytes);
+	EXPECT_FALSE(closedList->attachments);
+	EXPECT_FALSE(session.attachment(0, data.callback()));
+}
+
 TEST_F(SessionTest, OutlinesReturnOnTheEngineThreadAndCloseDiscardsQueuedData) {
 	pdf::Session session(engine);
 	Reply<pdf::OutlineResult> unopened;

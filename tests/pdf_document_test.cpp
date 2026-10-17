@@ -488,6 +488,41 @@ TEST_F(PdfDocumentTest, OutlineCyclesAndDeepTreesStayBounded) {
 		EXPECT_EQ(data[1]->entries[i].title, "Level " + std::to_string(i));
 	}
 }
+TEST_F(PdfDocumentTest,
+       AttachmentsKeepUnicodeBinaryEmptyAndUnreadableDistinct) {
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("attachments.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    const auto& doc = *opened.document;
+		    const auto list = doc.attachments();
+		    ASSERT_TRUE(list);
+		    ASSERT_EQ(list->entries.size(), 4u);
+		    EXPECT_EQ(list->entries[0].name,
+		              "notes \xCE\xA9\xF0\x9F\x98\x80.txt");
+		    EXPECT_EQ(list->entries[1].name, "..\\..\\empty.bin");
+		    EXPECT_EQ(list->entries[3].name.find('\0'), std::string::npos);
+		    const auto bytes = doc.attachment(list->entries[0].index);
+		    ASSERT_TRUE(bytes);
+		    EXPECT_EQ(*bytes, (std::vector<std::uint8_t>{'h', 'e', 'l', 'l',
+		                                                 'o', 0, 255, '\n'}));
+		    const auto empty = doc.attachment(1);
+		    ASSERT_TRUE(empty);
+		    EXPECT_TRUE(empty->empty());
+		    EXPECT_FALSE(doc.attachment(2));
+		    EXPECT_FALSE(doc.attachment(-1));
+		    EXPECT_FALSE(doc.attachment(4));
+		    EXPECT_FALSE(doc.attachment(0, [] { return true; }));
+		    EXPECT_FALSE(doc.attachments([] { return true; }));
+		    const auto plain = pdf::openFile(fixturePath("pages.pdf"));
+		    ASSERT_TRUE(plain.document);
+		    const auto none = plain.document->attachments();
+		    ASSERT_TRUE(none);
+		    EXPECT_TRUE(none->entries.empty());
+	    })
+	    .get();
+}
+
 TEST_F(PdfDocumentTest, EmptyOutlinesAndCanceledExtractionAreDistinct) {
 	const auto data =
 	    engine

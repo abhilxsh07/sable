@@ -61,6 +61,14 @@ struct OutlineResult {
 	std::optional<Outline> outline;
 	bool canceled = false;
 };
+struct AttachmentsResult {
+	std::optional<Attachments> attachments;
+	bool canceled = false;
+};
+struct AttachmentResult {
+	std::optional<std::vector<std::uint8_t>> bytes;
+	bool canceled = false;
+};
 struct FindUpdate {
 	std::vector<FindMatch> matches;
 	int pagesScanned = 0, pageCount = 0;
@@ -88,6 +96,8 @@ class Session {
 	            std::function<void(LinkResult)> callback);
 	bool textPage(int page, std::function<void(TextResult)> callback);
 	bool outline(std::function<void(OutlineResult)> callback);
+	bool attachments(std::function<void(AttachmentsResult)> callback);
+	bool attachment(int index, std::function<void(AttachmentResult)> callback);
 	// A newer outline navigation cancels older queued navigation.
 	bool outlineLink(std::size_t index,
 	                 std::function<void(LinkResult)> callback);

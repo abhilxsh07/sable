@@ -816,6 +816,21 @@ this sandbox; a local build with WholeProgramOptimization=false passes. The
 project keeps its normal optimization settings. Its standard ARM64 Release
 link still needs verification outside this environment.
 
+## Attachment extraction (2026-10-17)
+
+Attachment handles stay on the engine thread. The viewer receives names and
+indices first, with file contents extracted only on request. Empty files and
+unreadable streams have different results. Closing the session discards pending
+metadata and bytes. The source PDF is never changed.
+
+I cap the list at 10,000 entries, individual UTF-16 name buffers at 8 KiB and
+their total at 2 MiB. Invalid names get a numbered fallback, controls become
+spaces, and a partial-list flag records missing metadata. Extraction rejects
+files larger than 128 MiB after PDFium reports their decoded size. PDFium can
+still allocate internally while decoding; this bounds the returned buffer,
+not the decoder's memory. PDFium normalizes name separators on Windows, so
+the returned name is display metadata rather than an output path.
+
 ## Document outlines (2026-10-17)
 
 Outline extraction returns a flat preorder snapshot of titles, parent indices,

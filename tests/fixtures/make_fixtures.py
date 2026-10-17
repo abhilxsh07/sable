@@ -401,6 +401,24 @@ def deep_outline_pdf() -> bytes:
     return w.finish(1, 75)
 
 
+def attachments_pdf() -> bytes:
+    w = Writer(md5(b"sable attachments.pdf"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R /Names << /EmbeddedFiles "
+          "<< /Names [(a) 4 0 R (b) 5 0 R (c) 6 0 R (d) 7 0 R] >> >> >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+    w.add(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] >>")
+    unicode_name = "notes \u03a9\U0001f600.txt".encode("utf-16-be").hex()
+    w.add(4, f"<< /Type /Filespec /UF <feff{unicode_name}> "
+          "/F (notes.txt) /EF << /F 8 0 R >> >>")
+    w.add(5, "<< /Type /Filespec /F (../../empty.bin) /EF << /F 9 0 R >> >>")
+    w.add(6, "<< /Type /Filespec /F (broken.bin) >>")
+    w.add(7, "<< /Type /Filespec /F <00626164> /EF << /F 8 0 R >> >>")
+    w.add_stream(8, b"hello\x00\xff\n")
+    w.add_stream(9, b"")
+    w.add(10, "<< /Title (Sable attachment fixture) >>")
+    return w.finish(1, 10)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -411,6 +429,7 @@ def main() -> None:
             f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
         )))
     files = {
+        "attachments.pdf": attachments_pdf(),
         "outline.pdf": outline_pdf(),
         "outline_cycle.pdf": outline_pdf(True),
         "outline_deep.pdf": deep_outline_pdf(),
