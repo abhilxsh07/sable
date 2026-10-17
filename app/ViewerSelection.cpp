@@ -349,6 +349,7 @@ void ViewerPage::requestText(int page) {
 					    }
 				    }
 				    self->updateSelection();
+				    self->revealFindMatch();
 				    self->prefetchSelectedText();
 			    });
 		    })) {
@@ -360,7 +361,8 @@ void ViewerPage::requestText(int page) {
 	m_textFailed.insert(page);
 }
 void ViewerPage::prefetchSelectedText() {
-	if (m_closed || !m_layout || !m_selection || m_textPending ||
+	if (m_closed || !m_layout || (!m_selection && m_findMatches.empty()) ||
+	    m_textPending ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
 	}
@@ -370,10 +372,12 @@ void ViewerPage::prefetchSelectedText() {
 		m_textView = visible;
 		m_textPrefetched.clear();
 	}
-	const auto [first, last] = pdf::ordered(*m_selection);
+	const auto [first, last] = pdf::ordered(
+	    m_selection.value_or(pdf::TextSelection{{-1, 0}, {-1, 0}}));
 	for (auto page = visible.first; page < visible.end; ++page) {
 		const int index = static_cast<int>(page);
-		if (index >= first.page && index <= last.page &&
+		if (((index >= first.page && index <= last.page) ||
+		     hasFindOnPage(index)) &&
 		    !m_text.contains(index) && !m_textFailed.contains(index) &&
 		    m_textPrefetched.insert(index).second) {
 			requestText(index);

@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "../app/pch.h"
+#include "../app/pdf/session.h"
 #include "../app/App.xaml.h"
 #include "../app/SettingsWindow.h"
 #include "../app/MusicPane.h"
@@ -61,6 +62,7 @@ struct TabsTest {
 	bool editOnly = false;
 	bool musicOnly = false;
 	bool selectionOnly = false;
+	bool findOnly = false;
 	std::string copiedText;
 	int copyCalls = 0;
 	music::Snapshot musicSnapshot;
@@ -946,6 +948,141 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+
+	void findTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_finding ||
+		    (v.m_findTimer && v.m_findTimer.IsRunning())) {
+			return;
+		}
+		switch (step) {
+		case 0:
+			check(owner.FindItem().IsEnabled(), "Find menu disabled");
+			v.goToPage(2);
+			break;
+		case 1:
+			v.openFind();
+			v.FindBox().Text(L"alpha");
+			break;
+		case 2:
+			check(v.m_findMatches.size() == 4 && v.m_findActive == 2,
+			      "initial Find match near current page");
+			check(v.FindCount().Text() == L"3 of 4", "Find count");
+			v.navigateFind(1);
+			check(v.m_findActive == 3, "Find next");
+			v.navigateFind(1);
+			check(v.m_findActive == 0, "Find next wrap");
+			v.navigateFind(-1);
+			check(v.m_findActive == 3, "Find previous wrap");
+			v.FindCase().IsChecked(true);
+			break;
+		case 3:
+			check(v.m_findMatches.empty() &&
+			          v.FindCount().Text() == L"Phrase not found",
+			      "Find match case");
+			v.FindCase().IsChecked(false);
+			v.FindBox().Text(L"Alph");
+			v.FindWords().IsChecked(true);
+			break;
+		case 4:
+			check(v.m_findMatches.empty(), "Find whole word");
+			v.FindWords().IsChecked(false);
+			v.FindBox().Text(L"e");
+			break;
+		case 5:
+			check(std::any_of(v.m_findMatches.begin(), v.m_findMatches.end(),
+			                  [](const auto& m) { return m.page == 4; }),
+			      "accent-insensitive Find");
+			v.FindDiacritics().IsChecked(true);
+			break;
+		case 6:
+			check(std::none_of(v.m_findMatches.begin(), v.m_findMatches.end(),
+			                   [](const auto& m) { return m.page == 4; }),
+			      "Find diacritics");
+			v.FindBox().Text(L"Alpha");
+			break;
+		case 7:
+			if (!v.m_findActive ||
+			    !v.m_text.contains(v.m_findMatches[*v.m_findActive].page)) {
+				return;
+			}
+			check(!v.m_findNeedsReveal, "Find geometry not revealed");
+			v.FindHighlight().IsChecked(false);
+			check(v.hasFindOnPage(v.m_findMatches[*v.m_findActive].page),
+			      "active Find highlight");
+			v.zoomIn();
+			break;
+		case 8:
+			check(v.m_findMatches.size() == 4, "zoom lost Find results");
+			v.FindBox().Text(L"missing");
+			v.startFind();
+			v.FindBox().Text(L"Second");
+			v.startFind();
+			break;
+		case 9:
+			check(v.m_findMatches.size() == 4,
+			      "stale Find callback replaced query");
+			v.closeFind();
+			check(!v.findOpen() && v.m_findMatches.empty(), "Find close");
+			v.openFind();
+			break;
+		case 10:
+			check(v.m_findMatches.size() == 4 &&
+			          v.FindBox().Text() == L"Second",
+			      "Find reopen retains query");
+			v.FindBox().Text(L"Alpha");
+			v.startFind();
+			v.closeFind();
+			break;
+		case 11:
+			check(v.m_findMatches.empty(),
+			      "closed Find accepted stale callback");
+			v.openFind();
+			v.m_findTimer.Stop();
+			v.m_findStartPage = 0;
+			pdf::FindUpdate partial;
+			partial.matches = {{0, 0, 5}};
+			partial.pagesScanned = 1;
+			partial.pageCount = 5;
+			v.applyFind(std::move(partial));
+			v.navigateFind(1);
+			v.navigateFind(-1);
+			check(v.m_findActive == 0 && !v.FindNext().IsEnabled() &&
+			          !v.FindPrevious().IsEnabled(),
+			      "partial Find wrapped before the scan finished");
+			pdf::FindUpdate more;
+			more.matches = {{1, 0, 5}};
+			more.pagesScanned = 2;
+			more.pageCount = 5;
+			v.applyFind(std::move(more));
+			check(v.FindNext().IsEnabled(),
+			      "partial Find did not enable the next known match");
+			v.navigateFind(1);
+			v.navigateFind(1);
+			check(v.m_findActive == 1, "partial Find next wrapped");
+			pdf::FindUpdate complete;
+			complete.pagesScanned = 5;
+			complete.pageCount = 5;
+			complete.done = true;
+			v.applyFind(std::move(complete));
+			v.navigateFind(1);
+			check(v.m_findActive == 0, "completed Find did not wrap");
+			v.navigateFind(-1);
+			check(v.m_findActive == 1, "completed Find previous did not wrap");
+			v.closeFind();
+			status.Text(L"PASS: Find ranges, counts, navigation, options, "
+			            L"highlights, zoom and stale callbacks");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void selectionTick(MainWindow& owner) {
 		if (step == 10) {
 			check(copyCalls == 4, "closed viewer copied text");
@@ -1106,6 +1243,10 @@ struct TabsTest {
 			}
 			if (musicOnly) {
 				musicTick(*self);
+				return;
+			}
+			if (findOnly) {
+				findTick(*self);
 				return;
 			}
 			if (selectionOnly) {
@@ -1589,11 +1730,13 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->selectionOnly =
 	    GetEnvironmentVariableW(L"SableSelectionTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->findOnly = GetEnvironmentVariableW(L"SableFindTest", mode, 8) &&
+	                  std::wstring_view(mode) == L"true";
 	state->shortcuts = GetEnvironmentVariableW(L"SableShortcutTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
 	    state->printOnly || state->finishOnly || state->editOnly ||
-	    state->musicOnly || state->selectionOnly) {
+	    state->musicOnly || state->selectionOnly || state->findOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -1644,7 +1787,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->selectionOnly) {
+	if (state->selectionOnly || state->findOnly) {
 		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->editOnly) {
 		window->openDocument(engine, L"tests/fixtures/pages.pdf", 2);
