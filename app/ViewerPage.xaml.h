@@ -141,6 +141,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setupSelection();
 	void setupOutline();
 	void setupAttachments();
+	void setupAttachmentSaving();
+	winrt::fire_and_forget saveAttachment(int index);
+	std::uint64_t m_attachmentSaveVersion = 0;
+	bool m_attachmentSaving = false;
 	void closeAttachments();
 	void requestAttachments();
 	void showAttachments();
@@ -321,6 +325,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_closed = false;
 	bool m_linkPending = false;
 #ifdef SABLE_SURFACE_TEST
+	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
+	    winrt::hstring)>
+	    m_attachmentPicker;
 	std::string m_launchedUri;
 	std::function<void(const std::string&)> m_copySink;
 	std::function<pdf::PrintDialogResult(void*, int, int, const std::wstring&)>

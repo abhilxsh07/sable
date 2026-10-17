@@ -65,6 +65,18 @@ struct TabsTest {
 	bool findOnly = false;
 	bool outlineOnly = false;
 	bool attachmentsOnly = false;
+	bool attachmentSaveOnly = false;
+	std::filesystem::path attachmentTarget;
+	std::shared_ptr<winrt::handle> attachmentGate;
+	hstring attachmentName;
+	int attachmentPicks = 0;
+	static Windows::Foundation::IAsyncOperation<hstring>
+	attachmentChoice(hstring path, std::shared_ptr<winrt::handle> gate) {
+		if (gate) {
+			co_await resume_on_signal(gate->get());
+		}
+		co_return path;
+	}
 	ListViewItem attachmentItem{nullptr};
 	std::size_t outlinePage = 0;
 	std::string copiedText;
@@ -121,6 +133,9 @@ struct TabsTest {
 	~TabsTest() {
 		std::error_code ignored;
 		std::filesystem::remove(settingsPath, ignored);
+		if (!attachmentTarget.empty()) {
+			std::filesystem::remove(attachmentTarget, ignored);
+		}
 	}
 
 	void focus(bool pageBox) {
@@ -953,6 +968,110 @@ struct TabsTest {
 		ticks = 0;
 	}
 
+	void attachmentSaveTick(MainWindow& owner) {
+		if (step == 8) {
+			check(first && first->m_closed && !first->m_attachmentSaving,
+			      "closed attachment save stayed active");
+			check(!std::filesystem::exists(attachmentTarget),
+			      "closed tab saved a late picker result");
+			status.Text(L"PASS: attachment save, cancel, read/write errors "
+			            L"and closed picker guards");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || v.m_attachmentsPending ||
+		    (v.m_attachmentSaving && step != 7)) {
+			return;
+		}
+		const auto choose = [&](const std::wstring& path) {
+			v.m_attachmentPicker = [this, path](hstring name) {
+				attachmentName = name;
+				++attachmentPicks;
+				return attachmentChoice(hstring(path), attachmentGate);
+			};
+		};
+		switch (step) {
+		case 0:
+			attachmentTarget = settingsPath;
+			attachmentTarget.replace_extension(L".bin");
+			v.setAttachmentsOpen(true);
+			break;
+		case 1:
+			if (!v.m_attachmentsBuilt) {
+				return;
+			}
+			check(v.AttachmentList().IsItemClickEnabled(),
+			      "attachment rows do not invoke Save As");
+			choose(L"");
+			v.saveAttachment(0);
+			break;
+		case 2:
+			check(attachmentPicks == 1 &&
+			          !std::filesystem::exists(attachmentTarget) &&
+			          !v.Message().IsOpen(),
+			      "cancel changed attachment state");
+			check(attachmentName == L"notes \u03a9\U0001f600.txt",
+			      "picker lost Unicode filename");
+			choose(attachmentTarget.wstring());
+			v.saveAttachment(0);
+			v.saveAttachment(1);
+			check(attachmentPicks == 2, "opened duplicate attachment picker");
+			break;
+		case 3: {
+			std::ifstream in(attachmentTarget, std::ios::binary);
+			const std::string bytes((std::istreambuf_iterator<char>(in)), {});
+			check(bytes == std::string("hello\0\xff\n", 8),
+			      "attachment bytes changed while saving");
+			choose(attachmentTarget.wstring());
+			v.saveAttachment(1);
+			check(attachmentName == L"empty.bin", "picker kept a PDF path");
+			break;
+		}
+		case 4:
+			check(std::filesystem::file_size(attachmentTarget) == 0,
+			      "empty attachment was not saved");
+			v.saveAttachment(2);
+			break;
+		case 5:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Couldn't read") == 0 &&
+			          std::filesystem::file_size(attachmentTarget) == 0,
+			      "damaged attachment replaced a saved file");
+			v.Message().IsOpen(false);
+			choose(std::filesystem::absolute(v.m_path).wstring());
+			v.saveAttachment(0);
+			break;
+		case 6:
+			check(v.Message().IsOpen() &&
+			          std::wstring_view(v.Message().Message())
+			                  .find(L"Couldn't save") == 0,
+			      "source PDF overwrite has no error");
+			v.Message().IsOpen(false);
+			std::filesystem::remove(attachmentTarget);
+			attachmentGate = std::make_shared<winrt::handle>(
+			    CreateEventW(nullptr, TRUE, FALSE, nullptr));
+			check(static_cast<bool>(*attachmentGate));
+			choose(attachmentTarget.wstring());
+			v.saveAttachment(0);
+			check(v.m_attachmentSaving, "picker didn't suspend saving");
+			break;
+		case 7:
+			first.copy_from(&v);
+			owner.closeTab(owner.Tabs().SelectedItem().as<TabViewItem>());
+			SetEvent(attachmentGate->get());
+			break;
+		}
+		++step;
+		ticks = 0;
+	}
+
 	void attachmentsTick(MainWindow& owner) {
 		if (step == 6) {
 			check(first && first->m_closed && !first->m_attachments &&
@@ -1493,6 +1612,10 @@ struct TabsTest {
 				musicTick(*self);
 				return;
 			}
+			if (attachmentSaveOnly) {
+				attachmentSaveTick(*self);
+				return;
+			}
 			if (attachmentsOnly) {
 				attachmentsTick(*self);
 				return;
@@ -1989,6 +2112,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->attachmentSaveOnly =
+	    GetEnvironmentVariableW(L"SableAttachmentSaveTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->attachmentsOnly =
 	    GetEnvironmentVariableW(L"SableAttachmentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -1999,7 +2125,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	if (state->settingsOnly || state->filtersOnly || state->linksOnly ||
 	    state->printOnly || state->finishOnly || state->editOnly ||
 	    state->musicOnly || state->selectionOnly || state->findOnly ||
-	    state->outlineOnly || state->attachmentsOnly) {
+	    state->outlineOnly || state->attachmentsOnly ||
+	    state->attachmentSaveOnly) {
 		state->shortcuts = false;
 	} else {
 		state->dropSetup = state->makeDropData();
@@ -2050,7 +2177,7 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	Grid::SetRow(report, 1);
 	window->Content().as<Grid>().Children().Append(report);
 	window->Closed([state](auto&&, auto&&) { state->timer.Stop(); });
-	if (state->attachmentsOnly) {
+	if (state->attachmentsOnly || state->attachmentSaveOnly) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);

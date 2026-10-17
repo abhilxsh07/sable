@@ -200,6 +200,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="ViewerFind.cpp" />
 		<ClCompile Include="ViewerOutline.cpp" />
 		<ClCompile Include="ViewerAttachments.cpp" />
+		<ClCompile Include="ViewerAttachmentSave.cpp" />
 		<ClCompile Include="MainWindow.xaml.cpp">
 			<DependentUpon>MainWindow.xaml</DependentUpon>
 		</ClCompile>
@@ -213,6 +214,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	</ItemGroup>
 	<!-- helpers/ is plain C++ with no WinRT in it, so it stays out of the pch -->
 	<ItemGroup>
+		<ClInclude Include="helpers\attachment_file.h" />
 		<ClInclude Include="helpers\version.h" />
 		<ClInclude Include="helpers\logging.h" />
 		<ClInclude Include="helpers\music.h" />
@@ -238,6 +240,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\keybinds.h" />
 	</ItemGroup>
 	<ItemGroup>
+		<ClCompile Include="helpers\attachment_file.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
 		<ClCompile Include="helpers\version.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>

@@ -816,6 +816,36 @@ this sandbox; a local build with WholeProgramOptimization=false passes. The
 project keeps its normal optimization settings. Its standard ARM64 Release
 link still needs verification outside this environment.
 
+## Layer API check (2026-10-17)
+
+V14 needs layer enumeration and per-view optional-content visibility. The
+pinned chromium/8086 public PDFium headers expose the UseOC page-mode value,
+but no API for enumerating optional-content groups or changing their render
+visibility. A functional layers panel would require a different supported
+interface or a maintained PDFium extension. This remains deferred; no layer
+controls are shown. View rotation (V15) is the next reading tool.
+
+## Attachment Save As (2026-10-17)
+
+Invoking an attachment row opens a Save As picker owned by the reader window.
+The suggested name drops PDF-supplied paths and replaces Windows filename
+characters and device names. The original Unicode name remains in the list.
+No attachment bytes are read before a destination is selected, and only one
+save can be pending per tab. Cancel leaves the target alone. Closing the tab
+or hiding it before extraction completes discards the reply.
+
+Writes run off the UI thread. A temporary file beside the chosen destination
+is flushed and renamed into place; a failed write leaves an existing target
+intact and removes the temporary file. The source PDF and its hard-link aliases
+cannot be selected as the target. The extraction limit remains 128 MiB. Read
+and write failures leave the document usable and offer another attempt. Files
+are saved as bytes; Sable does not launch an attachment.
+
+SableAttachmentSaveTest=true with SableTabsTest=true substitutes the picker
+and saves synthetic files under the test temp directory. It checks Unicode,
+cancel, binary/empty data, read/write errors and a picker returning after tab
+close. Actual picker input and overwrite confirmation remain physical checks.
+
 ## Attachment sidebar (2026-10-17)
 
 The right rail switches between thumbnails, outline and a native attachment
