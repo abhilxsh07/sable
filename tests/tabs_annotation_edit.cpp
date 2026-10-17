@@ -33,14 +33,15 @@ void invokeElement(const FrameworkElement& element) {
 		    .Invoke();
 	}
 }
-Button primaryButton(const DependencyObject& node) {
+Button primaryButton(const DependencyObject& node,
+                     const wchar_t* wanted = L"PrimaryButton") {
 	if (const auto button = node.try_as<Button>();
-	    button && button.Name() == L"PrimaryButton") {
+	    button && button.Name() == wanted) {
 		return button;
 	}
 	for (int i = 0; i < Media::VisualTreeHelper::GetChildrenCount(node); ++i) {
-		if (const auto button =
-		        primaryButton(Media::VisualTreeHelper::GetChild(node, i))) {
+		if (const auto button = primaryButton(
+		        Media::VisualTreeHelper::GetChild(node, i), wanted)) {
 			return button;
 		}
 	}
@@ -418,11 +419,46 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 			v.m_annotationMenu.Hide();
 		}
 		check(offered, "the page menu doesn't offer Resize arrow");
-		v.editLineLength(*v.m_selectedAnnotation);
+		const auto& rows = v.m_commentScan.rows();
+		const auto arrowRow =
+		    std::find_if(rows.begin(), rows.end(), [](const auto& row) {
+			    return row.line == pdf::LineKind::Arrow;
+		    });
+		check(arrowRow != rows.end(), "the arrow has no Comments row");
+		v.clearAnnotationSelection();
+		v.CommentsList().SelectedIndex(
+		    static_cast<int>(arrowRow - rows.begin()));
+		v.showComments();
+		invokeElement(v.EditNoteButton());
 		break;
 	}
 	case 4: {
 		if (!v.m_noteDialog) {
+			check(ticks < 40, "the list's arrow editor didn't open");
+			return;
+		}
+		check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Edit arrow" &&
+		          v.m_noteDialog.SecondaryButtonText() == L"Resize arrow\u2026",
+		      "list Edit did not offer arrow styling and Resize");
+		const auto fields = v.m_noteDialog.Content().as<StackPanel>();
+		check(unbox_value<hstring>(
+		          fields.Children().GetAt(1).as<ComboBox>().Header()) ==
+		              L"Color" &&
+		          unbox_value<hstring>(
+		              fields.Children().GetAt(2).as<ComboBox>().Header()) ==
+		              L"Width",
+		      "the arrow editor lost Color or Width");
+		const auto resize = primaryButton(v.m_noteDialog, L"SecondaryButton");
+		if (!resize || !resize.IsEnabled()) {
+			check(ticks < 40, "Resize arrow action is unavailable");
+			return;
+		}
+		invokeElement(resize);
+		break;
+	}
+	case 5: {
+		if (!v.m_noteDialog ||
+		    unbox_value<hstring>(v.m_noteDialog.Title()) != L"Resize arrow") {
 			check(ticks < 40, "Resize arrow didn't open");
 			return;
 		}
@@ -442,7 +478,7 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		invokeElement(button);
 		break;
 	}
-	case 5:
+	case 6:
 		if (v.m_noteDialog || !v.m_commentScan.done()) {
 			check(ticks < 80, "Resize arrow didn't finish");
 			return;
@@ -457,7 +493,7 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		// its start stayed put, so it's still under the first click
 		v.requestAnnotationAt(at(.31, .6));
 		break;
-	case 6:
+	case 7:
 		check(v.m_selectedAnnotation &&
 		          v.m_selectedAnnotation->line == pdf::LineKind::Arrow &&
 		          std::abs(v.m_selectedAnnotation->lineLength - 60) < .01,
@@ -467,11 +503,50 @@ void TabsTest::lineArrowTick(MainWindow& owner) {
 		}
 		v.deleteAnnotation();
 		break;
-	case 7:
+	case 8: {
 		if (!v.m_commentScan.done()) {
 			return;
 		}
 		check(inkRows() == 1, "Delete didn't remove the arrow");
+		const auto& rows = v.m_commentScan.rows();
+		const auto lineRow =
+		    std::find_if(rows.begin(), rows.end(), [](const auto& row) {
+			    return row.line == pdf::LineKind::Line;
+		    });
+		check(lineRow != rows.end(), "the line has no Comments row");
+		v.clearAnnotationSelection();
+		v.CommentsList().SelectedIndex(
+		    static_cast<int>(lineRow - rows.begin()));
+		v.showComments();
+		invokeElement(v.EditNoteButton());
+		break;
+	}
+	case 9:
+		if (!v.m_noteDialog) {
+			check(ticks < 40, "the line editor didn't open");
+			return;
+		}
+		check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Edit line" &&
+		          v.m_noteDialog.SecondaryButtonText() == L"Resize line\u2026",
+		      "list Edit did not offer line styling and Resize: " +
+		          to_string(unbox_value<hstring>(v.m_noteDialog.Title())) +
+		          " / " + to_string(v.m_noteDialog.SecondaryButtonText()));
+		v.m_noteDialog.Hide();
+		break;
+	case 10:
+		if (v.m_noteDialog) {
+			check(ticks < 40, "line Cancel didn't close");
+			return;
+		}
+		check(inkRows() == 1 &&
+		          std::any_of(v.m_commentScan.rows().begin(),
+		                      v.m_commentScan.rows().end(),
+		                      [&v](const auto& row) {
+			                      return row.line == pdf::LineKind::Line &&
+			                             row.target.revision ==
+			                                 v.m_session->annotationRevision();
+		                      }),
+		      "canceling line Edit changed the PDF");
 		v.close();
 		status.Text(L"PASS: line and arrow placement, labels, Resize arrow, "
 		            L"short click and Delete");

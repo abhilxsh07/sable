@@ -450,13 +450,21 @@ void ViewerPage::showComments() {
 	const bool selectedStamp =
 	    selected >= 0 && static_cast<std::size_t>(selected) < notes.size() &&
 	    notes[selected].subtype == "Stamp";
+	const auto selectedLine =
+	    m_selectedAnnotation ? m_selectedAnnotation->line
+	    : selected >= 0 && static_cast<std::size_t>(selected) < notes.size()
+	        ? notes[selected].line
+	        : pdf::LineKind::None;
 	Automation::AutomationProperties::SetName(
-	    EditNoteButton(), selectedInk      ? L"Edit selected drawing"
-	                      : selectedStamp  ? L"Resize selected stamp"
-	                      : selectedShape  ? L"Resize selected shape"
-	                      : selectedBox    ? L"Edit selected text box"
-	                      : selectedMarkup ? L"Edit selected comment"
-	                                       : L"Edit selected note");
+	    EditNoteButton(),
+	    selectedLine == pdf::LineKind::Arrow  ? L"Edit selected arrow"
+	    : selectedLine == pdf::LineKind::Line ? L"Edit selected line"
+	    : selectedInk                         ? L"Edit selected drawing"
+	    : selectedStamp                       ? L"Resize selected stamp"
+	    : selectedShape                       ? L"Resize selected shape"
+	    : selectedBox                         ? L"Edit selected text box"
+	    : selectedMarkup                      ? L"Edit selected comment"
+	                                          : L"Edit selected note");
 	EditNoteButton().IsEnabled(
 	    m_noteAllowed && !m_noteBusy && !m_noteSaving && !m_noteDialog &&
 	    !notePlacing() &&

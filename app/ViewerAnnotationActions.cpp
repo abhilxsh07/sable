@@ -150,7 +150,9 @@ void ViewerPage::showAnnotationMenu(Windows::Foundation::Point point) {
 	const auto weak = get_weak();
 	m_annotationMenu = MenuFlyout();
 	MenuFlyoutItem edit;
-	edit.Text(target.subtype == "Ink"     ? L"Edit drawing"
+	edit.Text(m_selectedAnnotation->line == pdf::LineKind::Arrow ? L"Edit arrow"
+	          : m_selectedAnnotation->line == pdf::LineKind::Line ? L"Edit line"
+	          : target.subtype == "Ink"   ? L"Edit drawing"
 	          : target.subtype == "Stamp" ? L"Resize stamp"
 	                                      : L"Edit comment");
 	edit.IsEnabled(canDeleteAnnotation());

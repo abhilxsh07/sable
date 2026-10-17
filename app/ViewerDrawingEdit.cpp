@@ -175,8 +175,16 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 		const auto session = m_session.get();
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
-		dialog.Title(box_value(L"Edit drawing"));
+		dialog.Title(box_value(
+		    existing.line == pdf::LineKind::Arrow  ? L"Edit arrow"
+		    : existing.line == pdf::LineKind::Line ? L"Edit line"
+		                                           : L"Edit drawing"));
 		dialog.PrimaryButtonText(L"Apply");
+		if (existing.line != pdf::LineKind::None) {
+			dialog.SecondaryButtonText(existing.line == pdf::LineKind::Arrow
+			                               ? L"Resize arrow\u2026"
+			                               : L"Resize line\u2026");
+		}
 		dialog.CloseButtonText(L"Cancel");
 		dialog.DefaultButton(ContentDialogButton::Primary);
 		StackPanel fields;
@@ -256,6 +264,7 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 				    }
 				    owner->m_noteBusy = false;
 				    dialog.IsPrimaryButtonEnabled(true);
+				    dialog.IsSecondaryButtonEnabled(true);
 				    for (const auto& box : {pickColor.get(), pickWidth.get()}) {
 					    if (box) {
 						    box.IsEnabled(true);
@@ -268,6 +277,7 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 			    };
 			    self->m_noteBusy = true;
 			    view.IsPrimaryButtonEnabled(false);
+			    view.IsSecondaryButtonEnabled(false);
 			    c.IsEnabled(false);
 			    w.IsEnabled(false);
 			    if (const auto label = failure.get()) {
@@ -317,9 +327,15 @@ fire_and_forget ViewerPage::editDrawing(pdf::Annotation existing) {
 			    recover(L"Couldn't queue this change. Try again.");
 		    });
 		m_noteDialog = dialog;
-		co_await dialog.ShowAsync();
+		const auto choice = co_await dialog.ShowAsync();
 		if (m_noteDialog == dialog) {
 			m_noteDialog = nullptr;
+		}
+		if (choice == ContentDialogResult::Secondary && !m_closed &&
+		    m_session.get() == session &&
+		    existing.line != pdf::LineKind::None) {
+			editLineLength(std::move(existing));
+			co_return;
 		}
 		if (!m_closed) {
 			showComments();

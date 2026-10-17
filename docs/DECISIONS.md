@@ -2,6 +2,16 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Line and arrow list editing (2026-11-16)
+
+Comments Edit names a line or arrow and keeps Color/Width in its existing
+editor, with a secondary Resize action. Resize closes that dialog before
+opening the existing guarded length editor on the same session/snapshot.
+Color/Width changes still require Apply; Resize does not apply them.
+The page menu retains its direct Resize action and gains the subtype
+Edit label. This closes audit A-45 without changing the write protocol,
+owned-line proof or the other drawing editors.
+
 ## Fill & Sign in the command bar (2026-11-16)
 
 Fill & Sign now opens Text, Check, Cross and the two existing signature
