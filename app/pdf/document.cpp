@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cmath>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <system_error>
 
 #include <fpdf_doc.h>
@@ -404,46 +405,29 @@ bool Document::printPage(int index, void* device, int x, int y, int width,
 	                       height, 0, FPDF_ANNOT | FPDF_PRINTING) != 0;
 }
 
-std::optional<Link> Document::linkAt(int index, double x, double y) const {
-	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle) ||
-	    !std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 ||
-	    y > 1) {
-		return std::nullopt;
-	}
-	PagePtr page(FPDF_LoadPage(m_handle, index));
-	// a fixed device grid preserves sub-pixel accuracy without UI/DPI state
+namespace {
+std::optional<Link> resolveLink(FPDF_DOCUMENT document, FPDF_DEST dest,
+                                FPDF_ACTION action) {
 	constexpr int GRID = 1 << 20;
 	double px = 0, py = 0;
-	if (!page ||
-	    !FPDF_DeviceToPage(page.get(), 0, 0, GRID, GRID, 0,
-	                       static_cast<int>(std::lround(x * GRID)),
-	                       static_cast<int>(std::lround(y * GRID)), &px, &py)) {
-		return std::nullopt;
-	}
-	const auto link = FPDFLink_GetLinkAtPoint(page.get(), px, py);
-	if (!link) {
-		return std::nullopt;
-	}
-	auto dest = FPDFLink_GetDest(m_handle, link);
-	const auto action = FPDFLink_GetAction(link);
 	const auto type =
 	    action ? FPDFAction_GetType(action) : PDFACTION_UNSUPPORTED;
 	if (action && type != PDFACTION_GOTO && type != PDFACTION_URI) {
 		return std::nullopt;
 	}
 	if (!dest && type == PDFACTION_GOTO) {
-		dest = FPDFAction_GetDest(m_handle, action);
+		dest = FPDFAction_GetDest(document, action);
 	}
 	if (!dest) {
 		if (type != PDFACTION_URI) {
 			return std::nullopt;
 		}
-		const auto size = FPDFAction_GetURIPath(m_handle, action, nullptr, 0);
+		const auto size = FPDFAction_GetURIPath(document, action, nullptr, 0);
 		if (size < 2 || size > 1024 * 1024) {
 			return std::nullopt;
 		}
 		std::string uri(size, '\0');
-		if (FPDFAction_GetURIPath(m_handle, action, uri.data(), size) != size ||
+		if (FPDFAction_GetURIPath(document, action, uri.data(), size) != size ||
 		    uri.back() != '\0') {
 			return std::nullopt;
 		}
@@ -463,11 +447,11 @@ std::optional<Link> Document::linkAt(int index, double x, double y) const {
 		return Link{std::nullopt, std::move(uri)};
 	}
 	LinkDestination target;
-	target.page = FPDFDest_GetDestPageIndex(m_handle, dest);
-	if (target.page < 0 || target.page >= FPDF_GetPageCount(m_handle)) {
+	target.page = FPDFDest_GetDestPageIndex(document, dest);
+	if (target.page < 0 || target.page >= FPDF_GetPageCount(document)) {
 		return std::nullopt;
 	}
-	PagePtr destination(FPDF_LoadPage(m_handle, target.page));
+	PagePtr destination(FPDF_LoadPage(document, target.page));
 	if (!destination) {
 		return std::nullopt;
 	}
@@ -536,5 +520,125 @@ std::optional<Link> Document::linkAt(int index, double x, double y) const {
 		}
 	}
 	return Link{target, {}};
+}
+} // namespace
+
+std::optional<Outline>
+Document::outline(const std::function<bool()>& canceled) const {
+	if (offThread()) {
+		return {};
+	}
+	struct Pending {
+		FPDF_BOOKMARK bookmark;
+		int parent, depth;
+	};
+	std::vector<Pending> pending;
+	if (const auto root = FPDFBookmark_GetFirstChild(m_handle, nullptr)) {
+		pending.push_back({root, -1, 0});
+	}
+	std::set<FPDF_BOOKMARK> seen;
+	std::vector<void*> bookmarks;
+	Outline result;
+	std::size_t titleBytes = 0;
+	while (!pending.empty() && result.entries.size() < 10'000) {
+		if (canceled && canceled()) {
+			return {};
+		}
+		const auto item = pending.back();
+		pending.pop_back();
+		if (!seen.insert(item.bookmark).second) {
+			result.limited = true;
+			continue;
+		}
+		OutlineNode node;
+		node.parent = item.parent;
+		node.expanded = FPDFBookmark_GetCount(item.bookmark) > 0;
+		const auto size = FPDFBookmark_GetTitle(item.bookmark, nullptr, 0);
+		if (size >= 2 && size <= 8192 && size % 2 == 0 &&
+		    titleBytes + size <= 2 * 1024 * 1024) {
+			titleBytes += size;
+			std::vector<unsigned char> bytes(size);
+			if (FPDFBookmark_GetTitle(item.bookmark, bytes.data(), size) ==
+			        size &&
+			    bytes[size - 1] == 0 && bytes[size - 2] == 0) {
+				bytes.resize(size - 2);
+				node.title = utf16ToUtf8(bytes);
+				for (auto& value : node.title) {
+					if (static_cast<unsigned char>(value) < 0x20 ||
+					    value == 0x7F) {
+						value = ' ';
+					}
+				}
+			} else {
+				result.limited = true;
+			}
+		} else if (size) {
+			result.limited = true;
+		}
+		if (node.title.empty() ||
+		    std::all_of(node.title.begin(), node.title.end(),
+		                [](char c) { return c == ' '; })) {
+			node.title = "Untitled";
+		}
+		const auto action = FPDFBookmark_GetAction(item.bookmark);
+		const auto type =
+		    action ? FPDFAction_GetType(action) : PDFACTION_UNSUPPORTED;
+		node.canFollow =
+		    action ? type == PDFACTION_GOTO || type == PDFACTION_URI
+		           : FPDFBookmark_GetDest(m_handle, item.bookmark) != nullptr;
+		bookmarks.push_back(item.bookmark);
+		const int index = static_cast<int>(result.entries.size());
+		result.entries.push_back(std::move(node));
+		if (const auto next =
+		        FPDFBookmark_GetNextSibling(m_handle, item.bookmark)) {
+			pending.push_back({next, item.parent, item.depth});
+		}
+		if (const auto child =
+		        FPDFBookmark_GetFirstChild(m_handle, item.bookmark)) {
+			if (item.depth < 63) {
+				pending.push_back({child, index, item.depth + 1});
+			} else {
+				result.limited = true;
+			}
+		}
+	}
+	if (!pending.empty()) {
+		result.limited = true;
+	}
+	m_outlineBookmarks = std::move(bookmarks);
+	return result;
+}
+
+std::optional<Link> Document::outlineLink(std::size_t index) const {
+	if (offThread() || index >= m_outlineBookmarks.size()) {
+		return {};
+	}
+	const auto bookmark = static_cast<FPDF_BOOKMARK>(m_outlineBookmarks[index]);
+	return resolveLink(m_handle, FPDFBookmark_GetDest(m_handle, bookmark),
+	                   FPDFBookmark_GetAction(bookmark));
+}
+
+std::optional<Link> Document::linkAt(int index, double x, double y) const {
+	if (offThread() || index < 0 || index >= FPDF_GetPageCount(m_handle) ||
+	    !std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 ||
+	    y > 1) {
+		return std::nullopt;
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	// a fixed device grid preserves sub-pixel accuracy without UI/DPI state
+	constexpr int GRID = 1 << 20;
+	double px = 0, py = 0;
+	if (!page ||
+	    !FPDF_DeviceToPage(page.get(), 0, 0, GRID, GRID, 0,
+	                       static_cast<int>(std::lround(x * GRID)),
+	                       static_cast<int>(std::lround(y * GRID)), &px, &py)) {
+		return std::nullopt;
+	}
+	const auto link = FPDFLink_GetLinkAtPoint(page.get(), px, py);
+	if (!link) {
+		return std::nullopt;
+	}
+	return resolveLink(m_handle, FPDFLink_GetDest(m_handle, link),
+	                   FPDFLink_GetAction(link));
 }
 } // namespace pdf

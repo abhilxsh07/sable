@@ -20,6 +20,7 @@
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
+#   outline*.pdf    hierarchy, Unicode titles, actions, cycles and deep nesting
 #   print.pdf       original colors, print-visible and screen-only annotations
 #   password.pdf    one page, needs the password "sable" (owner: "nightpdf")
 #   restricted.pdf  the same page, opens without a password, all permissions off
@@ -349,6 +350,57 @@ def print_pdf() -> bytes:
     return w.finish(1, 9)
 
 
+
+def outline_pdf(cycle: bool = False) -> bytes:
+    name = b"sable outline_cycle.pdf" if cycle else b"sable outline.pdf"
+    w = Writer(md5(name))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R /Outlines 6 0 R "
+          "/Names << /Dests << /Names [(chapter-two) [5 0 R /FitH 210]] >> >> >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>")
+    for obj, rotation in ((3, 0), (4, 90), (5, 0)):
+        w.add(obj, f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] "
+              f"/CropBox [20 30 380 270] /Rotate {rotation} /Resources << >> >>")
+    w.add(6, f"<< /Type /Outlines /First 7 0 R /Last {15 if cycle else 14} 0 R "
+          f"/Count {8 if cycle else 7} >>")
+    title = ("Chapters \u03a9\U0001f600").encode("utf-16-be").hex()
+    w.add(7, f"<< /Title <feff{title}> /Parent 6 0 R /First 8 0 R /Last 9 0 R "
+          "/Next 11 0 R /Count 2 /Dest [3 0 R /Fit] >>")
+    w.add(8, "<< /Title (Rotated XYZ) /Parent 7 0 R /Next 9 0 R "
+          "/Dest [4 0 R /XYZ 60 220 1.5] >>")
+    w.add(9, "<< /Title (Named chapter) /Parent 7 0 R /Prev 8 0 R "
+          "/First 10 0 R /Last 10 0 R /Count -1 /A << /S /GoTo /D (chapter-two) >> >>")
+    w.add(10, "<< /Title (Web reference) /Parent 9 0 R "
+          "/A << /S /URI /URI (https://example.com/outline) >> >>")
+    w.add(11, "<< /Title (Unsupported action) /Parent 6 0 R /Prev 7 0 R /Next 12 0 R "
+          "/A << /S /Launch /F (nope.exe) >> >>")
+    w.add(12, "<< /Title () /Parent 6 0 R /Prev 11 0 R /Next 13 0 R >>")
+    w.add(13, "<< /Title (Broken destination) /Parent 6 0 R /Prev 12 0 R /Next 14 0 R "
+          "/Dest [9999 0 R /Fit] >>")
+    next_item = "/Next 15 0 R " if cycle else ""
+    w.add(14, "<< /Title (Unsafe URI) /Parent 6 0 R /Prev 13 0 R " + next_item +
+          "/A << /S /URI /URI (javascript:alert%281%29) >> >>")
+    if cycle:
+        w.add(15, "<< /Title (Sibling cycle) /Parent 6 0 R /Prev 14 0 R /Next 15 0 R >>")
+    info = 16 if cycle else 15
+    w.add(info, "<< /Title (Sable outline fixtures) >>")
+    return w.finish(1, info)
+
+
+def deep_outline_pdf() -> bytes:
+    w = Writer(md5(b"sable outline_deep.pdf"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+    w.add(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] >>")
+    w.add(4, "<< /Type /Outlines /First 5 0 R /Last 5 0 R /Count 70 >>")
+    for level in range(70):
+        obj = 5 + level
+        parent = 4 if level == 0 else obj - 1
+        child = f"/First {obj+1} 0 R /Last {obj+1} 0 R /Count {69-level}" if level < 69 else ""
+        w.add(obj, f"<< /Title (Level {level}) /Parent {parent} 0 R {child} >>")
+    w.add(75, "<< /Title (Sable deep outline fixture) >>")
+    return w.finish(1, 75)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -359,6 +411,9 @@ def main() -> None:
             f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
         )))
     files = {
+        "outline.pdf": outline_pdf(),
+        "outline_cycle.pdf": outline_pdf(True),
+        "outline_deep.pdf": deep_outline_pdf(),
         "links.pdf": link_pdf(),
         "print.pdf": print_pdf(),
         "long.pdf": build_pdf("long.pdf", long_pages),

@@ -815,3 +815,38 @@ Release ARM64's link-time code generation cannot write its temporary file in
 this sandbox; a local build with WholeProgramOptimization=false passes. The
 project keeps its normal optimization settings. Its standard ARM64 Release
 link still needs verification outside this environment.
+
+## Document outlines (2026-10-17)
+
+Outline extraction returns a flat preorder snapshot of titles, parent indices,
+initial expansion flags and potential destinations. PDFium bookmark handles
+stay private to the document on the engine thread. Targets resolve only when
+selected, through the same internal-destination and http(s) handler as page
+links. Opening a large outline therefore loads neither every destination page
+nor every URI. New outline navigation supersedes older queued navigation.
+
+Traversal is iterative, with a visited-handle set for malformed cycles. It
+stops at 10,000 nodes or 64 levels. Each UTF-16 title buffer is capped at 8 KiB,
+and their total at 2 MiB. Invalid UTF-16 becomes replacement characters;
+ASCII controls become spaces and empty titles become Untitled. Truncated
+or malformed trees remain usable and show a short partial-outline message.
+
+The right rail switches between thumbnails and a native TreeView. PDF count
+signs set initial expansion; each tab retains its tree and later expansion
+changes. F4 toggles the last sidebar. The tree keeps its native arrows and
+type-ahead, while F4 and Ctrl+Alt+G retain their viewer actions. Empty outlines
+and load errors have distinct messages, with Retry for errors.
+
+Metadata loads once on demand and can finish into the cache while hidden.
+Tree nodes are built when the sidebar is open and visible. Load/navigation generations,
+session identity, visibility and close checks reject stale callbacks. Closing
+a sidebar cancels its pending navigation without discarding its cached tree.
+PDF files are never changed by expansion or selection.
+
+Synthetic fixtures cover Unicode titles, nested open/closed nodes, rotated XYZ
+and named destinations, URI/unsupported actions, circular siblings and deep
+trees. SableOutlineTest=true with SableTabsTest=true checks the native tree,
+selection/navigation, cache/zoom, panel switching, empty/retry and stale results.
+Browser launches are intercepted; physical tree/keyboard appearance and input
+remain unverified. Release ARM64 validation uses the local non-LTO variant
+noted above; the source project keeps its normal optimization settings.

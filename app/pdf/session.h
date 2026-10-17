@@ -57,6 +57,10 @@ struct CopyResult {
 	bool canceled = false;
 };
 
+struct OutlineResult {
+	std::optional<Outline> outline;
+	bool canceled = false;
+};
 struct FindUpdate {
 	std::vector<FindMatch> matches;
 	int pagesScanned = 0, pageCount = 0;
@@ -83,6 +87,10 @@ class Session {
 	bool linkAt(int page, double x, double y,
 	            std::function<void(LinkResult)> callback);
 	bool textPage(int page, std::function<void(TextResult)> callback);
+	bool outline(std::function<void(OutlineResult)> callback);
+	// A newer outline navigation cancels older queued navigation.
+	bool outlineLink(std::size_t index,
+	                 std::function<void(LinkResult)> callback);
 	bool copyText(TextSelection selection,
 	              std::function<void(CopyResult)> callback);
 	// Batches run on the engine thread, yielding between pages. A new query
