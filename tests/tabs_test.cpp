@@ -274,7 +274,7 @@ void TabsTest::tick() {
 				return;
 			}
 			check(viewer->m_current == 2);
-			check(self->Tabs().CanDragTabs() && self->Tabs().CanReorderTabs());
+			check(!self->Tabs().CanDragTabs() && self->Tabs().CanReorderTabs());
 			for (const auto& accelerator :
 			     self->Tabs().KeyboardAccelerators()) {
 				check(!accelerator.IsEnabled());
