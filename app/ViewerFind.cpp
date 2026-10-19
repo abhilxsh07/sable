@@ -96,13 +96,23 @@ void ViewerPage::setupFind() {
 	});
 	showFindCount();
 }
+// Find takes the place of everything else in the command bar
+void ViewerPage::showFindBar(bool show) {
+	using XVisibility = Microsoft::UI::Xaml::Visibility;
+	FindBar().Visibility(show ? XVisibility::Visible : XVisibility::Collapsed);
+	AllToolsButton().Visibility(show ? XVisibility::Collapsed
+	                                 : XVisibility::Visible);
+	BarActions().Visibility(show || organizing() ? XVisibility::Collapsed
+	                                             : XVisibility::Visible);
+	updateQuickTools();
+}
 void ViewerPage::openFind() {
 	if (m_closed || presenting() || organizing() || !m_layout || !m_findTimer) {
 		return;
 	}
 	stopPan();
 	const bool wasOpen = findOpen();
-	FindBar().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+	showFindBar(true);
 	FindBox().Focus(FocusState::Programmatic);
 	FindBox().SelectAll();
 	if (!wasOpen) {
@@ -123,8 +133,11 @@ void ViewerPage::closeFind() {
 	m_findMatches.clear();
 	m_findPages.clear();
 	if (findOpen()) {
+		if (const auto options = FindOptionsButton().Flyout()) {
+			options.Hide();
+		}
 		Scroller().Focus(FocusState::Programmatic);
-		FindBar().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+		showFindBar(false);
 	}
 	invalidateFind();
 }

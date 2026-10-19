@@ -304,6 +304,9 @@ void TabsTest::outlineTick(MainWindow& owner) {
 	ticks = 0;
 }
 
+namespace {
+float s_findPageTop = 0;
+}
 void TabsTest::findTick(MainWindow& owner) {
 	const auto current = owner.Viewer();
 	if (!current) {
@@ -317,13 +320,30 @@ void TabsTest::findTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		check(owner.FindItem().IsEnabled(), "Find menu disabled");
+		s_findPageTop =
+		    v.Scroller().TransformToVisual(current).TransformPoint({0, 0}).Y;
 		v.goToPage(2);
 		break;
 	case 1:
 		v.openFind();
 		v.FindBox().Text(L"alpha");
 		break;
-	case 2:
+	case 2: {
+		// Find is the 40 px command bar: the page area stays put
+		const auto top =
+		    v.Scroller().TransformToVisual(current).TransformPoint({0, 0}).Y;
+		check(std::abs(top - s_findPageTop) < 1,
+		      "Find moved the page area down");
+		const auto boxAt = v.FindBox()
+		                       .TransformToVisual(v.DocumentBar())
+		                       .TransformPoint({0, 0});
+		check(v.findOpen() && v.FindBox().ActualWidth() > 0,
+		      "the Find box didn't open");
+		check(boxAt.Y >= 0 && boxAt.Y + v.FindBox().ActualHeight() <=
+		                          v.DocumentBar().ActualHeight() + 1,
+		      "the Find box isn't in the command bar");
+		check(v.FindBox().ActualWidth() <= 340,
+		      "the Find box is wider than 320 px");
 		check(v.m_findMatches.size() == 4 && v.m_findActive == 2,
 		      "initial Find match near current page");
 		check(v.FindCount().Text() == L"3 of 4", "Find count");
@@ -335,6 +355,7 @@ void TabsTest::findTick(MainWindow& owner) {
 		check(v.m_findActive == 3, "Find previous wrap");
 		v.FindCase().IsChecked(true);
 		break;
+	}
 	case 3:
 		check(v.m_findMatches.empty() &&
 		          v.FindCount().Text() == L"Phrase not found",
@@ -383,6 +404,11 @@ void TabsTest::findTick(MainWindow& owner) {
 		      "stale Find callback replaced query");
 		v.closeFind();
 		check(!v.findOpen() && v.m_findMatches.empty(), "Find close");
+		check(v.AllToolsButton().Visibility() ==
+		              Microsoft::UI::Xaml::Visibility::Visible &&
+		          v.BarActions().Visibility() ==
+		              Microsoft::UI::Xaml::Visibility::Visible,
+		      "closing Find didn't bring the command bar back");
 		v.openFind();
 		break;
 	case 10:

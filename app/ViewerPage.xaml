@@ -209,59 +209,69 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</Button.Flyout>
 				</Button>
 			</StackPanel>
+			<!-- Find takes the whole bar while it's open: no second row, so
+				the page area doesn't move. Options are one flyout. -->
+			<Grid x:Name="FindBar" Grid.ColumnSpan="3" ColumnSpacing="4"
+				Visibility="Collapsed" VerticalAlignment="Stretch"
+				Background="{ThemeResource SableTitleBarBrush}">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*" MinWidth="120" MaxWidth="320" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="*" />
+					<ColumnDefinition Width="Auto" />
+				</Grid.ColumnDefinitions>
+				<TextBox x:Name="FindBox" MaxLength="4096"
+					VerticalAlignment="Center"
+					PlaceholderText="Find in document…"
+					IsSpellCheckEnabled="False" IsTextPredictionEnabled="False"
+					AutomationProperties.Name="Find in document" />
+				<TextBlock x:Name="FindCount" Grid.Column="1" MinWidth="72"
+					VerticalAlignment="Center" FontSize="12" Margin="4,0"
+					TextTrimming="CharacterEllipsis"
+					AutomationProperties.LiveSetting="Polite" />
+				<Button x:Name="FindPrevious" Grid.Column="2"
+					VerticalAlignment="Center"
+					ToolTipService.ToolTip="Previous match (Shift+Enter)"
+					AutomationProperties.Name="Previous match">
+					<FontIcon Glyph="&#xE70E;" FontSize="12" />
+				</Button>
+				<Button x:Name="FindNext" Grid.Column="3"
+					VerticalAlignment="Center"
+					ToolTipService.ToolTip="Next match (Enter)"
+					AutomationProperties.Name="Next match">
+					<FontIcon Glyph="&#xE70D;" FontSize="12" />
+				</Button>
+				<Button x:Name="FindOptionsButton" Grid.Column="4"
+					VerticalAlignment="Center"
+					AutomationProperties.Name="Find options">
+					<StackPanel Orientation="Horizontal" Spacing="6">
+						<TextBlock Text="Options" FontSize="12" />
+						<FontIcon Glyph="&#xE70D;" FontSize="10" />
+					</StackPanel>
+					<Button.Flyout>
+						<Flyout Placement="BottomEdgeAlignedLeft">
+							<StackPanel Spacing="4">
+								<CheckBox x:Name="FindCase" Content="Match case" />
+								<CheckBox x:Name="FindWords" Content="Whole words" />
+								<CheckBox x:Name="FindDiacritics"
+									Content="Match diacritics" />
+								<CheckBox x:Name="FindHighlight"
+									Content="Highlight all" IsChecked="True" />
+							</StackPanel>
+						</Flyout>
+					</Button.Flyout>
+				</Button>
+				<Button x:Name="FindClose" Grid.Column="6"
+					VerticalAlignment="Center"
+					ToolTipService.ToolTip="Close Find (Esc)"
+					AutomationProperties.Name="Close Find">
+					<FontIcon Glyph="&#xE8BB;" FontSize="12" />
+				</Button>
+			</Grid>
 		</Grid>
-  <Border x:Name="FindBar" Grid.ColumnSpan="4" Visibility="Collapsed"
-	Padding="8"
-   Background="{ThemeResource SablePaneBrush}" CornerRadius="8">
-   <StackPanel Spacing="4">
-    <Grid ColumnSpacing="4">
-     <Grid.ColumnDefinitions>
-		<ColumnDefinition Width="*" />
-		<ColumnDefinition Width="Auto" />
-		<ColumnDefinition Width="Auto" />
-		<ColumnDefinition Width="Auto" />
-		<ColumnDefinition Width="Auto" />
-     </Grid.ColumnDefinitions>
-     <TextBox x:Name="FindBox" MaxLength="4096"
-		PlaceholderText="Find in document…"
-      IsSpellCheckEnabled="False" IsTextPredictionEnabled="False"
-      AutomationProperties.Name="Find in document" />
-     <TextBlock x:Name="FindCount" Grid.Column="1" VerticalAlignment="Center"
-		FontSize="12" Margin="4,0" AutomationProperties.LiveSetting="Polite" />
-     <Button x:Name="FindPrevious" Grid.Column="2"
-		ToolTipService.ToolTip="Previous match (Shift+Enter)"
-		AutomationProperties.Name="Previous match">
-		<FontIcon Glyph="&#xE70E;" FontSize="12" />
-     </Button>
-     <Button x:Name="FindNext" Grid.Column="3"
-		ToolTipService.ToolTip="Next match (Enter)"
-		AutomationProperties.Name="Next match">
-		<FontIcon Glyph="&#xE70D;" FontSize="12" />
-     </Button>
-     <Button x:Name="FindClose" Grid.Column="4"
-		ToolTipService.ToolTip="Close Find (Esc)"
-		AutomationProperties.Name="Close Find">
-		<FontIcon Glyph="&#xE8BB;" FontSize="12" />
-     </Button>
-    </Grid>
-    <Grid ColumnSpacing="16">
-     <Grid.RowDefinitions>
-		<RowDefinition Height="Auto" />
-		<RowDefinition Height="Auto" />
-     </Grid.RowDefinitions>
-     <Grid.ColumnDefinitions>
-		<ColumnDefinition Width="*" />
-		<ColumnDefinition Width="*" />
-     </Grid.ColumnDefinitions>
-     <CheckBox x:Name="FindCase" Content="Match case" />
-     <CheckBox x:Name="FindWords" Grid.Column="1" Content="Whole words" />
-     <CheckBox x:Name="FindDiacritics" Grid.Row="1" Content="Match diacritics"
-		/>
-     <CheckBox x:Name="FindHighlight" Grid.Row="1" Grid.Column="1"
-		Content="Highlight all" IsChecked="True" />
-    </Grid>
-   </StackPanel>
-  </Border>
 		</StackPanel>
 		<!-- the surface is sized in physical pixels and the Image in DIPs, so
 			Fill maps one onto the other without blurring. Focusable, like

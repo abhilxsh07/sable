@@ -2,6 +2,16 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Find in the command bar (2026-11-16)
+
+Ctrl+F no longer adds a second full-width row above the pages. While Find
+is open it takes the 40 px command bar: a box up to 320 px, the count,
+Previous, Next, an Options flyout (Match case, Whole words, Match
+diacritics, Highlight all) and Close. The page area stays where it was.
+All tools, the Comment and Fill & Sign rows and the right-hand actions
+come back when Find closes. Ctrl+F, F3, Enter, Shift+Enter and Esc work
+as before, and Organize and Presentation still close Find first.
+
 ## Line and arrow list editing (2026-11-16)
 
 Comments Edit names a line or arrow and keeps Color/Width in its existing

@@ -546,11 +546,13 @@ void ViewerPage::updateQuickTools() {
 	}
 	// no command bar (a tab that failed or is still loading): no strip
 	const bool chrome = DocumentBar().Visibility() == Visibility::Visible;
+	const bool finding = findOpen();
 	CommentTools().Visibility(chrome && !presenting() && !organizing() &&
-	                                  m_toolRow == ToolRow::Comment
+	                                  !finding && m_toolRow == ToolRow::Comment
 	                              ? Visibility::Visible
 	                              : Visibility::Collapsed);
 	FillSignTools().Visibility(chrome && !presenting() && !organizing() &&
+	                                   !finding &&
 	                                   m_toolRow == ToolRow::FillSign
 	                               ? Visibility::Visible
 	                               : Visibility::Collapsed);

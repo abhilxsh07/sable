@@ -184,6 +184,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void clearTextSelection();
 	void openFind();
 	void closeFind();
+	void showFindBar(bool show);
 	void navigateFind(int direction);
 	bool findOpen();
 	void onPageTapped(

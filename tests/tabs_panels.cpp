@@ -131,9 +131,8 @@ void TabsTest::panelsTick(MainWindow& owner) {
 	// bar floats at their foot.
 	const auto measure = [&](const std::string& where,
 	                         std::string_view everything = {}) {
-		const std::array<std::pair<const char*, FrameworkElement>, 13> parts{{
+		const std::array<std::pair<const char*, FrameworkElement>, 12> parts{{
 		    {"command bar", v.DocumentBar()},
-		    {"Find", v.FindBar()},
 		    {"pages", v.Scroller()},
 		    {"Organize", v.OrganizePanel()},
 		    {"All tools", v.AllToolsPanel()},
@@ -185,6 +184,11 @@ void TabsTest::panelsTick(MainWindow& owner) {
 				       where + ": " + parts[i].first + " overlaps " +
 				           parts[j].first + " by " + by);
 			}
+		}
+		// Find is the command bar itself, not a bar of its own
+		if (shown(v.FindBar())) {
+			expect(inside(box(v.FindBar()), box(v.DocumentBar())), everything,
+			       where + ": Find leaves the command bar");
 		}
 		// the tool pane is a column of its own, so the pages move over; with
 		// a side panel open too they keep at least 360 px, or one closes
