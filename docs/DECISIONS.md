@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Presentation shows only the slide (2026-11-16)
+
+Starting Presentation closes Organize and stops Read aloud, so the slide
+and its controls are alone on screen; both already happened, and now a
+probe holds them. Read aloud can't be started while presenting, whether
+from the Home tile or the tool entry, so its bar never shares the bottom
+centre with the presentation controls.
+
 ## Read aloud toggles (2026-11-16)
 
 The Read aloud entry in All tools (and the Home tile) now behaves like the

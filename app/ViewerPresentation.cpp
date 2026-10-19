@@ -34,13 +34,14 @@ bool ViewerPage::beginPresentation(std::function<void()> exit) {
 	    std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f) {
 		return false;
 	}
+	if (organizing() && pageOperationBusy()) {
+		return false;
+	}
+	// stop first: closing Organize would resume a paused reading
+	stopReadAloud();
 	if (organizing()) {
-		if (pageOperationBusy()) {
-			return false;
-		}
 		closeOrganize();
 	}
-	stopReadAloud();
 	leavePageBox();
 	const auto page = m_current;
 	stopPan(true);

@@ -95,7 +95,7 @@ void ViewerPage::setupReadAloud() {
 }
 
 void ViewerPage::startReadAloud() {
-	if (m_closed || !m_session || !m_layout || organizing() ||
+	if (m_closed || !m_session || !m_layout || organizing() || presenting() ||
 	    m_sizes.empty()) {
 		return;
 	}

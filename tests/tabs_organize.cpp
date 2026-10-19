@@ -987,9 +987,39 @@ void TabsTest::readAloudTick(MainWindow& owner) {
 		check(!v.readingAloud() && !visible(v.ReadAloudBar()) &&
 		          !visible(v.ReadAloudFrame()),
 		      "a second click on Read aloud didn't stop it");
+		v.runTool(L"readaloud");
+		break;
+	case 5:
+		if (v.m_readAloudPending) {
+			check(ticks < 60, "Read aloud didn't start before Organize");
+			return;
+		}
+		check(v.readingAloud(), "Read aloud didn't start before Organize");
+		v.runTool(L"organize");
+		break;
+	case 6:
+		// Organize pauses reading, and Presentation then takes over alone
+		check(v.organizing() && v.readingAloud() && v.m_readAloudPaused,
+		      "Organize didn't pause Read aloud");
+		owner.onPresentation({}, {});
+		break;
+	case 7:
+		check(v.mode() == ViewerMode::Present, "Presentation didn't start");
+		check(!v.organizing() && !visible(v.OrganizePanel()),
+		      "Organize stayed open under the presentation");
+		check(!v.readingAloud() && !visible(v.ReadAloudBar()) &&
+		          !visible(v.ReadAloudFrame()),
+		      "Presentation didn't stop Read aloud");
+		owner.openTool(L"readaloud");
+		check(!v.readingAloud() && !visible(v.ReadAloudBar()),
+		      "Read aloud started during the presentation");
+		owner.endPresentation();
+		check(!v.readingAloud() && !v.m_readAloudPaused,
+		      "Read aloud came back after the presentation");
 		v.close();
 		status.Text(L"PASS: Read aloud start, Next, Pause, Play, page end, "
-		            L"Stop and the entry toggle");
+		            L"Stop, the entry toggle and Presentation over Organize "
+		            L"and Read aloud");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;
