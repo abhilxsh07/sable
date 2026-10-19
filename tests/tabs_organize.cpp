@@ -973,9 +973,23 @@ void TabsTest::readAloudTick(MainWindow& owner) {
 		check(!v.readingAloud() && !visible(v.ReadAloudBar()) &&
 		          !visible(v.ReadAloudFrame()),
 		      "Stop didn't put Read aloud away");
+		// the All tools entry starts it, and a second click stops it
+		v.runTool(L"readaloud");
+		break;
+	case 4:
+		if (v.m_readAloudPending) {
+			check(ticks < 60, "the Read aloud entry didn't start it again");
+			return;
+		}
+		check(v.readingAloud() && visible(v.ReadAloudBar()),
+		      "the Read aloud entry didn't start it");
+		v.runTool(L"readaloud");
+		check(!v.readingAloud() && !visible(v.ReadAloudBar()) &&
+		          !visible(v.ReadAloudFrame()),
+		      "a second click on Read aloud didn't stop it");
 		v.close();
-		status.Text(L"PASS: Read aloud start, Next, Pause, Play, page end "
-		            L"and Stop");
+		status.Text(L"PASS: Read aloud start, Next, Pause, Play, page end, "
+		            L"Stop and the entry toggle");
 		probePass(owner.get_strong().as<Window>());
 		timer.Stop();
 		return;

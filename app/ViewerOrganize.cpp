@@ -79,7 +79,12 @@ void ViewerPage::requestTool(std::wstring_view tool) {
 		return;
 	}
 	if (tool == L"readaloud") {
-		startReadAloud();
+		// the entry toggles: a second click stops what the first started
+		if (readingAloud()) {
+			stopReadAloud();
+		} else {
+			startReadAloud();
+		}
 	} else if (tool == L"organize") {
 		openOrganize();
 	} else if (tool == L"combine") {

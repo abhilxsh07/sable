@@ -2,6 +2,13 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Read aloud toggles (2026-11-16)
+
+The Read aloud entry in All tools (and the Home tile) now behaves like the
+other tools: a second click stops what the first started instead of being
+ignored. Pause and Play stay on the bar, which already sits inside the
+pages column, so side panes never cover it.
+
 ## Find in the command bar (2026-11-16)
 
 Ctrl+F no longer adds a second full-width row above the pages. While Find
