@@ -223,6 +223,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\navigation.h" />
 		<ClInclude Include="helpers\thumbnails.h" />
 		<ClInclude Include="pdf\document.h" />
+		<ClInclude Include="pdf\annotations.h" />
 		<ClInclude Include="pdf\text.h" />
 		<ClInclude Include="pdf\search.h" />
 		<ClInclude Include="pdf\printing.h" />

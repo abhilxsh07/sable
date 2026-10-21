@@ -17,6 +17,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 # Writes the PDFs the tests open, next to this script:
+#   annotations.pdf Unicode comments, unknown types, damaged fields and limits
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
@@ -419,6 +420,37 @@ def attachments_pdf() -> bytes:
     return w.finish(1, 10)
 
 
+def annotations_pdf() -> bytes:
+    w = Writer(md5(b"sable annotation snapshots"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R] "
+          "/Count 5 >>")
+    refs = ["9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R", "", "15 0 R",
+            " ".join(["11 0 R"] * 4097), " ".join(["16 0 R"] * 40)]
+    for i, annots in enumerate(refs):
+        w.add(i + 3, "<< /Type /Page /Parent 2 0 R "
+              "/MediaBox [0 0 300 400] /CropBox [10 20 290 380] "
+              f"/Rotate 90 /Annots [{annots}] >>")
+    w.add(8, "<< /Title (Sable annotation fixtures) >>")
+    note = (b"\xfe\xff" + "Notes \u03a9\U0001f600\nsecond line".encode(
+        "utf-16-be")).hex()
+    author = (b"\xfe\xff" + "Abhilash \u03a9".encode("utf-16-be")).hex()
+    w.add(9, "<< /Type /Annot /Subtype /Text /Rect [40 50 60 70] "
+          f"/Contents <{note}> /T <{author}> /F 68 >>")
+    w.add(10, "<< /Type /Annot /Subtype /Highlight /Rect [20 30 80 45] "
+          "/QuadPoints [20 45 80 45 20 30 80 30] /Contents (Review) >>")
+    w.add(11, "<< /Type /Annot /Subtype /Link /Rect [20 80 60 90] >>")
+    w.add(12, "<< /Type /Annot /Subtype /Widget /Rect [20 90 60 100] >>")
+    w.add(13, "<< /Type /Annot /Subtype /FutureNote /Contents (Keep me) >>")
+    w.add(14, "<< /Type /Annot /Subtype /Text /Contents 123 /T [] "
+          "/Rect (broken) >>")
+    w.add(15, "<< /Type /Annot /Subtype /Text /Contents (" + "A" * 70000 +
+          ") /T (Still here) >>")
+    w.add(16, "<< /Type /Annot /Subtype /Text /Contents (" + "A" * 16384 +
+          ") >>")
+    return w.finish(1, 8)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -429,6 +461,7 @@ def main() -> None:
             f"BT /F1 24 Tf 0 0 0 rg 80 100 Td (Page {i + 1}) Tj ET",
         )))
     files = {
+        "annotations.pdf": annotations_pdf(),
         "attachments.pdf": attachments_pdf(),
         "outline.pdf": outline_pdf(),
         "outline_cycle.pdf": outline_pdf(True),
