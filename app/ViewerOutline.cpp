@@ -81,6 +81,7 @@ void ViewerPage::setOutlineOpen(bool open) {
 	if (open) {
 		setThumbnailsOpen(false);
 		setAttachmentsOpen(false);
+		setCommentsOpen(false);
 		m_sidebar = Sidebar::Outline;
 	} else if (outlineOpen() && outlineHasFocus()) {
 		Scroller().Focus(FocusState::Programmatic);
@@ -98,7 +99,9 @@ void ViewerPage::setOutlineOpen(bool open) {
 	}
 }
 void ViewerPage::toggleSidebar() {
-	if (attachmentsOpen()) {
+	if (commentsOpen()) {
+		setCommentsOpen(false);
+	} else if (attachmentsOpen()) {
 		setAttachmentsOpen(false);
 	} else if (outlineOpen()) {
 		setOutlineOpen(false);
@@ -108,6 +111,8 @@ void ViewerPage::toggleSidebar() {
 		setOutlineOpen(true);
 	} else if (m_sidebar == Sidebar::Attachments) {
 		setAttachmentsOpen(true);
+	} else if (m_sidebar == Sidebar::Comments) {
+		setCommentsOpen(true);
 	} else {
 		setThumbnailsOpen(true);
 	}
