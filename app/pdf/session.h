@@ -61,6 +61,11 @@ struct OutlineResult {
 	std::optional<Outline> outline;
 	bool canceled = false;
 };
+struct AnnotationsResult {
+	int page = 0;
+	std::optional<Annotations> annotations;
+	bool canceled = false;
+};
 struct AttachmentsResult {
 	std::optional<Attachments> attachments;
 	bool canceled = false;
@@ -96,6 +101,10 @@ class Session {
 	            std::function<void(LinkResult)> callback);
 	bool textPage(int page, std::function<void(TextResult)> callback);
 	bool outline(std::function<void(OutlineResult)> callback);
+	// New requests supersede older annotation reads, independently of Find
+	// and rendering. Completed replies can still arrive after cancellation.
+	bool annotations(int page, std::function<void(AnnotationsResult)> callback);
+	void cancelAnnotations();
 	bool attachments(std::function<void(AttachmentsResult)> callback);
 	bool attachment(int index, std::function<void(AttachmentResult)> callback);
 	// A newer outline navigation cancels older queued navigation.
