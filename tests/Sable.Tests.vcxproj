@@ -116,6 +116,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="sliders_test.cpp" />
 		<ClCompile Include="settings_test.cpp" />
 		<ClCompile Include="annotations_test.cpp" />
+		<ClCompile Include="comments_test.cpp" />
 		<ClCompile Include="keybinds_test.cpp" />
 	</ItemGroup>
 	<!-- the code under test, built straight from app/helpers -->
@@ -135,6 +136,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="..\app\helpers\navigation.h" />
 		<ClCompile Include="..\app\helpers\navigation.cpp" />
 		<ClInclude Include="..\app\helpers\thumbnails.h" />
+		<ClInclude Include="..\app\helpers\comments.h" />
+		<ClCompile Include="..\app\helpers\comments.cpp" />
 		<ClCompile Include="..\app\helpers\thumbnails.cpp" />
 		<ClInclude Include="..\app\pdf\document.h" />
 		<ClInclude Include="..\app\pdf\annotations.h" />
