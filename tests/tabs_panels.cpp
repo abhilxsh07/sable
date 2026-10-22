@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <system_error>
@@ -33,9 +34,8 @@ namespace {
 // layout faults I know about and haven't fixed yet. A check that finds one
 // of these reports it and carries on; once the fix lands the check passes,
 // and the probe fails until the name comes off this list, so it can't go
-// stale.
-//   min-size           the window shrinks until the rail overlaps itself
-constexpr std::array<std::string_view, 1> OPEN_FAULTS = {"min-size"};
+// stale. None are open.
+constexpr std::array<std::string_view, 0> OPEN_FAULTS = {};
 
 constexpr std::array<const wchar_t*, 3> SIZES = {L"maximized", L"1366x768",
                                                  L"1024x768"};
@@ -229,12 +229,20 @@ void TabsTest::panelsTick(MainWindow& owner) {
 			        {"zoom menu", v.ZoomButton()},
 			        {"zoom out", v.ZoomOutButton()},
 			    }};
+			// a rail shorter than its groups scrolls; what's scrolled out of
+			// view is reached by scrolling, so only the overlap check applies
+			const auto railScroll =
+			    v.Rail()
+			        .Child()
+			        .try_as<Microsoft::UI::Xaml::Controls::ScrollViewer>();
+			const bool scrolls =
+			    railScroll && railScroll.ScrollableHeight() > 0;
 			for (std::size_t i = 0; i < controls.size(); ++i) {
 				if (!shown(controls[i].second)) {
 					continue;
 				}
 				const auto a = box(controls[i].second);
-				expect(inside(a, rail), everything,
+				expect(scrolls || inside(a, rail), everything,
 				       where + ": " + controls[i].first +
 				           " sticks out of the rail");
 				for (std::size_t j = i + 1; j < controls.size(); ++j) {
@@ -598,6 +606,20 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		       "minimum window is " + std::to_string(outer.Width) + "x" +
 		           std::to_string(outer.Height) + " px");
 		measure("minimum size", "min-size");
+		// squeezed shorter than its two groups, the rail scrolls
+		const auto railScroller =
+		    v.Rail()
+		        .Child()
+		        .try_as<Microsoft::UI::Xaml::Controls::ScrollViewer>();
+		expect(railScroller != nullptr, {}, "the rail can't scroll when short");
+		if (railScroller) {
+			v.Rail().MaxHeight(200);
+			v.UpdateLayout();
+			expect(railScroller.ScrollableHeight() > 0, {},
+			       "a short rail doesn't scroll to the zoom group");
+			v.Rail().MaxHeight(std::numeric_limits<double>::infinity());
+			v.UpdateLayout();
+		}
 		// notices: a success closes itself
 		v.showNotice(L"Saved a copy.",
 		             Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
@@ -630,7 +652,7 @@ void TabsTest::panelsTick(MainWindow& owner) {
 		           v.Message().Severity() ==
 		               Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error,
 		       {}, "notice: an error closed by itself");
-		// the rail still collides at the smallest size (min-size)
+		// the rail scrolls at the smallest size
 		measure("error notice", "min-size");
 		finish(L"panels at three sizes, a short document, a failed "
 		       L"tab, the minimum size and notice timing");

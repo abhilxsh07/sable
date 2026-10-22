@@ -425,7 +425,7 @@ void TabsTest::tick() {
 			self->AppWindow().Resize({1200, 700});
 			break;
 		case 12:
-			self->AppWindow().Resize({565, 700});
+			self->AppWindow().Resize({720, 700});
 			break;
 		case 14:
 			if (!viewer || !viewer->Message().IsOpen()) {

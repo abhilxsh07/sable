@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Smallest window and a rail that scrolls (2026-11-16)
+
+The window stops at 720x540 instead of 565x200, where the tabs vanished
+and the rail's zoom group drew over its panel buttons. The rail also
+scrolls as one column when it is shorter than its two groups, and keeps
+the zoom group at the foot when there is room.
+New windows open at that minimum, since NightPDF's starting size of
+550x420 is smaller than it.
+
 ## Presentation shows only the slide (2026-11-16)
 
 Starting Presentation closes Organize and stops Read aloud, so the slide

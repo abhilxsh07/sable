@@ -723,7 +723,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</ResourceDictionary.ThemeDictionaries>
 				</ResourceDictionary>
 			</Border.Resources>
-			<Grid>
+			<!-- both groups scroll together when the window is shorter than
+				they are; taller, the zoom group stays at the foot -->
+			<ScrollViewer x:Name="RailScroller"
+				VerticalScrollBarVisibility="Auto"
+				VerticalScrollMode="Auto" HorizontalScrollMode="Disabled"
+				HorizontalScrollBarVisibility="Disabled">
+			<Grid MinHeight="{Binding ViewportHeight, ElementName=RailScroller}">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+				</Grid.RowDefinitions>
 				<!-- the panels, starting with pdfjs-thumbs-button -->
 				<StackPanel VerticalAlignment="Top" HorizontalAlignment="Center"
 					Padding="0,8,0,0">
@@ -753,7 +763,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 						<FontIcon Glyph="&#xE723;" FontSize="14" />
 					</ToggleButton>
 				</StackPanel>
-				<StackPanel VerticalAlignment="Bottom"
+				<StackPanel Grid.Row="1" VerticalAlignment="Bottom"
 					HorizontalAlignment="Center"
 					Spacing="2" Padding="0,8,0,12">
 					<TextBox x:Name="PageBox" Width="44" MinWidth="0"
@@ -840,6 +850,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</Button>
 				</StackPanel>
 			</Grid>
+			</ScrollViewer>
 		</Border>
 		<Border x:Name="PresentationControls" Grid.RowSpan="3"
 			Grid.ColumnSpan="4"

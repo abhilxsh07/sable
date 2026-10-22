@@ -51,12 +51,12 @@ using namespace Microsoft::UI::Windowing;
 using namespace Microsoft::UI::Xaml;
 
 namespace {
-// same numbers as NightPDF's BrowserWindow. Yes, the minimum width is bigger
-// than the starting width there too, kept as is.
+// the starting size is NightPDF's BrowserWindow number, which is below the
+// minimum here, so the window opens at the minimum.
 constexpr int WIDTH = 550;
 constexpr int HEIGHT = 420;
-constexpr int MIN_WIDTH = 565;
-constexpr int MIN_HEIGHT = 200;
+constexpr int MIN_WIDTH = 720;
+constexpr int MIN_HEIGHT = 540;
 // each Morty alert stays this long, and they leave at least MORTY_GAP apart
 // so a burst of presses still fades one at a time
 constexpr auto MORTY_LIFE = std::chrono::seconds(4);

@@ -325,7 +325,7 @@ void TabsTest::propertiesTick(MainWindow& owner) {
 	case 3:
 		capture(L"properties-obsidian.png");
 		owner.m_presenter.Restore();
-		owner.AppWindow().Resize({565, 620});
+		owner.AppWindow().Resize({720, 620});
 		break;
 	case 4:
 		capture(L"properties-narrow.png");
@@ -565,7 +565,7 @@ void TabsTest::filterTick(MainWindow& owner) {
 		owner.onHideConfigurator({}, nullptr);
 		check(owner.DarkConfigurator().Visibility() == Visibility::Collapsed);
 		owner.m_presenter.Restore();
-		owner.AppWindow().Resize({565, 700});
+		owner.AppWindow().Resize({720, 700});
 		break;
 	case 2: {
 		auto& viewer = *get_self<ViewerPage>(current);
@@ -866,7 +866,7 @@ void TabsTest::musicTick(MainWindow& owner) {
 		      "stale music artwork");
 		pane.m_flyout.Hide();
 		owner.m_presenter.Restore();
-		owner.AppWindow().Resize({565, 700});
+		owner.AppWindow().Resize({720, 700});
 		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
 		break;
 	case 11: {
@@ -1332,7 +1332,7 @@ void TabsTest::layoutTick(MainWindow& owner) {
 		v.setLayout(Scroll::Wrapped, Spread::Even);
 		v.zoomTo(.6, {0, 0});
 		v.goToPage(2);
-		owner.AppWindow().Resize({660, 700});
+		owner.AppWindow().Resize({800, 700});
 		break;
 	case 9:
 		check(std::abs(v.m_layoutViewWidth - v.Scroller().ActualWidth()) < 1 &&
