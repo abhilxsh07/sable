@@ -221,6 +221,9 @@ class Document {
 	bool canCopy() const;
 	bool canAnnotate() const;
 	bool canFillForms() const;
+	// whether the PDF has any bookmarks or attachments, without loading them
+	bool hasOutline() const;
+	bool hasAttachments() const;
 	// page permissions and a form type the page edits can rewrite.
 	bool canAssemble() const;
 	// Page edits run through one transaction against the current revision

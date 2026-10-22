@@ -355,6 +355,14 @@ bool Document::canAnnotate() const {
 	return !offThread() && (FPDF_GetDocPermissions(m_handle) & 0x20) != 0;
 }
 
+bool Document::hasOutline() const {
+	return !offThread() && FPDFBookmark_GetFirstChild(m_handle, nullptr);
+}
+
+bool Document::hasAttachments() const {
+	return !offThread() && FPDFDoc_GetAttachmentCount(m_handle) > 0;
+}
+
 WriteRefusal Document::canWrite(const std::function<bool()>& canceled) const {
 	// a caller's cancel can fire once, so i keep it from then on.
 	bool halted = false;

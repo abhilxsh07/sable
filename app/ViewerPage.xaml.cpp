@@ -1572,6 +1572,9 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		}
 		m_sizes = std::move(sizes);
 		m_copyAllowed = info.canCopy;
+		m_hasOutline = info.hasOutline;
+		m_hasAttachments = info.hasAttachments;
+		updateRailAvailability();
 		m_editRefusal = info.editRefusal;
 		m_noteAllowed =
 		    info.canAnnotate && m_editRefusal == pdf::WriteRefusal::None;

@@ -626,6 +626,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_attachmentsPending = false, m_attachmentsFailed = false,
 	     m_attachmentsBuilt = false;
 	void closeOutline();
+	void updateRailAvailability();
 	void requestOutline();
 	void showOutline();
 	void buildOutlineNodes(std::size_t parent);
@@ -689,6 +690,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_textPointerDown = false, m_textMoved = false,
 	     m_ignoreTextTap = false;
 	bool m_copyAllowed = false, m_copying = false;
+	// a PDF without an outline or attachments has those rail buttons off
+	bool m_hasOutline = true, m_hasAttachments = true;
 	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_textScroll{
 	    nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_textMenu{nullptr};

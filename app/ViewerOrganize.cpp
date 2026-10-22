@@ -307,6 +307,7 @@ void ViewerPage::closeOrganize(bool restore) {
 		button.IsEnabled(true);
 	}
 	BarFindButton().IsEnabled(true);
+	updateRailAvailability();
 	setThumbnailsOpen(previous.thumbnails);
 	m_exportSelection = std::move(selected);
 	refreshExportSelection();
@@ -699,6 +700,9 @@ void ViewerPage::finishPageEdit(pdf::PageEditResult result,
 }
 
 void ViewerPage::pagesChanged(pdf::SessionInfo info) {
+	m_hasOutline = info.hasOutline;
+	m_hasAttachments = info.hasAttachments;
+	updateRailAvailability();
 	m_editRefusal = info.editRefusal;
 	m_noteAllowed =
 	    info.canAnnotate && m_editRefusal == pdf::WriteRefusal::None;

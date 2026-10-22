@@ -39,6 +39,9 @@ struct SessionInfo {
 	bool canCopy = false;
 	bool canAnnotate = false;
 	bool canFillForms = false;
+	// bookmarks and attachments exist; the rail disables what's empty
+	bool hasOutline = false;
+	bool hasAttachments = false;
 	WriteRefusal editRefusal = WriteRefusal::Unavailable;
 };
 

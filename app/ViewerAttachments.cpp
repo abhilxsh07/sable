@@ -78,6 +78,7 @@ void ViewerPage::setAttachmentsOpen(bool open) {
 	AttachmentButton().IsChecked(open);
 	AttachmentPanel().Visibility(open ? PanelVisibility::Visible
 	                                  : PanelVisibility::Collapsed);
+	updateRailAvailability();
 	updateAttachmentSave();
 	if (open) {
 		showAttachments();

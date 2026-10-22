@@ -226,6 +226,8 @@ bool Session::open(const std::filesystem::path& path,
 						info.canCopy = opened.document->canCopy();
 						info.canAnnotate = opened.document->canAnnotate();
 						info.canFillForms = opened.document->canFillForms();
+						info.hasOutline = opened.document->hasOutline();
+						info.hasAttachments = opened.document->hasAttachments();
 						info.editRefusal = opened.document->editEligibility(
 						    [state] { return state->closed(); });
 						const int count = opened.document->pageCount();
@@ -1512,6 +1514,8 @@ void Session::finishPageEdit(State& state, PageEditResult& result,
 	result.info.canCopy = document.canCopy();
 	result.info.canAnnotate = document.canAnnotate();
 	result.info.canFillForms = document.canFillForms();
+	result.info.hasOutline = document.hasOutline();
+	result.info.hasAttachments = document.hasAttachments();
 	result.info.editRefusal = document.editEligibility(canceled);
 }
 

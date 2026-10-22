@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Rail buttons for what isn't there (2026-11-16)
+
+A PDF with no outline or no attachments gets that rail button turned off,
+as in pdf.js, instead of opening a panel that says there is nothing. The
+engine reports both when the file opens, so the lists still load only when
+their panel opens. An open panel keeps its button usable so it can be
+closed, and Organize still turns every rail button off while it is open.
+
 ## Smallest window and a rail that scrolls (2026-11-16)
 
 The window stops at 720x540 instead of 565x200, where the tabs vanished

@@ -446,6 +446,29 @@ TEST_F(PdfDocumentTest, EveryErrorHasItsOwnMessage) {
 	}
 }
 
+TEST_F(PdfDocumentTest,
+       KnowsWhetherThereIsAnOutlineOrAttachmentsWithoutLoadingThem) {
+	engine
+	    .run([] {
+		    struct Expected {
+			    const char* name;
+			    bool outline, attachments;
+		    };
+		    for (const auto& want :
+		         {Expected{"pages.pdf", false, false},
+		          Expected{"outline.pdf", true, false},
+		          Expected{"attachments.pdf", false, true}}) {
+			    const auto opened = pdf::openFile(fixturePath(want.name));
+			    ASSERT_TRUE(opened.document) << want.name;
+			    EXPECT_EQ(opened.document->hasOutline(), want.outline)
+			        << want.name;
+			    EXPECT_EQ(opened.document->hasAttachments(), want.attachments)
+			        << want.name;
+		    }
+	    })
+	    .get();
+}
+
 TEST_F(PdfDocumentTest, OutlinesPreserveHierarchyUnicodeAndSafeDestinations) {
 	const auto snapshot =
 	    engine

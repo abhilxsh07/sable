@@ -650,6 +650,8 @@ void TabsTest::attachmentsTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		check(!v.m_attachments, "attachments loaded before sidebar open");
+		check(v.AttachmentButton().IsEnabled(),
+		      "Attachments is disabled for a PDF that has some");
 		v.setAttachmentsOpen(true);
 		check(v.attachmentsOpen() && !v.thumbnailsOpen() && !v.outlineOpen(),
 		      "attachment sidebar exclusivity");
@@ -690,6 +692,8 @@ void TabsTest::attachmentsTick(MainWindow& owner) {
 	case 3: {
 		check(!v.m_attachments && !v.attachmentsOpen(),
 		      "attachment state leaked between tabs");
+		check(!v.AttachmentButton().IsEnabled(),
+		      "Attachments is offered for a PDF without any");
 		// both files opened, so both are in Recent, newest first
 		const auto& recent =
 		    get_self<HomePage>(owner.Home())->m_recents.items();
@@ -706,6 +710,8 @@ void TabsTest::attachmentsTick(MainWindow& owner) {
 		check(v.AttachmentList().Items().Size() == 0 &&
 		          v.AttachmentStatus().Text() == L"No attachments.",
 		      "empty attachment state");
+		check(v.AttachmentButton().IsEnabled(),
+		      "an open empty attachment panel can't be closed");
 		v.m_attachments.reset();
 		v.m_attachmentsFailed = true;
 		v.showAttachments();

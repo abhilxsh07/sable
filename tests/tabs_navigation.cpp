@@ -149,6 +149,8 @@ void TabsTest::outlineTick(MainWindow& owner) {
 	switch (step) {
 	case 0:
 		check(!v.m_outline, "outline loaded before opening sidebar");
+		check(v.OutlineButton().IsEnabled(),
+		      "Outline is disabled for a PDF that has one");
 		v.setThumbnailsOpen(true);
 		v.setOutlineOpen(true);
 		check(v.outlineOpen() && !v.thumbnailsOpen(),
@@ -264,6 +266,8 @@ void TabsTest::outlineTick(MainWindow& owner) {
 	case 7:
 		check(!v.m_outline && !v.outlineOpen(),
 		      "outline state leaked between tabs");
+		check(!v.OutlineButton().IsEnabled(),
+		      "Outline is offered for a PDF without one");
 		v.setOutlineOpen(true);
 		break;
 	case 8:
@@ -274,6 +278,8 @@ void TabsTest::outlineTick(MainWindow& owner) {
 		          v.OutlineTree().RootNodes().Size() == 0 &&
 		          v.OutlineStatus().Text() == L"No document outline.",
 		      "empty outline state");
+		check(v.OutlineButton().IsEnabled(),
+		      "an open empty outline can't be closed");
 		v.m_outline.reset();
 		v.m_outlineFailed = true;
 		v.showOutline();

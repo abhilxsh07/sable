@@ -110,9 +110,18 @@ void ViewerPage::setOutlineOpen(bool open) {
 	OutlinePanel().Visibility(open
 	                              ? Microsoft::UI::Xaml::Visibility::Visible
 	                              : Microsoft::UI::Xaml::Visibility::Collapsed);
+	updateRailAvailability();
 	if (open) {
 		showOutline();
 	}
+}
+// pdf.js turns off the buttons for what a document hasn't got. One that's
+// open stays usable, so it can still be closed.
+void ViewerPage::updateRailAvailability() {
+	const bool busy = organizing();
+	OutlineButton().IsEnabled(!busy && (m_hasOutline || outlineOpen()));
+	AttachmentButton().IsEnabled(!busy &&
+	                             (m_hasAttachments || attachmentsOpen()));
 }
 void ViewerPage::toggleSidebar() {
 	if (commentsOpen()) {
@@ -123,9 +132,9 @@ void ViewerPage::toggleSidebar() {
 		setOutlineOpen(false);
 	} else if (thumbnailsOpen()) {
 		setThumbnailsOpen(false);
-	} else if (m_sidebar == Sidebar::Outline) {
+	} else if (m_sidebar == Sidebar::Outline && m_hasOutline) {
 		setOutlineOpen(true);
-	} else if (m_sidebar == Sidebar::Attachments) {
+	} else if (m_sidebar == Sidebar::Attachments && m_hasAttachments) {
 		setAttachmentsOpen(true);
 	} else if (m_sidebar == Sidebar::Comments) {
 		setCommentsOpen(true);
