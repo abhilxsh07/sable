@@ -453,6 +453,20 @@ def annotations_pdf() -> bytes:
     return w.finish(1, 8)
 
 
+def note_attachment_pdf() -> bytes:
+    w = Writer(md5(b"sable annotation-only attachment"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+    w.add(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] "
+          "/Annots [4 0 R] >>")
+    w.add(4, "<< /Type /Annot /Subtype /FileAttachment "
+          "/Rect [40 50 60 70] /FS 5 0 R >>")
+    w.add(5, "<< /Type /Filespec /F (empty.bin) /EF << /F 6 0 R >> >>")
+    w.add_stream(6, b"")
+    w.add(7, "<< /Title (Sable annotation-only attachment) >>")
+    return w.finish(1, 7)
+
+
 def comments_pdf() -> bytes:
     w = Writer(md5(b"sable comments sidebar"))
     w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -521,6 +535,7 @@ def main() -> None:
         )))
     files = {
         "annotations.pdf": annotations_pdf(),
+        "note_attachment.pdf": note_attachment_pdf(),
         "note_offsets.pdf": build_pdf("note_offsets.pdf", [(
             "536870912 536870912 536871936 536871936", 0, b""
         )]),

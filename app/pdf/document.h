@@ -135,6 +135,13 @@ class Document {
 	std::optional<int> addTextNote(int page, float x, float y,
 	                               std::u16string_view contents,
 	                               std::u16string_view author = {});
+	// Serialization does not clear this flag or replace the backing bytes.
+	bool modified() const;
+	// Edited files with attachments or uninspectable annotation lists fail.
+	// nullopt means failure, cancellation or the output exceeding limit.
+	std::optional<std::vector<std::uint8_t>>
+	serialize(std::size_t limit,
+	          const std::function<bool()>& canceled = {}) const;
 	// All subtypes, in page order. nullopt means failure or cancellation.
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;
@@ -170,6 +177,7 @@ class Document {
 	// PDFium reads straight from this, so it's declared first and goes last
 	std::vector<std::uint8_t> m_data;
 	fpdf_document_t__* m_handle = nullptr;
+	bool m_modified = false;
 	// Nonowning handles stay on the engine thread for lazy target resolution.
 	mutable std::vector<void*> m_outlineBookmarks;
 };

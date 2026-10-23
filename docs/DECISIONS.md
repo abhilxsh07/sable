@@ -2,6 +2,29 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Edited document bytes (2026-10-24)
+
+I serialize on the engine thread into an owned, bounded byte buffer.
+Untouched documents return their exact loaded bytes, even after rendering.
+Creating a note marks the document modified; rejected notes do not. A failed
+setter restores the old flag only after a successful rollback. Serialization
+does not clear that flag or replace the buffer PDFium originally opened.
+
+Edited documents use FPDF_SaveAsCopy with no security-removal flags. The
+writer catches callback exceptions and permanently records failed writes,
+limits and cancellation, including the final flush. No partial output is
+returned. Passwords and user permissions survive the round-trip checks.
+// see: https://pdfium.googlesource.com/pdfium/+/refs/heads/main/core/fpdfapi/edit/cpdf_creator.cpp
+
+The attachment regression reproduces the known empty-stream rewrite: Sable
+reads eight compressed bytes where it previously read an empty file.
+Edited documents with document-level or page FileAttachment entries refuse
+serialization for now, keeping their notes available in memory. The page
+scan is cancelable and refuses unreadable pages/annotations or more than
+4,096 entries on a page. Untouched copies remain exact. I do not fall back
+to original bytes after an edit.
+File writing, session save requests, close handling and creation UI follow.
+
 ## Queued text notes (2026-10-24)
 
 The session owns queued note text and reports the requested page and new
