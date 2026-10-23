@@ -79,6 +79,22 @@ TEST(CommentScan, TypesAndTextDetermineCommentRows) {
 	EXPECT_EQ(scan.rows()[17].subtype, "Annotation");
 }
 
+TEST(CommentScan, KeepsDistinctPositionsOnTheSamePage) {
+	auto first = note(), second = note();
+	first.position = pdf::AnnotationPoint{.1, .8};
+	second.index = 9;
+	second.position = pdf::AnnotationPoint{.7, .2};
+	helpers::CommentScan scan(1);
+	ASSERT_TRUE(scan.append({0, {first, second, note()}}));
+	ASSERT_EQ(scan.rows().size(), 3u);
+	ASSERT_TRUE(scan.rows()[0].position);
+	ASSERT_TRUE(scan.rows()[1].position);
+	EXPECT_DOUBLE_EQ(scan.rows()[0].position->y, .8);
+	EXPECT_DOUBLE_EQ(scan.rows()[1].position->x, .7);
+	EXPECT_EQ(scan.rows()[1].index, 9);
+	EXPECT_FALSE(scan.rows()[2].position);
+}
+
 TEST(CommentScan, SanitizesControlsWithoutChangingUnicode) {
 	auto entry = note("Future\nType", "caf\xc3\xa9\n\r\n\r\t\x7f");
 	entry.author = std::string("A\0B\nC", 5);

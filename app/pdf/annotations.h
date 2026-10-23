@@ -23,9 +23,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 
 namespace pdf {
-// Unrotated PDF coordinates, in points; crop and view transforms come later.
+// Unrotated PDF coordinates, in points.
 struct AnnotationBounds {
 	float left = 0, bottom = 0, right = 0, top = 0;
+};
+// Fractions from the top left of the cropped, intrinsically rotated page.
+struct AnnotationPoint {
+	double x = 0, y = 0;
 };
 
 // These snapshots own their text and can outlive the document and engine.
@@ -34,6 +38,7 @@ struct Annotation {
 	// The PDF subtype name, including names this reader doesn't recognize.
 	std::string subtype, contents, author;
 	std::optional<AnnotationBounds> bounds;
+	std::optional<AnnotationPoint> position;
 };
 struct Annotations {
 	int page = 0;

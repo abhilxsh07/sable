@@ -46,6 +46,24 @@ bool ViewerPage::commentsHasFocus() {
 	}
 	return false;
 }
+void ViewerPage::followComment(int index) {
+	const auto& rows = m_commentScan.rows();
+	if (m_closed || index < 0 ||
+	    static_cast<std::size_t>(index) >= rows.size()) {
+		return;
+	}
+	const auto& row = rows[index];
+	if (row.position && row.position->x >= 0 && row.position->x <= 1 &&
+	    row.position->y >= 0 && row.position->y <= 1) {
+		pdf::LinkDestination target;
+		target.page = row.page;
+		target.x = row.position->x;
+		target.y = row.position->y;
+		followLink(target, true);
+	} else {
+		goToPage(static_cast<std::size_t>(row.page));
+	}
+}
 void ViewerPage::setupComments() {
 	m_commentScan.reset(static_cast<int>(m_sizes.size()));
 	const auto weak = get_weak();
@@ -67,10 +85,7 @@ void ViewerPage::setupComments() {
 			if (row && !self->m_closed && self->commentsOpen() &&
 			    self->Visibility() == XVisibility::Visible &&
 			    self->Rail().Visibility() == XVisibility::Visible) {
-				const int page = unbox_value_or<int>(row.Tag(), -1);
-				if (page >= 0) {
-					self->goToPage(static_cast<std::size_t>(page));
-				}
+				self->followComment(unbox_value_or<int>(row.Tag(), -1));
 			}
 		}
 	});
@@ -140,7 +155,7 @@ void ViewerPage::showComments() {
 	for (auto i = CommentsList().Items().Size(); i < rows.size(); ++i) {
 		const auto& entry = rows[i];
 		StackPanel content;
-		content.Tag(box_value(entry.page));
+		content.Tag(box_value(static_cast<int>(i)));
 		content.Spacing(4);
 		TextBlock heading;
 		heading.Text(L"Page " + to_hstring(entry.page + 1) + L" \u00b7 " +
@@ -158,7 +173,7 @@ void ViewerPage::showComments() {
 		}
 		ListViewItem item;
 		item.Content(content);
-		item.Tag(box_value(entry.page));
+		item.Tag(box_value(static_cast<int>(i)));
 		item.HorizontalContentAlignment(
 		    Microsoft::UI::Xaml::HorizontalAlignment::Stretch);
 		Automation::AutomationProperties::SetName(

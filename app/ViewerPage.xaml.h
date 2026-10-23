@@ -142,6 +142,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setupSelection();
 	void setupOutline();
 	void setupComments();
+	void followComment(int index);
 	void closeComments();
 	void pauseComments();
 	void showComments();
@@ -246,7 +247,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
 	void requestLink(winrt::Windows::Foundation::Point point);
-	void followLink(const pdf::LinkDestination& target);
+	void followLink(const pdf::LinkDestination& target, bool center = false);
 	winrt::fire_and_forget openLink(std::string uri);
 	void jumpTo(std::optional<double> x, double y);
 	void updateCurrentPage();

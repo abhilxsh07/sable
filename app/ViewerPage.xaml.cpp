@@ -649,7 +649,7 @@ void ViewerPage::requestLink(Windows::Foundation::Point point) {
 	m_linkPending = false;
 }
 
-void ViewerPage::followLink(const pdf::LinkDestination& target) {
+void ViewerPage::followLink(const pdf::LinkDestination& target, bool center) {
 	if (!m_layout || target.page < 0 ||
 	    static_cast<std::size_t>(target.page) >= m_sizes.size()) {
 		return;
@@ -680,11 +680,14 @@ void ViewerPage::followLink(const pdf::LinkDestination& target) {
 	}
 	goToPage(static_cast<std::size_t>(target.page));
 	const auto& rect = m_layout->pages()[target.page];
+	const double factor = center ? Scroller().ZoomFactor() : 1;
 	std::optional<double> x;
 	if (target.x) {
-		x = imageLeft() + rect.x + *target.x * rect.width;
+		x = (imageLeft() + rect.x + *target.x * rect.width) * factor -
+		    (center ? Scroller().ViewportWidth() / 2 : 0);
 	}
-	jumpTo(x, rect.y + target.y.value_or(0) * rect.height);
+	jumpTo(x, (rect.y + target.y.value_or(0) * rect.height) * factor -
+	              (center ? Scroller().ViewportHeight() / 2 : 0));
 }
 
 fire_and_forget ViewerPage::openLink(std::string uri) {

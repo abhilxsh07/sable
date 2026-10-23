@@ -102,7 +102,8 @@ bool CommentScan::append(pdf::Annotations snapshot) {
 			break;
 		}
 		m_rows.push_back({snapshot.page, entry.index, std::move(entry.subtype),
-		                  std::move(entry.author), std::move(entry.contents)});
+		                  std::move(entry.author), std::move(entry.contents),
+		                  entry.position});
 		m_bytes = BYTE_LIMIT - remaining;
 		if (m_rows.size() == ROW_LIMIT || m_bytes == BYTE_LIMIT) {
 			m_stopped = true;
