@@ -378,6 +378,22 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	return count;
 }
 
+SaveResult Document::saveEdits(const std::filesystem::path& destination,
+                               const std::filesystem::path& source,
+                               std::size_t limit,
+                               const std::function<bool()>& canceled) const {
+	bool wasCanceled = false;
+	const auto stopped = [&] {
+		wasCanceled = wasCanceled || (canceled && canceled());
+		return wasCanceled;
+	};
+	const auto bytes = serialize(limit, stopped);
+	if (!bytes) {
+		return wasCanceled ? SaveResult::Canceled : SaveResult::Failed;
+	}
+	return helpers::saveFile(destination, source, *bytes, stopped);
+}
+
 bool Document::modified() const {
 	return !offThread() && m_modified;
 }

@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "text.h"
 #include "search.h"
 #include "annotations.h"
+#include "../helpers/attachment_file.h"
 
 // PDFium's handle type, declared here so this header doesn't need fpdfview.h
 struct fpdf_document_t__;
@@ -43,6 +44,8 @@ enum class Error {
 	Security, // protected in a way PDFium can't open
 	Unknown,
 };
+
+using SaveResult = helpers::FileSaveResult;
 
 // what to tell the user, in plain words ("" for None)
 std::string_view errorMessage(Error error);
@@ -142,6 +145,10 @@ class Document {
 	std::optional<std::vector<std::uint8_t>>
 	serialize(std::size_t limit,
 	          const std::function<bool()>& canceled = {}) const;
+	// Writes edited bytes to a different file, keeping this document modified.
+	SaveResult saveEdits(const std::filesystem::path& destination,
+	                     const std::filesystem::path& source, std::size_t limit,
+	                     const std::function<bool()>& canceled = {}) const;
 	// All subtypes, in page order. nullopt means failure or cancellation.
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;

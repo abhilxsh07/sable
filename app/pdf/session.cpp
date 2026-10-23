@@ -42,6 +42,7 @@ struct Session::State {
 	bool m_closed = false;
 	bool m_rendering = false;
 	bool m_printing = false;
+	bool m_saving = false;
 	std::uint64_t m_generation = 0;
 	std::uint64_t m_findGeneration = 0;
 	std::uint64_t m_outlineGeneration = 0;
@@ -448,6 +449,49 @@ bool Session::addTextNote(int page, float x, float y, std::u16string contents,
 		}
 		callback(std::move(result));
 	});
+	return true;
+}
+
+bool Session::saveEdits(const std::filesystem::path& destination,
+                        const std::filesystem::path& source, std::size_t limit,
+                        std::function<bool()> canceled,
+                        std::function<void(SaveResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed ||
+		    state->m_saving) {
+			return false;
+		}
+		state->m_saving = true;
+	}
+	try {
+		state->m_engine.post([state, destination, source, limit,
+		                      canceled = std::move(canceled),
+		                      callback = std::move(callback)] {
+			SaveResult result = SaveResult::Failed;
+			try {
+				const auto stopped = [&] {
+					return state->closed() || (canceled && canceled());
+				};
+				result = stopped() ? SaveResult::Canceled
+				                   : state->m_document->saveEdits(
+				                         destination, source, limit, stopped);
+			} catch (...) {
+				diagnostics::write(diagnostics::Level::Error,
+				                   "Couldn't save PDF edits.");
+			}
+			{
+				std::lock_guard lock(state->m_mutex);
+				state->m_saving = false;
+			}
+			callback(result);
+		});
+	} catch (...) {
+		std::lock_guard lock(state->m_mutex);
+		state->m_saving = false;
+		throw;
+	}
 	return true;
 }
 

@@ -118,6 +118,11 @@ class Session {
 	bool addTextNote(int page, float x, float y, std::u16string contents,
 	                 std::u16string author,
 	                 std::function<void(NoteResult)> callback);
+	// One save at a time; successful replacement is never relabeled canceled.
+	bool saveEdits(const std::filesystem::path& destination,
+	               const std::filesystem::path& source, std::size_t limit,
+	               std::function<bool()> canceled,
+	               std::function<void(SaveResult)> callback);
 	bool attachments(std::function<void(AttachmentsResult)> callback);
 	bool attachment(int index, std::function<void(AttachmentResult)> callback);
 	// A newer outline navigation cancels older queued navigation.
