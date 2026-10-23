@@ -2,6 +2,23 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Queued text notes (2026-10-24)
+
+The session owns queued note text and reports the requested page and new
+annotation index from the engine thread. Open results expose annotation
+permission separately from copying. Oversized fields refuse to queue;
+document validation failures return no index without claiming cancellation.
+
+Writes keep engine queue order and ignore annotation-read, Find and render
+cancellation. Closing before a job starts cancels it. After the start check,
+the write keeps its actual result even if close races; document destruction
+waits behind it in the same engine queue. I do not hold the session lock
+through PDFium work. Callbacks run outside locks and may queue more work.
+
+Mutation exceptions are logged and return no index. A failed rollback may
+leave an incomplete note, as documented by the engine operation. This adds
+no creation UI, cache refresh, unsaved-state handling or serialization.
+
 ## Text note creation (2026-10-24)
 
 I create Text annotations in memory on the engine thread. The operation

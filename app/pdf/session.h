@@ -35,6 +35,7 @@ struct SessionInfo {
 	std::vector<std::string> labels;
 	bool canceled = false;
 	bool canCopy = false;
+	bool canAnnotate = false;
 };
 
 struct RenderResult {
@@ -64,6 +65,11 @@ struct OutlineResult {
 struct AnnotationsResult {
 	int page = 0;
 	std::optional<Annotations> annotations;
+	bool canceled = false;
+};
+struct NoteResult {
+	int page = 0;
+	std::optional<int> index;
 	bool canceled = false;
 };
 struct AttachmentsResult {
@@ -105,6 +111,13 @@ class Session {
 	// and rendering. Completed replies can still arrive after cancellation.
 	bool annotations(int page, std::function<void(AnnotationsResult)> callback);
 	void cancelAnnotations();
+	// Writes keep queue order, independently of annotation reads. Close only
+	// cancels jobs that have not started; started edits keep their outcome.
+	// An absent index means failure, possibly an incomplete edit if rollback
+	// failed. Callbacks run once on the engine thread, outside session locks.
+	bool addTextNote(int page, float x, float y, std::u16string contents,
+	                 std::u16string author,
+	                 std::function<void(NoteResult)> callback);
 	bool attachments(std::function<void(AttachmentsResult)> callback);
 	bool attachment(int index, std::function<void(AttachmentResult)> callback);
 	// A newer outline navigation cancels older queued navigation.
