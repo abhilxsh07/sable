@@ -2,6 +2,27 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Text note creation (2026-10-24)
+
+I create Text annotations in memory on the engine thread. The operation
+returns the new page annotation index; it does not write the source file.
+Adding a note needs annotation permission, independently of copying text.
+Owner access uses the permissions PDFium reports after opening the file.
+
+The caller supplies the lower left in unrotated PDF coordinates. I use the
+20-point icon PDFium generates, with Print set, and require the full icon
+inside the visible media/crop intersection. Nonfinite or collapsed float
+rectangles are rejected before creation.
+// see: https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
+
+Contents cannot be empty. Both text fields reject embedded NUL and unpaired
+surrogates, and fit the snapshot reader's 64 KiB field limit including the
+terminator. Pages with 4,096 annotations refuse another. Existing snapshot
+text budgets still apply. I allocate strings before mutation and remove the
+appended annotation if a setter fails; a failed rollback throws explicitly.
+The asynchronous editing path, creation UI, unsaved-state handling and
+serialization follow separately. Save a Copy still copies the loaded bytes.
+
 ## Comment locations (2026-10-23)
 
 I keep an optional displayed-page position with each annotation snapshot.

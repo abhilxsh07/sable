@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include <gtest/gtest.h>
 #include <cmath>
+#include <fstream>
+#include <limits>
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "pdf_test_files.h"
@@ -218,6 +220,215 @@ TEST(Annotations, OversizedFieldsAndPageLimitsAreReported) {
 		    ASSERT_EQ(budget->entries.size(), 40u);
 		    EXPECT_EQ(budget->entries[0].contents.size(), 16384u);
 		    EXPECT_TRUE(budget->entries.back().contents.empty());
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewNotesKeepUnicodeAndRenderWithoutChangingTheSource) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = fixturePath("annotations.pdf");
+		    const auto bytes = [&] {
+			    std::ifstream file(source, std::ios::binary);
+			    return std::string(std::istreambuf_iterator<char>(file), {});
+		    };
+		    const auto original = bytes();
+		    ASSERT_FALSE(original.empty());
+		    const auto opened = pdf::openFile(source);
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    ASSERT_TRUE(document.canAnnotate());
+		    const auto before = document.render(1, 360, 280);
+		    ASSERT_TRUE(before);
+		    const auto added = document.addTextNote(
+		        1, 40, 50, u"New \u03a9\U0001f600\nsecond line",
+		        u"Abhilash \u03a9");
+		    ASSERT_EQ(added, 0);
+		    const auto notes = document.annotations(1);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    const auto& note = notes->entries[0];
+		    EXPECT_EQ(note.index, *added);
+		    EXPECT_EQ(note.subtype, "Text");
+		    EXPECT_EQ(note.contents, "New \u03a9\U0001f600\nsecond line");
+		    EXPECT_EQ(note.author, "Abhilash \u03a9");
+		    EXPECT_EQ(note.flags, 4);
+		    ASSERT_TRUE(note.bounds);
+		    EXPECT_FLOAT_EQ(note.bounds->left, 40);
+		    EXPECT_FLOAT_EQ(note.bounds->bottom, 50);
+		    EXPECT_FLOAT_EQ(note.bounds->right, 60);
+		    EXPECT_FLOAT_EQ(note.bounds->top, 70);
+		    const auto after = document.render(1, 360, 280);
+		    ASSERT_TRUE(after);
+		    EXPECT_NE(before->pixels, after->pixels);
+		    const auto again = document.annotations(1);
+		    ASSERT_TRUE(again);
+		    ASSERT_EQ(again->entries.size(), 1u);
+		    EXPECT_EQ(again->entries[0].contents, note.contents);
+		    EXPECT_EQ(document.addTextNote(1, 80, 100, u"Another"), 1);
+		    const auto otherPage = document.annotations(0);
+		    ASSERT_TRUE(otherPage);
+		    EXPECT_EQ(otherPage->entries.size(), 6u);
+		    const auto reopened = pdf::openFile(source);
+		    ASSERT_TRUE(reopened.document);
+		    const auto unchanged = reopened.document->annotations(1);
+		    ASSERT_TRUE(unchanged);
+		    EXPECT_TRUE(unchanged->entries.empty());
+		    EXPECT_EQ(bytes(), original);
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewNoteLocationsSurviveCroppingRotationAndRendering) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("comment_locations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    const pdf::AnnotationPoint expected[] = {
+		        {.2, 23. / 30}, {7. / 30, .2}, {.8, 7. / 30}, {23. / 30, .8}};
+		    for (int page = 0; page < 4; ++page) {
+			    const auto added =
+			        opened.document->addTextNote(page, 50, 100, u"Here");
+			    ASSERT_TRUE(added);
+			    for (int pass = 0; pass < 2; ++pass) {
+				    const auto notes = opened.document->annotations(page);
+				    ASSERT_TRUE(notes);
+				    ASSERT_EQ(notes->entries.size(), std::size_t(*added + 1));
+				    const auto& note = notes->entries.back();
+				    ASSERT_TRUE(note.position);
+				    EXPECT_NEAR(note.position->x, expected[page].x, 1e-6);
+				    EXPECT_NEAR(note.position->y, expected[page].y, 1e-6);
+				    ASSERT_TRUE(note.bounds);
+				    EXPECT_FLOAT_EQ(note.bounds->left, 50);
+				    EXPECT_FLOAT_EQ(note.bounds->bottom, 100);
+				    EXPECT_FLOAT_EQ(note.bounds->right, 70);
+				    EXPECT_FLOAT_EQ(note.bounds->top, 120);
+				    EXPECT_TRUE(opened.document->render(page, 200, 300));
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, InvalidNotesLeaveThePageUnchanged) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("annotations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    const float nan = std::numeric_limits<float>::quiet_NaN();
+		    const float inf = std::numeric_limits<float>::infinity();
+		    for (const auto point : {pdf::AnnotationPoint{nan, 50},
+		                             {40, inf},
+		                             {9, 50},
+		                             {40, 19},
+		                             {271, 50},
+		                             {40, 361},
+		                             {inf, nan}}) {
+			    EXPECT_FALSE(document.addTextNote(1, float(point.x),
+			                                      float(point.y), u"Rejected"));
+		    }
+		    EXPECT_FALSE(document.addTextNote(-1, 40, 50, u"Rejected"));
+		    EXPECT_FALSE(document.addTextNote(document.pageCount(), 40, 50,
+		                                      u"Rejected"));
+		    for (const auto& text :
+		         {std::u16string{}, std::u16string(32768, u'a'),
+		          std::u16string{u'a', 0, u'b'}, std::u16string{0xD800},
+		          std::u16string{0xDC00}, std::u16string{0xD800, u'a'}}) {
+			    EXPECT_FALSE(document.addTextNote(1, 40, 50, text));
+			    if (!text.empty()) {
+				    EXPECT_FALSE(
+				        document.addTextNote(1, 40, 50, u"Note", text));
+			    }
+		    }
+		    const auto notes = document.annotations(1);
+		    ASSERT_TRUE(notes);
+		    EXPECT_TRUE(notes->entries.empty());
+		    // the whole icon fits exactly at either visible corner.
+		    EXPECT_EQ(document.addTextNote(1, 10, 20, u"Corner"), 0);
+		    EXPECT_EQ(document.addTextNote(1, 270, 360, u"Corner"), 1);
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewNotesRespectPermissionsAndOwnerAccess) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto restricted =
+		        pdf::openFile(fixturePath("restricted.pdf"));
+		    ASSERT_TRUE(restricted.document);
+		    EXPECT_FALSE(restricted.document->canAnnotate());
+		    EXPECT_FALSE(
+		        restricted.document->addTextNote(0, 40, 50, u"Denied"));
+		    const auto notes = restricted.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    EXPECT_TRUE(notes->entries.empty());
+		    const auto owner =
+		        pdf::openFile(fixturePath("restricted.pdf"), "nightpdf");
+		    ASSERT_TRUE(owner.document);
+		    EXPECT_TRUE(owner.document->canAnnotate());
+		    EXPECT_EQ(owner.document->addTextNote(0, 40, 50, u"Allowed"), 0);
+		    for (const bool allowed : {false, true}) {
+			    const auto file =
+			        allowed ? "notes_allowed.pdf" : "notes_denied.pdf";
+			    const auto permissions = pdf::openFile(fixturePath(file));
+			    ASSERT_TRUE(permissions.document);
+			    EXPECT_EQ(permissions.document->canAnnotate(), allowed);
+			    EXPECT_EQ(permissions.document->canCopy(), !allowed);
+			    EXPECT_EQ(permissions.document->addTextNote(0, 40, 50, u"Note")
+			                  .has_value(),
+			              allowed);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewNotesRejectIconsCollapsedByFloatPrecision) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("note_offsets.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    constexpr float offset = 536870912;
+		    EXPECT_FALSE(
+		        opened.document->addTextNote(0, offset, offset, u"Invisible"));
+		    const auto notes = opened.document->annotations(0);
+		    ASSERT_TRUE(notes);
+		    EXPECT_TRUE(notes->entries.empty());
+	    })
+	    .get();
+}
+
+TEST(Annotations, NewNotesStayWithinSnapshotFieldAndCountLimits) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened = pdf::openFile(fixturePath("annotations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    auto& document = *opened.document;
+		    const std::u16string text(32767, u'a');
+		    EXPECT_EQ(document.addTextNote(1, 40, 50, text, text), 0);
+		    const auto notes = document.annotations(1);
+		    ASSERT_TRUE(notes);
+		    ASSERT_EQ(notes->entries.size(), 1u);
+		    EXPECT_FALSE(notes->limited);
+		    EXPECT_EQ(notes->entries[0].contents, std::string(32767, 'a'));
+		    EXPECT_EQ(notes->entries[0].author, notes->entries[0].contents);
+		    EXPECT_FALSE(document.addTextNote(3, 40, 50, u"Full"));
+		    // i fill an empty page to check the exact boundary, too.
+		    for (int i = 1; i < 4096; ++i) {
+			    ASSERT_EQ(document.addTextNote(1, 40, 50, u"Note"), i);
+		    }
+		    EXPECT_FALSE(document.addTextNote(1, 40, 50, u"Full"));
+		    const auto full = document.annotations(1);
+		    ASSERT_TRUE(full);
+		    EXPECT_EQ(full->entries.size(), 4096u);
+		    EXPECT_FALSE(full->limited);
 	    })
 	    .get();
 }

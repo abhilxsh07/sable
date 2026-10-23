@@ -521,6 +521,15 @@ def main() -> None:
         )))
     files = {
         "annotations.pdf": annotations_pdf(),
+        "note_offsets.pdf": build_pdf("note_offsets.pdf", [(
+            "536870912 536870912 536871936 536871936", 0, b""
+        )]),
+        "notes_allowed.pdf": build_pdf(
+            "notes_allowed.pdf", [PAGE_1], security=(b"", OWNER_PASSWORD, -3872)
+        ),
+        "notes_denied.pdf": build_pdf(
+            "notes_denied.pdf", [PAGE_1], security=(b"", OWNER_PASSWORD, -3888)
+        ),
         "comments.pdf": comments_pdf(),
         "comment_locations.pdf": comment_locations_pdf(),
         "attachments.pdf": attachments_pdf(),

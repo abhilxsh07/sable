@@ -128,6 +128,13 @@ class Document {
 	// UTF-8, "" when the PDF doesn't label its pages
 	std::string pageLabel(int index) const;
 	bool canCopy() const;
+	bool canAnnotate() const;
+	// Lower left of a 20-point icon, in unrotated PDF coordinates.
+	// In memory only. Returns its page annotation index, or nullopt on failure.
+	// A failed rollback throws; the incomplete note may still be present.
+	std::optional<int> addTextNote(int page, float x, float y,
+	                               std::u16string_view contents,
+	                               std::u16string_view author = {});
 	// All subtypes, in page order. nullopt means failure or cancellation.
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;
