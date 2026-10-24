@@ -2,6 +2,17 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Centered note requests (2026-10-24)
+
+I keep page geometry and the preservation scan on the engine thread. The
+editor entry point centers the 20-point icon in the media/crop intersection
+and uses the existing bounds checks. It refuses known unsafe attachment
+rewrites before changing the document. The raw-position API remains useful
+for lower-level edits; serialization still applies the same restrictions.
+Note replies distinguish changed requests from ordinary refusals, so failed
+rollback cannot look clean and a refused add keeps the existing savepoint.
+
+
 ## Edited file saves (2026-10-24)
 
 Document saveEdits serializes owned bytes, then uses the atomic file writer.

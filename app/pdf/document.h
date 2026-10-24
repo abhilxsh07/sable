@@ -140,6 +140,10 @@ class Document {
 	                               std::u16string_view author = {});
 	// Serialization does not clear this flag or replace the backing bytes.
 	bool modified() const;
+	// Centered notes refuse documents whose edits cannot be preserved.
+	std::optional<int> addCenteredTextNote(int page,
+	                                       std::u16string_view contents,
+	                                       std::u16string_view author = {});
 	// Edited files with attachments or uninspectable annotation lists fail.
 	// nullopt means failure, cancellation or the output exceeding limit.
 	std::optional<std::vector<std::uint8_t>>
@@ -177,6 +181,7 @@ class Document {
 	                             int rotation = 0) const;
 
   private:
+	bool canSerializeEdits(const std::function<bool()>& canceled) const;
 	friend OpenResult openDocument(std::vector<std::uint8_t> data,
 	                               const std::string& password);
 	Document(std::vector<std::uint8_t> data, fpdf_document_t__* handle);

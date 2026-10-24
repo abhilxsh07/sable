@@ -422,6 +422,21 @@ void Session::cancelAnnotations() {
 bool Session::addTextNote(int page, float x, float y, std::u16string contents,
                           std::u16string author,
                           std::function<void(NoteResult)> callback) {
+	return writeTextNote(page, std::pair{x, y}, std::move(contents),
+	                     std::move(author), std::move(callback));
+}
+
+bool Session::addCenteredTextNote(int page, std::u16string contents,
+                                  std::u16string author,
+                                  std::function<void(NoteResult)> callback) {
+	return writeTextNote(page, {}, std::move(contents), std::move(author),
+	                     std::move(callback));
+}
+
+bool Session::writeTextNote(int page,
+                            std::optional<std::pair<float, float>> point,
+                            std::u16string contents, std::u16string author,
+                            std::function<void(NoteResult)> callback) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -430,7 +445,7 @@ bool Session::addTextNote(int page, float x, float y, std::u16string contents,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, x, y, contents = std::move(contents),
+	state->m_engine.post([state, page, point, contents = std::move(contents),
 	                      author = std::move(author),
 	                      callback = std::move(callback)] {
 		NoteResult result;
@@ -440,10 +455,16 @@ bool Session::addTextNote(int page, float x, float y, std::u16string contents,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
-				result.index = state->m_document->addTextNote(page, x, y,
-				                                              contents, author);
+				result.index = point ? state->m_document->addTextNote(
+				                           page, point->first, point->second,
+				                           contents, author)
+				                     : state->m_document->addCenteredTextNote(
+				                           page, contents, author);
+				result.changed = result.index.has_value();
 			}
 		} catch (...) {
+			// a failed rollback may have left an incomplete annotation.
+			result.changed = state->m_document && state->m_document->modified();
 			diagnostics::write(diagnostics::Level::Error,
 			                   "Couldn't add a PDF text note.");
 		}

@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma once
 
 #include <functional>
+#include <utility>
 #include <memory>
 
 #include "page_cache.h"
@@ -71,6 +72,7 @@ struct NoteResult {
 	int page = 0;
 	std::optional<int> index;
 	bool canceled = false;
+	bool changed = false;
 };
 struct AttachmentsResult {
 	std::optional<Attachments> attachments;
@@ -118,6 +120,9 @@ class Session {
 	bool addTextNote(int page, float x, float y, std::u16string contents,
 	                 std::u16string author,
 	                 std::function<void(NoteResult)> callback);
+	bool addCenteredTextNote(int page, std::u16string contents,
+	                         std::u16string author,
+	                         std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,
@@ -145,6 +150,9 @@ class Session {
 	void close();
 
   private:
+	bool writeTextNote(int page, std::optional<std::pair<float, float>> point,
+	                   std::u16string contents, std::u16string author,
+	                   std::function<void(NoteResult)> callback);
 	struct State;
 	std::shared_ptr<State> m_state;
 };

@@ -378,6 +378,52 @@ std::optional<int> Document::addTextNote(int index, float x, float y,
 	return count;
 }
 
+std::optional<int> Document::addCenteredTextNote(int index,
+                                                 std::u16string_view contents,
+                                                 std::u16string_view author) {
+	if (offThread() || index < 0 || index >= pageCount() || !canAnnotate() ||
+	    !canSerializeEdits({})) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, index));
+	FS_RECTF box{};
+	if (!page || !FPDF_GetPageBoundingBox(page.get(), &box)) {
+		return {};
+	}
+	const float x = static_cast<float>((double(box.left) + box.right) / 2 - 10);
+	const float y = static_cast<float>((double(box.bottom) + box.top) / 2 - 10);
+	page.reset();
+	return addTextNote(index, x, y, contents, author);
+}
+
+bool Document::canSerializeEdits(const std::function<bool()>& canceled) const {
+	// @todo: preserve empty attachment streams before allowing rewrites.
+	if (offThread() || FPDFDoc_GetAttachmentCount(m_handle) != 0) {
+		return false;
+	}
+	for (int index = 0; index < pageCount(); ++index) {
+		if ((canceled && canceled())) {
+			return false;
+		}
+		PagePtr page(FPDF_LoadPage(m_handle, index));
+		const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
+		if (count < 0 || count > 4096) {
+			return false;
+		}
+		for (int i = 0; i < count; ++i) {
+			if ((canceled && canceled())) {
+				return false;
+			}
+			AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
+			if (!note ||
+			    FPDFAnnot_GetSubtype(note.get()) == FPDF_ANNOT_FILEATTACHMENT) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 SaveResult Document::saveEdits(const std::filesystem::path& destination,
                                const std::filesystem::path& source,
                                std::size_t limit,
@@ -450,29 +496,8 @@ Document::serialize(std::size_t limit,
 		}
 		writer.bytes = m_data;
 	} else {
-		// @todo: preserve empty attachment streams before allowing rewrites.
-		if (FPDFDoc_GetAttachmentCount(m_handle) != 0) {
+		if (!canSerializeEdits([&writer] { return writer.stopped(); })) {
 			return {};
-		}
-		for (int index = 0; index < pageCount(); ++index) {
-			if (writer.stopped()) {
-				return {};
-			}
-			PagePtr page(FPDF_LoadPage(m_handle, index));
-			const int count = page ? FPDFPage_GetAnnotCount(page.get()) : -1;
-			if (count < 0 || count > 4096) {
-				return {};
-			}
-			for (int i = 0; i < count; ++i) {
-				if (writer.stopped()) {
-					return {};
-				}
-				AnnotationPtr note(FPDFPage_GetAnnot(page.get(), i));
-				if (!note || FPDFAnnot_GetSubtype(note.get()) ==
-				                 FPDF_ANNOT_FILEATTACHMENT) {
-					return {};
-				}
-			}
 		}
 		if (!FPDF_SaveAsCopy(m_handle, &writer, 0)) {
 			return {};

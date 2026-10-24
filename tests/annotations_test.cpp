@@ -320,6 +320,40 @@ TEST(Annotations, NewNoteLocationsSurviveCroppingRotationAndRendering) {
 	    .get();
 }
 
+TEST(Annotations, CenteredNotesRespectCropRotationAndSaveRestrictions) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto opened =
+		        pdf::openFile(fixturePath("comment_locations.pdf"));
+		    ASSERT_TRUE(opened.document);
+		    for (int page = 0; page < 4; ++page) {
+			    ASSERT_TRUE(
+			        opened.document->addCenteredTextNote(page, u"Center"));
+			    const auto notes = opened.document->annotations(page);
+			    ASSERT_TRUE(notes && !notes->entries.empty());
+			    const auto& note = notes->entries.back();
+			    ASSERT_TRUE(note.position);
+			    EXPECT_NEAR(note.position->x, .5, 1e-6);
+			    EXPECT_NEAR(note.position->y, .5, 1e-6);
+		    }
+		    const auto bytes = opened.document->serialize(1024 * 1024);
+		    ASSERT_TRUE(bytes);
+		    const auto saved = pdf::openDocument(*bytes);
+		    ASSERT_TRUE(saved.document);
+		    EXPECT_EQ(saved.document->annotations(0)->entries.back().contents,
+		              "Center");
+		    for (const auto name :
+		         {"attachments.pdf", "annotations.pdf", "notes_denied.pdf"}) {
+			    const auto blocked = pdf::openFile(fixturePath(name));
+			    ASSERT_TRUE(blocked.document);
+			    EXPECT_FALSE(blocked.document->addCenteredTextNote(0, u"No"));
+			    EXPECT_FALSE(blocked.document->modified());
+		    }
+	    })
+	    .get();
+}
+
 TEST(Annotations, InvalidNotesLeaveThePageUnchanged) {
 	pdf::Engine engine;
 	engine
