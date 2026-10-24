@@ -33,8 +33,7 @@ IAsyncOperation<bool> MainWindow::confirmNotes(Sable::ViewerPage document) {
 	const auto lifetime = get_strong();
 	const auto viewer = get_self<ViewerPage>(document);
 	if (viewer->m_noteBusy || viewer->m_noteSaving || viewer->m_noteDialog ||
-	    (viewer->m_notesDirty &&
-	     (viewer->m_passwordDialog || viewer->m_propertiesDialog))) {
+	    (viewer->m_notesDirty && viewer->m_passwordDialog)) {
 		viewer->showNotice(L"Finish the open dialog or note operation first.");
 		co_return false;
 	}
