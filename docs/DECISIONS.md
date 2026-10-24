@@ -2,6 +2,20 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Existing text-note contents (2026-10-24)
+
+I update only the Contents string of an existing Text annotation. Each
+write checks its exact previous UTF-16 contents on the engine thread,
+so an old editor cannot replace a newer edit. An identical value succeeds
+without modifying the document. I restore the previous string after a
+setter failure and keep the document modified if restoration fails.
+
+I refuse ReadOnly or LockedContents notes, rich-text RC entries, missing
+or non-string contents, invalid or oversized UTF-16, restricted documents
+and files whose attachments cannot survive PDFium's rewrite. Locked alone
+protects properties and still permits changing contents. These checks
+keep author, geometry, flags and existing appearances intact.
+
 ## Note placement interaction (2026-10-24)
 
 Place note on page arms a one-shot page tap while centered Add note stays
