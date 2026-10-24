@@ -431,7 +431,7 @@ fire_and_forget MainWindow::dropDocuments(
 void MainWindow::openDocument(pdf::Engine& engine,
                               const std::filesystem::path& path,
                               std::optional<int> page) {
-	if (m_closing) {
+	if (m_closing || m_closePending) {
 		return;
 	}
 	m_engine = &engine;
@@ -468,6 +468,18 @@ void MainWindow::openDocument(pdf::Engine& engine,
 	tab.Header(title);
 	Controls::ToolTipService::SetToolTip(tab, box_value(resolved.wstring()));
 	Automation::AutomationProperties::SetName(tab, path.filename().wstring());
+	const auto pdf = get_self<ViewerPage>(viewer);
+	pdf->m_notesAvailable = [weak = get_weak()] {
+		const auto self = weak.get();
+		return self && !self->m_closing && !self->m_closePending;
+	};
+	pdf->m_saveNotes = [weak = get_weak(), document = make_weak(viewer)] {
+		const auto self = weak.get();
+		const auto current = document.get();
+		if (self && current && !self->m_closePending) {
+			self->saveNotes(current);
+		}
+	};
 	get_self<ViewerPage>(viewer)->setValues(m_values);
 	m_tabs.push_back({resolved, tab, viewer, page});
 	Documents().Children().Append(viewer);
@@ -689,7 +701,7 @@ void MainWindow::selectTab() {
 	}
 }
 
-void MainWindow::closeTab(Controls::TabViewItem tab) {
+void MainWindow::removeTab(Controls::TabViewItem tab) {
 	const auto found =
 	    std::find_if(m_tabs.begin(), m_tabs.end(),
 	                 [&tab](const auto& entry) { return entry.tab == tab; });
@@ -1054,6 +1066,23 @@ void MainWindow::onOpenSettings(const Windows::Foundation::IInspectable&,
 // Electron's sizes are DIPs but AppWindow works in physical pixels.
 void MainWindow::setupWindow() {
 	auto appWindow = AppWindow();
+	appWindow.Closing([weak = get_weak()](auto&&, const auto& args) {
+		if (const auto self = weak.get(); self && !self->m_allowNoteClose) {
+			const bool needsReview =
+			    self->m_notesSaving ||
+			    std::any_of(self->m_tabs.begin(), self->m_tabs.end(),
+			                [](const auto& entry) {
+				                const auto pdf =
+				                    get_self<ViewerPage>(entry.viewer);
+				                return pdf->m_notesDirty || pdf->m_noteBusy ||
+				                       pdf->m_noteDialog;
+			                });
+			if (needsReview || self->m_closePending) {
+				args.Cancel(true);
+				self->closeWithNotes();
+			}
+		}
+	});
 	// relative paths resolve against the working directory, not the exe
 	appWindow.SetIcon((exeDir() / L"assets" / L"icon.ico").wstring());
 

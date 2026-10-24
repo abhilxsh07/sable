@@ -153,8 +153,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<ListView x:Name="CommentsList" Grid.Row="2" SelectionMode="Single"
 					IsItemClickEnabled="True" AutomationProperties.Name="Comments"
 					ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-				<Button x:Name="CommentsRetry" Grid.Row="3" Content="Retry" Margin="12"
-					Visibility="Collapsed" HorizontalAlignment="Left" />
+				<StackPanel Grid.Row="3" Margin="12" Spacing="8">
+					<TextBlock x:Name="NotesState" TextWrapping="Wrap"
+						AutomationProperties.LiveSetting="Polite" />
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<Button x:Name="AddNoteButton" Content="Add note" />
+						<Button x:Name="SaveNotesButton" Content="Save notes" />
+					</StackPanel>
+					<Button x:Name="CommentsRetry" Content="Retry"
+						Visibility="Collapsed" HorizontalAlignment="Left" />
+				</StackPanel>
 			</Grid>
 		</Border>
 
