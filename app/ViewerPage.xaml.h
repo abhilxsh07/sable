@@ -154,6 +154,9 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});
+	void beginNoteEdit();
+	winrt::fire_and_forget editExistingNote(int page, int index,
+	                                        std::u16string expected);
 	void refreshNotes();
 	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
 	     m_noteSaving = false;
