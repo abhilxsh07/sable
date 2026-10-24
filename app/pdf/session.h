@@ -68,6 +68,11 @@ struct AnnotationsResult {
 	std::optional<Annotations> annotations;
 	bool canceled = false;
 };
+struct TextNoteResult {
+	int page = 0, index = 0;
+	std::optional<std::u16string> contents;
+	bool canceled = false;
+};
 struct NoteResult {
 	int page = 0;
 	std::optional<int> index;
@@ -126,6 +131,11 @@ class Session {
 	bool addTextNoteAt(int page, double x, double y, int rotation,
 	                   std::u16string contents, std::u16string author,
 	                   std::function<void(NoteResult)> callback);
+	bool textNote(int page, int index,
+	              std::function<void(TextNoteResult)> callback);
+	bool updateTextNote(int page, int index, std::u16string expected,
+	                    std::u16string contents,
+	                    std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,
