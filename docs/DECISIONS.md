@@ -2,6 +2,22 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Text note editor and saves (2026-10-24)
+
+Comments now has Add note and Save notes under the approved reader scope.
+This first editor adds a Text annotation at the current page's center and
+says where it will go. Author is optional. Placement by clicking a page,
+moving notes and editing existing notes still follow.
+
+The source stays loaded and untouched. Save notes writes an edited copy;
+Save a Copy keeps its original-byte behavior. The UI tracks unsaved notes
+separately from PDFium's persistent modified flag, and holds further edits
+until a save finishes. Cancel and failure keep the unsaved state. Failed
+creation retains the editor text for another attempt. A document revision
+rejects old render replies before refreshing page and thumbnail caches,
+comments and properties. The temporary edited-file limit is 1 GiB.
+
+
 ## Centered note requests (2026-10-24)
 
 I keep page geometry and the preservation scan on the engine thread. The

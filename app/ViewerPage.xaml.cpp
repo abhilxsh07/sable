@@ -271,6 +271,9 @@ void ViewerPage::close() {
 	closeOutline();
 	closeAttachments();
 	closeComments();
+	if (auto dialog = std::exchange(m_noteDialog, nullptr)) {
+		dialog.Hide();
+	}
 	m_closed = true;
 	cancelSelectionDrag();
 	m_selection.reset();
@@ -1490,6 +1493,7 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		}
 		m_sizes = std::move(sizes);
 		m_copyAllowed = info.canCopy;
+		m_noteAllowed = info.canAnnotate;
 		m_labels = helpers::pageLabels(std::move(info.labels), m_sizes.size());
 		m_scale = XamlRoot() ? XamlRoot().RasterizationScale() : 1.0;
 		// the page -p asks for, or the first; pdf.js ignores a page that
@@ -1807,17 +1811,20 @@ void ViewerPage::requestNext() {
 }
 
 void ViewerPage::startRender(const pdf::PageKey& key) {
-	m_rendering =
-	    m_session->render(key, [weak = get_weak(), queue = DispatcherQueue()](
-	                               pdf::RenderResult result) {
-		    auto rendered =
-		        std::make_shared<pdf::RenderResult>(std::move(result));
-		    queue.TryEnqueue([weak, rendered] {
-			    if (auto self = weak.get()) {
-				    self->rendered(std::move(*rendered));
-			    }
-		    });
-	    });
+	const auto version = m_renderVersion;
+	m_rendering = m_session->render(key, [weak = get_weak(),
+	                                      queue = DispatcherQueue(),
+	                                      version](pdf::RenderResult result) {
+		auto rendered = std::make_shared<pdf::RenderResult>(std::move(result));
+		queue.TryEnqueue([weak, rendered, version] {
+			if (auto self = weak.get()) {
+				if (version != self->m_renderVersion) {
+					rendered->canceled = true;
+				}
+				self->rendered(std::move(*rendered));
+			}
+		});
+	});
 }
 
 void ViewerPage::rendered(pdf::RenderResult result) {
