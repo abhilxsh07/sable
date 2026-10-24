@@ -1076,6 +1076,44 @@ TEST_F(SessionTest, CenteredNotesReportModificationAndProtectAttachments) {
 	}
 }
 
+TEST_F(SessionTest, PlacedNotesOwnTheirTargetAndKeepTheCloseBoundary) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, fixturePath("comment_locations.pdf")).error,
+	          pdf::Error::None);
+	Reply<pdf::NoteResult> first, refused, canceled;
+	std::u16string draft = u"Placed \u03a9";
+	ASSERT_TRUE(
+	    session.addTextNoteAt(1, .25, .7, 1, draft, {}, first.callback()));
+	draft.assign(u"Different");
+	const auto added = first.wait();
+	ASSERT_TRUE(added && added->index && added->changed);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(session.annotations(1, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            !notes->annotations->entries.empty());
+	const auto& note = notes->annotations->entries.back();
+	EXPECT_EQ(note.contents, "Placed \u03a9");
+	ASSERT_TRUE(note.position);
+	EXPECT_NEAR(note.position->x, .7, 2e-6);
+	EXPECT_NEAR(note.position->y, .75, 2e-6);
+	ASSERT_TRUE(
+	    session.addTextNoteAt(1, .5, .5, 4, u"No", {}, refused.callback()));
+	const auto invalid = refused.wait();
+	ASSERT_TRUE(invalid);
+	EXPECT_FALSE(invalid->changed);
+	{
+		Gate gate(engine);
+		ASSERT_TRUE(session.addTextNoteAt(1, .3, .2, 0, u"Closed", {},
+		                                  canceled.callback()));
+		session.close();
+	}
+	const auto closed = canceled.wait();
+	ASSERT_TRUE(closed);
+	EXPECT_TRUE(closed->canceled);
+	EXPECT_FALSE(closed->changed);
+}
+
 TEST_F(SessionTest, AnnotationsReturnPageSnapshotsOnTheEngineThread) {
 	pdf::Session session(engine);
 	Reply<pdf::AnnotationsResult> unopened;

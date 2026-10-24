@@ -433,10 +433,18 @@ bool Session::addCenteredTextNote(int page, std::u16string contents,
 	                     std::move(callback));
 }
 
-bool Session::writeTextNote(int page,
-                            std::optional<std::pair<float, float>> point,
+bool Session::addTextNoteAt(int page, double x, double y, int rotation,
                             std::u16string contents, std::u16string author,
                             std::function<void(NoteResult)> callback) {
+	return writeTextNote(page, std::pair{x, y}, std::move(contents),
+	                     std::move(author), std::move(callback), rotation);
+}
+
+bool Session::writeTextNote(int page,
+                            std::optional<std::pair<double, double>> point,
+                            std::u16string contents, std::u16string author,
+                            std::function<void(NoteResult)> callback,
+                            std::optional<int> rotation) {
 	const auto state = m_state;
 	{
 		std::lock_guard lock(state->m_mutex);
@@ -445,7 +453,8 @@ bool Session::writeTextNote(int page,
 			return false;
 		}
 	}
-	state->m_engine.post([state, page, point, contents = std::move(contents),
+	state->m_engine.post([state, page, point, rotation,
+	                      contents = std::move(contents),
 	                      author = std::move(author),
 	                      callback = std::move(callback)] {
 		NoteResult result;
@@ -455,11 +464,18 @@ bool Session::writeTextNote(int page,
 		result.canceled = state->closed();
 		try {
 			if (!result.canceled) {
-				result.index = point ? state->m_document->addTextNote(
-				                           page, point->first, point->second,
-				                           contents, author)
-				                     : state->m_document->addCenteredTextNote(
-				                           page, contents, author);
+				if (!point) {
+					result.index = state->m_document->addCenteredTextNote(
+					    page, contents, author);
+				} else if (rotation) {
+					result.index = state->m_document->addTextNoteAt(
+					    page, point->first, point->second, *rotation, contents,
+					    author);
+				} else {
+					result.index = state->m_document->addTextNote(
+					    page, static_cast<float>(point->first),
+					    static_cast<float>(point->second), contents, author);
+				}
 				result.changed = result.index.has_value();
 			}
 		} catch (...) {

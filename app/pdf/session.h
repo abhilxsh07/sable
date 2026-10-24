@@ -123,6 +123,9 @@ class Session {
 	bool addCenteredTextNote(int page, std::u16string contents,
 	                         std::u16string author,
 	                         std::function<void(NoteResult)> callback);
+	bool addTextNoteAt(int page, double x, double y, int rotation,
+	                   std::u16string contents, std::u16string author,
+	                   std::function<void(NoteResult)> callback);
 	// One save at a time; successful replacement is never relabeled canceled.
 	bool saveEdits(const std::filesystem::path& destination,
 	               const std::filesystem::path& source, std::size_t limit,
@@ -150,9 +153,10 @@ class Session {
 	void close();
 
   private:
-	bool writeTextNote(int page, std::optional<std::pair<float, float>> point,
+	bool writeTextNote(int page, std::optional<std::pair<double, double>> point,
 	                   std::u16string contents, std::u16string author,
-	                   std::function<void(NoteResult)> callback);
+	                   std::function<void(NoteResult)> callback,
+	                   std::optional<int> rotation = {});
 	struct State;
 	std::shared_ptr<State> m_state;
 };
