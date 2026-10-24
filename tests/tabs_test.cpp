@@ -67,6 +67,7 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool noteEditOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
 	bool notesRefusalTried = false;
@@ -1231,6 +1232,210 @@ struct TabsTest {
 		++step;
 		ticks = 0;
 	}
+	void noteEditTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || (v.m_noteBusy && step != 4 && step != 5) ||
+		    v.m_commentsPending ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [&](const FrameworkElement& element) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(element)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		const auto button = [&](const wchar_t* name) {
+			std::function<Button(DependencyObject)> find;
+			find = [&](const DependencyObject& element) -> Button {
+				if (const auto item = element.try_as<Button>();
+				    item && item.Name() == name) {
+					return item;
+				}
+				for (int i = 0;
+				     i < Media::VisualTreeHelper::GetChildrenCount(element);
+				     ++i) {
+					if (const auto item = find(
+					        Media::VisualTreeHelper::GetChild(element, i))) {
+						return item;
+					}
+				}
+				return nullptr;
+			};
+			const auto item = find(v.m_noteDialog);
+			check(item && item.IsEnabled(), "note edit button unavailable");
+			invoke(item);
+		};
+		const auto change = [&](std::u16string oldText,
+		                        std::u16string newText) {
+			const auto reply =
+			    std::make_shared<std::promise<pdf::NoteResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->updateTextNote(
+			          0, 0, std::move(oldText), std::move(newText),
+			          [reply](auto result) { reply->set_value(result); }),
+			      "external edit not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "external edit reply missing");
+			check(future.get().index == 0, "external edit refused");
+		};
+		const std::u16string raw = u"Raw\r\nline\tend";
+		switch (step) {
+		case 0:
+			v.setCommentsOpen(true);
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(!v.EditNoteButton().IsEnabled(), "unselected note editable");
+			change(u"Location 1", raw);
+			v.CommentsList().SelectedIndex(0);
+			check(v.EditNoteButton().IsEnabled(),
+			      "selected Text note disabled");
+			invoke(v.EditNoteButton());
+			break;
+		case 1:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			check(unbox_value<hstring>(v.m_noteDialog.Title()) == L"Edit note",
+			      "wrong editor");
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1,
+			      "close dismissed existing-note editor");
+			button(L"PrimaryButton");
+			break;
+		case 2: {
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty,
+			      "unchanged normalized text dirtied savepoint");
+			const auto reply =
+			    std::make_shared<std::promise<pdf::TextNoteResult>>();
+			auto future = reply->get_future();
+			check(v.m_session->textNote(
+			          0, 0, [reply](auto result) { reply->set_value(result); }),
+			      "raw note read not queued");
+			check(future.wait_for(std::chrono::seconds(10)) ==
+			          std::future_status::ready,
+			      "raw note read missing");
+			check(future.get().contents == raw,
+			      "unchanged editor normalized PDF contents");
+			invoke(v.EditNoteButton());
+			break;
+		}
+		case 3:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			v.m_noteDialog.Content()
+			    .as<StackPanel>()
+			    .Children()
+			    .GetAt(1)
+			    .as<TextBox>()
+			    .Text(L"Edited native \u03a9\U0001f600");
+			notesGate = std::make_shared<std::promise<void>>();
+			engine.post(
+			    [wait = notesGate->get_future().share()] { wait.wait(); });
+			button(L"PrimaryButton");
+			check(v.m_noteBusy, "Apply did not hold edit busy");
+			break;
+		case 4:
+			// the queued write deliberately holds the engine until the next
+			// tick.
+			break;
+		case 5:
+			check(v.m_noteBusy && v.m_noteDialog &&
+			          !v.m_noteDialog.IsPrimaryButtonEnabled(),
+			      "pending edit lost its dialog");
+			v.m_noteDialog.Hide();
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1 && v.m_noteDialog,
+			      "close lost pending edit");
+			notesGate->set_value();
+			notesGate.reset();
+			break;
+		case 6:
+			if (v.m_noteDialog || !v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_notesDirty && v.m_commentScan.rows()[0].text ==
+			                            "Edited native \u03a9\U0001f600",
+			      "edited contents did not refresh");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_note_edit_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 7:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "edited note save failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          return saved.document &&
+				                 saved.document->textNote(0, 0) ==
+				                     u"Edited native \u03a9\U0001f600";
+			          })
+			          .get(),
+			      "reopened note edit missing");
+			v.CommentsList().SelectedIndex(0);
+			invoke(v.EditNoteButton());
+			break;
+		case 8:
+			if (!v.m_noteDialog) {
+				return;
+			}
+			v.m_noteDialog.Content()
+			    .as<StackPanel>()
+			    .Children()
+			    .GetAt(1)
+			    .as<TextBox>()
+			    .Text(L"Keep this draft");
+			change(u"Edited native \u03a9\U0001f600", u"Changed elsewhere");
+			button(L"PrimaryButton");
+			break;
+		case 9: {
+			check(v.m_noteDialog && !v.m_notesDirty,
+			      "refused edit lost dialog or savepoint");
+			const auto fields = v.m_noteDialog.Content().as<StackPanel>();
+			check(
+			    fields.Children().GetAt(1).as<TextBox>().Text() ==
+			            L"Keep this draft" &&
+			        !fields.Children().GetAt(1).as<TextBox>().IsReadOnly() &&
+			        !fields.Children().GetAt(2).as<TextBlock>().Text().empty(),
+			    "refused edit lost draft or error");
+			button(L"CloseButton");
+			break;
+		}
+		case 10:
+			if (v.m_noteDialog) {
+				return;
+			}
+			check(!v.m_notesDirty, "Cancel dirtied savepoint");
+			std::filesystem::remove(notesPath);
+			status.Text(
+			    L"PASS: selected note editor, exact no-op, Unicode Apply, "
+			    L"pending close, refreshed comments, saved copy and retained "
+			    L"stale draft");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
+		}
+		++step;
+		ticks = 0;
+	}
 	void notePlacementTick(MainWindow& owner) {
 		const auto current = owner.Viewer();
 		if (!current) {
@@ -2386,7 +2591,9 @@ struct TabsTest {
 				return;
 			}
 			if (notesOnly) {
-				if (notePlacementOnly) {
+				if (noteEditOnly) {
+					noteEditTick(*self);
+				} else if (notePlacementOnly) {
 					notePlacementTick(*self);
 				} else {
 					notesTick(*self);
@@ -2893,12 +3100,16 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->noteEditOnly =
+	    GetEnvironmentVariableW(L"SableNoteEditTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->notePlacementOnly =
 	    GetEnvironmentVariableW(L"SableNotePlacementTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
 	state->notesOnly = GetEnvironmentVariableW(L"SableNotesTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	state->notesOnly = state->notesOnly || state->notePlacementOnly;
+	state->notesOnly =
+	    state->notesOnly || state->notePlacementOnly || state->noteEditOnly;
 	state->commentsOnly =
 	    GetEnvironmentVariableW(L"SableCommentsTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
