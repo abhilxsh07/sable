@@ -2,6 +2,16 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## The tool pane fades in (2026-11-16)
+
+Opening the tool pane gives its column the full width straight away, so
+the pages re-flow once as before, and the pane itself fades in and slides
+16 px from the left over 167 ms. Closing collapses the column at once and
+lets the pane fade over 83 ms on top of the pages, rather than holding the
+pages back until the fade ends: everything that asks whether the pane is
+open gets the answer at once, and nothing waits on an animation. With
+Windows' animation effects off it appears and goes in one frame.
+
 ## Motion follows Windows' animation setting (2026-11-16)
 
 Sable's motion now has one set of lengths, WinUI's own: 83 ms for anything

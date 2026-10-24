@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <future>
 #include <iterator>
 #include <memory>
@@ -142,6 +143,14 @@ struct TabsTest {
 	int motionViews = 0;
 	double motionOffset = 0;
 	ScrollViewer::ViewChanged_revoker motionViewChanged;
+	// 20 opens and closes of one element, timing the frames as they go
+	int motionCycles = 0;
+	double motionWorstGap = 0;
+	std::chrono::steady_clock::time_point motionLastFrame{};
+	std::chrono::steady_clock::time_point motionToggledAt{};
+	Media::CompositionTarget::Rendering_revoker motionRendering;
+	void motionWatchFrames();
+	bool motionCycle(const std::function<void(bool)>& toggle);
 	int panelsRound = 0;
 	std::vector<std::string> panelsSeen;
 	std::vector<std::string> panelsFaults;

@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "Motion.h"
 #include "helpers/logging.h"
 #include "helpers/panes.h"
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
@@ -327,8 +328,8 @@ void ViewerPage::updateToolPane() {
 			}
 		}
 	}
-	AllToolsPanel().Visibility(open && !presenting() ? Visibility::Visible
-	                                                 : Visibility::Collapsed);
+	// the column takes its width at once; the pane fades and slides in
+	motion::show(AllToolsPanel(), open && !presenting(), motion::From::Left);
 	if (AllToolsPanel().Visibility() != Visibility::Visible &&
 	    (m_paneGripHover || m_paneResizing)) {
 		// a hidden grip gets no PointerExited
