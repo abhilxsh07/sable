@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "Motion.h"
 #include "helpers/panes.h"
 
 using namespace winrt;
@@ -201,13 +202,15 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 		const double distance =
 		    (previous ? -1 : 1) * (horizontal ? Scroller().ViewportWidth()
 		                                      : Scroller().ViewportHeight());
+		// animated, unless Windows' animation effects are off
+		const bool instant = !motion::enabled();
 		if (horizontal) {
 			Scroller().ChangeView(Scroller().HorizontalOffset() + distance,
-			                      nullptr, nullptr, false);
+			                      nullptr, nullptr, instant);
 		} else {
 			Scroller().ChangeView(nullptr,
 			                      Scroller().VerticalOffset() + distance,
-			                      nullptr, false);
+			                      nullptr, instant);
 		}
 		handled = true;
 	}

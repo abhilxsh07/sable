@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Motion follows Windows' animation setting (2026-11-16)
+
+Sable's motion now has one set of lengths, WinUI's own: 83 ms for anything
+leaving, 167 ms for anything arriving, and 250 ms as the ceiling. They live
+in helpers/motion.h and again as SableMotion* in Theme.xaml. One function
+reads Windows' "Animation effects" setting, and with it off nothing in
+Sable animates: Space, and Page Up/Down in horizontal scrolling, jump a
+page instead of gliding there. With the setting on they glide as before.
+
 ## Rail buttons for what isn't there (2026-11-16)
 
 A PDF with no outline or no attachments gets that rail button turned off,

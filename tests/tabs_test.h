@@ -137,6 +137,11 @@ struct TabsTest {
 	helpers::PageSize gestureSize{};
 	bool layoutOnly = false;
 	bool panelsOnly = false;
+	bool motionOnly = false;
+	int motionIntermediate = 0;
+	int motionViews = 0;
+	double motionOffset = 0;
+	ScrollViewer::ViewChanged_revoker motionViewChanged;
 	int panelsRound = 0;
 	std::vector<std::string> panelsSeen;
 	std::vector<std::string> panelsFaults;
@@ -470,6 +475,7 @@ struct TabsTest {
 	void presentationTick(MainWindow& owner);
 	void layoutTick(MainWindow& owner);
 	void panelsTick(MainWindow& owner);
+	void motionTick(MainWindow& owner);
 	void longGesturesTick(MainWindow& owner);
 	void gesturesTick(MainWindow& owner);
 	void panTick(MainWindow& owner);

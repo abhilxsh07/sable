@@ -260,6 +260,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="RequestedTheme" Value="Light" />
 	</Style>
 
+	<!-- motion tokens (audit 7.1), WinUI's own durations and enter spline.
+		helpers/motion.h carries the same values for the code. Every exit
+		is Faster; nothing runs longer than Normal. -->
+	<x:String x:Key="SableMotionFaster">00:00:00.083</x:String>
+	<x:String x:Key="SableMotionFast">00:00:00.167</x:String>
+	<x:String x:Key="SableMotionNormal">00:00:00.250</x:String>
+	<x:String x:Key="SableMotionEnterSpline">0,0,0,1</x:String>
+	<x:String x:Key="SableMotionExitSpline">1,0,1,1</x:String>
+	<x:Double x:Key="SableMotionSlide">16</x:Double>
+
 	<Color x:Key="SableCyan">#29c0ea</Color>
 	<Color x:Key="SableViolet">#d773e9</Color>
 	<Color x:Key="SableCoral">#fc515d</Color>

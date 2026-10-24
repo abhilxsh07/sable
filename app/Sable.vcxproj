@@ -164,6 +164,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="..\tests\tabs_panels.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
+		<ClCompile Include="..\tests\tabs_motion.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
 		<ClCompile Include="..\tests\tabs_accessibility.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
@@ -207,6 +210,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\panes.h" />
 		<ClInclude Include="helpers\text_range.h" />
 		<ClInclude Include="PageText.h" />
+		<ClInclude Include="Motion.h" />
 		<ClInclude Include="MusicPane.h" />
 		<ClInclude Include="App.xaml.h">
 			<DependentUpon>App.xaml</DependentUpon>
@@ -266,6 +270,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClCompile Include="MusicCommands.cpp" />
 		<ClCompile Include="MusicPane.cpp" />
 		<ClCompile Include="MusicPaneLayout.cpp" />
+		<ClCompile Include="Motion.cpp" />
 		<ClCompile Include="MusicPaneMotion.cpp" />
 		<ClCompile Include="ViewerSelection.cpp" />
 		<ClCompile Include="ViewerRotation.cpp" />
@@ -311,6 +316,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="helpers\attachment_file.h" />
 		<ClInclude Include="helpers\version.h" />
 		<ClInclude Include="helpers\logging.h" />
+		<ClInclude Include="helpers\motion.h" />
 		<ClInclude Include="helpers\music.h" />
 		<ClInclude Include="helpers\layout.h" />
 		<ClInclude Include="helpers\signature.h" />
