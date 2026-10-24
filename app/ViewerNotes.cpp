@@ -22,23 +22,81 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/session.h"
 #include "pdf/page_filter.h"
 #include "helpers/logging.h"
+#include <cmath>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
-fire_and_forget ViewerPage::editNote() {
+void ViewerPage::beginNotePlacement() {
+	if (m_notePlacing) {
+		cancelNotePlacement();
+		return;
+	}
+	if (m_closed || !m_layout || !m_noteAllowed || m_noteBusy || m_noteSaving ||
+	    m_noteDialog || m_linkPending || !commentsOpen() ||
+	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+	    (m_notesAvailable && !m_notesAvailable())) {
+		return;
+	}
+	leavePageBox();
+	cancelSelectionDrag();
+	m_ignoreTextTap = false;
+	m_notePlacing = true;
+	showComments();
+	Scroller().Focus(FocusState::Programmatic);
+}
+
+bool ViewerPage::cancelNotePlacement() {
+	const bool canceled = std::exchange(m_notePlacing, false);
+	if (canceled && !m_closed) {
+		showComments();
+	}
+	return canceled;
+}
+
+bool ViewerPage::placeNote(Windows::Foundation::Point point) {
+	if (!m_notePlacing) {
+		return false;
+	}
+	if (m_closed || !m_layout || !commentsOpen() ||
+	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
+	    (m_notesAvailable && !m_notesAvailable())) {
+		cancelNotePlacement();
+		return true;
+	}
+	if (!std::isfinite(point.X) || !std::isfinite(point.Y)) {
+		return true;
+	}
+	const auto& pages = m_layout->pages();
+	for (std::size_t page = 0; page < pages.size(); ++page) {
+		const auto& rect = pages[page];
+		const double x = (point.X - rect.x) / rect.width;
+		const double y = (point.Y - rect.y) / rect.height;
+		if (std::isfinite(x) && std::isfinite(y) && x >= 0 && x <= 1 &&
+		    y >= 0 && y <= 1) {
+			m_notePlacing = false;
+			showComments();
+			editNote(
+			    NoteTarget{static_cast<int>(page), x, y, key(page).rotation});
+			break;
+		}
+	}
+	return true;
+}
+
+fire_and_forget ViewerPage::editNote(std::optional<NoteTarget> target) {
 	const auto lifetime = get_strong();
 	try {
 		if (m_closed || !m_layout || !m_session || !m_noteAllowed ||
-		    m_noteBusy || m_noteSaving || m_noteDialog || m_passwordDialog ||
-		    !XamlRoot() ||
+		    m_noteBusy || m_noteSaving || m_noteDialog || m_notePlacing ||
+		    m_passwordDialog || !XamlRoot() ||
 		    Visibility() != Microsoft::UI::Xaml::Visibility::Visible ||
 		    (m_notesAvailable && !m_notesAvailable())) {
 			co_return;
 		}
 		leavePageBox();
-		const int page = static_cast<int>(m_current);
+		const int page = target ? target->page : static_cast<int>(m_current);
 		ContentDialog dialog;
 		dialog.XamlRoot(XamlRoot());
 		dialog.Title(box_value(L"Add note"));
@@ -49,7 +107,8 @@ fire_and_forget ViewerPage::editNote() {
 		StackPanel fields;
 		fields.Spacing(12);
 		TextBlock location;
-		location.Text(L"Adds a note at the center of page " +
+		location.Text((target ? L"Adds a note at the selected position on page "
+		                      : L"Adds a note at the center of page ") +
 		              to_hstring(page + 1) + L".");
 		location.TextWrapping(TextWrapping::Wrap);
 		fields.Children().Append(location);
@@ -90,7 +149,8 @@ fire_and_forget ViewerPage::editNote() {
 			co_return;
 		}
 		submitNote(page, std::u16string(m_noteDraft.begin(), m_noteDraft.end()),
-		           std::u16string(m_noteAuthor.begin(), m_noteAuthor.end()));
+		           std::u16string(m_noteAuthor.begin(), m_noteAuthor.end()),
+		           target);
 	} catch (...) {
 		if (m_noteDialog) {
 			m_noteDialog.Hide();
@@ -103,48 +163,54 @@ fire_and_forget ViewerPage::editNote() {
 }
 
 void ViewerPage::submitNote(int page, std::u16string text,
-                            std::u16string author) {
+                            std::u16string author,
+                            std::optional<NoteTarget> target) {
 	if (m_closed || !m_session || !m_noteAllowed || m_noteBusy ||
-	    m_noteSaving || (m_notesAvailable && !m_notesAvailable())) {
+	    m_noteSaving || m_notePlacing ||
+	    (m_notesAvailable && !m_notesAvailable())) {
 		return;
 	}
 	m_noteBusy = true;
 	try {
-		if (!m_session->addCenteredTextNote(
-		        page, std::move(text), std::move(author),
-		        [weak = get_weak(), queue = DispatcherQueue()](auto result) {
-			        queue.TryEnqueue([weak, result] {
-				        if (const auto self = weak.get();
-				            self && !self->m_closed) {
-					        self->m_noteBusy = false;
-					        self->m_notesDirty =
-					            self->m_notesDirty || result.changed;
-					        try {
-						        if (result.changed) {
-							        self->refreshNotes();
-						        }
-						        if (result.index) {
-							        self->m_noteDraft = {};
-						        } else {
-							        self->showNotice(
-							            L"Couldn't add this note. This PDF may "
-							            L"restrict "
-							            L"comments, contain attachments, or be "
-							            L"too "
-							            L"small "
-							            L"for a note. Your text is still in "
-							            L"Add "
-							            L"note.");
-						        }
-						        self->showComments();
-					        } catch (...) {
-						        diagnostics::write(
-						            diagnostics::Level::Error,
-						            "Couldn't refresh the edited PDF view.");
-					        }
-				        }
-			        });
-		        })) {
+		const auto reply = [weak = get_weak(),
+		                    queue = DispatcherQueue()](auto result) {
+			queue.TryEnqueue([weak, result] {
+				if (const auto self = weak.get(); self && !self->m_closed) {
+					self->m_noteBusy = false;
+					self->m_notesDirty = self->m_notesDirty || result.changed;
+					try {
+						if (result.changed) {
+							self->refreshNotes();
+						}
+						if (result.index) {
+							self->m_noteDraft = {};
+						} else {
+							self->showNotice(
+							    L"Couldn't add this note. This PDF may "
+							    L"restrict "
+							    L"comments, contain attachments, or be "
+							    L"too "
+							    L"small "
+							    L"for a note. Your text is still in "
+							    L"Add "
+							    L"note.");
+						}
+						self->showComments();
+					} catch (...) {
+						diagnostics::write(
+						    diagnostics::Level::Error,
+						    "Couldn't refresh the edited PDF view.");
+					}
+				}
+			});
+		};
+		const bool queued =
+		    target ? m_session->addTextNoteAt(page, target->x, target->y,
+		                                      target->rotation, std::move(text),
+		                                      std::move(author), reply)
+		           : m_session->addCenteredTextNote(page, std::move(text),
+		                                            std::move(author), reply);
+		if (!queued) {
 			m_noteBusy = false;
 			showNotice(L"Couldn't queue this note. Try again.");
 		}

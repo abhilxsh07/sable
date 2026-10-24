@@ -33,22 +33,27 @@ using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::setupSelection() {
 	const auto weak = get_weak();
-	Pages().PointerPressed(
-	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
-		    if (auto self = weak.get()) {
-			    const auto point = args.GetCurrentPoint(self->Pages());
-			    if (args.Pointer().PointerDeviceType() ==
-			            Microsoft::UI::Input::PointerDeviceType::Touch ||
-			        !point.Properties().IsLeftButtonPressed()) {
-				    return;
-			    }
-			    self->Scroller().Focus(FocusState::Programmatic);
-			    self->beginSelection(point.Position());
-			    if (self->m_textStart) {
-				    self->Pages().CapturePointer(args.Pointer());
-			    }
-		    }
-	    });
+	Pages().PointerPressed([weak](auto&&,
+	                              const Input::PointerRoutedEventArgs& args) {
+		if (auto self = weak.get()) {
+			if (self->m_notePlacing) {
+				args.Handled(args.Pointer().PointerDeviceType() !=
+				             Microsoft::UI::Input::PointerDeviceType::Touch);
+				return;
+			}
+			const auto point = args.GetCurrentPoint(self->Pages());
+			if (args.Pointer().PointerDeviceType() ==
+			        Microsoft::UI::Input::PointerDeviceType::Touch ||
+			    !point.Properties().IsLeftButtonPressed()) {
+				return;
+			}
+			self->Scroller().Focus(FocusState::Programmatic);
+			self->beginSelection(point.Position());
+			if (self->m_textStart) {
+				self->Pages().CapturePointer(args.Pointer());
+			}
+		}
+	});
 	Pages().PointerMoved(
 	    [weak](auto&&, const Input::PointerRoutedEventArgs& args) {
 		    if (auto self = weak.get(); self && self->m_textPointerDown) {

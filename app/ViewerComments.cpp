@@ -78,6 +78,11 @@ void ViewerPage::setupComments() {
 			self->editNote();
 		}
 	});
+	PlaceNoteButton().Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->beginNotePlacement();
+		}
+	});
 	SaveNotesButton().Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get(); self && self->m_saveNotes) {
 			self->m_saveNotes();
@@ -134,6 +139,7 @@ void ViewerPage::pauseComments() {
 	}
 }
 void ViewerPage::closeComments() {
+	m_notePlacing = false;
 	setCommentsOpen(false);
 	if (m_commentVisibility) {
 		UnregisterPropertyChangedCallback(UIElement::VisibilityProperty(),
@@ -152,9 +158,20 @@ void ViewerPage::showComments() {
 	if (m_closed) {
 		return;
 	}
-	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
-	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving);
-	NotesState().Text(m_noteBusy     ? L"Adding note\u2026"
+	if (!commentsOpen() || Visibility() != XVisibility::Visible ||
+	    Rail().Visibility() != XVisibility::Visible) {
+		m_notePlacing = false;
+	}
+	PlaceNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving);
+	PlaceNoteButton().Content(
+	    box_value(m_notePlacing ? L"Cancel placement" : L"Place note on page"));
+	AddNoteButton().IsEnabled(m_noteAllowed && !m_noteBusy && !m_noteSaving &&
+	                          !m_notePlacing);
+	SaveNotesButton().IsEnabled(m_notesDirty && !m_noteBusy && !m_noteSaving &&
+	                            !m_notePlacing);
+	NotesState().Text(m_notePlacing
+	                      ? L"Click a page to place a note. Esc cancels."
+	                  : m_noteBusy   ? L"Adding note\u2026"
 	                  : m_noteSaving ? L"Saving notes\u2026"
 	                  : m_notesDirty ? L"Unsaved notes"
 	                                 : L"");
