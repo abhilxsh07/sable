@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 namespace pdf {
 class Engine;
 struct PrintJob;
+struct PrintRasterRequest;
 enum class PrintResult;
 
 struct SessionInfo {
@@ -44,6 +45,9 @@ struct RenderResult {
 	std::optional<Bitmap> bitmap;
 	bool canceled = false;
 };
+using PrintRenderer =
+    std::function<bool(PrintRasterRequest, std::function<bool()>,
+                       std::function<void(std::optional<Bitmap>)>)>;
 struct LinkResult {
 	std::optional<Link> link;
 	bool canceled = false;
@@ -84,6 +88,10 @@ struct NoteResult {
 	std::optional<int> index;
 	bool canceled = false;
 	bool changed = false;
+};
+struct PropertiesResult {
+	std::optional<Properties> properties;
+	bool canceled = false;
 };
 struct AttachmentsResult {
 	std::optional<Attachments> attachments;
@@ -157,7 +165,12 @@ class Session {
 	               std::function<bool()> canceled,
 	               std::function<void(SaveResult)> callback);
 	bool attachments(std::function<void(AttachmentsResult)> callback);
+	bool properties(std::function<void(PropertiesResult)> callback);
 	bool attachment(int index, std::function<void(AttachmentResult)> callback);
+	bool saveCopy(const std::filesystem::path& destination,
+	              const std::filesystem::path& source,
+	              std::function<bool()> canceled,
+	              std::function<void(SaveResult)> callback);
 	// A newer outline navigation cancels older queued navigation.
 	bool outlineLink(std::size_t index,
 	                 std::function<void(LinkResult)> callback);
@@ -170,6 +183,8 @@ class Session {
 	void cancelSearch();
 	// One print job per session, independent of the screen render slot.
 	bool print(PrintJob job, std::function<void(PrintResult)> callback);
+	// Independent of screen rendering; each tile yields back to the engine.
+	PrintRenderer printRenderer() const;
 	// doesn't interrupt PDFium; it discards that job's result when it finishes.
 	// The slot stays busy until the canceled job calls back. A render that had
 	// already finished can still arrive uncanceled, so check its key.

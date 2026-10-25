@@ -362,6 +362,28 @@ If saving fails, the app keeps the previous theme. The optional
 value falls back to Dark without resetting anything else. Keeping Dark also
 keeps the original settings file shape. No dependency was added.
 
+## Settings appearance (2026-10-18)
+
+The owner asked for a quieter, more refined settings window. General,
+Shortcuts and About now have a tonal icon sidebar, page headings and shared
+button styles. The default window is 840 by 640 DIPs. The three stored
+section keys and the initial About page stay the same; this changes their
+presentation, not the settings format or defaults.
+
+General uses aligned cards with short descriptions and the existing native
+checkboxes. Shortcut rows share column widths and button heights; an empty
+slot says Not set. Assigned shortcuts keep a quiet clear icon visible,
+instead of hiding the old red X until hover. Narrow windows trim the chord
+with an ellipsis and retain its full value in a tooltip. All pages can scroll
+when shortened. About shows the app version first; selectable diagnostic
+versions sit inside Build details.
+
+The capture panel, Cancel and Save use the same restrained surfaces. Capture
+still requires one ordinary key with a modifier, and saving, clearing, focus
+return, failed-write recovery and owner-window lifetime use the existing
+handlers. No dependency was added. The appearance code is separate from the
+window lifetime and persistence code.
+
 ## Name: Sable (2026-10-06)
 
 This one wasn't really my call. When NightPDF was archived, its maintainer

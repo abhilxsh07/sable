@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <vector>
 #include "text.h"
 #include "search.h"
+#include "properties.h"
 #include "annotations.h"
 #include "../helpers/attachment_file.h"
 
@@ -180,6 +181,11 @@ class Document {
 	SaveResult saveEdits(const std::filesystem::path& destination,
 	                     const std::filesystem::path& source, std::size_t limit,
 	                     const std::function<bool()>& canceled = {}) const;
+	SaveResult saveCopy(const std::filesystem::path& destination,
+	                    const std::filesystem::path& source,
+	                    const std::function<bool()>& canceled = {}) const;
+	std::optional<Properties>
+	properties(const std::function<bool()>& canceled = {}) const;
 	// All subtypes, in page order. nullopt means failure or cancellation.
 	std::optional<Annotations>
 	annotations(int page, const std::function<bool()>& canceled = {}) const;
@@ -201,6 +207,10 @@ class Document {
 	// Windows printer HDC; original colors, print-visible annotations.
 	bool printPage(int index, void* device, int x, int y, int width,
 	               int height) const;
+	// A tile of an unfiltered print raster, in full-page pixel coordinates.
+	std::optional<Bitmap> printRaster(int index, int pageWidth, int pageHeight,
+	                                  int x, int y, int width,
+	                                  int height) const;
 	// draws a page into a width x height bitmap. rotation is extra quarter
 	// turns clockwise (0-3) on top of the page's own /Rotate. nullopt if the
 	// page won't load or the size is zero or too big to be sensible.

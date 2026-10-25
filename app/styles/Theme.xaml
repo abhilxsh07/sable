@@ -33,6 +33,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<!-- pdf.js's dark body background (web/viewer.css), which is what
 				NightPDF showed around the pages -->
 			<SolidColorBrush x:Key="SableViewerBrush" Color="#2a2a2e" />
+			<SolidColorBrush x:Key="SableSettingsButtonBrush" Color="#29292c" />
+			<SolidColorBrush x:Key="SableSettingsShortcutBrush" Color="#262629" />
+			<SolidColorBrush x:Key="SablePopupBrush" Color="#2d2d2d" />
 			<SolidColorBrush x:Key="SableCardBrush" Color="#2b2b2b" />
 			<SolidColorBrush x:Key="SableCardHoverBrush" Color="#323232" />
 			<SolidColorBrush x:Key="SableCardPressedBrush" Color="#282828" />
@@ -75,7 +78,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Foreground" Value="#ffffff" />
 		<Setter Property="Background" Value="{StaticResource SableAccentGradient}" />
 		<Setter Property="Padding" Value="22,9" />
-		<Setter Property="CornerRadius" Value="6" />
+		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="FontSize" Value="14" />
 		<Setter Property="FontWeight" Value="SemiBold" />
 		<Setter Property="UseSystemFocusVisuals" Value="True" />
@@ -124,7 +127,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="FontSize" Value="14" />
 		<Setter Property="FontWeight" Value="SemiBold" />
 		<Setter Property="Padding" Value="8,4" />
-		<Setter Property="CornerRadius" Value="6" />
+		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="BorderThickness" Value="2" />
 		<Setter Property="BorderBrush" Value="#1e1e1e" />
 		<Setter Property="UseSystemFocusVisuals" Value="True" />
@@ -164,7 +167,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="Background" Value="Transparent" />
 		<Setter Property="BorderThickness" Value="0" />
 		<Setter Property="Padding" Value="10,8" />
-		<Setter Property="CornerRadius" Value="6" />
+		<Setter Property="CornerRadius" Value="4" />
 	</Style>
 
 	<!-- icon buttons on the viewer's right rail -->
@@ -216,5 +219,235 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="CornerRadius" Value="4" />
 		<Setter Property="FontSize" Value="13" />
 		<Setter Property="VerticalAlignment" Value="Center" />
+	</Style>
+
+	<!-- quiet transport controls; focus remains visible for keyboard use -->
+	<Style x:Key="SableMusicButtonStyle" TargetType="Button"
+		BasedOn="{StaticResource DefaultButtonStyle}">
+		<Setter Property="Width" Value="36" />
+		<Setter Property="Height" Value="36" />
+		<Setter Property="MinWidth" Value="0" />
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="CornerRadius" Value="4" />
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="Foreground" Value="White" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="VerticalAlignment" Value="Center" />
+	</Style>
+	<Style x:Key="SableMusicPlayStyle" TargetType="Button"
+		BasedOn="{StaticResource SableMusicButtonStyle}">
+		<Setter Property="Width" Value="44" />
+		<Setter Property="Height" Value="44" />
+		<Setter Property="CornerRadius" Value="22" />
+		<Setter Property="Background" Value="White" />
+		<Setter Property="Foreground" Value="#202020" />
+	</Style>
+	<Style x:Key="SableMusicToggleStyle" TargetType="ToggleButton">
+		<Setter Property="Width" Value="36" />
+		<Setter Property="Height" Value="36" />
+		<Setter Property="VerticalAlignment" Value="Center" />
+		<Setter Property="UseSystemFocusVisuals" Value="True" />
+		<Setter Property="Foreground" Value="White" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="ToggleButton">
+					<Grid Background="Transparent" CornerRadius="4">
+						<VisualStateManager.VisualStateGroups>
+							<VisualStateGroup x:Name="CommonStates">
+								<VisualState x:Name="Normal" />
+								<VisualState x:Name="PointerOver">
+									<VisualState.Setters>
+										<Setter Target="Hover.Background" Value="#15FFFFFF" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Pressed">
+									<VisualState.Setters>
+										<Setter Target="Hover.Background" Value="#25FFFFFF" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Disabled">
+									<VisualState.Setters>
+										<Setter Target="Body.Opacity" Value="0.3" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+							<VisualStateGroup x:Name="CheckStates">
+								<VisualState x:Name="Unchecked" />
+								<VisualState x:Name="Checked">
+									<VisualState.Setters>
+										<Setter Target="Glyph.Opacity" Value="1" />
+										<Setter Target="Dot.Opacity" Value="1" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+						</VisualStateManager.VisualStateGroups>
+						<Grid x:Name="Body">
+							<Border x:Name="Hover" CornerRadius="4" />
+							<ContentPresenter x:Name="Glyph" Content="{TemplateBinding Content}"
+								Foreground="{TemplateBinding Foreground}" Opacity="0.5"
+								HorizontalAlignment="Center" VerticalAlignment="Center" />
+							<Ellipse x:Name="Dot" Width="3" Height="3" Fill="White" Opacity="0"
+								VerticalAlignment="Bottom" Margin="0,0,0,1" />
+						</Grid>
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<!-- retain Slider's native input/automation with its horizontal parts -->
+	<Style x:Key="SableMusicSeekStyle" TargetType="Slider">
+		<Setter Property="Background" Value="#33FFFFFF" />
+		<Setter Property="Height" Value="24" />
+		<Setter Property="UseSystemFocusVisuals" Value="True" />
+		<Setter Property="IsFocusEngagementEnabled" Value="True" />
+		<Setter Property="ManipulationMode" Value="None" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Slider">
+					<Grid x:Name="SliderContainer" Background="Transparent">
+						<VisualStateManager.VisualStateGroups>
+							<VisualStateGroup x:Name="CommonStates">
+								<VisualState x:Name="Normal" />
+								<VisualState x:Name="PointerOver">
+									<VisualState.Setters>
+										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Pressed">
+									<VisualState.Setters>
+										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Disabled">
+									<VisualState.Setters>
+										<Setter Target="HorizontalTemplate.Opacity" Value="0.35" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+							<VisualStateGroup x:Name="FocusStates">
+								<VisualState x:Name="Unfocused" />
+								<VisualState x:Name="Focused">
+									<VisualState.Setters>
+										<Setter Target="HorizontalThumb.Opacity" Value="1" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="PointerFocused" />
+							</VisualStateGroup>
+						</VisualStateManager.VisualStateGroups>
+						<Grid x:Name="HorizontalTemplate" ColumnDefinitions="Auto,Auto,*">
+							<Rectangle x:Name="HorizontalTrackRect" Grid.ColumnSpan="3"
+								Fill="{TemplateBinding Background}" Height="4" RadiusX="2" RadiusY="2" />
+							<Rectangle x:Name="HorizontalDecreaseRect"
+								Fill="{TemplateBinding Foreground}" Height="4" RadiusX="2" RadiusY="2" />
+							<Thumb x:Name="HorizontalThumb" Grid.Column="1" Width="12" Height="12"
+								Opacity="0" AutomationProperties.AccessibilityView="Raw">
+								<Thumb.Template>
+									<ControlTemplate TargetType="Thumb">
+										<Ellipse Fill="White" />
+									</ControlTemplate>
+								</Thumb.Template>
+							</Thumb>
+						</Grid>
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- quiet settings controls with the native keyboard focus outline -->
+	<Style x:Key="SableSettingsButtonStyle" TargetType="Button">
+		<Setter Property="CornerRadius" Value="8" />
+		<Setter Property="Background" Value="{ThemeResource SableSettingsButtonBrush}" />
+		<Setter Property="BorderBrush" Value="#3b3b3f" />
+		<Setter Property="BorderThickness" Value="1" />
+		<Setter Property="Foreground" Value="#eeeeef" />
+		<Setter Property="FontSize" Value="13" />
+		<Setter Property="MinHeight" Value="36" />
+		<Setter Property="Padding" Value="12,8" />
+		<Setter Property="HorizontalContentAlignment" Value="Center" />
+		<Setter Property="VerticalContentAlignment" Value="Center" />
+		<Setter Property="UseSystemFocusVisuals" Value="True" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="Button">
+					<Grid x:Name="SettingsRoot" Background="Transparent"
+						CornerRadius="{TemplateBinding CornerRadius}">
+						<VisualStateManager.VisualStateGroups>
+							<VisualStateGroup x:Name="CommonStates">
+								<VisualState x:Name="Normal" />
+								<VisualState x:Name="PointerOver">
+									<VisualState.Setters>
+										<Setter Target="SettingsWash.Opacity" Value="0.05" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Pressed">
+									<VisualState.Setters>
+										<Setter Target="SettingsWash.Opacity" Value="0.09" />
+									</VisualState.Setters>
+								</VisualState>
+								<VisualState x:Name="Disabled">
+									<VisualState.Setters>
+										<Setter Target="SettingsRoot.Opacity" Value="0.4" />
+									</VisualState.Setters>
+								</VisualState>
+							</VisualStateGroup>
+						</VisualStateManager.VisualStateGroups>
+						<Border Background="{TemplateBinding Background}"
+							BorderBrush="{TemplateBinding BorderBrush}"
+							BorderThickness="{TemplateBinding BorderThickness}"
+							CornerRadius="{TemplateBinding CornerRadius}" />
+						<Border x:Name="SettingsWash" Background="White" Opacity="0"
+							IsHitTestVisible="False"
+							CornerRadius="{TemplateBinding CornerRadius}" />
+						<ContentPresenter Content="{TemplateBinding Content}"
+							ContentTemplate="{TemplateBinding ContentTemplate}"
+							ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+							Padding="{TemplateBinding Padding}"
+							Margin="{TemplateBinding BorderThickness}"
+							Foreground="{TemplateBinding Foreground}"
+							FontFamily="{TemplateBinding FontFamily}"
+							FontSize="{TemplateBinding FontSize}"
+							FontWeight="{TemplateBinding FontWeight}"
+							FontStyle="{TemplateBinding FontStyle}"
+							CharacterSpacing="{TemplateBinding CharacterSpacing}"
+							HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+							VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+					</Grid>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+	<Style x:Key="SableSettingsNavStyle" TargetType="Button"
+		BasedOn="{StaticResource SableSettingsButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="HorizontalContentAlignment" Value="Left" />
+		<Setter Property="MinHeight" Value="42" />
+	</Style>
+	<Style x:Key="SableSettingsShortcutStyle" TargetType="Button"
+		BasedOn="{StaticResource SableSettingsButtonStyle}">
+		<Setter Property="Background" Value="{ThemeResource SableSettingsShortcutBrush}" />
+		<Setter Property="BorderBrush" Value="#38383d" />
+		<Setter Property="Padding" Value="10,7" />
+		<Setter Property="MinWidth" Value="0" />
+		<Setter Property="MinHeight" Value="32" />
+		<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+	</Style>
+	<Style x:Key="SableSettingsClearStyle" TargetType="Button"
+		BasedOn="{StaticResource SableSettingsButtonStyle}">
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="Width" Value="28" />
+		<Setter Property="Height" Value="32" />
+		<Setter Property="MinWidth" Value="0" />
+		<Setter Property="MinHeight" Value="0" />
+	</Style>
+	<Style x:Key="SableSettingsPrimaryStyle" TargetType="Button"
+		BasedOn="{StaticResource SableSettingsButtonStyle}">
+		<Setter Property="Background" Value="#eeeeef" />
+		<Setter Property="Foreground" Value="#202023" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="18,8" />
 	</Style>
 </ResourceDictionary>

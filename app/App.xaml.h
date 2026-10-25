@@ -34,6 +34,7 @@ struct MainWindow;
 
 struct App : AppT<App> {
 	App();
+	~App();
 
 	void OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 	winrt::com_ptr<MainWindow>
