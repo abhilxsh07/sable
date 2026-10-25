@@ -1275,6 +1275,40 @@ TEST_F(SessionTest, AnnotationCallbacksCanQueueWorkAndThrowWithoutBlocking) {
 	EXPECT_FALSE(survived->canceled);
 }
 
+TEST_F(SessionTest, PropertiesUseLoadedBytesAndCloseCancelsQueuedReplies) {
+	pdf::Session session(engine);
+	Reply<pdf::PropertiesResult> unopened;
+	EXPECT_FALSE(session.properties(unopened.callback()));
+	const auto path = tempDir() / "snapshot.pdf";
+	fs::copy_file(fixturePath("properties.pdf"), path);
+	const auto byteCount = fs::file_size(path);
+	ASSERT_EQ(open(session, path).error, pdf::Error::None);
+	fs::remove(path);
+	Reply<pdf::PropertiesResult> reply;
+	auto onThread = std::make_shared<std::atomic<bool>>(false);
+	ASSERT_TRUE(
+	    session.properties([cb = reply.callback(), onThread](auto result) {
+		    *onThread = pdf::Engine::onThread();
+		    cb(std::move(result));
+	    }));
+	const auto result = reply.wait();
+	ASSERT_TRUE(result && result->properties);
+	EXPECT_TRUE(*onThread);
+	EXPECT_FALSE(result->canceled);
+	EXPECT_EQ(result->properties->bytes, byteCount);
+	EXPECT_EQ(result->properties->pages, 2);
+	Gate gate(engine);
+	Reply<pdf::PropertiesResult> pending;
+	ASSERT_TRUE(session.properties(pending.callback()));
+	session.close();
+	gate.open();
+	const auto canceled = pending.wait();
+	ASSERT_TRUE(canceled);
+	EXPECT_TRUE(canceled->canceled);
+	EXPECT_FALSE(canceled->properties);
+	EXPECT_FALSE(session.properties(reply.callback()));
+}
+
 TEST_F(SessionTest, ExistingNoteEditsOwnTextAndKeepNoOpAndStaleOutcomes) {
 	pdf::Session session(engine);
 	Reply<pdf::TextNoteResult> read;

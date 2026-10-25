@@ -20,6 +20,7 @@
 #   annotations.pdf Unicode comments, unknown types, damaged fields and limits
 #   comments.pdf    three pages of small comments for native sidebar checks
 #   comment_locations.pdf crop, intrinsic rotations and unusable comment bounds
+#   properties*.pdf Unicode metadata, mixed sizes, missing/oversized fields
 #   pages.pdf       three pages (portrait, landscape, rotated), labels i, ii, 1
 #   links.pdf       cropped/rotated pages, destinations and URI/action links
 #   text.pdf        cropped pages at four rotations and Unicode text mappings
@@ -524,6 +525,26 @@ def comment_locations_pdf() -> bytes:
     return w.finish(1, 7)
 
 
+def properties_pdf(large=False, missing=False) -> bytes:
+    w = Writer(md5(b"sable properties fixture"))
+    w.add(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    w.add(2, "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>")
+    w.add(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 700 900] "
+          "/CropBox [10 20 622 812] /Rotate 90 >>")
+    w.add(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] >>")
+    title = ("A" * 70000 if large else "Field notes \u03a9\U0001f600")
+    title_hex = (b"\xfe\xff" + title.encode("utf-16-be")).hex()
+    author_hex = (b"\xfe\xff" + "Abhilash \u03a9".encode("utf-16-be")).hex()
+    info = ("<< >>" if missing else
+            f"<< /Title <{title_hex}> /Author <{author_hex}> "
+            "/Subject (Native document metadata) /Keywords (PDF; notes) "
+            "/Creator (Sable fixture writer) /Producer (Deterministic tests) "
+            "/CreationDate (D:20260102123456+05'30') "
+            "/ModDate (D:20261018060000Z) >>")
+    w.add(5, info)
+    return w.finish(1, 5)
+
+
 def main() -> None:
     # numbered, mixed sizes, with /Rotate on every third page
     long_pages = []
@@ -548,6 +569,9 @@ def main() -> None:
         "comments.pdf": comments_pdf(),
         "comment_locations.pdf": comment_locations_pdf(),
         "attachments.pdf": attachments_pdf(),
+        "properties.pdf": properties_pdf(),
+        "properties_large.pdf": properties_pdf(large=True),
+        "properties_missing.pdf": properties_pdf(missing=True),
         "outline.pdf": outline_pdf(),
         "outline_cycle.pdf": outline_pdf(True),
         "outline_deep.pdf": deep_outline_pdf(),

@@ -340,6 +340,34 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## V16: Document properties (2026-10-18)
+
+File > Document properties opens a native, scrollable dialog for the active
+document. Its selectable values cover the bundled viewer's Info metadata,
+file size, PDF version, page count, current page size and fast-web-view flag.
+The current page number explains mixed-page sizes; encryption is also shown.
+Page size follows the crop, intrinsic rotation and current view rotation,
+without changing the PDF. Dimensions use millimetres and familiar paper names.
+
+PDFium metadata reads run lazily on the engine thread, then cache per tab.
+Size comes from the loaded byte snapshot, so renaming/deleting the source
+cannot change the reported document. Each metadata field is capped at 128 KiB
+of UTF-16 data; oversized fields or inconsistent reads leave a note while
+other details remain available.
+The availability API supplies linearization when it can determine it. Its
+32-bit file-length limit and sub-1-KiB unknown result display as Unavailable.
+No file is reopened or locked and no dependency was added.
+
+Dates use an unambiguous year-month-day form and retain their explicit UTC
+offset. Missing timezones stay unspecified; invalid dates say Unavailable.
+Missing metadata uses an em dash. This avoids silently changing or guessing
+an author-supplied timestamp. Malformed calendar dates and offsets are tested.
+
+A failed read offers Retry. Duplicate opens keep one dialog, tab changes hide
+it, and closing invalidates queued results. A late reply may populate a live
+tab's cache but cannot reopen its dialog. The dialog uses shared WinUI fills
+and follows Dark/Obsidian, including a theme switch while it is open.
+
 ## Obsidian appearance (2026-10-18)
 
 I wanted a true-black option that lets the app fade into the background.

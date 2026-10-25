@@ -541,3 +541,70 @@ TEST_F(PdfDocumentTest, EmptyOutlinesAndCanceledExtractionAreDistinct) {
 	EXPECT_FALSE(data.first->limited);
 	EXPECT_FALSE(data.second);
 }
+
+TEST(PdfProperties, ReadsUnicodeDatesAndSnapshotSize) {
+	pdf::Engine engine;
+	const auto path = fixturePath("properties.pdf");
+	const auto result = engine
+	                        .run([path] {
+		                        auto opened = pdf::openFile(path);
+		                        if (!opened.document) {
+			                        return std::optional<pdf::Properties>{};
+		                        }
+		                        return opened.document->properties();
+	                        })
+	                        .get();
+	ASSERT_TRUE(result);
+	EXPECT_EQ(result->title, "Field notes \xCE\xA9\xF0\x9F\x98\x80");
+	EXPECT_EQ(result->author, "Abhilash \xCE\xA9");
+	EXPECT_EQ(result->created, "D:20260102123456+05'30'");
+	EXPECT_EQ(result->modified, "D:20261018060000Z");
+	EXPECT_EQ(result->creator, "Sable fixture writer");
+	EXPECT_EQ(result->producer, "Deterministic tests");
+	EXPECT_EQ(result->subject, "Native document metadata");
+	EXPECT_EQ(result->keywords, "PDF; notes");
+	EXPECT_EQ(result->version, 17);
+	EXPECT_EQ(result->pages, 2);
+	EXPECT_EQ(result->bytes, fs::file_size(path));
+	EXPECT_FALSE(result->encrypted);
+	EXPECT_FALSE(result->limited);
+}
+
+TEST(PdfProperties, MissingFieldsAndOversizedFieldsDoNotBlockOtherDetails) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    auto missing = pdf::openFile(fixturePath("properties_missing.pdf"));
+		    ASSERT_TRUE(missing.document);
+		    const auto fields = missing.document->properties();
+		    ASSERT_TRUE(fields);
+		    EXPECT_TRUE(fields->title.empty() && fields->author.empty());
+		    EXPECT_EQ(fields->pages, 2);
+		    EXPECT_FALSE(fields->limited);
+		    auto large = pdf::openFile(fixturePath("properties_large.pdf"));
+		    ASSERT_TRUE(large.document);
+		    const auto bounded = large.document->properties();
+		    ASSERT_TRUE(bounded);
+		    EXPECT_TRUE(bounded->limited);
+		    EXPECT_TRUE(bounded->title.empty());
+		    EXPECT_EQ(bounded->author, "Abhilash \xCE\xA9");
+		    EXPECT_EQ(bounded->linearized, false);
+		    EXPECT_FALSE(large.document->properties([] { return true; }));
+	    })
+	    .get();
+}
+
+TEST(PdfProperties, ReadsEncryptedMetadataAfterUnlock) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    auto opened = pdf::openFile(fixturePath("password.pdf"), "sable");
+		    ASSERT_TRUE(opened.document);
+		    const auto result = opened.document->properties();
+		    ASSERT_TRUE(result);
+		    EXPECT_TRUE(result->encrypted);
+		    EXPECT_EQ(result->title, "Sable test file");
+		    EXPECT_EQ(result->pages, 1);
+	    })
+	    .get();
+}
