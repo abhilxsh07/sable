@@ -1350,3 +1350,72 @@ TEST_F(SessionTest, ExistingNoteCloseCancelsQueuedReadsAndEdits) {
 		EXPECT_FALSE(a->contents || b->index || b->changed);
 	}
 }
+
+TEST_F(SessionTest, HighlightsOwnSelectionsAndKeepQueueAndCloseBoundaries) {
+	pdf::Session session(engine);
+	Reply<pdf::HighlightResult> unused;
+	EXPECT_FALSE(session.highlightText({{0, 0}, {1, 4}}, unused.callback()));
+	ASSERT_EQ(open(session, fixturePath("text.pdf")).error, pdf::Error::None);
+	EXPECT_FALSE(session.highlightText({{0, 0}, {1, 4}}, {}));
+	Gate gate(engine);
+	pdf::TextSelection selection{{1, 4}, {0, 0}};
+	Reply<pdf::HighlightResult> first, second;
+	ASSERT_TRUE(session.highlightText(selection, first.callback()));
+	selection = {{-1, -1}, {-1, -1}};
+	ASSERT_TRUE(
+	    session.highlightText({{4, 0}, {4, INT_MAX}}, second.callback()));
+	session.cancelAnnotations();
+	session.cancelRender();
+	session.cancelSearch();
+	gate.open();
+	const auto a = first.wait(), b = second.wait();
+	ASSERT_TRUE(a && b);
+	EXPECT_EQ(a->count, 2);
+	EXPECT_EQ(b->count, 1);
+	EXPECT_TRUE(a->changed && b->changed);
+	EXPECT_FALSE(a->canceled || b->canceled);
+	Reply<pdf::AnnotationsResult> inventory;
+	ASSERT_TRUE(session.annotations(4, inventory.callback()));
+	const auto notes = inventory.wait();
+	ASSERT_TRUE(notes && notes->annotations &&
+	            notes->annotations->entries.size() == 1);
+	EXPECT_EQ(notes->annotations->entries[0].subtype, "Highlight");
+	for (const bool destroy : {false, true}) {
+		auto closing = std::make_unique<pdf::Session>(engine);
+		ASSERT_EQ(open(*closing, fixturePath("text.pdf")).error,
+		          pdf::Error::None);
+		Gate closedGate(engine);
+		Reply<pdf::HighlightResult> pending;
+		ASSERT_TRUE(
+		    closing->highlightText({{0, 0}, {1, 4}}, pending.callback()));
+		if (destroy) {
+			closing.reset();
+		} else {
+			closing->close();
+		}
+		closedGate.open();
+		const auto result = pending.wait();
+		ASSERT_TRUE(result);
+		EXPECT_TRUE(result->canceled);
+		EXPECT_EQ(result->count, 0);
+		EXPECT_FALSE(result->changed);
+	}
+}
+
+TEST_F(SessionTest, HighlightsRefuseWideSelectionsAndLeaveTheSessionUsable) {
+	pdf::Session session(engine);
+	ASSERT_EQ(open(session, writeTemp("wide.pdf", manyPages(129))).error,
+	          pdf::Error::None);
+	Reply<pdf::HighlightResult> reply;
+	ASSERT_TRUE(
+	    session.highlightText({{0, 0}, {128, INT_MAX}}, reply.callback()));
+	const auto result = reply.wait();
+	ASSERT_TRUE(result);
+	EXPECT_FALSE(result->changed || result->canceled);
+	EXPECT_EQ(result->count, 0);
+	Reply<pdf::NoteResult> note;
+	ASSERT_TRUE(
+	    session.addCenteredTextNote(0, u"Still open", {}, note.callback()));
+	const auto added = note.wait();
+	ASSERT_TRUE(added && added->index == 0);
+}

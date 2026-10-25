@@ -489,6 +489,36 @@ bool Session::writeTextNote(int page,
 	return true;
 }
 
+bool Session::highlightText(TextSelection selection,
+                            std::function<void(HighlightResult)> callback) {
+	const auto state = m_state;
+	{
+		std::lock_guard lock(state->m_mutex);
+		if (!callback || !state->m_ready || state->m_closed) {
+			return false;
+		}
+	}
+	state->m_engine.post([state, selection, callback = std::move(callback)] {
+		HighlightResult result;
+		result.canceled = state->closed();
+		try {
+			if (!result.canceled) {
+				if (const auto added =
+				        state->m_document->highlightText(selection)) {
+					result.count = *added;
+					result.changed = *added > 0;
+				}
+			}
+		} catch (...) {
+			result.changed = state->m_document && state->m_document->modified();
+			diagnostics::write(diagnostics::Level::Error,
+			                   "Couldn't highlight PDF text.");
+		}
+		callback(std::move(result));
+	});
+	return true;
+}
+
 bool Session::textNote(int page, int index,
                        std::function<void(TextNoteResult)> callback) {
 	const auto state = m_state;
