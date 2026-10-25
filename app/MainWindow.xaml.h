@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/settings.h"
 
 #include <filesystem>
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,10 +51,15 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setSettingsStore(helpers::SettingsStore& store) {
 		m_settingsStore = &store;
 	}
+	void
+	onDocumentProperties(const winrt::Windows::Foundation::IInspectable&,
+	                     const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenSettings(const winrt::Windows::Foundation::IInspectable&,
 	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onPrint(const winrt::Windows::Foundation::IInspectable&,
 	             const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onSaveCopy(const winrt::Windows::Foundation::IInspectable&,
+	                const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void setEasterEgg(std::function<void()> notify);
 	void onEditCommand(const winrt::Windows::Foundation::IInspectable& sender,
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
@@ -84,6 +90,18 @@ struct MainWindow : MainWindowT<MainWindow> {
 	              const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onZoomOut(const winrt::Windows::Foundation::IInspectable&,
 	               const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void updateCursorToolMenu();
+	void updateLayoutMenu();
+	void onClickSpreads(const winrt::Windows::Foundation::IInspectable&,
+	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onPageLayout(const winrt::Windows::Foundation::IInspectable&,
+	                  const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onCursorTool(const winrt::Windows::Foundation::IInspectable&,
+	                  const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onRotateView(const winrt::Windows::Foundation::IInspectable&,
+	                  const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
+	void onPresentation(const winrt::Windows::Foundation::IInspectable&,
+	                    const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onHideConfigurator(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs&);
@@ -107,6 +125,14 @@ struct MainWindow : MainWindowT<MainWindow> {
 	};
 	winrt::Sable::ViewerPage Viewer();
 	winrt::fire_and_forget pickDocuments();
+	winrt::fire_and_forget saveCopy();
+	std::shared_ptr<std::atomic_bool> m_saveCopyCancel;
+	winrt::weak_ref<winrt::Sable::ViewerPage> m_saveCopyViewer;
+#ifdef SABLE_SURFACE_TEST
+	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
+	    winrt::hstring)>
+	    m_copyPicker;
+#endif
 	winrt::fire_and_forget dropDocuments(
 	    winrt::Windows::ApplicationModel::DataTransfer::DataPackageView data);
 	void setupOpen();
@@ -144,6 +170,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	    winrt::Microsoft::UI::Xaml::Controls::ContentDialogResult>()>
 	    m_notesChoice;
 #endif
+	void keepFocus();
 	void reopenTab();
 	void selectTabPosition(int index);
 	void moveTab(int index);
@@ -164,6 +191,13 @@ struct MainWindow : MainWindowT<MainWindow> {
 	void setupWindow();
 	void setupTitleBar();
 	void setupZoomKeys();
+	bool routeKey(unsigned key, unsigned modifiers, bool repeated = false);
+	void setupPresentation();
+	bool presentationKey(unsigned key, unsigned modifiers, bool repeated);
+	void endPresentation(bool restorePresenter = true);
+	winrt::Sable::ViewerPage m_presentationViewer{nullptr};
+	winrt::Microsoft::UI::Windowing::AppWindowPresenter m_beforePresentation{
+	    nullptr};
 	void setupTabKeys();
 	void dispatchShortcut(const helpers::Shortcut& shortcut);
 	std::vector<helpers::Shortcut> m_shortcuts;

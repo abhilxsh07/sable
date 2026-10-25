@@ -18,12 +18,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
+#include "Appearance.h"
 
 #include "ViewerPage.g.h"
 
 #include <d2d1_1.h>
 
 #include <cstddef>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -40,6 +42,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/thumbnails.h"
 #include "helpers/comments.h"
 #include "helpers/zoom.h"
+#include "helpers/rotation.h"
+#include "helpers/pan.h"
+#include <winrt/Microsoft.UI.Input.h>
 #include "pdf/page_cache.h"
 #include "pdf/text.h"
 #include "pdf/search.h"
@@ -58,6 +63,10 @@ struct LinkDestination;
 struct PrintDialogResult;
 } // namespace pdf
 
+namespace printing {
+class Controller;
+}
+
 namespace winrt::Sable::implementation {
 struct MainWindow;
 // UI thread only. The session does the PDFium work on the engine thread and
@@ -75,13 +84,37 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void close();
 	// a pending password prompt waits until this tab is selected
 	void activate();
+	// the keys go where they would after opening: Find while it's open,
+	// otherwise the pages. False when there's nothing to focus, like a tab
+	// that only shows an error.
+	bool takeFocus();
+	// called once each time the document opens, after the pages are in
+	void onOpened(std::function<void()> handler) {
+		m_documentOpened = std::move(handler);
+	}
 	// changes only the GPU filter; page rasters stay in the cache
 	void setValues(const helpers::SliderValues& values);
 	// pdf.js's zoom: about 10% a step, or back to "auto"
 	void zoomIn(int steps = 1);
 	void zoomOut(int steps = 1);
 	void zoomReset();
+	void rotateView(int turns);
+	void setLayout(helpers::ScrollMode scroll, helpers::SpreadMode spread);
+	helpers::ScrollMode scrollMode() const {
+		return m_scrollMode;
+	}
+	helpers::SpreadMode spreadMode() const {
+		return m_spreadMode;
+	}
+	enum class CursorTool { Select, Hand };
+	void setCursorTool(CursorTool tool);
+	CursorTool cursorTool() const {
+		return m_cursorTool;
+	}
+	void stopPan(bool leaveViewport = false);
 	void print(void* owner, std::function<void()> done);
+	winrt::fire_and_forget showProperties();
+	void dismissProperties();
 	// A menu temporarily takes focus from an unfinished page-box edit.
 	void holdPageEdit(bool hold);
 	bool hasTextSelection() const;
@@ -101,6 +134,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void onPreviewKeyDown(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
+	bool navigationKey(unsigned key, helpers::NavModifiers modifiers);
 	void onPageBoxKeyDown(
 	    const winrt::Windows::Foundation::IInspectable&,
 	    const winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs& args);
@@ -126,6 +160,36 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 
   private:
 	friend struct MainWindow;
+	struct PresentationView {
+		helpers::ScrollMode scroll;
+		helpers::SpreadMode spread;
+		helpers::ZoomPreset preset;
+		double zoom;
+		winrt::Microsoft::UI::Xaml::Visibility thumbnails, outline, attachments;
+		winrt::Microsoft::UI::Xaml::Controls::ScrollMode horizontal, vertical;
+	};
+	std::optional<PresentationView> m_presentation;
+	std::function<void()> m_exitPresentation;
+	std::function<void()> m_documentOpened;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_presentationTimer{
+	    nullptr};
+	std::chrono::steady_clock::time_point m_presentationWheelTime{};
+	int m_presentationDelta = 0;
+	std::optional<std::uint32_t> m_presentationTouch;
+	winrt::Windows::Foundation::Point m_presentationStart{};
+	bool m_presentationSwiped = false;
+	void setupPresentation();
+	bool beginPresentation(std::function<void()> exit);
+	void endPresentation();
+	void showPresentationControls();
+	void presentationKey(unsigned key, bool shift);
+	void presentationWheel(int delta);
+	// pdf.js's transparent page border and margins, in DIPs
+	// see:
+	// https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/pdf_viewer.css
+	static constexpr double PAGE_GAP = 11;
+	static constexpr double PAGE_MARGIN = 10;
+	void printLegacy(void* owner, std::function<void()> done);
 #ifdef SABLE_SURFACE_TEST
 	friend struct TabsTest;
 	friend struct ScaleTest;
@@ -142,7 +206,27 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	};
 
 	void startOpen(const std::string& password);
+	void requestProperties();
+	void updatePropertiesDialog();
+	std::optional<pdf::Properties> m_properties;
+	winrt::Microsoft::UI::Xaml::Controls::ContentDialog m_propertiesDialog{
+	    nullptr};
+	std::uint64_t m_propertiesVersion = 0;
+	bool m_propertiesPending = false, m_propertiesFailed = false;
+	std::size_t m_propertiesPage = 0;
+	helpers::PageSize m_propertiesSize{};
 	void setupSelection();
+	void setupPan();
+	bool beginPan(winrt::Windows::Foundation::Point point);
+	void movePan(winrt::Windows::Foundation::Point point);
+	void finishPan(winrt::Windows::Foundation::Point point);
+	void updatePanCursor();
+	CursorTool m_cursorTool = CursorTool::Select;
+	helpers::PanGesture m_pan;
+	std::optional<std::uint32_t> m_panPointer;
+	bool m_panHover = false, m_ignorePanTap = false;
+	winrt::Microsoft::UI::Input::InputSystemCursor m_handCursor{nullptr},
+	    m_dragCursor{nullptr};
 	void setupOutline();
 	void setupComments();
 	struct NoteTarget {
@@ -272,6 +356,23 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget askPassword(bool incorrect);
 	void opened(pdf::SessionInfo info);
 	bool relayout(double zoom);
+	helpers::PageLayout makeLayout(std::span<const helpers::PageSize> sizes,
+	                               double zoom);
+	double fittedZoom(std::span<const helpers::PageSize> sizes);
+	helpers::PageRect viewport();
+	void reflowViewport();
+	bool ensurePageLayout(std::size_t page);
+	void advancePage(int direction);
+	bool spreadClicksEnabled() const;
+	int spreadClickDirection(winrt::Windows::Foundation::Point point);
+	void turnSpread(int direction);
+	bool m_clickSpreads = false;
+	std::vector<helpers::PageSize> displaySizes() const;
+	pdf::TextRect viewBox(const pdf::TextRect& box) const;
+	std::optional<int> hitText(int page,
+	                           winrt::Windows::Foundation::Point point,
+	                           bool nearest = false) const;
+	pdf::LinkDestination viewDestination(pdf::LinkDestination target) const;
 	void watchScale();
 	void queueScale();
 	bool setScale(double scale);
@@ -280,9 +381,25 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void setPreset(helpers::ZoomPreset preset);
 	void applyPreset();
 	void settle();
+	void nativeViewChanged(bool intermediate);
+	void updateGestureLimits();
+	void queueNativeZoom();
+	void finishNativeZoom();
+	void applyNativeZoom();
+	struct NativeZoom {
+		double zoom, across, down;
+		std::size_t page;
+	};
+	std::optional<NativeZoom> m_nativeZoom;
+	winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer
+	    m_nativeResetTimeout{nullptr};
+	bool m_directManipulation = false, m_nativeZoomQueued = false;
+	bool m_resettingGesture = false;
 	void goToPage(std::size_t page);
 	void scrollToPage(std::size_t page);
 	void requestLink(winrt::Windows::Foundation::Point point);
+	void requestLink(winrt::Windows::Foundation::Point point,
+	                 int presentationAdvance);
 	void followLink(const pdf::LinkDestination& target, bool center = false);
 	winrt::fire_and_forget openLink(std::string uri);
 	void jumpTo(std::optional<double> x, double y);
@@ -323,6 +440,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	pdf::PageKey key(std::size_t page) const;
 
 	std::unique_ptr<pdf::Session> m_session;
+	std::shared_ptr<printing::Controller> m_printController;
 	// what open() was given, to open again with a password
 	pdf::Engine* m_engine = nullptr;
 	std::filesystem::path m_path;
@@ -333,6 +451,13 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::Microsoft::UI::Xaml::FrameworkElement::Loaded_revoker m_promptLoaded;
 	// page sizes in points, to lay them out again at another zoom
 	std::vector<helpers::PageSize> m_sizes;
+	helpers::ScrollMode m_scrollMode = helpers::ScrollMode::Vertical;
+	helpers::SpreadMode m_spreadMode = helpers::SpreadMode::None;
+	bool m_reflowQueued = false;
+	double m_layoutViewWidth = 0;
+	std::chrono::steady_clock::time_point m_pageWheelTime{};
+	int m_rotation = 0;
+	std::uint64_t m_rotationVersion = 0;
 	std::optional<helpers::PageLayout> m_layout;
 	double m_zoom = 1;
 	// pdf.js's currentScaleValue when it's a name: it opens at "auto", and
@@ -374,6 +499,7 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool m_rendering = false;
 	bool m_closed = false;
 	bool m_linkPending = false;
+	std::uint64_t m_linkVersion = 0;
 #ifdef SABLE_SURFACE_TEST
 	std::function<winrt::Windows::Foundation::IAsyncOperation<winrt::hstring>(
 	    winrt::hstring)>
@@ -382,11 +508,19 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	std::function<void(const std::string&)> m_copySink;
 	std::function<pdf::PrintDialogResult(void*, int, int, const std::wstring&)>
 	    m_printDialog;
+	std::function<void(std::shared_ptr<printing::Controller>)> m_printUi;
 #endif
 	Device m_device;
 	std::shared_ptr<pdf::Surface> m_surface;
+	appearance::Subscription m_themeChanged;
 	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker
 	    m_viewChanged;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::ViewChanging_revoker
+	    m_viewChanging;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::
+	    DirectManipulationStarted_revoker m_manipulationStarted;
+	winrt::Microsoft::UI::Xaml::Controls::ScrollViewer::
+	    DirectManipulationCompleted_revoker m_manipulationCompleted;
 	winrt::Microsoft::UI::Xaml::FrameworkElement::SizeChanged_revoker
 	    m_sizeChanged;
 	winrt::Microsoft::UI::Xaml::FrameworkElement::LayoutUpdated_revoker
