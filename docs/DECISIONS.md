@@ -2,6 +2,14 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Editing markup comments (2026-10-25)
+
+I open the existing editor for Highlight, Underline and StrikeOut rows in
+Comments. It reads exact text before opening and owns its chosen type and
+Contents presence through Apply. An untouched field keeps raw line endings.
+Refusals keep the draft and show an error; successful writes use the same
+cache refresh, Save notes and close review. Text-note editing stays as it was.
+
 ## Markup comment contents (2026-10-25)
 
 I edit only plain Contents on Highlight, Underline and StrikeOut. Snapshots

@@ -158,8 +158,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	bool canMarkSelection() const;
 	void markSelection(pdf::TextMarkup markup);
 	void beginNoteEdit();
-	winrt::fire_and_forget editExistingNote(int page, int index,
-	                                        std::u16string expected);
+	winrt::fire_and_forget
+	editExistingNote(int page, int index, std::u16string expected,
+	                 std::optional<pdf::TextMarkup> markup = {},
+	                 bool contentsPresent = true);
 	void refreshNotes();
 	bool m_noteAllowed = false, m_noteBusy = false, m_notesDirty = false,
 	     m_noteSaving = false;
