@@ -67,6 +67,7 @@ struct TabsTest {
 	bool selectionOnly = false;
 	bool findOnly = false;
 	bool outlineOnly = false;
+	bool highlightOnly = false;
 	bool noteEditOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
@@ -1228,6 +1229,160 @@ struct TabsTest {
 				          std::to_string(rect.width) + "," +
 				          std::to_string(rect.height));
 			}
+		}
+		++step;
+		ticks = 0;
+	}
+	void highlightTick(MainWindow& owner) {
+		const auto current = owner.Viewer();
+		if (!current) {
+			return;
+		}
+		auto& v = *get_self<ViewerPage>(current);
+		if (!ready(v) || (v.m_noteBusy && step != 2) || v.m_commentsPending ||
+		    (notesSave &&
+		     notesSave.Status() == Windows::Foundation::AsyncStatus::Started)) {
+			return;
+		}
+		const auto invoke = [&](const FrameworkElement& item) {
+			using namespace Microsoft::UI::Xaml::Automation;
+			Peers::FrameworkElementAutomationPeer::CreatePeerForElement(item)
+			    .GetPattern(Peers::PatternInterface::Invoke)
+			    .as<Provider::IInvokeProvider>()
+			    .Invoke();
+		};
+		switch (step) {
+		case 0:
+			check(!v.canHighlightSelection(),
+			      "empty selection could highlight");
+			v.m_selection = pdf::TextSelection{{1, 4}, {0, 0}};
+			++v.m_selectionVersion;
+			v.m_copyAllowed = false;
+			v.m_textMenu.ShowAt(v.Scroller());
+			break;
+		case 1:
+			check(v.m_textHighlight.IsEnabled() && !v.m_textCopy.IsEnabled(),
+			      "highlight depends on copy permission");
+			notesGate = std::make_shared<std::promise<void>>();
+			engine.post(
+			    [wait = notesGate->get_future().share()] { wait.wait(); });
+			invoke(v.m_textHighlight);
+			v.m_textMenu.Hide();
+			check(v.m_noteBusy && !v.canHighlightSelection(),
+			      "highlight did not hold writes busy");
+			v.m_selection = pdf::TextSelection{{4, 1}, {4, 2}};
+			++v.m_selectionVersion;
+			v.Visibility(Visibility::Collapsed);
+			break;
+		case 2: {
+			owner.closeTab(owner.m_tabs.front().tab);
+			check(owner.m_tabs.size() == 1,
+			      "close discarded pending highlight");
+			HWND handle{};
+			check_hresult(
+			    owner.try_as<::IWindowNative>()->get_WindowHandle(&handle));
+			SendMessageW(handle, WM_CLOSE, 0, 0);
+			check(!owner.m_closing, "window closed during highlight");
+			const auto blocked = owner.saveNotes(current);
+			check(blocked.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !blocked.GetResults(),
+			      "save ran before highlight completed");
+			notesGate->set_value();
+			notesGate.reset();
+			break;
+		}
+		case 3:
+			check(v.m_notesDirty &&
+			          v.m_selection == pdf::TextSelection{{4, 1}, {4, 2}},
+			      "completed hidden edit lost dirty state or newer selection");
+			v.Visibility(Visibility::Visible);
+			v.setCommentsOpen(true);
+			break;
+		case 4:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(v.m_commentScan.rows().size() == 2 &&
+			          v.m_commentScan.rows()[0].subtype == "Highlight" &&
+			          v.m_commentScan.rows()[1].page == 1,
+			      "highlight comments not refreshed");
+			notesPath = std::filesystem::temp_directory_path() /
+			            (L"sable_highlight_" +
+			             std::to_wstring(GetCurrentProcessId()) + L".pdf");
+			owner.m_notesPicker = [path =
+			                           hstring(notesPath.wstring())](hstring) {
+				return attachmentChoice(path, {});
+			};
+			notesSave = owner.saveNotes(current);
+			break;
+		case 5:
+			check(notesSave.GetResults() && !v.m_notesDirty,
+			      "highlight save failed");
+			check(engine
+			          .run([path = notesPath] {
+				          const auto saved = pdf::openFile(path);
+				          if (!saved.document) {
+					          return false;
+				          }
+				          for (int page = 0; page < 2; ++page) {
+					          const auto notes =
+					              saved.document->annotations(page);
+					          if (!notes || notes->entries.size() != 1 ||
+					              notes->entries[0].subtype != "Highlight") {
+						          return false;
+					          }
+				          }
+				          const auto other = saved.document->annotations(4);
+				          return other && other->entries.empty();
+			          })
+			          .get(),
+			      "saved highlight geometry/pages missing");
+			v.m_textMenu.ShowAt(v.Scroller());
+			break;
+		case 6:
+			invoke(v.m_textHighlight);
+			v.m_textMenu.Hide();
+			break;
+		case 7:
+			if (!v.m_commentScan.done()) {
+				return;
+			}
+			check(
+			    v.m_notesDirty && !v.m_selection &&
+			        v.m_commentScan.rows().size() == 3,
+			    "successful highlight kept old selection or lost dirty state");
+			v.CommentsList().SelectedIndex(2);
+			check(!v.EditNoteButton().IsEnabled(),
+			      "Highlight opened the plain Text editor");
+			v.followComment(2);
+			notesSave = owner.saveNotes(current);
+			break;
+		case 8:
+			check(notesSave.GetResults() && !v.m_notesDirty && v.m_current == 4,
+			      "second save or highlight navigation failed");
+			v.m_selection = pdf::TextSelection{{-1, 0}, {-1, 4}};
+			++v.m_selectionVersion;
+			v.highlightSelection();
+			break;
+		case 9:
+			check(!v.m_notesDirty &&
+			          v.m_selection == pdf::TextSelection{{-1, 0}, {-1, 4}} &&
+			          v.Message().IsOpen(),
+			      "refused highlight lost selection or savepoint");
+			v.clearTextSelection();
+			v.m_textMenu.ShowAt(v.Scroller());
+			check(!v.m_textHighlight.IsEnabled(),
+			      "empty context highlight still enabled");
+			v.m_textMenu.Hide();
+			std::filesystem::remove(notesPath);
+			status.Text(
+			    L"PASS: real Highlight menu, independent copy permission, "
+			    L"pending close/save, hidden completion, newer selection, "
+			    L"comments, saved copy and retained refused selection");
+			probePass(owner.get_strong().as<Window>());
+			timer.Stop();
+			return;
 		}
 		++step;
 		ticks = 0;
@@ -2590,6 +2745,10 @@ struct TabsTest {
 				attachmentsTick(*self);
 				return;
 			}
+			if (highlightOnly) {
+				highlightTick(*self);
+				return;
+			}
 			if (notesOnly) {
 				if (noteEditOnly) {
 					noteEditTick(*self);
@@ -3100,6 +3259,9 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->outlineOnly =
 	    GetEnvironmentVariableW(L"SableOutlineTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	state->highlightOnly =
+	    GetEnvironmentVariableW(L"SableHighlightTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true";
 	state->noteEditOnly =
 	    GetEnvironmentVariableW(L"SableNoteEditTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
@@ -3187,6 +3349,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 		window->openDocument(engine, L"tests/fixtures/attachments.pdf", 1);
 	} else if (state->outlineOnly) {
 		window->openDocument(engine, L"tests/fixtures/outline.pdf", 1);
+	} else if (state->highlightOnly) {
+		window->openDocument(engine, L"tests/fixtures/text.pdf", 1);
 	} else if (state->notesOnly) {
 		window->openDocument(engine, L"tests/fixtures/comment_locations.pdf",
 		                     1);
