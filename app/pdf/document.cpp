@@ -70,6 +70,19 @@ struct TextCloser {
 };
 using TextPtr = std::unique_ptr<fpdf_textpage_t__, TextCloser>;
 
+std::optional<FPDF_ANNOTATION_SUBTYPE> markupSubtype(TextMarkup markup) {
+	switch (markup) {
+	case TextMarkup::Highlight:
+		return FPDF_ANNOT_HIGHLIGHT;
+	case TextMarkup::Underline:
+		return FPDF_ANNOT_UNDERLINE;
+	case TextMarkup::StrikeOut:
+		return FPDF_ANNOT_STRIKEOUT;
+	default:
+		return {};
+	}
+}
+
 // Every FPDF_* call has to happen on the PDFium thread. Off it, refuse
 // instead of messing up PDFium's state, and stop right there in debug builds.
 bool offThread() {
@@ -111,6 +124,34 @@ bool matchesAnnotationCounts(FPDF_DOCUMENT document,
 	for (int index = 0; index < static_cast<int>(expected.size()); ++index) {
 		PagePtr page(FPDF_LoadPage(document, index));
 		if (!page || FPDFPage_GetAnnotCount(page.get()) != expected[index]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool uniqueMarkup(FPDF_DOCUMENT document, FPDF_PAGE own, int pageIndex,
+                  int index, FPDF_ANNOTATION target) {
+	if (offThread() || FPDFPage_GetAnnotIndex(own, target) != index) {
+		return false;
+	}
+	// i compare dictionary identity, including independent annotation arrays.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/refs/heads/main/fpdfsdk/fpdf_annot.cpp
+	for (int page = 0; page < FPDF_GetPageCount(document); ++page) {
+		if (page == pageIndex) {
+			continue;
+		}
+		PagePtr other(FPDF_LoadPage(document, page));
+		if (!other || FPDFPage_GetAnnotIndex(other.get(), target) >= 0) {
+			return false;
+		}
+	}
+	const int count = FPDFPage_GetAnnotCount(own);
+	for (int candidate = index + 1; candidate < count; ++candidate) {
+		AnnotationPtr other(FPDFPage_GetAnnot(own, candidate));
+		const int first = other ? FPDFPage_GetAnnotIndex(own, other.get()) : -1;
+		if (first < 0 || first == index) {
 			return false;
 		}
 	}
@@ -501,23 +542,96 @@ std::optional<int> Document::highlightText(TextSelection selection) {
 	return markText(selection, TextMarkup::Highlight);
 }
 
+std::optional<CommentContents>
+Document::markupComment(int pageIndex, int index, TextMarkup markup) const {
+	const auto subtype = markupSubtype(markup);
+	if (offThread() || !subtype || pageIndex < 0 || pageIndex >= pageCount() ||
+	    index < 0 || !canAnnotate() || !canSerializeEdits({})) {
+		return {};
+	}
+	PagePtr page(FPDF_LoadPage(m_handle, pageIndex));
+	AnnotationPtr note(page ? FPDFPage_GetAnnot(page.get(), index) : nullptr);
+	constexpr int LOCKED_CONTENTS = 0x200;
+	if (!note || FPDFAnnot_GetSubtype(note.get()) != *subtype ||
+	    (FPDFAnnot_GetFlags(note.get()) &
+	     (FPDF_ANNOT_FLAG_READONLY | LOCKED_CONTENTS)) ||
+	    FPDFAnnot_HasKey(note.get(), "RC") ||
+	    !uniqueMarkup(m_handle, page.get(), pageIndex, index, note.get())) {
+		return {};
+	}
+	CommentContents result;
+	result.present = FPDFAnnot_HasKey(note.get(), "Contents") != 0;
+	if (!result.present) {
+		return result;
+	}
+	if (FPDFAnnot_GetValueType(note.get(), "Contents") != FPDF_OBJECT_STRING) {
+		return {};
+	}
+	const auto bytes =
+	    FPDFAnnot_GetStringValue(note.get(), "Contents", nullptr, 0);
+	if (bytes < 2 || bytes > 65536 || bytes % 2 != 0) {
+		return {};
+	}
+	std::vector<FPDF_WCHAR> buffer(bytes / 2);
+	if (FPDFAnnot_GetStringValue(note.get(), "Contents", buffer.data(),
+	                             bytes) != bytes ||
+	    buffer.back() != 0) {
+		return {};
+	}
+	result.text.assign(buffer.begin(), buffer.end() - 1);
+	return validNoteText(result.text) ? std::optional(std::move(result))
+	                                  : std::nullopt;
+}
+
+std::optional<bool>
+Document::updateMarkupComment(int page, int index, TextMarkup markup,
+                              const CommentContents& expected,
+                              std::u16string_view contents) {
+	if (offThread() || contents.empty() || !validNoteText(contents) ||
+	    !validNoteText(expected.text)) {
+		return {};
+	}
+	const auto previous = markupComment(page, index, markup);
+	if (!previous || *previous != expected) {
+		return {};
+	}
+	if (previous->text == contents) {
+		return false;
+	}
+	const std::u16string replacement(contents);
+	PagePtr target(FPDF_LoadPage(m_handle, page));
+	AnnotationPtr note(target ? FPDFPage_GetAnnot(target.get(), index)
+	                          : nullptr);
+	if (!note) {
+		return {};
+	}
+	const bool wasModified = m_modified;
+	m_modified = true;
+	// i change Contents alone, leaving the quads and appearance untouched.
+	// see:
+	// https://pdfium.googlesource.com/pdfium/+/bada86efe77a43a6aabd428082eebc29d5dc77ba/fpdfsdk/fpdf_annot.cpp
+	if (!FPDFAnnot_SetStringValue(
+	        note.get(), "Contents",
+	        reinterpret_cast<FPDF_WIDESTRING>(replacement.c_str()))) {
+		if (!previous->present ||
+		    !FPDFAnnot_SetStringValue(
+		        note.get(), "Contents",
+		        reinterpret_cast<FPDF_WIDESTRING>(previous->text.c_str()))) {
+			throw std::runtime_error("Couldn't restore the markup comment.");
+		}
+		m_modified = wasModified;
+		return {};
+	}
+	return true;
+}
+
 std::optional<int> Document::markText(TextSelection selection,
                                       TextMarkup markup) {
 	if (offThread() || !canAnnotate()) {
 		return {};
 	}
-	FPDF_ANNOTATION_SUBTYPE subtype;
-	switch (markup) {
-	case TextMarkup::Highlight:
-		subtype = FPDF_ANNOT_HIGHLIGHT;
-		break;
-	case TextMarkup::Underline:
-		subtype = FPDF_ANNOT_UNDERLINE;
-		break;
-	case TextMarkup::StrikeOut:
-		subtype = FPDF_ANNOT_STRIKEOUT;
-		break;
-	default:
+	const auto subtype = markupSubtype(markup);
+	if (!subtype) {
 		return {};
 	}
 	const auto [first, last] = ordered(selection);
@@ -645,7 +759,7 @@ std::optional<int> Document::markText(TextSelection selection,
 		target.index = FPDFPage_GetAnnotCount(target.page.get());
 		AnnotationPtr note(
 		    target.index >= 0 && target.index < 4096
-		        ? FPDFPage_CreateAnnot(target.page.get(), subtype)
+		        ? FPDFPage_CreateAnnot(target.page.get(), *subtype)
 		        : nullptr);
 		bool complete = note != nullptr;
 		if (note) {

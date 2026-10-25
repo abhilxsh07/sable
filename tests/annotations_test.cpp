@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cstdio>
 #include <fstream>
 #include <limits>
+#include <utility>
 #include "pdf/document.h"
 #include "pdf/engine.h"
 #include "pdf_test_files.h"
@@ -33,7 +34,8 @@ std::vector<std::uint8_t> annotationBytes(const char* name) {
 	std::ifstream file(fixturePath(name), std::ios::binary);
 	return {std::istreambuf_iterator<char>(file), {}};
 }
-std::vector<std::uint8_t> editableNoteBytes(const std::string& fields) {
+std::vector<std::uint8_t> editableNoteBytes(const std::string& fields,
+                                            std::string_view type = "Text") {
 	std::string data = "%PDF-1.7\n";
 	std::vector<std::size_t> offsets;
 	for (const auto& body : std::vector<std::string>{
@@ -41,8 +43,8 @@ std::vector<std::uint8_t> editableNoteBytes(const std::string& fields) {
 	         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
 	         "/Annots [4 0 R] >>",
-	         "<< /Type /Annot /Subtype /Text /Rect [40 50 60 70] " + fields +
-	             " >>"}) {
+	         "<< /Type /Annot /Subtype /" + std::string(type) +
+	             " /Rect [40 50 60 70] " + fields + " >>"}) {
 		offsets.push_back(data.size());
 		data +=
 		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
@@ -60,7 +62,8 @@ std::vector<std::uint8_t> editableNoteBytes(const std::string& fields) {
 }
 std::vector<std::uint8_t>
 sharedHighlightBytes(int count, std::string_view secondBox = "0 0 200 300",
-                     bool shared = true) {
+                     bool shared = true, std::string_view type = "Text",
+                     bool independent = false) {
 	const std::string contents = "BT /F1 20 Tf 40 230 Td (Alpha beta) Tj ET";
 	std::string refs = "[";
 	for (int i = 0; i < count; ++i) {
@@ -74,7 +77,10 @@ sharedHighlightBytes(int count, std::string_view secondBox = "0 0 200 300",
 	         "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
 	         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] "
 	         "/Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R /Annots " +
-	             std::string(shared ? "7 0 R" : "[]") + " >>",
+	             std::string(shared        ? "7 0 R"
+	                         : independent ? "[8 0 R]"
+	                                       : "[]") +
+	             " >>",
 	         "<< /Type /Page /Parent 2 0 R /MediaBox [" +
 	             std::string(secondBox) +
 	             "] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R "
@@ -83,8 +89,8 @@ sharedHighlightBytes(int count, std::string_view secondBox = "0 0 200 300",
 	         "<< /Length " + std::to_string(contents.size()) + " >>\nstream\n" +
 	             contents + "\nendstream",
 	         refs,
-	         "<< /Type /Annot /Subtype /Text /Rect [100 100 120 120] /Contents "
-	         "(Existing) >>"}) {
+	         "<< /Type /Annot /Subtype /" + std::string(type) +
+	             " /Rect [100 100 120 120] /Contents (Existing) >>"}) {
 		offsets.push_back(data.size());
 		data +=
 		    std::to_string(offsets.size()) + " 0 obj\n" + body + "\nendobj\n";
@@ -1386,6 +1392,76 @@ TEST(Annotations, InvalidMarkupLeavesTheDocumentUntouched) {
 		        {{0, 0}, {0, 4}}, static_cast<pdf::TextMarkup>(-1)));
 		    EXPECT_FALSE(opened.document->modified());
 		    EXPECT_EQ(opened.document->serialize(1024 * 1024), source);
+	    })
+	    .get();
+}
+
+TEST(Annotations, MarkupCommentsPreserveAppearanceAndExactContents) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (auto type :
+		         {pdf::TextMarkup::Highlight, pdf::TextMarkup::Underline,
+		          pdf::TextMarkup::StrikeOut}) {
+			    const auto created = pdf::openFile(fixturePath("text.pdf"));
+			    ASSERT_TRUE(created.document);
+			    ASSERT_EQ(created.document->markText({{0, 0}, {0, 4}}, type),
+			              1);
+			    const auto source = created.document->serialize(1024 * 1024);
+			    ASSERT_TRUE(source);
+			    const auto opened = pdf::openDocument(*source);
+			    ASSERT_TRUE(opened.document);
+			    auto& doc = *opened.document;
+			    const auto empty = doc.markupComment(0, 0, type);
+			    ASSERT_TRUE(empty);
+			    EXPECT_FALSE(empty->present);
+			    EXPECT_TRUE(empty->text.empty());
+			    EXPECT_FALSE(
+			        doc.updateMarkupComment(0, 0, type, {{}, true}, u"Stale"));
+			    EXPECT_FALSE(doc.updateMarkupComment(0, 0, type, *empty, {}));
+			    EXPECT_FALSE(doc.modified());
+			    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+			    const auto before = doc.render(0, 720, 480);
+			    ASSERT_TRUE(before);
+			    const auto inventory = doc.annotations(0);
+			    ASSERT_TRUE(inventory && inventory->entries.size() == 1);
+			    const std::u16string raw =
+			        u"Comment \u03a9\U0001f600\r\nline\tend";
+			    ASSERT_EQ(doc.updateMarkupComment(0, 0, type, *empty, raw),
+			              true);
+			    EXPECT_FALSE(
+			        doc.updateMarkupComment(0, 0, type, *empty, u"Stale"));
+			    const auto current = doc.markupComment(0, 0, type);
+			    ASSERT_TRUE(current);
+			    EXPECT_TRUE(current->present);
+			    EXPECT_EQ(current->text, raw);
+			    EXPECT_EQ(doc.updateMarkupComment(0, 0, type, *current, raw),
+			              false);
+			    const auto after = doc.render(0, 720, 480);
+			    ASSERT_TRUE(after);
+			    EXPECT_EQ(before->pixels, after->pixels);
+			    const auto bytes = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    const auto saved = pdf::openDocument(*bytes);
+			    ASSERT_TRUE(saved.document);
+			    EXPECT_EQ(saved.document->markupComment(0, 0, type), current);
+			    const auto rendered = saved.document->render(0, 720, 480);
+			    ASSERT_TRUE(rendered);
+			    EXPECT_EQ(rendered->pixels, before->pixels);
+			    EXPECT_EQ(saved.document->updateMarkupComment(0, 0, type,
+			                                                  *current, raw),
+			              false);
+			    EXPECT_FALSE(saved.document->modified());
+			    EXPECT_EQ(saved.document->serialize(1024 * 1024), bytes);
+			    const auto final = saved.document->annotations(0);
+			    ASSERT_TRUE(final && final->entries.size() == 1 &&
+			                final->entries[0].bounds);
+			    EXPECT_EQ(final->entries[0].flags, inventory->entries[0].flags);
+			    EXPECT_EQ(final->entries[0].subtype,
+			              inventory->entries[0].subtype);
+			    EXPECT_EQ(final->entries[0].bounds->left,
+			              inventory->entries[0].bounds->left);
+		    }
 	    })
 	    .get();
 }

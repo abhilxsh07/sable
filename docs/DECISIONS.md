@@ -2,6 +2,22 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Markup comment contents (2026-10-25)
+
+I edit only plain Contents on Highlight, Underline and StrikeOut. Snapshots
+distinguish a missing key from an empty string, and Apply checks both exact
+text and presence before writing. Read-only, locked-contents, rich-text,
+malformed, oversized and unsafe-to-save targets refuse. Empty replacements
+stay refused; adding text to a markup without Contents is supported.
+
+I refuse markup dictionaries referenced on another page or more than once
+on their own page. The pinned public GetAnnotIndex identity behavior has
+regressions for shared and independent annotation arrays. Updates keep
+author, flags, quads and appearance. A failed setter restores an existing
+string; when the original key was absent I keep the modified state rather
+than pretend an empty string restored absence. Legacy Text-note APIs keep
+their existing behavior.
+
 ## Underline and strikethrough selections (2026-10-25)
 
 I add Underline and Strikethrough beside Highlight in the selection menu.
