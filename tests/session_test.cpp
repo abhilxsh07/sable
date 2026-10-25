@@ -1309,6 +1309,54 @@ TEST_F(SessionTest, PropertiesUseLoadedBytesAndCloseCancelsQueuedReplies) {
 	EXPECT_FALSE(session.properties(reply.callback()));
 }
 
+TEST_F(SessionTest, SavesOneCopyAtATimeOnTheEngineThreadAndCancelsQueuedWork) {
+	pdf::Session session(engine);
+	const auto target = tempDir() / "copy.pdf",
+	           source = fixturePath("pages.pdf");
+	Reply<pdf::SaveResult> before;
+	EXPECT_FALSE(session.saveCopy(target, source, {}, before.callback()));
+	ASSERT_EQ(open(session, source).error, pdf::Error::None);
+	{
+		Gate gate(engine);
+		Reply<pdf::SaveResult> reply;
+		auto onThread = std::make_shared<std::atomic_bool>(false);
+		ASSERT_TRUE(session.saveCopy(
+		    target, source, {},
+		    [callback = reply.callback(), onThread](auto result) {
+			    onThread->store(pdf::Engine::onThread());
+			    callback(result);
+		    }));
+		EXPECT_FALSE(session.saveCopy(target, source, {}, before.callback()));
+		gate.open();
+		EXPECT_EQ(reply.wait(), pdf::SaveResult::Saved);
+		EXPECT_TRUE(onThread->load());
+	}
+	EXPECT_TRUE(fs::exists(target));
+	fs::remove(target);
+	{
+		Gate gate(engine);
+		Reply<pdf::SaveResult> reply;
+		auto cancel = std::make_shared<std::atomic_bool>(false);
+		ASSERT_TRUE(session.saveCopy(
+		    target, source, [cancel] { return cancel->load(); },
+		    reply.callback()));
+		cancel->store(true);
+		gate.open();
+		EXPECT_EQ(reply.wait(), pdf::SaveResult::Canceled);
+		EXPECT_FALSE(fs::exists(target));
+	}
+	{
+		Gate gate(engine);
+		Reply<pdf::SaveResult> reply;
+		ASSERT_TRUE(session.saveCopy(target, source, {}, reply.callback()));
+		session.close();
+		gate.open();
+		EXPECT_EQ(reply.wait(), pdf::SaveResult::Canceled);
+		EXPECT_FALSE(fs::exists(target));
+	}
+	EXPECT_FALSE(session.saveCopy(target, source, {}, before.callback()));
+}
+
 TEST_F(SessionTest, ExistingNoteEditsOwnTextAndKeepNoOpAndStaleOutcomes) {
 	pdf::Session session(engine);
 	Reply<pdf::TextNoteResult> read;

@@ -340,6 +340,30 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## V20: Save a Copy (2026-10-18)
+
+File > Save a copy, or Ctrl+S, opens a save dialog owned by the reading
+window. It suggests the PDF's name with " copy" added. Saving leaves the
+current tab open and keeps its page, zoom, rotation and night filter. Cancel
+is silent; a failed save leaves any previous destination intact. The source
+PDF cannot be chosen as the destination, including path aliases. Switching
+tabs or closing the document cancels a pending dialog result.
+
+The guide suggested FPDF_SaveAsCopy. A preservation test found that PDFium
+rewrites a valid empty attachment into an eight-byte compressed payload. Sable
+does not edit documents yet, so I save the bytes already loaded in memory
+instead. This follows the bundled viewer's downloadOrSave() path for an
+unchanged PDF. Attachments, passwords, restrictions and signature bytes stay
+exact, even if the original file has since moved or disappeared. Editing will
+need a separate save path when it arrives.
+
+The engine writes chunks to a new temporary file beside the destination,
+flushes it, then replaces the destination in one move. Cancellation and write
+failures remove only that temporary file. Saving shares the session's engine
+queue and rejects duplicate requests. No dependency or preference was added.
+Actual save-dialog input and overwrite confirmation still need a physical
+check.
+
 ## V16: Document properties (2026-10-18)
 
 File > Document properties opens a native, scrollable dialog for the active

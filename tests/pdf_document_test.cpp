@@ -608,3 +608,170 @@ TEST(PdfProperties, ReadsEncryptedMetadataAfterUnlock) {
 	    })
 	    .get();
 }
+
+TEST_F(PdfDocumentTest, SavedCopiesRetainPagesTextMetadataLinksAndAttachments) {
+	const auto directory = tempDir("copies");
+	engine
+	    .run([&] {
+		    for (const auto name :
+		         {"pages.pdf", "text.pdf", "properties.pdf", "outline.pdf",
+		          "attachments.pdf", "links.pdf", "print.pdf"}) {
+			    SCOPED_TRACE(name);
+			    const auto source = fixturePath(name);
+			    const auto bytes = readBytes(source);
+			    auto opened = pdf::openFile(source);
+			    ASSERT_TRUE(opened.document);
+			    auto& original = *opened.document;
+			    const auto target = directory / name;
+			    EXPECT_EQ(original.saveCopy(target, source),
+			              pdf::SaveResult::Saved);
+			    EXPECT_EQ(readBytes(source), bytes);
+			    EXPECT_EQ(readBytes(target), bytes);
+			    auto copied = pdf::openFile(target);
+			    ASSERT_TRUE(copied.document);
+			    auto& copy = *copied.document;
+			    EXPECT_EQ(copy.pageCount(), original.pageCount());
+			    EXPECT_EQ(copy.canCopy(), original.canCopy());
+			    for (int page = 0; page < original.pageCount(); ++page) {
+				    const auto before = original.pageSize(page),
+				               after = copy.pageSize(page);
+				    ASSERT_TRUE(before && after);
+				    EXPECT_FLOAT_EQ(before->width, after->width);
+				    EXPECT_FLOAT_EQ(before->height, after->height);
+				    EXPECT_EQ(original.pageLabel(page), copy.pageLabel(page));
+				    const auto a = original.render(page, 120, 160),
+				               b = copy.render(page, 120, 160);
+				    ASSERT_TRUE(a && b);
+				    EXPECT_EQ(a->pixels, b->pixels);
+				    EXPECT_EQ(original.textRange(page, 0, 10000),
+				              copy.textRange(page, 0, 10000));
+			    }
+			    const auto a = original.properties(), b = copy.properties();
+			    ASSERT_TRUE(a && b);
+			    EXPECT_EQ(a->title, b->title);
+			    EXPECT_EQ(a->author, b->author);
+			    EXPECT_EQ(a->subject, b->subject);
+			    EXPECT_EQ(a->keywords, b->keywords);
+			    EXPECT_EQ(a->creator, b->creator);
+			    EXPECT_EQ(a->producer, b->producer);
+			    EXPECT_EQ(a->created, b->created);
+			    EXPECT_EQ(a->modified, b->modified);
+			    if (std::string_view(name) == "outline.pdf") {
+				    const auto before = original.outline(),
+				               after = copy.outline();
+				    ASSERT_TRUE(before && after);
+				    ASSERT_EQ(before->entries.size(), after->entries.size());
+				    for (std::size_t i = 0; i < before->entries.size(); ++i) {
+					    EXPECT_EQ(before->entries[i].title,
+					              after->entries[i].title);
+					    EXPECT_EQ(before->entries[i].parent,
+					              after->entries[i].parent);
+					    const auto first = original.outlineLink(i),
+					               second = copy.outlineLink(i);
+					    ASSERT_EQ(first.has_value(), second.has_value());
+					    if (first && first->destination) {
+						    ASSERT_TRUE(second->destination);
+						    EXPECT_EQ(first->destination->page,
+						              second->destination->page);
+					    }
+				    }
+			    }
+			    if (std::string_view(name) == "attachments.pdf") {
+				    const auto before = original.attachments(),
+				               after = copy.attachments();
+				    ASSERT_TRUE(before && after);
+				    ASSERT_EQ(before->entries.size(), after->entries.size());
+				    for (const auto& entry : before->entries) {
+					    EXPECT_EQ(original.attachment(entry.index),
+					              copy.attachment(entry.index));
+				    }
+			    }
+			    if (std::string_view(name) == "links.pdf") {
+				    const auto link = copy.linkAt(0, 80. / 360, 130. / 540);
+				    ASSERT_TRUE(link && link->destination);
+				    EXPECT_EQ(link->destination->page, 1);
+			    }
+		    }
+	    })
+	    .get();
+}
+
+TEST_F(PdfDocumentTest, CopyRetainsPasswordsAndRestrictions) {
+	const auto directory = tempDir("copy_security");
+	engine
+	    .run([&] {
+		    for (const auto name : {"password.pdf", "restricted.pdf"}) {
+			    const auto source = fixturePath(name),
+			               target = directory / name;
+			    const std::string password =
+			        std::string_view(name) == "password.pdf" ? "sable" : "";
+			    auto opened = pdf::openFile(source, password);
+			    ASSERT_TRUE(opened.document);
+			    EXPECT_EQ(opened.document->saveCopy(target, source),
+			              pdf::SaveResult::Saved);
+			    if (!password.empty()) {
+				    EXPECT_EQ(pdf::openFile(target).error,
+				              pdf::Error::PasswordRequired);
+			    }
+			    auto copy = pdf::openFile(target, password);
+			    ASSERT_TRUE(copy.document);
+			    EXPECT_EQ(copy.document->canCopy(), opened.document->canCopy());
+			    const auto props = copy.document->properties();
+			    ASSERT_TRUE(props);
+			    EXPECT_TRUE(props->encrypted);
+		    }
+	    })
+	    .get();
+}
+
+TEST_F(PdfDocumentTest,
+       CopyUsesLoadedSnapshotAndProtectsSourcesAndFailedTargets) {
+	const auto directory = tempDir("copy_atomic");
+	const auto source = directory / L"source \u03a9.pdf",
+	           target = directory / L"copy \u03a9.pdf";
+	const auto bytes = readBytes(fixturePath("pages.pdf"));
+	{
+		std::ofstream out(source, std::ios::binary);
+		out.write(reinterpret_cast<const char*>(bytes.data()),
+		          static_cast<std::streamsize>(bytes.size()));
+	}
+	engine
+	    .run([&] {
+		    auto opened = pdf::openFile(source);
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_EQ(opened.document->saveCopy(source, source),
+		              pdf::SaveResult::Source);
+		    EXPECT_EQ(opened.document->saveCopy(
+		                  directory / L"SOURCE \u03a9.pdf", source),
+		              pdf::SaveResult::Source);
+		    EXPECT_EQ(readBytes(source), bytes);
+		    ASSERT_TRUE(writeFile(target, "keep this"));
+		    int calls = 0;
+		    EXPECT_EQ(opened.document->saveCopy(target, source,
+		                                        [&] { return ++calls >= 2; }),
+		              pdf::SaveResult::Canceled);
+		    EXPECT_EQ(readBytes(target),
+		              std::vector<std::uint8_t>(
+		                  {'k', 'e', 'e', 'p', ' ', 't', 'h', 'i', 's'}));
+		    EXPECT_EQ(opened.document->saveCopy(
+		                  directory / "missing" / "copy.pdf", source),
+		              pdf::SaveResult::Failed);
+		    const auto locked =
+		        CreateFileW(target.c_str(), GENERIC_READ, 0, nullptr,
+		                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		    ASSERT_NE(locked, INVALID_HANDLE_VALUE);
+		    EXPECT_EQ(opened.document->saveCopy(target, source),
+		              pdf::SaveResult::Failed);
+		    CloseHandle(locked);
+		    fs::remove(source);
+		    EXPECT_EQ(opened.document->saveCopy(target, source),
+		              pdf::SaveResult::Saved);
+		    auto copy = pdf::openFile(target);
+		    ASSERT_TRUE(copy.document);
+		    EXPECT_EQ(copy.document->pageCount(), 3);
+	    })
+	    .get();
+	for (const auto& entry : fs::directory_iterator(directory)) {
+		EXPECT_NE(entry.path().extension(), ".tmp");
+	}
+}
