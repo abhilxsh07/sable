@@ -34,6 +34,10 @@ std::optional<std::vector<int>> printPages(int count,
 struct PrintRect {
 	int x = 0, y = 0, width = 0, height = 0;
 };
+struct PrintRasterRequest {
+	int page = 0, width = 0, height = 0;
+	PrintRect tile;
+};
 // Fit within the printable area, preserving physical aspect at either DPI.
 std::optional<PrintRect> fitPrintPage(PageSize page, int width, int height,
                                       int dpiX, int dpiY);
