@@ -45,6 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pdf/printing.h"
 #include "pdf/surface.h"
 #include "pdf/surface_util.h"
+#include "printing/controller.h"
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -54,12 +55,6 @@ using namespace Microsoft::UI::Xaml::Controls;
 using XVisibility = Microsoft::UI::Xaml::Visibility;
 
 namespace {
-// pdf.js gives every page a 9px transparent border and a "1px auto -8px"
-// margin, so the pages sit 11px apart and 10px in from the top
-// see:
-// https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/pdf_viewer.css
-constexpr double PAGE_GAP = 11;
-constexpr double PAGE_MARGIN = 10;
 // pdf.js's dark --body-bg-color, around and between the pages
 // see: https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/viewer.css
 constexpr D2D1_COLOR_F BACKGROUND{42 / 255.0f, 42 / 255.0f, 46 / 255.0f, 1};
@@ -96,6 +91,19 @@ void ViewerPage::open(pdf::Engine& engine, const std::filesystem::path& path,
 	if (m_closed || m_session) {
 		return;
 	}
+	m_themeChanged = appearance::observe([weak = get_weak()] {
+		if (auto self = weak.get();
+		    self && self->m_surface && !self->m_closed) {
+			try {
+				self->m_surface->invalidate(
+				    {0, 0, static_cast<LONG>(pdf::MAX_SURFACE_SIDE),
+				     static_cast<LONG>(pdf::MAX_SURFACE_SIDE)});
+			} catch (...) {
+				// Device recovery will draw with the current appearance.
+				OutputDebugStringW(to_message().c_str());
+			}
+		}
+	});
 	m_engine = &engine;
 	m_path = path;
 	m_startPage = page;
@@ -131,19 +139,31 @@ void ViewerPage::activate() {
 	if (m_closed || Visibility() != XVisibility::Visible) {
 		return;
 	}
+	// A hidden tab may not receive the final native pan event.
+	m_directManipulation = false;
+	if (std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f) {
+		queueNativeZoom();
+	}
 	if (const auto pending = std::exchange(m_passwordPending, std::nullopt)) {
 		askPassword(*pending);
 	} else if (m_layout && !m_passwordDialog) {
 		showOutline();
 		showAttachments();
 		showComments();
+		takeFocus();
 		if (findOpen()) {
-			FindBox().Focus(FocusState::Programmatic);
 			revealFindMatch();
-		} else {
-			Scroller().Focus(FocusState::Programmatic);
 		}
 	}
+}
+
+bool ViewerPage::takeFocus() {
+	if (m_closed || !m_layout || m_passwordDialog ||
+	    Visibility() != XVisibility::Visible) {
+		return false;
+	}
+	return findOpen() ? FindBox().Focus(FocusState::Programmatic)
+	                  : Scroller().Focus(FocusState::Programmatic);
 }
 
 // pdf.js's PasswordPrompt (password_prompt.js): the label, a masked box,
@@ -267,6 +287,21 @@ fire_and_forget ViewerPage::askPassword(bool incorrect) {
 }
 
 void ViewerPage::close() {
+	if (m_presentationTimer) {
+		m_presentationTimer.Stop();
+	}
+	m_presentation.reset();
+	m_exitPresentation = {};
+	m_presentationTouch.reset();
+	m_panHover = false;
+	stopPan();
+	dismissProperties();
+	++m_propertiesVersion;
+	m_propertiesPending = false;
+	m_properties.reset();
+	if (const auto controller = m_printController) {
+		controller->cancel();
+	}
 	closeFind();
 	closeOutline();
 	closeAttachments();
@@ -295,6 +330,14 @@ void ViewerPage::close() {
 		m_land.Stop();
 	}
 	m_viewChanged.revoke();
+	m_viewChanging.revoke();
+	m_manipulationStarted.revoke();
+	m_manipulationCompleted.revoke();
+	m_nativeZoom.reset();
+	m_resettingGesture = false;
+	if (m_nativeResetTimeout) {
+		m_nativeResetTimeout.Stop();
+	}
 	m_sizeChanged.revoke();
 	m_layoutUpdated.revoke();
 	m_thumbScrolled.revoke();
@@ -365,6 +408,9 @@ void ViewerPage::zoomReset() {
 // window. pdf.js keeps it even when the scale doesn't change, but not when
 // it couldn't be applied (see relayout).
 void ViewerPage::zoomTo(double zoom, Windows::Foundation::Point anchor) {
+	if (m_presentation) {
+		return;
+	}
 	if (std::abs(zoom - m_zoom) < 1e-9 || setZoom(zoom, anchor)) {
 		m_preset = helpers::ZoomPreset::None;
 		showPosition();
@@ -373,7 +419,8 @@ void ViewerPage::zoomTo(double zoom, Windows::Foundation::Point anchor) {
 
 // pdf_viewer.js currentScaleValue = "auto", "page-fit" and so on
 void ViewerPage::setPreset(helpers::ZoomPreset preset) {
-	if (!m_layout) {
+	if (!m_layout ||
+	    (m_presentation && preset != helpers::ZoomPreset::PageFit)) {
 		return;
 	}
 	m_preset = preset;
@@ -387,23 +434,22 @@ void ViewerPage::applyPreset() {
 	    m_current >= m_sizes.size()) {
 		return;
 	}
-	setZoom(helpers::presetZoom(m_preset, m_sizes[m_current],
-	                            Scroller().ActualWidth(),
-	                            Scroller().ActualHeight()),
-	        {0, 0});
+	setZoom(fittedZoom(displaySizes()), {0, 0});
 }
 
 // Lays the pages out at zoom and scrolls so the spot that was under anchor
 // (viewport DIPs) is under it again. pdf.js keeps the top left of the view
 // for keys and the menu, and the pointer for the wheel.
 bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
-	if (!m_layout || !m_surface || std::abs(zoom - m_zoom) < 1e-9) {
+	if (!m_layout || !m_surface || m_resettingGesture || m_directManipulation ||
+	    std::abs(Scroller().ZoomFactor() - 1.f) > 1e-5f ||
+	    std::abs(zoom - m_zoom) < 1e-9) {
 		return false;
 	}
 	try {
 		const double x = Scroller().HorizontalOffset() + anchor.X - imageLeft();
 		const double y = Scroller().VerticalOffset() + anchor.Y;
-		const auto page = m_layout->pageAt(y);
+		const auto page = m_layout->pageAt(x, y);
 		const auto before = m_layout->pages()[page];
 		const double across = (x - before.x) / before.width;
 		const double down = (y - before.y) / before.height;
@@ -436,8 +482,9 @@ bool ViewerPage::setZoom(double zoom, Windows::Foundation::Point anchor) {
 // nothing changed, if that's more than one surface can hold; for now the
 // zoom just stays, see "Still undecided" in DECISIONS.md.
 bool ViewerPage::relayout(double zoom) {
+	stopPan();
 	cancelSelectionDrag();
-	helpers::PageLayout next(m_sizes, zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
+	auto next = makeLayout(displaySizes(), zoom);
 	const auto size =
 	    pdf::scaledSurfaceSize(next.width(), next.height(), m_scale);
 	if (!size) {
@@ -445,6 +492,7 @@ bool ViewerPage::relayout(double zoom) {
 	}
 	m_surface->resize(size->cx, size->cy);
 	m_layout = std::move(next);
+	m_layoutViewWidth = Scroller().ActualWidth();
 	m_zoom = zoom;
 	Pages().Width(size->cx / m_scale);
 	Pages().Height(size->cy / m_scale);
@@ -518,7 +566,10 @@ bool ViewerPage::setScale(double scale) {
 
 // the Image is centred in the scroller while it's narrower than it
 double ViewerPage::imageLeft() {
-	return (std::max)(0.0, (Scroller().ViewportWidth() - Pages().Width()) / 2);
+	return (std::max)(0.0,
+	                  (Scroller().ViewportWidth() / Scroller().ZoomFactor() -
+	                   Pages().Width()) /
+	                      2);
 }
 
 // the old rasters stay up, stretched, until the zoom has been still for
@@ -544,6 +595,71 @@ void ViewerPage::settle() {
 }
 
 void ViewerPage::print(void* owner, std::function<void()> done) {
+	try {
+#ifdef SABLE_SURFACE_TEST
+		if (m_printDialog && !m_printUi) {
+			printLegacy(owner, std::move(done));
+			return;
+		}
+#endif
+		if (m_closed || !m_session || m_sizes.empty()) {
+			if (!m_closed) {
+				showNotice(L"This PDF isn't ready to print yet.");
+			}
+			done();
+			return;
+		}
+		const auto session = m_session.get();
+		std::vector<pdf::PageSize> pages;
+		pages.reserve(m_sizes.size());
+		for (const auto& size : m_sizes) {
+			pages.push_back({static_cast<float>(size.width),
+			                 static_cast<float>(size.height)});
+		}
+		m_printController = printing::Controller::create(
+		    owner, session->printRenderer(), std::move(pages),
+		    static_cast<int>(m_current), m_path.filename().wstring(),
+		    DispatcherQueue(),
+		    [weak = get_weak(), session, owner, done](auto result) {
+			    if (const auto self = weak.get()) {
+				    self->m_printController.reset();
+				    if (!self->m_closed && self->m_session.get() == session) {
+					    if (!result) {
+						    diagnostics::write(diagnostics::Level::Info,
+						                       "Modern print UI unavailable; "
+						                       "using legacy dialog");
+						    self->printLegacy(owner, done);
+						    return;
+					    }
+					    if (*result == pdf::PrintResult::Failed) {
+						    self->showNotice(
+						        L"Couldn't print this PDF. Check the "
+						        L"printer and try again.");
+					    }
+				    }
+			    }
+			    done();
+		    });
+#ifdef SABLE_SURFACE_TEST
+		if (m_printUi) {
+			m_printUi(m_printController);
+		} else
+#endif
+		{
+			m_printController->open();
+		}
+	} catch (...) {
+		if (!m_closed) {
+			showNotice(
+			    L"Couldn't print this PDF. Check the printer and try again.");
+		}
+		done();
+	}
+}
+
+void ViewerPage::printLegacy(void* owner, std::function<void()> done) {
+	diagnostics::write(diagnostics::Level::Info,
+	                   "Printing through legacy Windows dialog");
 	try {
 		if (m_closed || !m_session || m_sizes.empty()) {
 			if (!m_closed) {
@@ -602,10 +718,17 @@ void ViewerPage::onPageTapped(const Windows::Foundation::IInspectable&,
 		args.Handled(true);
 		return;
 	}
-	if (m_ignoreTextTap) {
+	if (m_presentation) {
 		return;
 	}
-	requestLink(args.GetPosition(Pages()));
+	if (args.PointerDeviceType() !=
+	        Microsoft::UI::Input::PointerDeviceType::Touch &&
+	    (m_ignoreTextTap || m_ignorePanTap ||
+	     m_cursorTool == CursorTool::Hand)) {
+		return;
+	}
+	const auto point = args.GetPosition(Pages());
+	requestLink(point, m_clickSpreads ? spreadClickDirection(point) : 0);
 }
 
 // Image-local DIPs already account for scrolling and display scale. Only the
@@ -677,9 +800,18 @@ void ViewerPage::requestLink(Windows::Foundation::Point point,
 	m_linkPending = false;
 }
 
-void ViewerPage::followLink(const pdf::LinkDestination& target, bool center) {
+void ViewerPage::followLink(const pdf::LinkDestination& destination,
+                            bool center) {
+	const auto target = viewDestination(destination);
 	if (!m_layout || target.page < 0 ||
 	    static_cast<std::size_t>(target.page) >= m_sizes.size()) {
+		return;
+	}
+	if (m_presentation) {
+		goToPage(static_cast<std::size_t>(target.page));
+		return;
+	}
+	if (!ensurePageLayout(static_cast<std::size_t>(target.page))) {
 		return;
 	}
 	m_current = static_cast<std::size_t>(target.page);
@@ -748,6 +880,9 @@ void ViewerPage::goToPage(std::size_t page) {
 	if (!m_layout || page >= m_layout->pages().size()) {
 		return;
 	}
+	if (!ensurePageLayout(page)) {
+		return;
+	}
 	m_current = page;
 	showPosition();
 	scrollToPage(page);
@@ -761,25 +896,31 @@ void ViewerPage::goToPage(std::size_t page) {
 // edge at the left only when it doesn't already fit across
 void ViewerPage::scrollToPage(std::size_t page) {
 	const auto& rect = m_layout->pages()[page];
-	const double left = imageLeft() + rect.x;
+	const double factor = Scroller().ZoomFactor();
+	const double left = (imageLeft() + rect.x) * factor;
 	const double scrollLeft = Scroller().HorizontalOffset();
 	std::optional<double> across;
 	if (left < scrollLeft ||
-	    left + rect.width > scrollLeft + Scroller().ViewportWidth()) {
+	    left + rect.width * factor > scrollLeft + Scroller().ViewportWidth()) {
 		across = left;
 	}
-	jumpTo(across, rect.y);
+	jumpTo(across, rect.y * factor);
 }
 
 // ChangeView, with the current page worked out for where the view is going
 // until it gets there
 void ViewerPage::jumpTo(std::optional<double> x, double y) {
 	auto scroller = Scroller();
-	const double down =
-	    std::clamp(y, 0.0, (std::max)(0.0, scroller.ScrollableHeight()));
-	const double across =
-	    x ? std::clamp(*x, 0.0, (std::max)(0.0, scroller.ScrollableWidth()))
-	      : scroller.HorizontalOffset();
+	// The compositor's scrollable extent can still describe the old zoom.
+	const double factor = scroller.ZoomFactor();
+	const double down = std::clamp(
+	    y, 0.0,
+	    (std::max)(0.0, Pages().Height() * factor - scroller.ViewportHeight()));
+	const double across = std::clamp(
+	    x.value_or(m_landingAt ? m_landingAt->first
+	                           : scroller.HorizontalOffset()),
+	    0.0,
+	    (std::max)(0.0, Pages().Width() * factor - scroller.ViewportWidth()));
 	if (std::abs(down - scroller.VerticalOffset()) >= 0.5 ||
 	    std::abs(across - scroller.HorizontalOffset()) >= 0.5) {
 		m_landingAt = std::pair{across, down};
@@ -799,10 +940,19 @@ void ViewerPage::jumpTo(std::optional<double> x, double y) {
 	} else {
 		m_landingAt.reset();
 	}
-	if (!scroller.ChangeView(x ? Windows::Foundation::IReference<double>(*x)
-	                           : nullptr,
-	                         y, nullptr, true)) {
-		m_landingAt.reset();
+	scroller.ChangeView(x ? Windows::Foundation::IReference<double>(across)
+	                      : nullptr,
+	                    down, nullptr, true);
+	if (const auto target = m_landingAt) {
+		DispatcherQueue().TryEnqueue([weak = get_weak(), target] {
+			if (const auto self = weak.get(); self && !self->m_closed &&
+			                                  self->m_landingAt == target &&
+			                                  !self->m_directManipulation) {
+				self->Scroller().UpdateLayout();
+				self->Scroller().ChangeView(target->first, target->second,
+				                            nullptr, true);
+			}
+		});
 	}
 }
 
@@ -823,9 +973,10 @@ void ViewerPage::updateCurrentPage() {
 			top = m_landingAt->second;
 		}
 	}
-	const helpers::Viewport view{left - imageLeft(), top,
-	                             Scroller().ViewportWidth(),
-	                             Scroller().ViewportHeight()};
+	const double factor = Scroller().ZoomFactor();
+	const helpers::Viewport view{left / factor - imageLeft(), top / factor,
+	                             Scroller().ViewportWidth() / factor,
+	                             Scroller().ViewportHeight() / factor};
 	const auto page = helpers::currentPage(*m_layout, view, m_current);
 	if (page != m_current) {
 		m_current = page;
@@ -835,6 +986,7 @@ void ViewerPage::updateCurrentPage() {
 
 // toolbar.js #updateUIState: the page box, "of N", and which buttons work
 void ViewerPage::showPosition() {
+	updateGestureLimits();
 	if (!m_layout) {
 		return;
 	}
@@ -847,11 +999,18 @@ void ViewerPage::showPosition() {
 	PageTotal().Text(to_hstring(text.total));
 	PreviousButton().IsEnabled(m_current > 0);
 	NextButton().IsEnabled(m_current + 1 < count);
+	if (m_presentation) {
+		PresentationPosition().Text(to_hstring(m_current + 1) + L" / " +
+		                            to_hstring(count));
+		PresentationPrevious().IsEnabled(m_current > 0);
+		PresentationNext().IsEnabled(m_current + 1 < count);
+	}
 	ZoomOutButton().IsEnabled(m_zoom > helpers::MIN_ZOOM);
 	ZoomInButton().IsEnabled(m_zoom < helpers::MAX_ZOOM);
 	// the rail is too narrow for pdf.js's "Automatic Zoom", so the button
 	// always shows the percentage and the menu ticks the preset
-	ZoomText().Text(to_hstring(helpers::zoomPercent(m_zoom)));
+	ZoomText().Text(to_hstring(helpers::zoomPercent(
+	    m_nativeZoom ? m_nativeZoom->zoom : m_zoom * Scroller().ZoomFactor())));
 	// pagechanging: the thumbnails move their highlight and keep it in view
 	if (thumbnailsOpen() && m_thumbCurrent != m_current) {
 		const auto previous = std::exchange(m_thumbCurrent, m_current);
@@ -1072,7 +1231,7 @@ pdf::PageKey ViewerPage::thumbKey(std::size_t page) const {
 	const auto pixels = m_strip->renderSize(page, m_scale);
 	const auto size = helpers::renderSize(pixels.width, pixels.height,
 	                                      MAX_PAGE_PIXELS, MAX_PAGE_SIDE);
-	return {static_cast<int>(page), size.width, size.height, 0};
+	return {static_cast<int>(page), size.width, size.height, m_rotation};
 }
 
 void ViewerPage::onThumbnailsClick(const IInspectable&,
@@ -1187,174 +1346,6 @@ void ViewerPage::queueRequest() {
 	});
 }
 
-void ViewerPage::onPreviewKeyDown(const Windows::Foundation::IInspectable&,
-                                  const Input::KeyRoutedEventArgs& args) {
-	using helpers::NavAction;
-	using helpers::NavFocus;
-	using helpers::NavKey;
-	using Windows::System::VirtualKey;
-	// a menu opened from the rail keeps its own keys
-	if (!m_layout || args.Handled() ||
-	    args.OriginalSource().try_as<MenuFlyoutItemBase>()) {
-		return;
-	}
-	// Sidebar lists keep their native arrows, type-ahead and selection keys.
-	if ((outlineHasFocus() || attachmentsHasFocus() || commentsHasFocus()) &&
-	    args.Key() != VirtualKey::F4 &&
-	    !(args.Key() == VirtualKey::G && (GetKeyState(VK_CONTROL) & 0x8000) &&
-	      (GetKeyState(VK_MENU) & 0x8000))) {
-		return;
-	}
-	NavKey pressed = NavKey::Other;
-	switch (args.Key()) {
-	case VirtualKey::Up:
-		pressed = NavKey::Up;
-		break;
-	case VirtualKey::Down:
-		pressed = NavKey::Down;
-		break;
-	case VirtualKey::Left:
-		pressed = NavKey::Left;
-		break;
-	case VirtualKey::Right:
-		pressed = NavKey::Right;
-		break;
-	case VirtualKey::PageUp:
-		pressed = NavKey::PageUp;
-		break;
-	case VirtualKey::PageDown:
-		pressed = NavKey::PageDown;
-		break;
-	case VirtualKey::Home:
-		pressed = NavKey::Home;
-		break;
-	case VirtualKey::End:
-		pressed = NavKey::End;
-		break;
-	case VirtualKey::Space:
-		pressed = NavKey::Space;
-		break;
-	case VirtualKey::Enter:
-		pressed = NavKey::Enter;
-		break;
-	case VirtualKey::Back:
-		pressed = NavKey::Backspace;
-		break;
-	case VirtualKey::G:
-		pressed = NavKey::G;
-		break;
-	case VirtualKey::J:
-		pressed = NavKey::J;
-		break;
-	case VirtualKey::K:
-		pressed = NavKey::K;
-		break;
-	case VirtualKey::N:
-		pressed = NavKey::N;
-		break;
-	case VirtualKey::P:
-		pressed = NavKey::P;
-		break;
-	case VirtualKey::F4:
-		pressed = NavKey::F4;
-		break;
-	default:
-		return;
-	}
-	const auto held = [](int virtualKey) {
-		return (GetKeyState(virtualKey) & 0x8000) != 0;
-	};
-	const helpers::NavModifiers modifiers{held(VK_CONTROL), held(VK_MENU),
-	                                      held(VK_SHIFT)};
-	const auto source = args.OriginalSource();
-	auto focus = NavFocus::Viewer;
-	if (source.try_as<TextBox>()) {
-		focus = NavFocus::TextBox;
-	} else if (source.try_as<Primitives::ButtonBase>()) {
-		focus = NavFocus::Button;
-	}
-	const auto count = m_layout->pages().size();
-	// in "page-fit" the scrolling keys turn pages, otherwise only when
-	// there's nothing to scroll that way
-	const helpers::NavState state{
-	    m_current, count,
-	    Scroller().ComputedVerticalScrollBarVisibility() ==
-	        XVisibility::Visible,
-	    Scroller().ComputedHorizontalScrollBarVisibility() ==
-	        XVisibility::Visible,
-	    m_preset == helpers::ZoomPreset::PageFit};
-	const auto action = helpers::navAction(pressed, modifiers, focus, state);
-	switch (action) {
-	case NavAction::None:
-		break;
-	case NavAction::Previous:
-		if (m_current > 0) {
-			goToPage(m_current - 1);
-		}
-		break;
-	case NavAction::Next:
-		if (m_current + 1 < count) {
-			goToPage(m_current + 1);
-		}
-		break;
-	case NavAction::First:
-		goToPage(0);
-		break;
-	case NavAction::Last:
-		goToPage(count - 1);
-		break;
-	case NavAction::FocusPageBox:
-		PageBox().Focus(FocusState::Keyboard);
-		PageBox().SelectAll();
-		break;
-	case NavAction::ToggleSidebar:
-		toggleSidebar();
-		break;
-	}
-	if (action != NavAction::None) {
-		args.Handled(true);
-	}
-	// what the browser did with the keys pdf.js left alone. Space scrolled
-	// a page, which WinUI's ScrollViewer doesn't; a page is the viewport,
-	// as for its PageDown.
-	// see:
-	// https://raw.githubusercontent.com/microsoft/microsoft-ui-xaml/fe9d01273af3382ea570e203ab700772528d98df/dxaml/xcp/dxaml/lib/ScrollContentPresenter_Partial.cpp
-	if (action == NavAction::None && pressed == NavKey::Space &&
-	    focus == NavFocus::Viewer && !modifiers.ctrl && !modifiers.alt) {
-		const double page = Scroller().ViewportHeight();
-		Scroller().ChangeView(nullptr,
-		                      Scroller().VerticalOffset() +
-		                          (modifiers.shift ? -page : page),
-		                      nullptr, false);
-		args.Handled(true);
-	}
-	// app.js: the navigation keys bring the focus back to the pages
-	// (ensureViewerFocused), except from a text field
-	bool focusPages = action == NavAction::First || action == NavAction::Last;
-	if (action == NavAction::None && focus != NavFocus::TextBox) {
-		switch (pressed) {
-		case NavKey::PageUp:
-		case NavKey::PageDown:
-		case NavKey::Home:
-		case NavKey::End:
-		case NavKey::Up:
-		case NavKey::Down:
-		case NavKey::Left:
-		case NavKey::Right:
-			focusPages = true;
-			break;
-		case NavKey::Space:
-			focusPages = focus != NavFocus::Button;
-			break;
-		default:
-			break;
-		}
-	}
-	if (focusPages && focus != NavFocus::Viewer) {
-		Scroller().Focus(FocusState::Programmatic);
-	}
-}
-
 void ViewerPage::onPageBoxKeyDown(const Windows::Foundation::IInspectable&,
                                   const Input::KeyRoutedEventArgs& args) {
 	if (args.Key() == Windows::System::VirtualKey::Enter) {
@@ -1396,7 +1387,7 @@ void ViewerPage::onPreviousPage(const Windows::Foundation::IInspectable&,
                                 const RoutedEventArgs&) {
 	leavePageBox();
 	if (m_current > 0) {
-		goToPage(m_current - 1);
+		advancePage(-1);
 	}
 	if (!PreviousButton().IsEnabled()) {
 		Scroller().Focus(FocusState::Programmatic);
@@ -1407,7 +1398,7 @@ void ViewerPage::onNextPage(const Windows::Foundation::IInspectable&,
                             const RoutedEventArgs&) {
 	leavePageBox();
 	if (m_layout && m_current + 1 < m_layout->pages().size()) {
-		goToPage(m_current + 1);
+		advancePage(1);
 	}
 	if (!NextButton().IsEnabled()) {
 		Scroller().Focus(FocusState::Programmatic);
@@ -1468,27 +1459,45 @@ void ViewerPage::onZoomChoice(const Windows::Foundation::IInspectable& sender,
 	}
 }
 
-// Ctrl+wheel, around the pointer (app.js webViewerWheel)
+// Windows handles pinch and Ctrl+wheel through the same native zoom path.
 void ViewerPage::onWheel(const Input::PointerRoutedEventArgs& args) {
+	stopPan();
 	using Windows::System::VirtualKeyModifiers;
-	if (!m_layout || (args.KeyModifiers() & VirtualKeyModifiers::Control) !=
-	                     VirtualKeyModifiers::Control) {
+	if (!m_layout) {
 		return;
 	}
-	const auto point = args.GetCurrentPoint(Scroller());
-	if (point.Properties().IsHorizontalMouseWheel()) {
+	if (m_presentation) {
+		const auto properties = args.GetCurrentPoint(Scroller()).Properties();
+		if (!properties.IsHorizontalMouseWheel()) {
+			presentationWheel(properties.MouseWheelDelta());
+		}
+		args.Handled(true);
 		return;
 	}
-	args.Handled(true);
-	UINT lines = 3;
-	SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
-	const int ticks = m_wheelTicks.add(helpers::wheelTicks(
-	    point.Properties().MouseWheelDelta(),
-	    lines == WHEEL_PAGESCROLL ? 0 : static_cast<int>(lines)));
-	if (ticks != 0) {
-		zoomTo(ticks > 0 ? helpers::zoomIn(m_zoom, ticks)
-		                 : helpers::zoomOut(m_zoom, -ticks),
-		       point.Position());
+	if ((args.KeyModifiers() & VirtualKeyModifiers::Control) !=
+	    VirtualKeyModifiers::Control) {
+		const auto properties = args.GetCurrentPoint(Scroller()).Properties();
+		const int delta = properties.MouseWheelDelta();
+		if (!delta || properties.IsHorizontalMouseWheel()) {
+			return;
+		}
+		if (m_scrollMode == helpers::ScrollMode::Horizontal) {
+			Scroller().ChangeView(Scroller().HorizontalOffset() - delta,
+			                      nullptr, nullptr, true);
+			args.Handled(true);
+		} else if (m_scrollMode == helpers::ScrollMode::Page) {
+			const double top = Scroller().VerticalOffset(),
+			             bottom = Scroller().ScrollableHeight();
+			if ((delta < 0 && top >= bottom - 1) || (delta > 0 && top <= 1)) {
+				const auto now = std::chrono::steady_clock::now();
+				if (now - m_pageWheelTime > std::chrono::milliseconds(250)) {
+					m_pageWheelTime = now;
+					advancePage(delta < 0 ? 1 : -1);
+				}
+				args.Handled(true);
+			}
+		}
+		return;
 	}
 }
 
@@ -1529,11 +1538,9 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		        ? static_cast<std::size_t>(*m_startPage - 1)
 		        : 0;
 		if (m_preset != helpers::ZoomPreset::None) {
-			m_zoom = helpers::presetZoom(m_preset, m_sizes[m_current],
-			                             Scroller().ActualWidth(),
-			                             Scroller().ActualHeight());
+			m_zoom = fittedZoom(m_sizes);
 		}
-		m_layout.emplace(m_sizes, m_zoom, 0.0, PAGE_GAP, PAGE_MARGIN);
+		m_layout = makeLayout(m_sizes, m_zoom);
 		m_fitPending = helpers::followsViewport(m_preset);
 		const auto size = pdf::scaledSurfaceSize(m_layout->width(),
 		                                         m_layout->height(), m_scale);
@@ -1559,6 +1566,8 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		Pages().Width(size->cx / m_scale);
 		Pages().Height(size->cy / m_scale);
 		setupSelection();
+		setupPan();
+		setupPresentation();
 		setupFind();
 		setupOutline();
 		setupAttachments();
@@ -1582,20 +1591,50 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 			setThumbnailsOpen(true);
 		}
 		m_viewChanged = Scroller().ViewChanged(
-		    auto_revoke, [this](auto&&, auto&&) { updateVisible(); });
+		    auto_revoke,
+		    [this](auto&&, const ScrollViewerViewChangedEventArgs& e) {
+			    nativeViewChanged(e.IsIntermediate());
+		    });
+		m_viewChanging = Scroller().ViewChanging(
+		    auto_revoke,
+		    [this](auto&&, const ScrollViewerViewChangingEventArgs& e) {
+			    if (!m_closed && !m_resettingGesture) {
+				    ZoomText().Text(to_hstring(helpers::zoomPercent(
+				        std::clamp(m_zoom * e.NextView().ZoomFactor(),
+				                   helpers::MIN_ZOOM, helpers::MAX_ZOOM))));
+			    }
+		    });
+		m_manipulationStarted = Scroller().DirectManipulationStarted(
+		    auto_revoke, [this](auto&&, auto&&) {
+			    m_nativeZoom.reset();
+			    m_resettingGesture = false;
+			    m_holdCurrent = false;
+			    if (m_nativeResetTimeout) {
+				    m_nativeResetTimeout.Stop();
+			    }
+			    m_directManipulation = true;
+			    m_landingAt.reset();
+			    ++m_linkVersion;
+			    m_linkPending = false;
+		    });
+		m_manipulationCompleted = Scroller().DirectManipulationCompleted(
+		    auto_revoke, [this](auto&&, auto&&) {
+			    m_directManipulation = false;
+			    queueNativeZoom();
+		    });
 		// app.js webViewerResize: "auto", "page-fit" and "page-width" are
 		// worked out again for the new size. The scroller's size, so the rail
 		// and later the side panels count.
 		m_sizeChanged =
 		    Scroller().SizeChanged(auto_revoke, [this](auto&&, auto&&) {
-			    if (helpers::followsViewport(m_preset)) {
-				    // after this layout pass, not inside it
-				    DispatcherQueue().TryEnqueue([weak = get_weak()] {
-					    if (auto self = weak.get();
-					        self && helpers::followsViewport(self->m_preset)) {
-						    self->applyPreset();
-					    }
-				    });
+			    if (!m_reflowQueued) {
+				    m_reflowQueued =
+				        DispatcherQueue().TryEnqueue([weak = get_weak()] {
+					        if (const auto self = weak.get()) {
+						        self->m_reflowQueued = false;
+						        self->reflowViewport();
+					        }
+				        });
 			    }
 			    updateVisible();
 		    });
@@ -1630,6 +1669,14 @@ void ViewerPage::opened(pdf::SessionInfo info) {
 		m_layout.reset();
 		m_surface.reset();
 		showMessage(L"Couldn't show this PDF: " + to_message());
+	}
+	if (m_layout && m_documentOpened) {
+		try {
+			m_documentOpened();
+		} catch (...) {
+			diagnostics::write(diagnostics::Level::Warning,
+			                   "Couldn't add the PDF to Recent");
+		}
 	}
 }
 
@@ -1716,17 +1763,17 @@ void ViewerPage::rebuildDevice() {
 }
 
 void ViewerPage::updateVisible() {
-	if (!m_layout || !m_surface) {
+	if (!m_layout || !m_surface || (m_holdCurrent && !m_resettingGesture)) {
 		return;
 	}
-	if (Scroller().ViewportHeight() > 0 &&
+	if (!m_resettingGesture && !m_directManipulation &&
+	    std::abs(Scroller().ZoomFactor() - 1.f) < 1e-5f &&
+	    Scroller().ViewportHeight() > 0 &&
 	    Scroller().ExtentHeight() >= Pages().Height() - 1) {
 		if (std::exchange(m_fitPending, false) &&
 		    helpers::followsViewport(m_preset)) {
 			// for the page -p asks for, or the first
-			const double zoom = helpers::presetZoom(
-			    m_preset, m_sizes[m_current], Scroller().ActualWidth(),
-			    Scroller().ActualHeight());
+			const double zoom = fittedZoom(displaySizes());
 			try {
 				// -p waits for the new extent; asked for again in case the
 				// size didn't change enough to start another layout pass
@@ -1752,17 +1799,19 @@ void ViewerPage::updateVisible() {
 			goToPage(static_cast<std::size_t>(*start - 1));
 		}
 	}
-	updateCurrentPage();
+	if (!m_resettingGesture && !m_directManipulation) {
+		updateCurrentPage();
+	}
 	if (m_thumbScrollPending) {
 		scrollThumbnailIntoView();
 	}
-	const double top = Scroller().VerticalOffset();
-	double height = Scroller().ViewportHeight();
+	const auto view = viewport();
+	double height = view.height;
 	if (height <= 0) {
 		height = ActualHeight();
 	}
-	m_visible = m_layout->visiblePages(top, height, 0);
-	m_wanted = m_layout->visiblePages(top, height, 1);
+	m_visible = m_layout->visiblePages({view.x, view.y, view.width, height}, 0);
+	m_wanted = m_layout->visiblePages({view.x, view.y, view.width, height}, 1);
 	prefetchSelectedText();
 	// GPU copies only for the pages near the viewport; the rest stay cached
 	std::erase_if(m_device.bitmaps, [this](const auto& entry) {
@@ -1921,6 +1970,9 @@ bool ViewerPage::upload(Device& device, std::size_t page,
 }
 
 void ViewerPage::invalidate(std::size_t page) {
+	if (!m_layout || !m_layout->contains(page)) {
+		return;
+	}
 	const auto rect = pixels(page);
 	m_surface->invalidate(
 	    {rect.x, rect.y, rect.x + rect.width, rect.y + rect.height});
@@ -1928,12 +1980,17 @@ void ViewerPage::invalidate(std::size_t page) {
 
 // runs inside the surface's update callback, in pixels
 void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
-	context.Clear(BACKGROUND);
+	context.Clear(m_presentation || appearance::obsidian()
+	                  ? D2D1::ColorF(0, 0, 0)
+	                  : BACKGROUND);
 	if (!m_layout) {
 		return;
 	}
-	const auto pages = m_layout->visiblePages(
-	    rect.top / m_scale, (rect.bottom - rect.top) / m_scale, 1);
+	const auto pages =
+	    m_layout->visiblePages({rect.left / m_scale, rect.top / m_scale,
+	                            (rect.right - rect.left) / m_scale,
+	                            (rect.bottom - rect.top) / m_scale},
+	                           1);
 	for (auto page = pages.first; page < pages.end; ++page) {
 		const auto at = pixels(page);
 		const auto found = m_device.bitmaps.find(page);
@@ -1981,7 +2038,8 @@ void ViewerPage::draw(ID2D1DeviceContext& context, const RECT& rect) {
 			    pdf::textSpan(*m_selection, static_cast<int>(page),
 			                  static_cast<int>(text.characters.size()));
 			const auto at = pixels(page);
-			for (const auto& box : pdf::textRects(text, first, end)) {
+			for (const auto& original : pdf::textRects(text, first, end)) {
+				const auto box = viewBox(original);
 				context.FillRectangle(
 				    D2D1::RectF(
 				        static_cast<float>(at.x + box.left * at.width),
@@ -2002,6 +2060,6 @@ pdf::PageKey ViewerPage::key(std::size_t page) const {
 	const auto rect = pixels(page);
 	const auto size = helpers::renderSize(rect.width, rect.height,
 	                                      MAX_PAGE_PIXELS, MAX_PAGE_SIDE);
-	return {static_cast<int>(page), size.width, size.height, 0};
+	return {static_cast<int>(page), size.width, size.height, m_rotation};
 }
 } // namespace winrt::Sable::implementation

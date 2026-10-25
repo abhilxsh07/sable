@@ -31,13 +31,16 @@ using namespace Microsoft::UI::Xaml::Controls;
 namespace winrt::Sable::implementation {
 void ViewerPage::setupAttachmentSaving() {
 	AttachmentList().IsItemClickEnabled(true);
+	// ListViewBase::OnItemClick passes on the content of a row that is its
+	// own container, here the name's TextBlock, so both carry the index
+	// see:
+	// https://github.com/microsoft/microsoft-ui-xaml/blob/881cb743561f13b53d8ec44cd9451936bbc544cf/dxaml/xcp/dxaml/lib/ListViewBase_Partial_Interaction.cpp#L515-L565
 	AttachmentList().ItemClick(
 	    [weak = get_weak()](auto&&, const ItemClickEventArgs& args) {
-		    if (auto self = weak.get()) {
-			    const auto item = args.ClickedItem().try_as<ListViewItem>();
-			    if (item) {
-				    self->saveAttachment(unbox_value<int>(item.Tag()));
-			    }
+		    const auto row = args.ClickedItem().try_as<FrameworkElement>();
+		    const int index = row ? unbox_value_or<int>(row.Tag(), -1) : -1;
+		    if (auto self = weak.get(); self && index >= 0) {
+			    self->saveAttachment(index);
 		    }
 	    });
 }

@@ -41,6 +41,10 @@ void ViewerPage::setupSelection() {
 				             Microsoft::UI::Input::PointerDeviceType::Touch);
 				return;
 			}
+			if (self->m_cursorTool == CursorTool::Hand) {
+				return;
+			}
+			self->m_ignorePanTap = false;
 			const auto point = args.GetCurrentPoint(self->Pages());
 			if (args.Pointer().PointerDeviceType() ==
 			        Microsoft::UI::Input::PointerDeviceType::Touch ||
@@ -182,8 +186,7 @@ void ViewerPage::invalidateSelection() {
 	if (!m_layout || !m_surface) {
 		return;
 	}
-	const auto visible = m_layout->visiblePages(Scroller().VerticalOffset(),
-	                                            Scroller().ViewportHeight(), 0);
+	const auto visible = m_layout->visiblePages(viewport(), 0);
 	for (auto i = visible.first; i < visible.end; ++i) {
 		invalidate(i);
 	}
@@ -205,13 +208,14 @@ void ViewerPage::cancelSelectionDrag() {
 	Pages().ReleasePointerCaptures();
 }
 void ViewerPage::beginSelection(Windows::Foundation::Point point) {
-	if (m_closed || !m_layout || !m_session ||
+	if (m_closed || m_presentation || !m_layout || !m_session ||
+	    m_cursorTool == CursorTool::Hand ||
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
 	}
 	clearTextSelection();
 	m_ignoreTextTap = false;
-	const auto page = m_layout->pageAt(point.Y);
+	const auto page = m_layout->pageAt(point.X, point.Y);
 	const auto& bounds = m_layout->pages()[page];
 	if (point.X < bounds.x || point.X > bounds.x + bounds.width ||
 	    point.Y < bounds.y || point.Y > bounds.y + bounds.height) {
@@ -263,7 +267,8 @@ void ViewerPage::updateSelection() {
 		return;
 	}
 	if (!m_textAnchor) {
-		const auto page = static_cast<int>(m_layout->pageAt(m_textStart->Y));
+		const auto page =
+		    static_cast<int>(m_layout->pageAt(m_textStart->X, m_textStart->Y));
 		const auto found = m_text.find(page);
 		if (found == m_text.end()) {
 			if (m_textFailed.contains(page)) {
@@ -274,10 +279,7 @@ void ViewerPage::updateSelection() {
 			return;
 		}
 		found->second.used = ++m_textClock;
-		const auto& rect = m_layout->pages()[page];
-		const auto hit = pdf::hitText(
-		    *found->second.text, (m_textStart->X - rect.x) / rect.width,
-		    (m_textStart->Y - rect.y) / rect.height, rect.width, rect.height);
+		const auto hit = hitText(page, *m_textStart);
 		if (!hit) {
 			cancelSelectionDrag();
 			return;
@@ -287,7 +289,8 @@ void ViewerPage::updateSelection() {
 	if (!m_textMoved) {
 		return;
 	}
-	const auto page = static_cast<int>(m_layout->pageAt(m_textPoint->Y));
+	const auto page =
+	    static_cast<int>(m_layout->pageAt(m_textPoint->X, m_textPoint->Y));
 	const auto found = m_text.find(page);
 	if (found == m_text.end()) {
 		if (m_textFailed.contains(page)) {
@@ -298,10 +301,7 @@ void ViewerPage::updateSelection() {
 		return;
 	}
 	found->second.used = ++m_textClock;
-	const auto& rect = m_layout->pages()[page];
-	const auto hit = pdf::hitText(
-	    *found->second.text, (m_textPoint->X - rect.x) / rect.width,
-	    (m_textPoint->Y - rect.y) / rect.height, rect.width, rect.height, true);
+	const auto hit = hitText(page, *m_textPoint, true);
 	const pdf::TextSelection next{*m_textAnchor, {page, hit.value_or(0)}};
 	if (m_selection != next) {
 		m_selection = next;
@@ -399,8 +399,7 @@ void ViewerPage::prefetchSelectedText() {
 	    Visibility() != Microsoft::UI::Xaml::Visibility::Visible) {
 		return;
 	}
-	const auto visible = m_layout->visiblePages(Scroller().VerticalOffset(),
-	                                            Scroller().ViewportHeight(), 0);
+	const auto visible = m_layout->visiblePages(viewport(), 0);
 	if (visible != m_textView) {
 		m_textView = visible;
 		m_textPrefetched.clear();
