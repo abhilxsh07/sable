@@ -139,16 +139,35 @@ void ViewerPage::setupSelection() {
 	m_textHighlight.Text(L"Highlight");
 	m_textHighlight.Click([weak](auto&&, auto&&) {
 		if (const auto self = weak.get()) {
-			self->highlightSelection();
+			self->markSelection(pdf::TextMarkup::Highlight);
 		}
 	});
 	m_textMenu.Items().Append(m_textHighlight);
+	m_textUnderline = MenuFlyoutItem();
+	m_textUnderline.Text(L"Underline");
+	m_textUnderline.Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->markSelection(pdf::TextMarkup::Underline);
+		}
+	});
+	m_textMenu.Items().Append(m_textUnderline);
+	m_textStrikeOut = MenuFlyoutItem();
+	m_textStrikeOut.Text(L"Strikethrough");
+	m_textStrikeOut.Click([weak](auto&&, auto&&) {
+		if (const auto self = weak.get()) {
+			self->markSelection(pdf::TextMarkup::StrikeOut);
+		}
+	});
+	m_textMenu.Items().Append(m_textStrikeOut);
 	m_textMenu.Items().Append(m_textCopy);
 	m_textMenu.Items().Append(all);
 	m_textMenu.Opening([weak](auto&&, auto&&) {
 		if (auto self = weak.get()) {
 			self->m_textCopy.IsEnabled(self->canCopySelection());
-			self->m_textHighlight.IsEnabled(self->canHighlightSelection());
+			const bool canMark = self->canMarkSelection();
+			self->m_textHighlight.IsEnabled(canMark);
+			self->m_textUnderline.IsEnabled(canMark);
+			self->m_textStrikeOut.IsEnabled(canMark);
 		}
 	});
 	Pages().ContextFlyout(m_textMenu);

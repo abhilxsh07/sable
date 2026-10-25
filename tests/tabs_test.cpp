@@ -68,6 +68,8 @@ struct TabsTest {
 	bool findOnly = false;
 	bool outlineOnly = false;
 	bool highlightOnly = false;
+	pdf::TextMarkup selectionMarkup = pdf::TextMarkup::Highlight;
+	std::string markupSubtype = "Highlight";
 	bool noteEditOnly = false;
 	bool notePlacementOnly = false;
 	bool notesOnly = false;
@@ -1251,24 +1253,30 @@ struct TabsTest {
 			    .as<Provider::IInvokeProvider>()
 			    .Invoke();
 		};
+		const auto item =
+		    selectionMarkup == pdf::TextMarkup::Underline   ? v.m_textUnderline
+		    : selectionMarkup == pdf::TextMarkup::StrikeOut ? v.m_textStrikeOut
+		                                                    : v.m_textHighlight;
 		switch (step) {
 		case 0:
-			check(!v.canHighlightSelection(),
-			      "empty selection could highlight");
+			check(!v.canMarkSelection(), "empty selection could highlight");
 			v.m_selection = pdf::TextSelection{{1, 4}, {0, 0}};
 			++v.m_selectionVersion;
 			v.m_copyAllowed = false;
 			v.m_textMenu.ShowAt(v.Scroller());
 			break;
 		case 1:
-			check(v.m_textHighlight.IsEnabled() && !v.m_textCopy.IsEnabled(),
+			check(v.m_textHighlight.IsEnabled() &&
+			          v.m_textUnderline.IsEnabled() &&
+			          v.m_textStrikeOut.IsEnabled() &&
+			          !v.m_textCopy.IsEnabled(),
 			      "highlight depends on copy permission");
 			notesGate = std::make_shared<std::promise<void>>();
 			engine.post(
 			    [wait = notesGate->get_future().share()] { wait.wait(); });
-			invoke(v.m_textHighlight);
+			invoke(item);
 			v.m_textMenu.Hide();
-			check(v.m_noteBusy && !v.canHighlightSelection(),
+			check(v.m_noteBusy && !v.canMarkSelection(),
 			      "highlight did not hold writes busy");
 			v.m_selection = pdf::TextSelection{{4, 1}, {4, 2}};
 			++v.m_selectionVersion;
@@ -1304,7 +1312,7 @@ struct TabsTest {
 				return;
 			}
 			check(v.m_commentScan.rows().size() == 2 &&
-			          v.m_commentScan.rows()[0].subtype == "Highlight" &&
+			          v.m_commentScan.rows()[0].subtype == markupSubtype &&
 			          v.m_commentScan.rows()[1].page == 1,
 			      "highlight comments not refreshed");
 			notesPath = std::filesystem::temp_directory_path() /
@@ -1320,7 +1328,7 @@ struct TabsTest {
 			check(notesSave.GetResults() && !v.m_notesDirty,
 			      "highlight save failed");
 			check(engine
-			          .run([path = notesPath] {
+			          .run([path = notesPath, subtype = markupSubtype] {
 				          const auto saved = pdf::openFile(path);
 				          if (!saved.document) {
 					          return false;
@@ -1329,7 +1337,7 @@ struct TabsTest {
 					          const auto notes =
 					              saved.document->annotations(page);
 					          if (!notes || notes->entries.size() != 1 ||
-					              notes->entries[0].subtype != "Highlight") {
+					              notes->entries[0].subtype != subtype) {
 						          return false;
 					          }
 				          }
@@ -1341,7 +1349,7 @@ struct TabsTest {
 			v.m_textMenu.ShowAt(v.Scroller());
 			break;
 		case 6:
-			invoke(v.m_textHighlight);
+			invoke(item);
 			v.m_textMenu.Hide();
 			break;
 		case 7:
@@ -1354,7 +1362,7 @@ struct TabsTest {
 			    "successful highlight kept old selection or lost dirty state");
 			v.CommentsList().SelectedIndex(2);
 			check(!v.EditNoteButton().IsEnabled(),
-			      "Highlight opened the plain Text editor");
+			      "Text markup opened the plain Text editor");
 			v.followComment(2);
 			notesSave = owner.saveNotes(current);
 			break;
@@ -1363,7 +1371,7 @@ struct TabsTest {
 			      "second save or highlight navigation failed");
 			v.m_selection = pdf::TextSelection{{-1, 0}, {-1, 4}};
 			++v.m_selectionVersion;
-			v.highlightSelection();
+			v.markSelection(selectionMarkup);
 			break;
 		case 9:
 			check(!v.m_notesDirty &&
@@ -1372,12 +1380,14 @@ struct TabsTest {
 			      "refused highlight lost selection or savepoint");
 			v.clearTextSelection();
 			v.m_textMenu.ShowAt(v.Scroller());
-			check(!v.m_textHighlight.IsEnabled(),
+			check(!v.m_textHighlight.IsEnabled() &&
+			          !v.m_textUnderline.IsEnabled() &&
+			          !v.m_textStrikeOut.IsEnabled(),
 			      "empty context highlight still enabled");
 			v.m_textMenu.Hide();
 			std::filesystem::remove(notesPath);
 			status.Text(
-			    L"PASS: real Highlight menu, independent copy permission, "
+			    L"PASS: text markup menu, independent copy permission, "
 			    L"pending close/save, hidden completion, newer selection, "
 			    L"comments, saved copy and retained refused selection");
 			probePass(owner.get_strong().as<Window>());
@@ -3262,6 +3272,18 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	state->highlightOnly =
 	    GetEnvironmentVariableW(L"SableHighlightTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";
+	if (GetEnvironmentVariableW(L"SableUnderlineTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true") {
+		state->highlightOnly = true;
+		state->selectionMarkup = pdf::TextMarkup::Underline;
+		state->markupSubtype = "Underline";
+	}
+	if (GetEnvironmentVariableW(L"SableStrikeOutTest", mode, 8) &&
+	    std::wstring_view(mode) == L"true") {
+		state->highlightOnly = true;
+		state->selectionMarkup = pdf::TextMarkup::StrikeOut;
+		state->markupSubtype = "StrikeOut";
+	}
 	state->noteEditOnly =
 	    GetEnvironmentVariableW(L"SableNoteEditTest", mode, 8) &&
 	    std::wstring_view(mode) == L"true";

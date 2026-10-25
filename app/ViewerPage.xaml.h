@@ -48,6 +48,7 @@ namespace pdf {
 class Engine;
 class PageFilter;
 class Session;
+enum class TextMarkup;
 class Surface;
 struct RenderResult;
 struct SessionInfo;
@@ -154,8 +155,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::fire_and_forget editNote(std::optional<NoteTarget> target = {});
 	void submitNote(int page, std::u16string text, std::u16string author,
 	                std::optional<NoteTarget> target = {});
-	bool canHighlightSelection() const;
-	void highlightSelection();
+	bool canMarkSelection() const;
+	void markSelection(pdf::TextMarkup markup);
 	void beginNoteEdit();
 	winrt::fire_and_forget editExistingNote(int page, int index,
 	                                        std::u16string expected);
@@ -259,6 +260,10 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyout m_textMenu{nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textCopy{nullptr};
 	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textHighlight{
+	    nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textUnderline{
+	    nullptr};
+	winrt::Microsoft::UI::Xaml::Controls::MenuFlyoutItem m_textStrikeOut{
 	    nullptr};
 	winrt::fire_and_forget askPassword(bool incorrect);
 	void opened(pdf::SessionInfo info);

@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Underline and strikethrough selections (2026-10-25)
+
+I add Underline and Strikethrough beside Highlight in the selection menu.
+All three share permission, busy, save and close guards. Completed writes
+stay dirty when hidden; newer and refused selections stay available.
+Comments, Save notes and close review handle the completed edits. The plain
+Text-note editor stays separate. Colour controls and other tools stay for
+later.
+
 ## Line markup transactions (2026-10-25)
 
 I use the same bounded page transaction, clipped PDF text quads, annotation
