@@ -40,6 +40,13 @@ struct HomePage : HomePageT<HomePage> {
 	void OpenRequested(std::function<void()> handler) {
 		m_openRequested = std::move(handler);
 	}
+	// a click on a Recent or Starred row asks for that file
+	void OpenFileRequested(
+	    std::function<void(const std::filesystem::path&)> handler) {
+		m_openFileRequested = std::move(handler);
+	}
+	// puts a file that opened at the top of Recent and saves the list
+	void Remember(const std::filesystem::path& path);
 	void onOpen(const winrt::Windows::Foundation::IInspectable&,
 	            const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 	void onOpenTapped(
@@ -56,6 +63,9 @@ struct HomePage : HomePageT<HomePage> {
 	                   const winrt::Microsoft::UI::Xaml::RoutedEventArgs&);
 
   private:
+#ifdef SABLE_SURFACE_TEST
+	friend struct TabsTest;
+#endif
 	void
 	onSizeChanged(const winrt::Windows::Foundation::IInspectable&,
 	              const winrt::Microsoft::UI::Xaml::SizeChangedEventArgs& args);
@@ -68,6 +78,7 @@ struct HomePage : HomePageT<HomePage> {
 	void save();
 
 	std::function<void()> m_openRequested;
+	std::function<void(const std::filesystem::path&)> m_openFileRequested;
 	helpers::RecentFiles m_recents;
 	std::filesystem::path m_recentsFile;
 	helpers::SliderValues m_values;

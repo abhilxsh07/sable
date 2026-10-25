@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
+#include "Appearance.h"
 #include "HomePage.xaml.h"
 #if __has_include("HomePage.g.cpp")
 #include "HomePage.g.cpp"
@@ -50,6 +51,7 @@ namespace fs = std::filesystem;
 // below this the location and size columns go, the name needs the room
 constexpr double COMPACT_WIDTH = 960;
 
+#ifndef SABLE_SURFACE_TEST
 // %APPDATA%\Sable\recent.json, next to config.json
 fs::path recentsFile() {
 	PWSTR raw = nullptr;
@@ -62,6 +64,7 @@ fs::path recentsFile() {
 	CoTaskMemFree(raw);
 	return dir.empty() ? fs::path{} : dir / L"Sable" / L"recent.json";
 }
+#endif
 
 // how far local time is from UTC right now, DST included
 chr::minutes utcOffset() {
@@ -139,13 +142,44 @@ namespace winrt::Sable::implementation {
 void HomePage::InitializeComponent() {
 	HomePageT::InitializeComponent();
 
+#ifndef SABLE_SURFACE_TEST
+	// the probes open lots of files; they keep Recent in memory instead
 	m_recentsFile = recentsFile();
 	if (!m_recentsFile.empty()) {
 		m_recents = helpers::loadRecents(m_recentsFile);
 	}
+#endif
 	SizeChanged({this, &HomePage::onSizeChanged});
+	// a row is its own Grid inside the list's container, and that Grid is
+	// what ItemClick hands over; the star button keeps its clicks to itself
+	RecentList().ItemClick(
+	    [weak = get_weak()](auto&&, const ItemClickEventArgs& args) {
+		    const auto row = args.ClickedItem().try_as<FrameworkElement>();
+		    const auto path =
+		        row ? unbox_value_or<hstring>(row.Tag(), {}) : hstring{};
+		    if (auto self = weak.get();
+		        self && !path.empty() && self->m_openFileRequested) {
+			    self->m_openFileRequested(fs::path{std::wstring_view{path}});
+		    }
+	    });
 	// Default is the active preset when NightPDF starts
 	showPreset("default");
+	rebuildList();
+}
+
+void HomePage::Remember(const std::filesystem::path& path) {
+	// another window may have changed the list since this one read it
+	if (!m_recentsFile.empty()) {
+		m_recents = helpers::loadRecents(m_recentsFile);
+	}
+	helpers::RecentFile file;
+	file.path = path;
+	file.openedAt = chr::floor<chr::seconds>(chr::system_clock::now());
+	std::error_code ec;
+	const auto size = fs::file_size(path, ec);
+	file.sizeBytes = ec ? 0 : size;
+	m_recents.add(std::move(file));
+	save();
 	rebuildList();
 }
 
@@ -322,6 +356,8 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
                        chr::minutes offset) {
 	Grid row;
 	row.MinHeight(60);
+	// what a click on the row opens
+	row.Tag(box_value(hstring{file.path.wstring()}));
 	// otherwise Narrator just says "Grid"
 	Automation::AutomationProperties::SetName(row, to_hstring(file.name));
 	setColumns(row, m_compact);
@@ -330,7 +366,7 @@ Grid HomePage::makeRow(const helpers::RecentFile& file, chr::sys_seconds now,
 	page.Width(30);
 	page.Height(38);
 	page.CornerRadius({3, 3, 3, 3});
-	page.Background(brush(0x2d2d2d));
+	page.Background(appearance::surface(0x2d2d2d));
 	page.BorderBrush(brush(0x3d3d3d));
 	page.BorderThickness({1, 1, 1, 1});
 	page.HorizontalAlignment(XHorizontalAlignment::Left);
