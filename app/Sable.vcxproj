@@ -245,6 +245,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<ClInclude Include="printing\apartment.h" />
 		<ClInclude Include="printing\graphics.h" />
 		<ClInclude Include="printing\options.h" />
+		<ClInclude Include="printing\controller.h" />
 		<ClInclude Include="pdf\page_cache.h" />
 		<ClInclude Include="pdf\session.h" />
 		<ClInclude Include="pdf\page_filter.h" />
@@ -320,6 +321,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="printing\job.cpp">
+			<PrecompiledHeader>NotUsing</PrecompiledHeader>
+		</ClCompile>
+		<ClCompile Include="printing\controller.cpp">
 			<PrecompiledHeader>NotUsing</PrecompiledHeader>
 		</ClCompile>
 		<ClCompile Include="pdf\printing.cpp">
