@@ -294,6 +294,19 @@ TEST(NavAction, F4TogglesTheSidebar) {
 	EXPECT_EQ(act(NavKey::F4, ALT), NavAction::None);
 }
 
+TEST(NavAction, RotationLeavesTextAndModifiedKeysAlone) {
+	EXPECT_EQ(act(NavKey::R), NavAction::RotateClockwise);
+	EXPECT_EQ(act(NavKey::R, SHIFT), NavAction::RotateCounterClockwise);
+	EXPECT_EQ(act(NavKey::R, {}, NavFocus::Button), NavAction::RotateClockwise);
+	for (const auto modifiers : {NavModifiers{}, SHIFT, CTRL, ALT}) {
+		EXPECT_EQ(act(NavKey::R, modifiers, NavFocus::TextBox),
+		          NavAction::None);
+	}
+	EXPECT_EQ(act(NavKey::R, CTRL), NavAction::None);
+	EXPECT_EQ(act(NavKey::R, ALT), NavAction::None);
+	EXPECT_EQ(act(NavKey::R, {true, true, true}), NavAction::None);
+}
+
 TEST(PageName, LabelOrGroupedNumber) {
 	EXPECT_EQ(helpers::pageName(2, NO_LABELS), "3");
 	EXPECT_EQ(helpers::pageName(999, NO_LABELS), "1,000");
@@ -307,5 +320,23 @@ TEST(NavAction, OtherKeysAndAlt) {
 	EXPECT_EQ(act(NavKey::G), NavAction::None);
 	EXPECT_EQ(act(NavKey::Left, ALT), NavAction::None);
 	EXPECT_EQ(act(NavKey::Home, ALT), NavAction::None);
+}
+TEST(NavAction, CursorToolsUseUnmodifiedKeysOutsideTextInputs) {
+	EXPECT_EQ(act(NavKey::H), NavAction::HandTool);
+	EXPECT_EQ(act(NavKey::S), NavAction::SelectTool);
+	EXPECT_EQ(act(NavKey::H, {}, NavFocus::Button), NavAction::HandTool);
+	for (const auto key : {NavKey::H, NavKey::S}) {
+		EXPECT_EQ(act(key, {}, NavFocus::TextBox), NavAction::None);
+		for (const auto modifiers : {SHIFT, CTRL, ALT, CTRL_SHIFT, CTRL_ALT}) {
+			EXPECT_EQ(act(key, modifiers), NavAction::None);
+		}
+	}
+}
+TEST(NavAction, WindowsChordsStayWithTheShell) {
+	for (const auto key : {NavKey::R, NavKey::H, NavKey::S, NavKey::Home,
+	                       NavKey::Down, NavKey::F4, NavKey::G}) {
+		EXPECT_EQ(act(key, {false, false, false, true}), NavAction::None);
+		EXPECT_EQ(act(key, {true, true, false, true}), NavAction::None);
+	}
 }
 } // namespace

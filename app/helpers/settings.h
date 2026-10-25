@@ -32,10 +32,11 @@ namespace helpers {
 // ordered, so the saved file lists keys the way upstream wrote them
 using Json = nlohmann::ordered_json;
 
-// the "general" section: the two checkboxes in the settings window
+// General preferences, including Sable's optional true-black appearance.
 struct GeneralSettings {
 	bool MaximizeOnOpen = true;
 	bool DisplayThumbs = true;
+	std::string Theme = "dark";
 
 	bool operator==(const GeneralSettings&) const = default;
 };
@@ -102,6 +103,7 @@ class SettingsStore {
 	}
 	// a failed save leaves the current settings alone
 	bool setGeneral(const std::string& key, bool value);
+	bool setTheme(const std::string& theme);
 	bool setKeybind(const std::string& id, const Keybinds& command);
 
   private:

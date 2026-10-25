@@ -102,6 +102,9 @@ enum class NavKey {
 	K,
 	N,
 	P,
+	R,
+	H,
+	S,
 	F4,
 };
 
@@ -109,6 +112,7 @@ struct NavModifiers {
 	bool ctrl = false;
 	bool alt = false;
 	bool shift = false;
+	bool windows = false;
 };
 
 // where the keyboard focus is: the pages, a button or a text field
@@ -131,6 +135,10 @@ enum class NavAction {
 	Last,
 	FocusPageBox,
 	ToggleSidebar,
+	RotateClockwise,
+	RotateCounterClockwise,
+	HandTool,
+	SelectTool,
 };
 
 // None leaves the key to the scroller. Previous on the first page and Next

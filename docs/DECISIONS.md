@@ -340,6 +340,28 @@ failure or cancellation returns no inventory. Cancellation releases the
 page and current annotation before returning. This step only reads existing
 annotations; editing, the comments panel and saving changes come later.
 
+## Obsidian appearance (2026-10-18)
+
+I wanted a true-black option that lets the app fade into the background.
+It's called Obsidian (AMOLED), under Settings > General > Theme. Dark stays
+as the default, with NightPDF's original greys.
+
+Obsidian uses solid #000000 for the reader canvas and the app's resting
+surfaces, including Settings, side panels, menus and dialogs. Text, icons,
+borders and hover, focus and selected states still need enough contrast to
+be easy to read and use. The music pane uses the same black background,
+without acrylic or the artwork tint. Switching back to Dark brings its
+current artwork tint back.
+
+PDF pages keep their colours and the chosen night filter; album art and
+filter previews keep theirs too. Print output is unchanged.
+
+The choice saves immediately and updates open windows as well as new ones.
+If saving fails, the app keeps the previous theme. The optional
+`general.Theme` setting accepts `dark` or `obsidian`; a missing or invalid
+value falls back to Dark without resetting anything else. Keeping Dark also
+keeps the original settings file shape. No dependency was added.
+
 ## Name: Sable (2026-10-06)
 
 This one wasn't really my call. When NightPDF was archived, its maintainer

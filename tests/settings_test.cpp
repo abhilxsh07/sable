@@ -490,3 +490,50 @@ TEST_F(SettingsFiles, LoadResetsABadSectionOnly) {
 	EXPECT_TRUE(settings.keybinds.at("LeftTab").keybind.empty());
 	EXPECT_EQ(settings.general, helpers::GeneralSettings{});
 }
+
+TEST(Settings, LegacyAndInvalidThemesKeepOtherPreferences) {
+	auto json = defaultsJson();
+	json["general"]["DisplayThumbs"] = false;
+	json["keybinds"]["LeftTab"]["keybind"] = Json::array();
+	for (const auto& value : {Json("unknown"), Json(42), Json(nullptr)}) {
+		json["general"]["Theme"] = value;
+		const auto settings = helpers::settingsFromJson(json, kVersion);
+		EXPECT_EQ(settings.general.Theme, "dark");
+		EXPECT_FALSE(settings.general.DisplayThumbs);
+		EXPECT_TRUE(settings.keybinds.at("LeftTab").keybind.empty());
+	}
+	json["general"].erase("Theme");
+	EXPECT_EQ(helpers::settingsFromJson(json, kVersion).general.Theme, "dark");
+}
+
+TEST_F(SettingsFiles, ThemePersistsAcrossReloadAndGeneralEdits) {
+	helpers::SettingsStore store(file(), kVersion);
+	const auto keybinds = store.get().keybinds;
+	ASSERT_TRUE(store.setTheme("obsidian"));
+	ASSERT_TRUE(store.setGeneral("DisplayThumbs", false));
+	auto loaded = helpers::loadSettings(file(), kVersion);
+	EXPECT_EQ(loaded.general.Theme, "obsidian");
+	EXPECT_FALSE(loaded.general.DisplayThumbs);
+	EXPECT_EQ(loaded.keybinds, keybinds);
+	EXPECT_EQ(Json::parse(read(file()))["general"]["Theme"], "obsidian");
+	ASSERT_TRUE(store.setTheme("dark"));
+	loaded = helpers::loadSettings(file(), kVersion);
+	EXPECT_EQ(loaded.general.Theme, "dark");
+	EXPECT_FALSE(loaded.general.DisplayThumbs);
+	EXPECT_EQ(loaded.keybinds, keybinds);
+}
+
+TEST_F(SettingsFiles, FailedAndUnknownThemesLeaveStoreAndFileAlone) {
+	helpers::SettingsStore store(file(), kVersion);
+	ASSERT_TRUE(store.setTheme("obsidian"));
+	const auto snapshot = store.get();
+	const auto contents = read(file());
+	EXPECT_FALSE(store.setTheme("light"));
+	EXPECT_EQ(store.get(), snapshot);
+	EXPECT_EQ(read(file()), contents);
+	write(file("blocked"), "not a directory");
+	helpers::SettingsStore blocked(file("blocked") / "config.json", kVersion);
+	EXPECT_FALSE(blocked.setTheme("obsidian"));
+	EXPECT_EQ(blocked.get().general.Theme, "dark");
+	EXPECT_EQ(read(file("blocked")), "not a directory");
+}
