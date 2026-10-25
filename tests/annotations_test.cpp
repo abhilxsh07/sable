@@ -1221,3 +1221,171 @@ TEST(Annotations, NewTextNotesRefuseSharedArraysWithoutSpreadingEdits) {
 	    })
 	    .get();
 }
+
+TEST(Annotations, LineMarkupPersistsQuadsAndStrokesAcrossPageRotations) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto markup :
+		         {pdf::TextMarkup::Underline, pdf::TextMarkup::StrikeOut}) {
+			    const auto source = annotationBytes("text.pdf");
+			    const auto opened = pdf::openDocument(source);
+			    const auto plain = pdf::openDocument(source);
+			    ASSERT_TRUE(opened.document && plain.document);
+			    auto& doc = *opened.document;
+			    ASSERT_EQ(doc.markText({{3, INT_MAX}, {0, 0}}, markup), 4);
+			    // i save before rendering so reopening has to make its own
+			    // strokes.
+			    const auto bytes = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(bytes);
+			    const auto saved = pdf::openDocument(*bytes);
+			    ASSERT_TRUE(saved.document);
+			    std::unique_ptr<fpdf_document_t__,
+			                    decltype(&FPDF_CloseDocument)>
+			        raw(FPDF_LoadMemDocument64(bytes->data(), bytes->size(),
+			                                   nullptr),
+			            &FPDF_CloseDocument);
+			    ASSERT_TRUE(raw);
+			    for (int pageIndex = 0; pageIndex < 4; ++pageIndex) {
+				    std::unique_ptr<fpdf_page_t__, decltype(&FPDF_ClosePage)>
+				        page(FPDF_LoadPage(raw.get(), pageIndex),
+				             &FPDF_ClosePage);
+				    ASSERT_TRUE(page);
+				    ASSERT_EQ(FPDFPage_GetAnnotCount(page.get()), 1);
+				    std::unique_ptr<fpdf_annotation_t__,
+				                    decltype(&FPDFPage_CloseAnnot)>
+				        note(FPDFPage_GetAnnot(page.get(), 0),
+				             &FPDFPage_CloseAnnot);
+				    ASSERT_TRUE(note);
+				    EXPECT_EQ(FPDFAnnot_GetSubtype(note.get()),
+				              markup == pdf::TextMarkup::Underline
+				                  ? FPDF_ANNOT_UNDERLINE
+				                  : FPDF_ANNOT_STRIKEOUT);
+				    EXPECT_EQ(FPDFAnnot_GetFlags(note.get()),
+				              FPDF_ANNOT_FLAG_PRINT);
+				    ASSERT_EQ(FPDFAnnot_CountAttachmentPoints(note.get()), 2u);
+				    for (std::size_t index = 0; index < 2; ++index) {
+					    FS_QUADPOINTSF quad{};
+					    ASSERT_TRUE(FPDFAnnot_GetAttachmentPoints(
+					        note.get(), index, &quad));
+					    EXPECT_GE(quad.x1, 20);
+					    EXPECT_LE(quad.x4, 380);
+					    EXPECT_GE(quad.y4, 30);
+					    EXPECT_LE(quad.y1, 270);
+					    EXPECT_LT(quad.x1, quad.x4);
+					    EXPECT_LT(quad.y4, quad.y1);
+				    }
+				    for (int rotation = 0; rotation < 4; ++rotation) {
+					    const auto before = plain.document->render(
+					        pageIndex, 720, 480, rotation);
+					    const auto a =
+					        doc.render(pageIndex, 720, 480, rotation);
+					    const auto b = saved.document->render(pageIndex, 720,
+					                                          480, rotation);
+					    ASSERT_TRUE(before && a && b);
+					    EXPECT_NE(before->pixels, b->pixels);
+					    EXPECT_EQ(a->pixels, b->pixels);
+				    }
+			    }
+			    const auto withAppearance = doc.serialize(1024 * 1024);
+			    ASSERT_TRUE(withAppearance);
+			    const auto rendered = pdf::openDocument(*withAppearance);
+			    ASSERT_TRUE(rendered.document);
+			    const auto final = rendered.document->render(0, 720, 480);
+			    const auto current = doc.render(0, 720, 480);
+			    ASSERT_TRUE(final && current);
+			    EXPECT_EQ(final->pixels, current->pixels);
+			    EXPECT_EQ(doc.markText({{4, 1}, {4, 2}}, markup), 1);
+			    const auto unicode = doc.annotations(4);
+			    ASSERT_TRUE(unicode && unicode->entries.size() == 1);
+			    EXPECT_TRUE(unicode->entries[0].contents.empty());
+			    EXPECT_EQ(annotationBytes("text.pdf"), source);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, LineMarkupKeepsPermissionsAndRollsBackSharedArrays) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto markup :
+		         {pdf::TextMarkup::Underline, pdf::TextMarkup::StrikeOut}) {
+			    const auto allowed =
+			        pdf::openFile(fixturePath("notes_allowed.pdf"));
+			    ASSERT_TRUE(allowed.document);
+			    EXPECT_FALSE(allowed.document->canCopy());
+			    EXPECT_EQ(allowed.document->markText({{0, 0}, {0, 4}}, markup),
+			              1);
+			    for (const auto* file :
+			         {"notes_denied.pdf", "restricted.pdf", "annotations.pdf",
+			          "note_attachment.pdf"}) {
+				    const auto opened = pdf::openFile(fixturePath(file));
+				    ASSERT_TRUE(opened.document);
+				    EXPECT_FALSE(
+				        opened.document->markText({{0, 0}, {0, 4}}, markup));
+				    EXPECT_FALSE(opened.document->modified());
+			    }
+			    for (const int count : {0, 1, 4095}) {
+				    for (const bool dirty : {false, true}) {
+					    if (dirty && count == 0) {
+						    continue;
+					    }
+					    const auto source = sharedHighlightBytes(count);
+					    const auto opened = pdf::openDocument(source);
+					    ASSERT_TRUE(opened.document);
+					    auto& doc = *opened.document;
+					    if (dirty) {
+						    ASSERT_EQ(doc.updateTextNote(0, 0, u"Existing",
+						                                 u"Changed"),
+						              true);
+					    }
+					    EXPECT_FALSE(
+					        doc.markText({{0, 0}, {0, INT_MAX}}, markup));
+					    EXPECT_FALSE(
+					        doc.markText({{1, INT_MAX}, {0, 0}}, markup));
+					    EXPECT_EQ(doc.modified(), dirty);
+					    for (int page = 0; page < 2; ++page) {
+						    const auto notes = doc.annotations(page);
+						    ASSERT_TRUE(notes);
+						    EXPECT_EQ(notes->entries.size(),
+						              static_cast<std::size_t>(count));
+						    if (count > 0) {
+							    EXPECT_EQ(notes->entries.back().contents,
+							              dirty ? "Changed" : "Existing");
+						    }
+					    }
+					    if (!dirty) {
+						    EXPECT_EQ(doc.serialize(1024 * 1024), source);
+					    }
+				    }
+			    }
+			    const auto clipped = pdf::openDocument(
+			        sharedHighlightBytes(0, "0 0 50 300", false));
+			    ASSERT_TRUE(clipped.document);
+			    ASSERT_EQ(
+			        clipped.document->markText({{0, 0}, {1, INT_MAX}}, markup),
+			        2);
+			    const auto notes = clipped.document->annotations(1);
+			    ASSERT_TRUE(notes && notes->entries.size() == 1 &&
+			                notes->entries[0].bounds);
+			    EXPECT_FLOAT_EQ(notes->entries[0].bounds->right, 50);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, InvalidMarkupLeavesTheDocumentUntouched) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto source = annotationBytes("text.pdf");
+		    const auto opened = pdf::openDocument(source);
+		    ASSERT_TRUE(opened.document);
+		    EXPECT_FALSE(opened.document->markText(
+		        {{0, 0}, {0, 4}}, static_cast<pdf::TextMarkup>(-1)));
+		    EXPECT_FALSE(opened.document->modified());
+		    EXPECT_EQ(opened.document->serialize(1024 * 1024), source);
+	    })
+	    .get();
+}

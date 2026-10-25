@@ -2,6 +2,19 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Line markup transactions (2026-10-25)
+
+I use the same bounded page transaction, clipped PDF text quads, annotation
+permission and shared-array rollback for Highlight, Underline and StrikeOut.
+The engine queue owns the chosen type along with the selection.
+
+I keep PDFium's default appearances: yellow Multiply for Highlight, black
+one-point lines for Underline and StrikeOut. Saving before the first render
+still leaves enough geometry to recreate those strokes on reopening.
+Page rotations work through the usual page transforms. Quads follow the
+axis-aligned text rectangles, so individually rotated glyph baselines are
+still a limitation.
+
 ## Highlight selection action (2026-10-25)
 
 I add Highlight to the text selection menu. It captures the current PDFium

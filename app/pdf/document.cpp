@@ -498,7 +498,26 @@ std::optional<bool> Document::updateTextNote(int pageIndex, int noteIndex,
 }
 
 std::optional<int> Document::highlightText(TextSelection selection) {
+	return markText(selection, TextMarkup::Highlight);
+}
+
+std::optional<int> Document::markText(TextSelection selection,
+                                      TextMarkup markup) {
 	if (offThread() || !canAnnotate()) {
+		return {};
+	}
+	FPDF_ANNOTATION_SUBTYPE subtype;
+	switch (markup) {
+	case TextMarkup::Highlight:
+		subtype = FPDF_ANNOT_HIGHLIGHT;
+		break;
+	case TextMarkup::Underline:
+		subtype = FPDF_ANNOT_UNDERLINE;
+		break;
+	case TextMarkup::StrikeOut:
+		subtype = FPDF_ANNOT_STRIKEOUT;
+		break;
+	default:
 		return {};
 	}
 	const auto [first, last] = ordered(selection);
@@ -617,7 +636,7 @@ std::optional<int> Document::highlightText(TextSelection selection) {
 			}
 		}
 		if (!restored) {
-			throw std::runtime_error("Couldn't roll back the text highlights.");
+			throw std::runtime_error("Couldn't roll back the text markup.");
 		}
 		m_modified = wasModified;
 		return {};
@@ -626,7 +645,7 @@ std::optional<int> Document::highlightText(TextSelection selection) {
 		target.index = FPDFPage_GetAnnotCount(target.page.get());
 		AnnotationPtr note(
 		    target.index >= 0 && target.index < 4096
-		        ? FPDFPage_CreateAnnot(target.page.get(), FPDF_ANNOT_HIGHLIGHT)
+		        ? FPDFPage_CreateAnnot(target.page.get(), subtype)
 		        : nullptr);
 		bool complete = note != nullptr;
 		if (note) {
@@ -650,7 +669,7 @@ std::optional<int> Document::highlightText(TextSelection selection) {
 	if (!matchesAnnotationCounts(m_handle, *expected)) {
 		return rollback();
 	}
-	// i use PDFium's default yellow and multiply-blended highlight appearance.
+	// i use PDFium's default markup appearances.
 	// see:
 	// https://pdfium.googlesource.com/pdfium/+/63155a9b3873593a0f0d06bede4046ba7914b3ac/core/fpdfdoc/cpdf_generateap.cpp
 	return static_cast<int>(added);

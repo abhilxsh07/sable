@@ -1419,3 +1419,69 @@ TEST_F(SessionTest, HighlightsRefuseWideSelectionsAndLeaveTheSessionUsable) {
 	const auto added = note.wait();
 	ASSERT_TRUE(added && added->index == 0);
 }
+
+TEST_F(SessionTest, LineMarkupOwnsItsTypeAndKeepsWriteAndCloseOrder) {
+	for (const auto type :
+	     {pdf::TextMarkup::Underline, pdf::TextMarkup::StrikeOut}) {
+		pdf::Session session(engine);
+		Reply<pdf::MarkupResult> first, second, unused;
+		EXPECT_FALSE(
+		    session.markText({{0, 0}, {0, 4}}, type, unused.callback()));
+		ASSERT_EQ(open(session, fixturePath("text.pdf")).error,
+		          pdf::Error::None);
+		EXPECT_FALSE(session.markText({{0, 0}, {0, 4}}, type, {}));
+		Gate gate(engine);
+		auto markup = type;
+		pdf::TextSelection selection{{1, 4}, {0, 0}};
+		ASSERT_TRUE(session.markText(selection, markup, first.callback()));
+		markup = static_cast<pdf::TextMarkup>(-1);
+		selection = {{-1, 0}, {-1, 4}};
+		ASSERT_TRUE(session.markText(selection, markup, unused.callback()));
+		const auto other = type == pdf::TextMarkup::Underline
+		                       ? pdf::TextMarkup::StrikeOut
+		                       : pdf::TextMarkup::Underline;
+		ASSERT_TRUE(
+		    session.markText({{0, 0}, {0, 4}}, other, second.callback()));
+		session.cancelRender();
+		session.cancelSearch();
+		session.cancelAnnotations();
+		gate.open();
+		const auto a = first.wait(), b = second.wait(), refused = unused.wait();
+		ASSERT_TRUE(a && b && refused);
+		EXPECT_EQ(a->count, 2);
+		EXPECT_EQ(b->count, 1);
+		EXPECT_TRUE(a->changed && b->changed);
+		EXPECT_FALSE(a->canceled || b->canceled || refused->canceled);
+		EXPECT_FALSE(refused->changed);
+		Reply<pdf::AnnotationsResult> inventory;
+		ASSERT_TRUE(session.annotations(0, inventory.callback()));
+		const auto notes = inventory.wait();
+		ASSERT_TRUE(notes && notes->annotations &&
+		            notes->annotations->entries.size() == 2);
+		EXPECT_EQ(notes->annotations->entries[0].subtype,
+		          type == pdf::TextMarkup::Underline ? "Underline"
+		                                             : "StrikeOut");
+		EXPECT_EQ(notes->annotations->entries[1].subtype,
+		          type == pdf::TextMarkup::Underline ? "StrikeOut"
+		                                             : "Underline");
+		Gate closeGate(engine);
+		Reply<pdf::MarkupResult> started, canceled;
+		ASSERT_TRUE(
+		    session.markText({{4, 0}, {4, 2}}, type,
+		                     [&session, reply = started.callback()](auto r) {
+			                     session.close();
+			                     reply(r);
+		                     }));
+		ASSERT_TRUE(
+		    session.markText({{0, 0}, {0, 4}}, type, canceled.callback()));
+		closeGate.open();
+		const auto finished = started.wait(), closed = canceled.wait();
+		ASSERT_TRUE(finished && closed);
+		EXPECT_TRUE(finished->changed);
+		EXPECT_FALSE(finished->canceled);
+		EXPECT_EQ(finished->count, 1);
+		EXPECT_TRUE(closed->canceled);
+		EXPECT_FALSE(closed->changed);
+		EXPECT_EQ(closed->count, 0);
+	}
+}
