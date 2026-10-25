@@ -1465,3 +1465,87 @@ TEST(Annotations, MarkupCommentsPreserveAppearanceAndExactContents) {
 	    })
 	    .get();
 }
+
+TEST(Annotations, MarkupCommentsRefuseProtectedMalformedAndSharedTargets) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    for (const auto& [type, name] :
+		         std::vector<std::pair<pdf::TextMarkup, std::string>>{
+		             {pdf::TextMarkup::Highlight, "Highlight"},
+		             {pdf::TextMarkup::Underline, "Underline"},
+		             {pdf::TextMarkup::StrikeOut, "StrikeOut"}}) {
+			    for (const auto& fields : std::vector<std::string>{
+			             "/F 64 /Contents (Old)", "/F 512 /Contents (Old)",
+			             "/RC (rich) /Contents (Old)", "/Contents 123",
+			             "/Contents <FEFFD800>",
+			             "/Contents (" + std::string(32768, 'x') + ")"}) {
+				    const auto source = editableNoteBytes(fields, name);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    EXPECT_FALSE(opened.document->markupComment(0, 0, type));
+				    EXPECT_FALSE(opened.document->updateMarkupComment(
+				        0, 0, type, {u"Old", true}, u"New"));
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), source);
+			    }
+			    for (int mode = 0; mode < 3; ++mode) {
+				    const auto source =
+				        sharedHighlightBytes(mode == 2 ? 2 : 1, "0 0 200 300",
+				                             mode == 0, name, mode == 1);
+				    const auto opened = pdf::openDocument(source);
+				    ASSERT_TRUE(opened.document);
+				    for (int page = 0; page < 2; ++page) {
+					    EXPECT_FALSE(
+					        opened.document->markupComment(page, 0, type));
+					    EXPECT_FALSE(opened.document->updateMarkupComment(
+					        page, 0, type, {u"Existing", true}, u"New"));
+				    }
+				    EXPECT_FALSE(opened.document->modified());
+				    EXPECT_EQ(opened.document->serialize(1024 * 1024), source);
+			    }
+			    const auto blank =
+			        pdf::openDocument(editableNoteBytes("/Contents ()", name));
+			    ASSERT_TRUE(blank.document);
+			    const auto empty = blank.document->markupComment(0, 0, type);
+			    ASSERT_TRUE(empty);
+			    EXPECT_TRUE(empty->present && empty->text.empty());
+			    EXPECT_FALSE(blank.document->updateMarkupComment(
+			        0, 0, type, {{}, false}, u"Stale"));
+			    EXPECT_EQ(blank.document->updateMarkupComment(0, 0, type,
+			                                                  *empty, u"Added"),
+			              true);
+		    }
+	    })
+	    .get();
+}
+
+TEST(Annotations, MarkupCommentPermissionsAndTypeAreIndependentOfCopy) {
+	pdf::Engine engine;
+	engine
+	    .run([] {
+		    const auto allowed =
+		        pdf::openFile(fixturePath("notes_allowed.pdf"));
+		    ASSERT_TRUE(allowed.document);
+		    ASSERT_EQ(allowed.document->markText({{0, 0}, {0, 4}},
+		                                         pdf::TextMarkup::Highlight),
+		              1);
+		    EXPECT_FALSE(allowed.document->canCopy());
+		    const auto snapshot = allowed.document->markupComment(
+		        0, 0, pdf::TextMarkup::Highlight);
+		    ASSERT_TRUE(snapshot);
+		    EXPECT_EQ(
+		        allowed.document->updateMarkupComment(
+		            0, 0, pdf::TextMarkup::Highlight, *snapshot, u"Allowed"),
+		        true);
+		    EXPECT_FALSE(allowed.document->markupComment(
+		        0, 0, pdf::TextMarkup::Underline));
+		    EXPECT_FALSE(allowed.document->markupComment(
+		        0, 0, static_cast<pdf::TextMarkup>(-1)));
+		    const auto denied = pdf::openFile(fixturePath("notes_denied.pdf"));
+		    ASSERT_TRUE(denied.document);
+		    EXPECT_FALSE(denied.document->markupComment(
+		        0, 0, pdf::TextMarkup::Highlight));
+	    })
+	    .get();
+}
