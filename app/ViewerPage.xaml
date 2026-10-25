@@ -35,6 +35,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			<ColumnDefinition Width="Auto" />
 		</Grid.ColumnDefinitions>
 
+		<Rectangle x:Name="PresentationBackdrop" Grid.RowSpan="2"
+			Grid.ColumnSpan="3" Fill="#000000" Visibility="Collapsed"
+			IsHitTestVisible="False" />
   <Border x:Name="FindBar" Grid.ColumnSpan="3" Visibility="Collapsed" Padding="8"
    Background="{ThemeResource SablePaneBrush}">
    <StackPanel Spacing="4">
@@ -268,6 +271,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 					</Button>
 				</StackPanel>
 			</Grid>
+		</Border>
+		<Border x:Name="PresentationControls" Grid.RowSpan="2" Grid.ColumnSpan="3"
+			Visibility="Collapsed" VerticalAlignment="Bottom"
+			HorizontalAlignment="Center" Background="#000000"
+			BorderBrush="#404040" BorderThickness="1" CornerRadius="8"
+			Padding="8" Margin="12">
+			<StackPanel Orientation="Horizontal" Spacing="8">
+				<Button x:Name="PresentationPrevious" AllowFocusOnInteraction="False" ToolTipService.ToolTip="Previous page"
+					AutomationProperties.Name="Previous page">
+					<FontIcon Glyph="&#xE76B;" FontSize="14" />
+				</Button>
+				<TextBlock x:Name="PresentationPosition" VerticalAlignment="Center"
+					AutomationProperties.LiveSetting="Polite" />
+				<Button x:Name="PresentationNext" AllowFocusOnInteraction="False" ToolTipService.ToolTip="Next page"
+					AutomationProperties.Name="Next page">
+					<FontIcon Glyph="&#xE76C;" FontSize="14" />
+				</Button>
+				<Button x:Name="PresentationExit" AllowFocusOnInteraction="False" Content="Exit" ToolTipService.ToolTip="Exit presentation (Esc)"
+					AutomationProperties.Name="Exit presentation" />
+			</StackPanel>
 		</Border>
 	</Grid>
 </Page>

@@ -1042,6 +1042,100 @@ void MainWindow::onPrint(const Windows::Foundation::IInspectable&,
 	});
 }
 
+void MainWindow::updateLayoutMenu() {
+	const auto current = Viewer();
+	ScrollModeMenu().IsEnabled(current != nullptr);
+	SpreadModeMenu().IsEnabled(current != nullptr);
+	const auto* v = current ? get_self<ViewerPage>(current) : nullptr;
+	const auto scroll = v ? v->scrollMode() : helpers::ScrollMode::Vertical;
+	const auto spread = v ? v->spreadMode() : helpers::SpreadMode::None;
+	ScrollVerticalItem().IsChecked(scroll == helpers::ScrollMode::Vertical);
+	ScrollHorizontalItem().IsChecked(scroll == helpers::ScrollMode::Horizontal);
+	ScrollWrappedItem().IsChecked(scroll == helpers::ScrollMode::Wrapped);
+	ScrollPageItem().IsChecked(scroll == helpers::ScrollMode::Page);
+	SpreadNoneItem().IsChecked(spread == helpers::SpreadMode::None);
+	SpreadOddItem().IsChecked(spread == helpers::SpreadMode::Odd);
+	SpreadEvenItem().IsChecked(spread == helpers::SpreadMode::Even);
+	ClickSpreadsItem().IsChecked(v && v->m_clickSpreads);
+	ClickSpreadsItem().IsEnabled(v && v->spreadClicksEnabled());
+}
+void MainWindow::onClickSpreads(const Windows::Foundation::IInspectable&,
+                                const RoutedEventArgs&) {
+	commitMenuEdit();
+	if (const auto current = Viewer(); current && !m_closing) {
+		auto* viewer = get_self<ViewerPage>(current);
+		viewer->m_clickSpreads = ClickSpreadsItem().IsChecked();
+		updateLayoutMenu();
+	}
+}
+void MainWindow::onPageLayout(const Windows::Foundation::IInspectable& sender,
+                              const RoutedEventArgs&) {
+	commitMenuEdit();
+	if (const auto current = Viewer(); current && !m_closing) {
+		const auto item = sender.try_as<Controls::RadioMenuFlyoutItem>();
+		if (!item) {
+			return;
+		}
+		auto* v = get_self<ViewerPage>(current);
+		const auto tag = unbox_value_or<hstring>(item.Tag(), L"");
+		auto scroll = v->scrollMode();
+		auto spread = v->spreadMode();
+		if (tag == L"scroll:0") {
+			scroll = helpers::ScrollMode::Vertical;
+		} else if (tag == L"scroll:1") {
+			scroll = helpers::ScrollMode::Horizontal;
+		} else if (tag == L"scroll:2") {
+			scroll = helpers::ScrollMode::Wrapped;
+		} else if (tag == L"scroll:3") {
+			scroll = helpers::ScrollMode::Page;
+		} else if (tag == L"spread:0") {
+			spread = helpers::SpreadMode::None;
+		} else if (tag == L"spread:1") {
+			spread = helpers::SpreadMode::Odd;
+		} else if (tag == L"spread:2") {
+			spread = helpers::SpreadMode::Even;
+		} else {
+			return;
+		}
+		v->setLayout(scroll, spread);
+		updateLayoutMenu();
+	}
+}
+
+void MainWindow::updateCursorToolMenu() {
+	const auto viewer = Viewer();
+	CursorToolMenu().IsEnabled(viewer != nullptr);
+	const bool hand = viewer && get_self<ViewerPage>(viewer)->cursorTool() ==
+	                                ViewerPage::CursorTool::Hand;
+	HandToolItem().IsChecked(hand);
+	SelectToolItem().IsChecked(!hand);
+}
+void MainWindow::onCursorTool(const Windows::Foundation::IInspectable& sender,
+                              const RoutedEventArgs&) {
+	commitMenuEdit();
+	if (const auto viewer = Viewer(); viewer && !m_closing) {
+		const auto item = sender.try_as<Controls::RadioMenuFlyoutItem>();
+		if (!item) {
+			return;
+		}
+		get_self<ViewerPage>(viewer)->setCursorTool(
+		    unbox_value_or<hstring>(item.Tag(), L"") == L"hand"
+		        ? ViewerPage::CursorTool::Hand
+		        : ViewerPage::CursorTool::Select);
+		updateCursorToolMenu();
+	}
+}
+
+void MainWindow::onDocumentProperties(const Windows::Foundation::IInspectable&,
+                                      const RoutedEventArgs&) {
+	commitMenuEdit();
+	if (!m_closing) {
+		if (auto viewer = Viewer()) {
+			get_self<ViewerPage>(viewer)->showProperties();
+		}
+	}
+}
+
 void MainWindow::onOpenSettings(const Windows::Foundation::IInspectable&,
                                 const RoutedEventArgs&) {
 	commitMenuEdit();
@@ -1215,6 +1309,16 @@ void MainWindow::onResetZoom(const Windows::Foundation::IInspectable&,
 	commitMenuEdit();
 	if (auto viewer = Viewer()) {
 		get_self<ViewerPage>(viewer)->zoomReset();
+	}
+}
+
+void MainWindow::onRotateView(const Windows::Foundation::IInspectable& sender,
+                              const RoutedEventArgs&) {
+	commitMenuEdit();
+	if (auto viewer = Viewer()) {
+		const auto item = sender.as<Controls::MenuFlyoutItem>();
+		get_self<ViewerPage>(viewer)->rotateView(
+		    unbox_value_or<hstring>(item.Tag(), L"") == L"-1" ? -1 : 1);
 	}
 }
 
