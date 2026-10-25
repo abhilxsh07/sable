@@ -34,10 +34,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string>
 #include <string_view>
 
-// Where a sample file from tests/fixtures ends up after a build: in a
-// fixtures folder next to the test exe. I work it out from the exe and not
-// from the working folder, so it doesn't matter where the tests are started.
-inline std::filesystem::path fixturePath(std::string_view name) {
+// The folder the test exe is in, or empty when Windows can't say. I work
+// files out from here and not from the working folder, so it doesn't matter
+// where the tests are started.
+inline std::filesystem::path exeFolder() {
 	// a path can be longer than MAX_PATH, so the buffer doubles until the
 	// whole of it fits
 	std::wstring exe(MAX_PATH, L'\0');
@@ -45,8 +45,7 @@ inline std::filesystem::path fixturePath(std::string_view name) {
 		const DWORD length = GetModuleFileNameW(nullptr, exe.data(),
 		                                        static_cast<DWORD>(exe.size()));
 		if (length == 0) {
-			// no idea where the exe is, so this is a guess that fails to open
-			return std::filesystem::path("fixtures") / std::string(name);
+			return {};
 		}
 		if (length < exe.size()) {
 			exe.resize(length);
@@ -54,8 +53,37 @@ inline std::filesystem::path fixturePath(std::string_view name) {
 		}
 		exe.resize(exe.size() * 2);
 	}
-	return std::filesystem::path(exe).parent_path() / "fixtures" /
-	       std::string(name);
+	return std::filesystem::path(exe).parent_path();
+}
+
+// Where a sample file from tests/fixtures ends up after a build: in a
+// fixtures folder next to the test exe. Without the exe's folder this is a
+// guess that fails to open.
+inline std::filesystem::path fixturePath(std::string_view name) {
+	return exeFolder() / "fixtures" / std::string(name);
+}
+
+// tests/golden/filter_expected.json isn't copied next to the exe. Both the
+// working folder and the exe are in the repo or in <repo>/<Platform>/<Config>,
+// so this walks up from each of them. Empty when neither gets there.
+inline std::filesystem::path goldenPath() {
+	namespace fs = std::filesystem;
+	std::error_code ec;
+	for (fs::path dir : {fs::current_path(ec), exeFolder()}) {
+		for (int i = 0; i < 8 && !dir.empty(); i++) {
+			for (const char* sub : {"tests/golden", "golden", "."}) {
+				const fs::path candidate = dir / sub / "filter_expected.json";
+				if (fs::is_regular_file(candidate, ec)) {
+					return candidate;
+				}
+			}
+			if (dir == dir.parent_path()) {
+				break;
+			}
+			dir = dir.parent_path();
+		}
+	}
+	return {};
 }
 
 // A new, empty folder under the system temp dir that nothing else is using.

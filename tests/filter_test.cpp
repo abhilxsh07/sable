@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <nlohmann/json.hpp>
 
 #include "filter.h"
+#include "pdf_test_files.h"
 
 using helpers::Rgb8;
 using helpers::Rgba;
@@ -70,27 +71,6 @@ int maxDiff(Rgb8 a, Rgb8 b) {
 std::string show(Rgb8 c) {
 	return "(" + std::to_string(c.r) + "," + std::to_string(c.g) + "," +
 	       std::to_string(c.b) + ")";
-}
-
-// walks up from the working directory, which is the repo root or the folder
-// the exe is in (<repo>/<Platform>/<Config>)
-std::filesystem::path findGolden() {
-	namespace fs = std::filesystem;
-	std::error_code ec;
-	fs::path dir = fs::current_path(ec);
-	for (int i = 0; i < 8 && !dir.empty(); i++) {
-		for (const char* sub : {"tests/golden", "golden", "."}) {
-			const fs::path candidate = dir / sub / "filter_expected.json";
-			if (fs::is_regular_file(candidate, ec)) {
-				return candidate;
-			}
-		}
-		if (dir == dir.parent_path()) {
-			break;
-		}
-		dir = dir.parent_path();
-	}
-	return {};
 }
 } // namespace
 
@@ -349,7 +329,7 @@ TEST(ApplyMatrices, EqualsTheCpuPathForAGridOfColors) {
 
 // Chromium's own output, made by tests/golden/make_fixtures.py
 TEST(Golden, MatchesChromium) {
-	const std::filesystem::path path = findGolden();
+	const std::filesystem::path path = goldenPath();
 	if (path.empty()) {
 		GTEST_SKIP() << "tests/golden/filter_expected.json not found, make it "
 		                "with: uv run tests/golden/make_fixtures.py";
