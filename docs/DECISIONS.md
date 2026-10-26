@@ -2,6 +2,13 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Notices drop in (2026-11-16)
+
+The notice row under the command bar still takes its height at once, so
+the pages move down a single time, but the notice fades in over 167 ms
+while sliding 16 px down from the bar, and fades out over 83 ms. A new
+notice that replaces one already showing only changes the text.
+
 ## The command bar cross-fades (2026-11-16)
 
 When Find, the Comment row or the Fill & Sign row takes the command bar,

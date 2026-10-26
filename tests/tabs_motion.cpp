@@ -235,6 +235,36 @@ void TabsTest::motionTick(MainWindow& owner) {
 		}
 		frames("Find");
 		break;
+	case 9: {
+		// the notice row drops in under the command bar and fades out
+		const auto notice = v.Message();
+		v.showNotice(L"Motion probe", InfoBarSeverity::Error);
+		check(notice.Visibility() == Visibility::Visible && notice.IsOpen(),
+		      "the notice didn't show");
+		expectMotion(notice, 0, -motion::SLIDE, "the notice row");
+		v.clearNotice();
+		check(notice.Visibility() == Visibility::Collapsed,
+		      "the notice row waited for its fade");
+		motion::setEnabledForTest(false);
+		v.showNotice(L"Motion probe", InfoBarSeverity::Error);
+		expectStill(notice, "the notice row");
+		v.clearNotice();
+		motion::setEnabledForTest(true);
+		motionWatchFrames();
+		break;
+	}
+	case 10:
+		if (!motionCycle([&v](bool open) {
+			    if (open) {
+				    v.showNotice(L"Motion probe", InfoBarSeverity::Error);
+			    } else {
+				    v.clearNotice();
+			    }
+		    })) {
+			return;
+		}
+		frames("the notice row");
+		break;
 	default:
 		status.Text(L"PASS: motion tokens and the animation setting");
 		probePass(owner.get_strong().as<Window>());

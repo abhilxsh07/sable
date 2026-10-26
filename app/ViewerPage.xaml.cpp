@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "Motion.h"
 #if __has_include("ViewerPage.g.cpp")
 #include "ViewerPage.g.cpp"
 #endif
@@ -1754,8 +1755,13 @@ void ViewerPage::showNotice(const hstring& text, InfoBarSeverity severity) {
 	Message().Severity(severity);
 	Message().Message(text);
 	Message().IsClosable(true);
+	// a notice something else closed (IsOpen alone) still holds its row;
+	// collapse it so the new one enters
+	if (!Message().IsOpen()) {
+		motion::show(Message(), false);
+	}
 	Message().IsOpen(true);
-	Message().Visibility(XVisibility::Visible);
+	motion::show(Message(), true, motion::From::Above);
 	// a success closes itself; an error stays until it's closed or what it
 	// describes changes (A-10)
 	if (severity == InfoBarSeverity::Success) {
@@ -1789,8 +1795,9 @@ void ViewerPage::clearNotice() {
 	if (m_noticeTimer) {
 		m_noticeTimer.Stop();
 	}
+	// the row goes at once and the notice fades out over it
+	motion::show(Message(), false);
 	Message().IsOpen(false);
-	Message().Visibility(XVisibility::Collapsed);
 }
 
 void ViewerPage::showMessage(const hstring& text) {
