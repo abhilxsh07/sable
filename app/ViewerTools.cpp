@@ -548,15 +548,10 @@ void ViewerPage::updateQuickTools() {
 	// no command bar (a tab that failed or is still loading): no strip
 	const bool chrome = DocumentBar().Visibility() == Visibility::Visible;
 	const bool finding = findOpen();
-	CommentTools().Visibility(chrome && !presenting() && !organizing() &&
-	                                  !finding && m_toolRow == ToolRow::Comment
-	                              ? Visibility::Visible
-	                              : Visibility::Collapsed);
-	FillSignTools().Visibility(chrome && !presenting() && !organizing() &&
-	                                   !finding &&
-	                                   m_toolRow == ToolRow::FillSign
-	                               ? Visibility::Visible
-	                               : Visibility::Collapsed);
+	// the rows cross-fade with each other and with Find (motion::show)
+	const bool row = chrome && !presenting() && !organizing() && !finding;
+	motion::show(CommentTools(), row && m_toolRow == ToolRow::Comment);
+	motion::show(FillSignTools(), row && m_toolRow == ToolRow::FillSign);
 	QuickTools().Visibility(s_quickTools && chrome && !presenting() &&
 	                                !organizing()
 	                            ? Visibility::Visible

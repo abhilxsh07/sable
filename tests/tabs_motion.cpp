@@ -179,6 +179,62 @@ void TabsTest::motionTick(MainWindow& owner) {
 		}
 		frames("the tool pane");
 		break;
+	case 6:
+		v.openFind();
+		break;
+	case 7: {
+		// the command bar's contents cross-fade: Find, the Comment and
+		// Fill & Sign rows, and what the bar holds the rest of the time
+		using Row = ViewerPage::ToolRow;
+		check(v.findOpen(), "Find didn't open");
+		expectMotion(v.FindBar(), 0, 0, "Find");
+		expectMotion(v.AllToolsButton(), 0, 0, "the bar's All tools button");
+		expectMotion(v.BarActions(), 0, 0, "the bar's actions");
+		v.closeFind();
+		check(!v.findOpen() &&
+		          v.BarActions().Visibility() == Visibility::Visible,
+		      "the command bar waited for Find's fade");
+		v.m_toolRow = Row::Comment;
+		v.updateQuickTools();
+		expectMotion(v.CommentTools(), 0, 0, "the Comment row");
+		v.m_toolRow = Row::FillSign;
+		v.updateQuickTools();
+		expectMotion(v.FillSignTools(), 0, 0, "the Fill & Sign row");
+		check(v.CommentTools().Visibility() == Visibility::Collapsed &&
+		          v.FillSignTools().Visibility() == Visibility::Visible,
+		      "Fill & Sign didn't take the Comment row's place");
+		v.m_toolRow = Row::None;
+		v.updateQuickTools();
+		motion::setEnabledForTest(false);
+		v.openFind();
+		expectStill(v.FindBar(), "Find");
+		expectStill(v.BarActions(), "the bar's actions");
+		v.closeFind();
+		expectStill(v.AllToolsButton(), "the bar's All tools button");
+		v.m_toolRow = Row::Comment;
+		v.updateQuickTools();
+		expectStill(v.CommentTools(), "the Comment row");
+		v.m_toolRow = Row::FillSign;
+		v.updateQuickTools();
+		expectStill(v.FillSignTools(), "the Fill & Sign row");
+		v.m_toolRow = Row::None;
+		v.updateQuickTools();
+		motion::setEnabledForTest(true);
+		motionWatchFrames();
+		break;
+	}
+	case 8:
+		if (!motionCycle([&v](bool open) {
+			    if (open) {
+				    v.openFind();
+			    } else {
+				    v.closeFind();
+			    }
+		    })) {
+			return;
+		}
+		frames("Find");
+		break;
 	default:
 		status.Text(L"PASS: motion tokens and the animation setting");
 		probePass(owner.get_strong().as<Window>());

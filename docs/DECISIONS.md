@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## The command bar cross-fades (2026-11-16)
+
+When Find, the Comment row or the Fill & Sign row takes the command bar,
+what leaves fades out over 83 ms and what arrives fades in over 167 ms,
+without moving. The same goes for find, save, print and More as Organize
+takes the bar and gives it back; Organize's own actions and Done still
+appear at once. As with the pane, the bar's contents switch at once and
+only the drawing overlaps, and with animation effects off nothing fades.
+
 ## The tool pane fades in (2026-11-16)
 
 Opening the tool pane gives its column the full width straight away, so

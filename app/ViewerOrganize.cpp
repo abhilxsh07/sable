@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "ViewerPage.xaml.h"
+#include "Motion.h"
 #include "pdf/session.h"
 #include "helpers/attachment_file.h"
 #include "helpers/keybinds.h"
@@ -271,8 +272,7 @@ void ViewerPage::showOrganizeBar(bool show) {
 	                                  : XVisibility::Collapsed);
 	OrganizeDone().Visibility(show ? XVisibility::Visible
 	                               : XVisibility::Collapsed);
-	BarActions().Visibility(show ? XVisibility::Collapsed
-	                             : XVisibility::Visible);
+	motion::show(BarActions(), !show);
 }
 
 void ViewerPage::releaseOrganizeTiles() {

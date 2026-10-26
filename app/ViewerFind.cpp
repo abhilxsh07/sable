@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pch.h"
 #include "helpers/logging.h"
 #include "ViewerPage.xaml.h"
+#include "Motion.h"
 #include "pdf/session.h"
 #include "pdf/surface.h"
 #include "pdf/surface_util.h"
@@ -98,12 +99,10 @@ void ViewerPage::setupFind() {
 }
 // Find takes the place of everything else in the command bar
 void ViewerPage::showFindBar(bool show) {
-	using XVisibility = Microsoft::UI::Xaml::Visibility;
-	FindBar().Visibility(show ? XVisibility::Visible : XVisibility::Collapsed);
-	AllToolsButton().Visibility(show ? XVisibility::Collapsed
-	                                 : XVisibility::Visible);
-	BarActions().Visibility(show || organizing() ? XVisibility::Collapsed
-	                                             : XVisibility::Visible);
+	// a cross-fade: what leaves goes over 83 ms, what arrives over 167
+	motion::show(FindBar(), show);
+	motion::show(AllToolsButton(), !show);
+	motion::show(BarActions(), !show && !organizing());
 	updateQuickTools();
 }
 void ViewerPage::openFind() {
