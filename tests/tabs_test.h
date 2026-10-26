@@ -145,10 +145,16 @@ struct TabsTest {
 	ScrollViewer::ViewChanged_revoker motionViewChanged;
 	// 20 opens and closes of one element, timing the frames as they go
 	int motionCycles = 0;
-	double motionWorstGap = 0;
+	// the first frame after each change (layout and all) with animations
+	// off and on, and the worst frame after it while something moves
+	double motionChangeOff = 0, motionChangeOn = 0, motionMoving = 0;
+	double motionAfterOff = 0;
+	int motionFrame = 0;
 	std::chrono::steady_clock::time_point motionLastFrame{};
 	std::chrono::steady_clock::time_point motionToggledAt{};
 	Media::CompositionTarget::Rendering_revoker motionRendering;
+	std::vector<std::chrono::steady_clock::time_point> musicClosings;
+	bool musicClosingWatch = false;
 	void motionWatchFrames();
 	bool motionCycle(const std::function<void(bool)>& toggle);
 	int panelsRound = 0;

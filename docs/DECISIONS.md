@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## The music pane on the tokens (2026-11-16)
+
+The music flyout opens over 167 ms, rising 16 px, and fades out over 83 ms
+before it closes; a second click part-way carries on from where it is.
+Closing never waits more than two exit lengths, even if the fade doesn't
+finish. Its tint and artwork change over 250 ms (from 300), the tint once
+instead of twice and from the colour on screen, and new artwork arriving
+during a cross-fade takes over from the one that was coming in.
+
 ## Notices drop in (2026-11-16)
 
 The notice row under the command bar still takes its height at once, so

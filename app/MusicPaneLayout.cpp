@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "pch.h"
 #include "MusicPane.h"
+#include "Motion.h"
 #include <algorithm>
 #include <winrt/Microsoft.UI.Composition.h>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
@@ -260,7 +261,7 @@ void Pane::layout() {
 	m_flyout.Closing([weak](auto&&, const auto& args) {
 		if (const auto self = weak.lock(); self && !self->m_closed &&
 		                                   !self->m_allowClose &&
-		                                   self->animations()) {
+		                                   ::motion::enabled()) {
 			args.Cancel(true);
 			if (!self->m_closing) {
 				self->m_closing = true;
@@ -273,6 +274,15 @@ void Pane::layout() {
 }
 void Pane::show() {
 	if (m_closed || !m_button.XamlRoot()) {
+		return;
+	}
+	// asked for again while it fades out: it never closed, so it comes
+	// back from where the fade got to
+	if (m_fadingOut) {
+		m_allowClose = m_closing = false;
+		m_open = true;
+		motion(true);
+		progress();
 		return;
 	}
 	const auto root = m_button.XamlRoot().Content().as<FrameworkElement>();

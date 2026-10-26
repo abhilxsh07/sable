@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <cmath>
 #include <string>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 
 namespace winrt::Sable::implementation {
 namespace {
@@ -40,12 +41,15 @@ std::chrono::milliseconds resourceDuration(const wchar_t* key) {
 }
 // over this, a frame during a transition was dropped at 60 Hz (audit 7.3)
 constexpr double FRAME_BUDGET_MS = 20;
+// one frame at 60 Hz
+constexpr double FRAME_MS = 1000. / 60;
 constexpr int CYCLES = 20;
 } // namespace
 
 void TabsTest::motionWatchFrames() {
 	motionCycles = 0;
-	motionWorstGap = 0;
+	motionChangeOff = motionChangeOn = motionMoving = motionAfterOff = 0;
+	motionFrame = 0;
 	motionLastFrame = {};
 	motionToggledAt = {};
 	motionRendering = Media::CompositionTarget::Rendering(
@@ -56,22 +60,37 @@ void TabsTest::motionWatchFrames() {
 		        now - motionToggledAt <= motion::LONGEST) {
 			    const std::chrono::duration<double, std::milli> gap =
 			        now - motionLastFrame;
-			    motionWorstGap = (std::max)(motionWorstGap, gap.count());
+			    // the frame that makes the change lays out and redraws the
+			    // pages whether or not anything animates; the ones after it
+			    // are the transition
+			    const bool animated = motionCycles > 2 * CYCLES;
+			    if (++motionFrame == 1) {
+				    auto& change = animated ? motionChangeOn : motionChangeOff;
+				    change = (std::max)(change, gap.count());
+			    } else {
+				    auto& after = animated ? motionMoving : motionAfterOff;
+				    after = (std::max)(after, gap.count());
+			    }
 		    }
 		    motionLastFrame = now;
 	    });
 }
 
-// one open or close per tick; true once all of them have run and the
-// frames between stayed within budget
+// one open or close per tick, first with animations off as a baseline and
+// then with them on; true once all of them have run
 bool TabsTest::motionCycle(const std::function<void(bool)>& toggle) {
-	if (motionCycles < 2 * CYCLES) {
+	if (motionCycles < 4 * CYCLES) {
+		motion::setEnabledForTest(motionCycles >= 2 * CYCLES);
 		motionToggledAt = std::chrono::steady_clock::now();
+		motionFrame = 0;
 		toggle(motionCycles % 2 == 0);
 		++motionCycles;
+		// the time limit is per toggle, not for all eighty of them
+		ticks = 3;
 		return false;
 	}
 	motionRendering.revoke();
+	motion::setEnabledForTest(true);
 	return true;
 }
 
@@ -106,9 +125,20 @@ void TabsTest::motionTick(MainWindow& owner) {
 		      what + " animated with animations off");
 	};
 	const auto frames = [&](const std::string& what) {
-		check(motionWorstGap <= FRAME_BUDGET_MS,
-		      "frames " + std::to_string(std::lround(motionWorstGap)) +
-		          " ms apart while " + what + " moved");
+		// the pages redraw after the change with or without motion, so a
+		// slow frame that motion didn't add isn't held against it
+		check(motionMoving <=
+		          (std::max)(FRAME_BUDGET_MS, motionAfterOff + FRAME_MS),
+		      "frames " + std::to_string(std::lround(motionMoving)) +
+		          " ms apart while " + what + " moved (" +
+		          std::to_string(std::lround(motionAfterOff)) +
+		          " ms at most without motion)");
+		// motion may not make the change itself drop a frame
+		check(motionChangeOn <= motionChangeOff + FRAME_MS,
+		      "changing " + what + " took " +
+		          std::to_string(std::lround(motionChangeOn)) +
+		          " ms with motion against " +
+		          std::to_string(std::lround(motionChangeOff)) + " ms without");
 	};
 	switch (step) {
 	case 0:
@@ -264,6 +294,87 @@ void TabsTest::motionTick(MainWindow& owner) {
 			return;
 		}
 		frames("the notice row");
+		break;
+	case 11: {
+		// the music pane opens over 167 ms, fades out over 83 ms and then
+		// closes, and changes tint and artwork over 250 ms
+		auto& state = musicSnapshot.state;
+		state.player = music::Player::Spotify;
+		state.playback = music::Playback::Playing;
+		state.title = "A test track";
+		owner.m_music->update(musicSnapshot);
+		motion::setEnabledForTest(true);
+		owner.m_music->show();
+		break;
+	}
+	case 12: {
+		auto& pane = *owner.m_music;
+		if (!pane.m_open) {
+			return;
+		}
+		check(pane.m_enterLength == motion::FAST,
+		      "the music pane doesn't open over 167 ms");
+		pane.tint({200, 40, 40});
+		check(pane.m_tintLength == motion::NORMAL &&
+		          pane.m_background.TintTransitionDuration() ==
+		              Windows::Foundation::TimeSpan(motion::NORMAL) &&
+		          pane.m_transition.Children().Size() == 3,
+		      "the music tint doesn't change over 250 ms in one go");
+		pane.m_art.Source(Media::Imaging::WriteableBitmap(4, 4));
+		pane.setArtwork(nullptr, {});
+		check(pane.m_artLength == motion::NORMAL && pane.m_artFading,
+		      "the music artwork doesn't cross-fade over 250 ms");
+		musicClosings.clear();
+		if (!musicClosingWatch) {
+			musicClosingWatch = true;
+			pane.m_flyout.Closing([this](auto&&, auto&&) {
+				musicClosings.push_back(std::chrono::steady_clock::now());
+			});
+		}
+		pane.m_flyout.Hide();
+		check(pane.m_exitLength == motion::FASTER && pane.m_fadingOut,
+		      "the music pane doesn't fade out over 83 ms");
+		break;
+	}
+	case 13: {
+		auto& pane = *owner.m_music;
+		check(musicClosings.size() >= 2 && !pane.m_open,
+		      "the music pane didn't close after its fade");
+		const auto held = std::chrono::duration_cast<std::chrono::milliseconds>(
+		    musicClosings[1] - musicClosings[0]);
+		check(held >= motion::FASTER - std::chrono::milliseconds(20) &&
+		          held <= motion::FASTER + std::chrono::milliseconds(50),
+		      "the music pane held its close for " +
+		          std::to_string(held.count()) + " ms");
+		motion::setEnabledForTest(false);
+		pane.show();
+		break;
+	}
+	case 14: {
+		auto& pane = *owner.m_music;
+		if (!pane.m_open) {
+			return;
+		}
+		check(pane.m_enterLength.count() == 0 &&
+		          pane.m_surface.Opacity() == 1 && pane.m_slide.Y() == 0,
+		      "the music pane animated open with animations off");
+		pane.tint({20, 25, 30});
+		check(pane.m_tintLength.count() == 0 &&
+		          pane.m_transition.Children().Size() == 0,
+		      "the music tint animated with animations off");
+		pane.m_art.Source(Media::Imaging::WriteableBitmap(4, 4));
+		pane.setArtwork(nullptr, {});
+		check(pane.m_artLength.count() == 0 && !pane.m_artFading,
+		      "the music artwork animated with animations off");
+		musicClosings.clear();
+		pane.m_flyout.Hide();
+		break;
+	}
+	case 15:
+		check(musicClosings.size() == 1 && !owner.m_music->m_open &&
+		          !owner.m_music->m_fadingOut,
+		      "the music pane waited to close with animations off");
+		motion::setEnabledForTest({});
 		break;
 	default:
 		status.Text(L"PASS: motion tokens and the animation setting");

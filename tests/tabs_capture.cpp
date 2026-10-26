@@ -18,6 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #include "tabs_test.h"
+#include "../app/Motion.h"
 
 namespace winrt::Sable::implementation {
 void TabsTest::settingsCaptureTick(MainWindow& owner) {
@@ -758,15 +759,16 @@ void TabsTest::musicTick(MainWindow& owner) {
 		state.busy = false;
 		break;
 	case 2:
-		pane.m_animationsOverride = false;
+		motion::setEnabledForTest(false);
 		pane.tint({20, 25, 30});
 		pane.motion(true);
 		check(pane.m_transition.Children().Size() == 0 &&
 		          pane.m_motion.Children().Size() == 0 &&
-		          pane.m_surface.Opacity() == 1 && pane.m_slide.Y() == 0,
+		          pane.m_surface.Opacity() == 1 && pane.m_slide.Y() == 0 &&
+		          pane.m_enterLength.count() == 0,
 		      "reduced motion still animated the pane");
 		pane.tint({});
-		pane.m_animationsOverride.reset();
+		motion::setEnabledForTest({});
 		pane.update(musicSnapshot);
 		check(!pane.m_timer.IsRunning(), "paused music kept ticking");
 		pane.m_seekSink = [this](double value) {

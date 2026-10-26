@@ -153,6 +153,11 @@ void Pane::initialize(bool connect) {
 	m_flyout.Closed([weak](auto&&, auto&&) {
 		if (auto self = weak.lock()) {
 			self->m_open = false;
+			// however it closed, no fade is pending any more
+			self->m_fadingOut = false;
+			if (self->m_closeFallback) {
+				self->m_closeFallback.Stop();
+			}
 			self->m_timer.Stop();
 			self->m_seekTimer.Stop();
 			self->m_seekExpiry.Stop();
@@ -249,9 +254,6 @@ void Pane::update(const Snapshot& snapshot) {
 	if (snapshot.artworkVersion != m_artworkVersion) {
 		m_artworkVersion = snapshot.artworkVersion;
 		const auto generation = ++m_artworkGeneration;
-		m_artFade.Stop();
-		m_art.Opacity(1);
-		m_previousArt.Source(nullptr);
 		if (snapshot.artwork) {
 			artwork(weak_from_this(), snapshot.artwork, generation);
 		} else {
@@ -381,6 +383,9 @@ void Pane::close() noexcept {
 		m_transition.Stop();
 		m_artFade.Stop();
 		m_motion.Stop();
+		if (m_closeFallback) {
+			m_closeFallback.Stop();
+		}
 		m_flyout.Hide();
 		m_button.Flyout(nullptr);
 	} catch (...) {
