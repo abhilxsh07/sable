@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Opening the music pane keeps the track (2026-11-16)
+
+Opening the music pane still asks the player for the track again, in case
+it changed while the pane was shut, but no longer clears the title, artist
+and artwork while it waits, so "Unknown track" doesn't flash on every open
+(audit A-42). A new track or a different player still clears them at once.
+The controls still dim while a command is in flight; that half of A-42 is
+left for later.
+
 ## MORTY on the tokens (2026-11-16)
 
 Shift+Alt+M's alerts drop 16 px into place over 167 ms and fade over

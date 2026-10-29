@@ -100,12 +100,16 @@ void Session::readTimeline() {
 	t.position = positionAt(t, winrt::clock::now().time_since_epoch().count());
 	m_work.sampledAt = std::chrono::steady_clock::now();
 }
-void Session::refreshMedia(bool trackChanged) {
+void Session::refreshMedia(bool clear, bool trackChanged) {
 	m_metadataRequested = true;
-	m_work.state.title.clear();
-	m_work.state.artist.clear();
-	m_work.artwork.reset();
-	++m_work.artworkVersion;
+	// reading the same track again keeps the title, artist and art on show
+	// until the reply replaces them
+	if (clear) {
+		m_work.state.title.clear();
+		m_work.state.artist.clear();
+		m_work.artwork.reset();
+		++m_work.artworkVersion;
+	}
 	if (trackChanged) {
 		m_work.state.busy = false;
 	}

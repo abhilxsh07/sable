@@ -288,8 +288,10 @@ void Session::refresh(Event event, const Remote& source, std::int64_t when) {
 			m_mediaFloor = m_timelineFloor = 0;
 		}
 		readTimeline();
-		if (!m_metadataRequested || event == Event::Open || media) {
-			refreshMedia(media || switched);
+		const auto how = mediaRefresh(m_metadataRequested, event == Event::Open,
+		                              media, switched);
+		if (how != MediaRefresh::None) {
+			refreshMedia(how == MediaRefresh::Clear, media || switched);
 		}
 	}
 	notify();

@@ -85,7 +85,7 @@ class Session : public std::enable_shared_from_this<Session> {
 	static winrt::fire_and_forget send(std::weak_ptr<Session> weak,
 	                                   Command command, double seekSeconds);
 	void refresh(Event event, const Remote& source, std::int64_t when);
-	void refreshMedia(bool trackChanged);
+	void refreshMedia(bool clear, bool trackChanged);
 	void readPlayback(const Info& info);
 	void readTimeline();
 	void notify() noexcept;

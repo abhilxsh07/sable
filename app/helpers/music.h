@@ -86,6 +86,14 @@ struct State {
 };
 bool enabled(const State& state, Command command);
 Repeat nextRepeat(Repeat repeat);
+// what a refresh does with the track already on show
+enum class MediaRefresh {
+	None,   // nothing changed that needs the metadata again
+	Reread, // read it again, keeping what's shown until the reply
+	Clear,  // a different track or player: drop it and read the new one
+};
+MediaRefresh mediaRefresh(bool requested, bool reopened, bool mediaChanged,
+                          bool switched);
 
 // Average the small decoded BGRA artwork sample, ignoring transparent
 // pixels. Limit channel brightness so white text remains legible.

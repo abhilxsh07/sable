@@ -174,6 +174,14 @@ bool enabled(const State& state, Command command) {
 	}
 	return false;
 }
+MediaRefresh mediaRefresh(bool requested, bool reopened, bool mediaChanged,
+                          bool switched) {
+	if (!requested || mediaChanged || switched) {
+		return MediaRefresh::Clear;
+	}
+	// the same track as before: what's on show stays until the reply
+	return reopened ? MediaRefresh::Reread : MediaRefresh::None;
+}
 Repeat nextRepeat(Repeat repeat) {
 	switch (repeat) {
 	case Repeat::Off:
