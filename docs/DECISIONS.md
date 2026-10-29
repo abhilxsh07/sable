@@ -2,6 +2,15 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## MORTY on the tokens (2026-11-16)
+
+Shift+Alt+M's alerts drop 16 px into place over 167 ms and fade over
+250 ms (from 800) once their four seconds are up; the 700 ms between
+fades stays. 250 ms is the ceiling the music pane also uses: an alert
+that has sat for four seconds and then vanishes in 83 ms looks like a
+glitch. The alerts below no longer slide when one leaves; they move at
+once, which saves a layout pass per alert.
+
 ## The music pane on the tokens (2026-11-16)
 
 The music flyout opens over 167 ms, rising 16 px, and fades out over 83 ms

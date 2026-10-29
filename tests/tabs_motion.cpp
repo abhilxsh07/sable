@@ -376,6 +376,38 @@ void TabsTest::motionTick(MainWindow& owner) {
 		      "the music pane waited to close with animations off");
 		motion::setEnabledForTest({});
 		break;
+	case 16: {
+		// MORTY drops in over 167 ms, the alerts below move at once, and
+		// each fades over 250 ms once its time is up
+		const auto stack = owner.MortyStack();
+		check(!stack.ChildrenTransitions() ||
+		          stack.ChildrenTransitions().Size() == 0,
+		      "the Morty alerts still slide when one goes");
+		motion::setEnabledForTest(true);
+		owner.showMorty();
+		const auto alert = owner.m_morties.back().alert;
+		check(alert.Visibility() == Visibility::Visible && alert.IsOpen() &&
+		          stack.Children().GetAt(0) == alert,
+		      "a new Morty alert isn't showing on top");
+		expectMotion(alert, 0, -motion::SLIDE, "a Morty alert");
+		owner.onMortyTick(alert);
+		check(owner.m_morties.back().fading &&
+		          owner.m_morties.back().timer.Interval() ==
+		              Windows::Foundation::TimeSpan(motion::NORMAL),
+		      "a Morty alert doesn't fade over 250 ms");
+		owner.removeMorty(alert);
+		motion::setEnabledForTest(false);
+		owner.showMorty();
+		const auto still = owner.m_morties.back().alert;
+		expectStill(still, "a Morty alert");
+		owner.onMortyTick(still);
+		check(still.Opacity() == 0 &&
+		          owner.m_morties.back().timer.Interval().count() == 0,
+		      "a Morty alert faded with animations off");
+		owner.removeMorty(still);
+		motion::setEnabledForTest({});
+		break;
+	}
 	default:
 		status.Text(L"PASS: motion tokens and the animation setting");
 		probePass(owner.get_strong().as<Window>());

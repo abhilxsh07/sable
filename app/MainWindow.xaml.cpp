@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <winrt/Microsoft.UI.h>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Animation.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Microsoft.Windows.Storage.Pickers.h>
@@ -43,7 +44,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "helpers/logging.h"
 #include "SettingsWindow.h"
 #include "Appearance.h"
+#include "Motion.h"
 #include "MusicPane.h"
+#include "helpers/motion.h"
 #include "NightRunPane.h"
 
 using namespace winrt;
@@ -61,7 +64,6 @@ constexpr int MIN_HEIGHT = 540;
 // so a burst of presses still fades one at a time
 constexpr auto MORTY_LIFE = std::chrono::seconds(4);
 constexpr auto MORTY_GAP = std::chrono::milliseconds(700);
-constexpr auto MORTY_FADE = std::chrono::milliseconds(800);
 constexpr std::size_t MORTY_MAX = 8;
 
 struct SliderToolTip : implements<SliderToolTip, Data::IValueConverter> {
@@ -1237,9 +1239,6 @@ void MainWindow::showMorty() {
 	                .as<Style>());
 	diagnostics::write(diagnostics::Level::Info,
 	                   winrt::to_string(alert.Message()));
-	ScalarTransition fade;
-	fade.Duration(MORTY_FADE);
-	alert.OpacityTransition(fade);
 	alert.IsOpen(true);
 	// the close button takes just that one away
 	alert.Closed([weak = get_weak()](const Controls::InfoBar& sender, auto&&) {
@@ -1276,7 +1275,10 @@ void MainWindow::showMorty() {
 			self->onMortyTick(alert);
 		}
 	});
+	// it drops in from above; the alerts below move down at once
+	alert.Visibility(Visibility::Collapsed);
 	MortyStack().Children().InsertAt(0, alert);
+	motion::show(alert, true, motion::From::Above);
 	m_morties.push_back({alert, fadeAt, timer});
 	timer.Start();
 }
@@ -1295,9 +1297,30 @@ void MainWindow::onMortyTick(Controls::InfoBar alert) {
 	}
 	found->fading = true;
 	alert.IsHitTestVisible(false);
-	alert.Opacity(0);
+	// out over Normal, accelerating; the timer takes it away after
+	const auto length =
+	    motion::duration(motion::Token::Normal, motion::enabled());
+	if (length.count() == 0) {
+		alert.Opacity(0);
+	} else {
+		using namespace Media::Animation;
+		KeySpline spline;
+		spline.ControlPoint1({motion::EXIT.x1, motion::EXIT.y1});
+		spline.ControlPoint2({motion::EXIT.x2, motion::EXIT.y2});
+		SplineDoubleKeyFrame end;
+		end.KeyTime(KeyTimeHelper::FromTimeSpan(length));
+		end.Value(0);
+		end.KeySpline(spline);
+		DoubleAnimationUsingKeyFrames fade;
+		fade.KeyFrames().Append(end);
+		Storyboard::SetTarget(fade, alert);
+		Storyboard::SetTargetProperty(fade, L"Opacity");
+		Storyboard storyboard;
+		storyboard.Children().Append(fade);
+		storyboard.Begin();
+	}
 	found->timer.Stop();
-	found->timer.Interval(MORTY_FADE);
+	found->timer.Interval(length);
 	found->timer.Start();
 }
 

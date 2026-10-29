@@ -376,17 +376,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</InfoBar.ActionButton>
 		</InfoBar>
 		<!-- Shift+Alt+M. Every press adds an alert on top, and they fade out
-			oldest first. No background, so clicks go through to the page. -->
+			oldest first. No background, so clicks go through to the page.
+			Each alert drops in on Sable's motion tokens (MainWindow.xaml.cpp);
+			the ones below move at once. -->
 		<StackPanel x:Name="MortyStack" Grid.Row="1" VerticalAlignment="Top"
 			HorizontalAlignment="Center" Width="420" Margin="0,12,0,0"
-			Spacing="8">
-			<StackPanel.ChildrenTransitions>
-				<TransitionCollection>
-					<EntranceThemeTransition FromVerticalOffset="-24" />
-					<RepositionThemeTransition />
-				</TransitionCollection>
-			</StackPanel.ChildrenTransitions>
-		</StackPanel>
+			Spacing="8" />
 		<!-- #darkConfigurator in index.sass: 200 wide, at most 550 tall,
 			rgb(45,45,45) with a #666 border, 16px 24px padding, 4px corners and
 			a small shadow. Lined up under the preset buttons when it opens. -->
