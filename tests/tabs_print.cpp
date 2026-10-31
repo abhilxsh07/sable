@@ -459,6 +459,7 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 		    CreateEventW(nullptr, TRUE, FALSE, nullptr));
 		check(static_cast<bool>(*attachmentGate));
 		choose(attachmentTarget.wstring());
+		owner.PickerError().IsOpen(false);
 		owner.onSaveCopy(nullptr, nullptr);
 		owner.openDocument(engine, L"tests/fixtures/links.pdf", 1);
 		SetEvent(attachmentGate->get());
@@ -466,6 +467,10 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 	case 10:
 		check(!std::filesystem::exists(attachmentTarget),
 		      "tab switch accepted a late picker result");
+		check(owner.PickerError().IsOpen() &&
+		          owner.PickerError().Title() == L"Copy not saved",
+		      "a tab switch dropped the chosen copy without a notice");
+		owner.PickerError().IsOpen(false);
 		owner.Tabs().SelectedIndex(0);
 		break;
 	case 11:

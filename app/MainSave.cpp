@@ -153,9 +153,17 @@ fire_and_forget MainWindow::saveCopy() {
 		auto self = weak.get();
 		auto viewer = document.get();
 		if (!self || self->m_closing || !viewer || viewer->m_closed ||
-		    cancel->load() || path.empty() ||
+		    path.empty()) {
+			co_return;
+		}
+		// selecting another tab cancels the save while the picker is open
+		if (cancel->load() ||
 		    self->Viewer() != viewer->get_strong().as<Sable::ViewerPage>() ||
 		    viewer->m_session.get() != session) {
+			self->showShellError(
+			    L"Copy not saved",
+			    L"The tab or document changed while the save dialog was open. "
+			    L"Choose Save a copy again when you are ready.");
 			co_return;
 		}
 		struct Job {
