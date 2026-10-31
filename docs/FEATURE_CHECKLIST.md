@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 # Feature checklist
 
-Reviewed 2 November 2026, through a88510c. Runtime checkpoint: 2d88cf2.
+Reviewed 16 November 2026, through 921f9b5. Runtime checkpoint: 921f9b5.
 
 5 November follow-up: outline rectangle and ellipse placement, guarded
 removal and Windows picker round trips are recorded in TEST_PLAN.md.
@@ -28,6 +28,10 @@ The broader shape editor remains unfinished.
 
 11 November follow-up: record the verified text-box, drawing, shape and
 stamp work below.
+
+16 November follow-up: the audit batches (tool panes, one active tool,
+Find, Shell and Home, motion, leftovers) are recorded below. Batch 9's
+unapproved motion items stay open.
 
 I tick an item when it is implemented and has recorded verification for
 the scope named. An empty box means work remains. Partial features list
@@ -130,6 +134,15 @@ The older test counts in those documents are historical checkpoints.
 - [x] Names and Tab reach on every tool surface (Accessibility probe).
 - [x] Contrast colours for the preset chips, Home's tools and the music pane.
 - [x] Page text exposed to Narrator through a UI Automation text pattern.
+- [x] Left tool pane for Properties, Export and Combine, resizable from its
+  edge, with widths kept in panes.json.
+- [x] One active tool per reader, Find as the command bar, and separate
+  Comment and Fill & Sign rows.
+- [x] Pane, command-bar row, notice and MORTY motion on shared tokens that
+  follow Windows' animation setting.
+- [ ] Motion left for later: presentation controls fade, thumbnail hover,
+  button-style transitions, Read aloud outline by translation, zoom readout
+  throttle and the Organize cross-fade.
 - [ ] Narrator listen-through and contrast-theme look on real hardware.
 
 ## Comments and annotations (E02: partial)
@@ -294,10 +307,11 @@ These ideas remain separate decisions unless already recorded as approved.
 An unchecked idea is not a commitment to change NightPDF behavior.
 
 - [ ] Persist the last preset and custom sliders across launches (I01).
-- [ ] Apply keybinding edits to existing readers without restart (I02).
+- [x] Apply keybinding edits to existing readers without restart (I02).
 - [ ] Detect conflicting/duplicate shortcuts in Settings (I03).
 - [ ] Route new Explorer opens to the last active instance (I04).
-- [ ] Drop PDFs anywhere and tear tabs into new windows (I05).
+- [x] Drop PDFs anywhere on Home and the viewer, the implemented part of I05.
+- [ ] Tear tabs into new windows, the rest of I05; tabs stay in the strip.
 - [x] Tabs in the title bar, the implemented part of I06.
 - [ ] Mica backdrop, the separate unfinished part of I06.
 - [ ] Optional filtering of thumbnails (I07).

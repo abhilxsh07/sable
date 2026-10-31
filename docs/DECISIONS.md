@@ -4126,3 +4126,31 @@ DragEventArgs can't be built outside a real drag. The coroutine holds
 the data package view by value. Dragging a PDF in from Explorer is on
 the hand-check list instead; a deferral is a one-line change if it ever
 shows.
+
+## Audit wrap-up (2026-11-16)
+
+The 12 November audit ran as ten batches: layout and viewer modes,
+Organize, the tool pane host, the Export and Combine panes, one active
+tool, Find / Read aloud / Presentation / sizes, Shell and Home, motion,
+and leftovers. Each fix started with a probe or test that failed, and
+each batch ended with zero-warning Debug and Release builds, the unit
+tests, the format check and a full probe run.
+
+What the last pass changed. A-60 now says "Copy not saved" when a tab
+switch cancels a chosen save. A-61 to A-65 were checked and left as they
+are, with the reasons in "Speculative audit items A-60 to A-65". The
+Night Run tab takes the focus itself when it is picked again; it only
+repaired an empty focus before, which made Finish fail whenever the focus
+had already landed on the title bar. PrintUi now runs as its own probe.
+
+Three full probe runs in a row passed 72, 70 and 69 of 72. KeyboardInput
+is the known one: another app owns Ctrl+Alt+G and can take the
+foreground. Selection failed once and passed alone three times, so I
+changed nothing. Debug ARM64 and Release x64 build with no warnings, the
+x64 and ARM64 packages verify, and the extracted x64 ZIP opens a PDF and
+closes cleanly.
+
+Left open on purpose: A-20, A-34, A-44 and removal 18, which are your
+calls; batch 9's motion leftovers and A-42's busy dimming, which aren't
+approved; and every hand, device, clean-machine and legal check in
+"Waiting on the owner". The release notes list the limits users will see.
