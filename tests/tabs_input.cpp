@@ -82,9 +82,13 @@ void TabsTest::closeNightRun(MainWindow& owner) {
 	using night_run::Phase;
 	const auto game = owner.m_nightRun;
 	const auto viewer = owner.m_tabs.front().viewer;
-	check(game->playfieldFocused(Input::FocusManager::GetFocusedElement(
-	          owner.RootGrid().XamlRoot())),
-	      "a background PDF took the focus from the track");
+	const auto focused =
+	    Input::FocusManager::GetFocusedElement(owner.RootGrid().XamlRoot());
+	check(game->playfieldFocused(focused),
+	      "a background PDF took the focus from the track: focus is on " +
+	          (focused ? to_string(get_class_name(focused))
+	                   : std::string("nothing")) +
+	          ", the foreground is " + foregroundOwner());
 	check(owner.routeKey(VK_SPACE, 0) && game->m_run.phase() == Phase::Running,
 	      "the game did not resume");
 	check(owner.routeKey('W', helpers::SHORTCUT_CTRL),

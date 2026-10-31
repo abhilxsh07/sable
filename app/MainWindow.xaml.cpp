@@ -765,9 +765,12 @@ void MainWindow::selectTab() {
 		if (!gameSelected) {
 			m_nightRun->pause();
 		} else if (showingGame) {
+			// the focus left with the collapsed game and may already have
+			// landed on the title bar, which keepFocus leaves alone
 			DispatcherQueue().TryEnqueue([weak = get_weak()] {
-				if (const auto self = weak.get();
-				    self && self->nightRunSelected()) {
+				const auto self = weak.get();
+				const bool game = self && self->nightRunSelected();
+				if (game && !self->m_nightRun->focus()) {
 					self->keepFocus();
 				}
 			});
