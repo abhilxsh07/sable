@@ -345,6 +345,19 @@ void TabsTest::saveCopyTick(MainWindow& owner) {
 		      "duplicate save opened a picker, canceled the save or had no "
 		      "notice");
 		owner.PickerError().IsOpen(false);
+		{
+			// a notes save must not start while the copy is in flight
+			const auto overlap = owner.saveNotes(current);
+			check(overlap.Status() ==
+			              Windows::Foundation::AsyncStatus::Completed &&
+			          !overlap.GetResults() && owner.PickerError().IsOpen() &&
+			          owner.PickerError().Title() ==
+			              L"Save already in progress" &&
+			          owner.m_saveCopyCancel &&
+			          !owner.m_saveCopyCancel->load() && v.m_noteSaving,
+			      "a notes save overlapped a copy in flight");
+		}
+		owner.PickerError().IsOpen(false);
 		break;
 	case 2:
 		check(bytes(attachmentTarget) == bytes(v.m_path),

@@ -364,12 +364,17 @@ void TabsTest::annotationActionsTick(MainWindow& owner) {
 		          v.m_commentScan.rows()[0].subtype == "Text",
 		      "new hidden note missing from Comments");
 		v.CommentsList().SelectedIndex(0);
+		v.Message().IsOpen(false);
+		v.openPane(ToolPane::Properties);
 		invoke(v.EditNoteButton());
 		break;
 	case 9:
 		if (!v.m_noteDialog) {
+			check(!v.Message().IsOpen(),
+			      "the note editor failed to open next to a tool pane");
 			return;
 		}
+		v.closePane();
 		v.m_noteDialog.Content()
 		    .as<StackPanel>()
 		    .Children()

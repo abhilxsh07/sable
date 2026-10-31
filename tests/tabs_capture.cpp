@@ -1408,6 +1408,37 @@ void TabsTest::layoutTick(MainWindow& owner) {
 		          std::to_string(v.Scroller().HorizontalOffset()) + " max " +
 		          std::to_string(v.Scroller().ScrollableWidth()) + " target " +
 		          std::to_string(v.m_layout->pages()[1].x));
+		// a document that finishes loading while another tab is shown
+		owner.openDocument(engine, L"tests/fixtures/print.pdf", {});
+		owner.openDocument(engine, L"tests/fixtures/long.pdf", {});
+		break;
+	case 19: {
+		const auto& entry = owner.m_tabs[owner.m_tabs.size() - 2];
+		first = get_self<ViewerPage>(entry.viewer)->get_strong();
+		if (!ready(*first) || owner.Viewer() == entry.viewer) {
+			return;
+		}
+		check(first->Visibility() != Microsoft::UI::Xaml::Visibility::Visible,
+		      "the hidden tab was visible");
+		layoutZoom = first->m_zoom;
+		owner.Tabs().SelectedItem(entry.tab);
+		break;
+	}
+	case 20:
+		if (ticks < 3) {
+			return;
+		}
+		// the hidden tab has no viewport, so it keeps a placeholder zoom and
+		// fits once it is shown (m_fitPending); it must end up fitted
+		check(owner.Viewer() == first.as<Sable::ViewerPage>() &&
+		          !first->m_fitPending &&
+		          std::abs(first->m_zoom -
+		                   first->fittedZoom(first->displaySizes())) < 1e-9,
+		      "a tab that loaded hidden wasn't fitted when shown: " +
+		          std::to_string(layoutZoom) + " then " +
+		          std::to_string(first->m_zoom));
+		break;
+	case 21:
 		v.setLayout(Scroll::Page, Spread::None);
 		v.goToPage(0);
 		v.close();

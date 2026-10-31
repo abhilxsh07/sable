@@ -170,6 +170,7 @@ struct TabsTest {
 	hstring inputText;
 	std::size_t inputMatch = 0;
 	int layoutRound = 0;
+	double layoutZoom = 0;
 	pdf::PageKey layoutKey{};
 	double panX = 0, panY = 0;
 	std::uint64_t propertiesRequest = 0;

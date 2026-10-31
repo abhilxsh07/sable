@@ -4085,3 +4085,44 @@ generation when a page number can now refer to different content. This
 follows approved A-51. The Accessibility check pauses the engine before
 a real page turn and rejects stale same-page, session, page and close
 responses through the production completion path.
+
+## Speculative audit items A-60 to A-65 (2026-11-16)
+
+Each got a probe step that tries to reproduce it. Only A-60 failed.
+
+A-60 (fixed): choosing a file in Save a copy and then switching tabs
+cancelled the save without a word. The window error now says "Copy not
+saved" and why. The SaveCopy probe checks it after the tab switch.
+
+A-61 (not reproducible): a copy sets the viewer's m_noteSaving and the
+window's m_saveCopyCancel before its picker opens, and saveNotes refuses
+on either one with "Save already in progress". A notes save on another
+tab writes another file, because opening a path that is already open
+selects its tab. SaveCopy now calls saveNotes while a copy is in flight.
+
+A-62 (not reproducible): Properties, Export and Combine are tool panes
+now, not ContentDialogs, so nothing can open a second dialog on top of
+them. The note, form and drawing editors, the password dialog and the
+close prompt are guarded by m_noteDialog and m_passwordDialog. The
+Comments probe opens the note editor with the Properties pane up; it
+opens and no notice appears.
+
+A-63 (left as it is): a tab that finishes loading while hidden has no
+viewport, so it is laid out once at a placeholder zoom (1.0 here) and
+fits through m_fitPending when it is first shown. Nothing renders at the
+placeholder zoom, so nobody sees it. The visible tab does the same on
+load. Layout now opens two documents back to back and checks that the
+hidden one ends up fitted when selected. This is a reading, not a fix:
+the redundant layout is real but cheap.
+
+A-64 (not reproducible): the engine finishes everything queued before it
+stops (FinishesWhatsQueuedBeforeStopping), the form-fields job catches
+its own errors and always calls back, and a refused post throws before
+the wait, where the catch clears m_noteBusy. A timeout would only let a
+slow read hand the editor a stale snapshot, so none was added.
+
+A-65 (not pinned): the probes call dropDocuments with cached data, and
+DragEventArgs can't be built outside a real drag. The coroutine holds
+the data package view by value. Dragging a PDF in from Explorer is on
+the hand-check list instead; a deferral is a one-line change if it ever
+shows.
