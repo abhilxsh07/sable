@@ -472,7 +472,8 @@ void TabsTest::tick() {
 			closedDropWindow = make_self<MainWindow>();
 			closedDropWindow->setEngine(engine);
 			closedDropWindow->dropDocuments(dropData);
-			check(closedDropWindow->m_tabs.empty());
+			// Cached drop data can finish before this returns, so the window
+			// is checked after Close() in the next step.
 			closedDropWindow->Close();
 			break;
 		case 16:
@@ -1112,8 +1113,8 @@ Window tabsTest(pdf::Engine& engine, Sable::implementation::App& app) {
 	                     std::wstring_view(mode) == L"true";
 	state->linksOnly = GetEnvironmentVariableW(L"SableLinkTest", mode, 8) &&
 	                   std::wstring_view(mode) == L"true";
-	state->printOnly = GetEnvironmentVariableW(L"SablePrintTest", mode, 8) &&
-	                   std::wstring_view(mode) == L"true";
+	state->printOnly = diagnostics::environmentEnabled(L"SablePrintTest") ||
+	                   diagnostics::environmentEnabled(L"SablePrintUiTest");
 	state->finishOnly = GetEnvironmentVariableW(L"SableFinishTest", mode, 8) &&
 	                    std::wstring_view(mode) == L"true";
 	state->editOnly = GetEnvironmentVariableW(L"SableEditTest", mode, 8) &&
