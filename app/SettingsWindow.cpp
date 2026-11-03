@@ -132,7 +132,7 @@ void SettingsWindow::initialize(const Window& owner,
 		}
 	});
 	themeChanged();
-	select("version");
+	select("general");
 	// see:
 	// https://learn.microsoft.com/en-us/windows/apps/develop/ui/manage-app-windows
 	const auto hwnd = windowHandle(window);

@@ -828,6 +828,12 @@ void TabsTest::tick() {
 		case 23: {
 			const auto settings = self->m_settingsWindow;
 			check(settings != nullptr, "settings did not open");
+			// opens on General; NightPDF showed its version panel first
+			check(settings->m_heading.Text() == L"General" &&
+			          settings->m_general.Visibility() == Visibility::Visible &&
+			          settings->m_about.Visibility() == Visibility::Collapsed &&
+			          settings->m_version.Visibility() == Visibility::Collapsed,
+			      "settings did not open on General");
 			check(settings->m_version.Text() ==
 			          to_hstring(helpers::versionString()),
 			      "settings version");
