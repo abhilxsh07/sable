@@ -242,6 +242,7 @@ struct MainWindow : MainWindowT<MainWindow> {
 	helpers::SettingsStore* m_settingsStore = nullptr;
 	std::shared_ptr<::SettingsWindow> m_settingsWindow;
 	void updateTitleBar();
+	void syncTitleBar();
 	void setupSliders();
 	void refreshSliders();
 	void paintPresetChips();

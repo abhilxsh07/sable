@@ -832,7 +832,22 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		              Microsoft::UI::Windowing::AppWindowPresenterKind::
 		                  FullScreen,
 		      "repeat F11 toggled full screen");
+		// the title bar row goes with the chrome, so the document starts at
+		// the top of the window
+		check(owner.AppTitleBar().Visibility() == Visibility::Collapsed &&
+		          owner.Documents()
+		                  .TransformToVisual(owner.RootGrid())
+		                  .TransformPoint({0, 0})
+		                  .Y < 1.0f,
+		      "full screen kept the title bar");
 		key(VK_F11);
+		check(owner.AppTitleBar().Visibility() == Visibility::Visible &&
+		          owner.AppTitleBar().ActualHeight() >= 40 &&
+		          owner.Documents()
+		                  .TransformToVisual(owner.RootGrid())
+		                  .TransformPoint({0, 0})
+		                  .Y >= owner.AppTitleBar().ActualHeight() - 1,
+		      "leaving full screen did not bring the title bar back");
 		first.copy_from(&v);
 		owner.m_shortcuts.push_back({'J', 0, "switch-tab", "next"});
 		owner.openDocument(engine, L"tests/fixtures/pages.pdf", 1);
@@ -842,6 +857,21 @@ void TabsTest::keyboardTick(MainWindow& owner) {
 		check(owner.Tabs().SelectedIndex() == 0 && key('J') &&
 		          owner.Tabs().SelectedIndex() == 1 && first->m_current == 0,
 		      "custom binding lost priority over viewer letters");
+		// two tabs now: in full screen Ctrl-Tab still moves between them
+		key(VK_F11);
+		{
+			// Ctrl-Tab doesn't wrap, so go the way there is a tab to go
+			const auto tab = owner.Tabs().SelectedIndex();
+			const bool last =
+			    tab + 1 == static_cast<int>(owner.Tabs().TabItems().Size());
+			const auto there = last ? ctrl | shift : ctrl;
+			const auto back = last ? ctrl : ctrl | shift;
+			check(owner.Tabs().TabItems().Size() > 1 && key(VK_TAB, there) &&
+			          owner.Tabs().SelectedIndex() != tab &&
+			          key(VK_TAB, back) && owner.Tabs().SelectedIndex() == tab,
+			      "Ctrl-Tab stopped switching tabs in full screen");
+		}
+		key(VK_F11);
 		owner.m_presenter.Maximize();
 		break;
 	case 19:

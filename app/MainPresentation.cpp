@@ -28,14 +28,48 @@ using namespace Microsoft::UI::Windowing;
 namespace winrt::Sable::implementation {
 void MainWindow::setupPresentation() {
 	AppWindow().Changed([weak = get_weak()](auto&&, const auto& args) {
-		if (const auto self = weak.get();
-		    self && !self->m_closing && self->m_presentationViewer &&
-		    args.DidPresenterChange() &&
+		const auto self = weak.get();
+		if (!self || self->m_closing || !args.DidPresenterChange()) {
+			return;
+		}
+		if (self->m_presentationViewer &&
 		    self->AppWindow().Presenter().Kind() !=
 		        AppWindowPresenterKind::FullScreen) {
 			self->endPresentation(false);
+			return;
 		}
+		// full screen can end from outside too, so the bar follows the
+		// presenter
+		self->syncTitleBar();
 	});
+}
+
+// full screen gives the whole window to the document, so the title bar row
+// collapses with it and comes back as it was when the presenter leaves
+void MainWindow::syncTitleBar() {
+	const bool full =
+	    AppWindow().Presenter().Kind() == AppWindowPresenterKind::FullScreen;
+	const auto wanted = full ? Visibility::Collapsed : Visibility::Visible;
+	if (AppTitleBar().Visibility() == wanted) {
+		return;
+	}
+	if (full) {
+		// these hang off the bar, so they go with it
+		MainMenu().Hide();
+		DarkConfigurator().Visibility(Visibility::Collapsed);
+		if (const auto flyout = MusicButton().Flyout()) {
+			flyout.Hide();
+		}
+	}
+	AppTitleBar().Visibility(wanted);
+	RootGrid().UpdateLayout();
+	if (!full) {
+		updateTitleBar();
+		AppTitleBar().RecomputeDragRegions();
+	}
+	if (const auto viewer = Viewer()) {
+		get_self<ViewerPage>(viewer)->reflowViewport();
+	}
 }
 
 bool MainWindow::presentationKey(unsigned key, unsigned modifiers,
@@ -131,13 +165,16 @@ void MainWindow::endPresentation(bool restorePresenter) {
 		return;
 	}
 	const auto previous = std::exchange(m_beforePresentation, nullptr);
-	AppTitleBar().Visibility(Visibility::Visible);
 	try {
 		if (restorePresenter && previous && !m_closing) {
 			AppWindow().SetPresenter(previous);
 		}
 	} catch (...) {
 		OutputDebugStringW(to_message().c_str());
+	}
+	// back to full screen keeps the bar away, anything else brings it back
+	if (!m_closing) {
+		syncTitleBar();
 	}
 	RootGrid().UpdateLayout();
 	get_self<ViewerPage>(current)->endPresentation();

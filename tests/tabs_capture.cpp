@@ -1133,7 +1133,11 @@ void TabsTest::presentationTick(MainWindow& owner) {
 		check(!v.m_presentation &&
 		          owner.AppWindow().Presenter().Kind() == Kind::FullScreen,
 		      "presentation lost pre-existing full screen");
+		check(owner.AppTitleBar().Visibility() == Visibility::Collapsed,
+		      "ending presentation brought the title bar back in full screen");
 		owner.onToggleFullScreen({}, {});
+		check(owner.AppTitleBar().Visibility() == Visibility::Visible,
+		      "leaving full screen did not bring the title bar back");
 		owner.onPresentation({}, {});
 		owner.openDocument(engine, L"tests/fixtures/links.pdf", {});
 		break;

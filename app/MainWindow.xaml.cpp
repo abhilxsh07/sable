@@ -1653,7 +1653,8 @@ void MainWindow::onZoomOut(const Windows::Foundation::IInspectable&,
 	}
 }
 
-// View > Toggle Full Screen (Electron's togglefullscreen role)
+// View > Toggle Full Screen (Electron's togglefullscreen role). NightPDF kept
+// its tab strip up in full screen; here the title bar and tabs go with it
 void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
                                     const RoutedEventArgs&) {
 	if (m_presentationViewer) {
@@ -1667,6 +1668,7 @@ void MainWindow::onToggleFullScreen(const Windows::Foundation::IInspectable&,
 	} else {
 		appWindow.SetPresenter(FullScreenPresenter::Create());
 	}
+	syncTitleBar();
 }
 
 // Window > Minimize
