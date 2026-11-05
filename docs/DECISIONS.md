@@ -2,6 +2,45 @@
 
 Why things are the way they are, so I don't have to remember it all later.
 
+## Owner calls, 17 Nov (2026-11-17)
+
+These were the items the last audit pass left for me. I decided them, and
+the three code changes are in their own commits.
+
+Settings opens on General. It opened on About because NightPDF's settings
+key was `version` and it showed its version panel first. I'm leaving that
+behind on purpose; About is one click away. The Settings probe now checks
+which page opens.
+
+F11 hides the title bar. Full screen used to swap the presenter and
+nothing else, so the 48 px bar with the Menu, tabs and presets stayed on
+screen. Now the bar's row collapses with full screen and the document
+fills the window. Leaving full screen, by F11 or from outside, brings it
+back as before and recomputes the drag regions. NightPDF's togglefullscreen
+hid the OS title bar but kept its in-page tab strip; hiding the tabs too is
+my call. There are no new keys and no hover reveal. The music button and
+the preset chips live in the bar, so they go with it: a music pane that is
+open when full screen starts is closed, and reopening it means leaving
+full screen. Presentation that ends back into an earlier full screen keeps
+the bar away. Ctrl+Tab and the other shortcuts keep working; the probes
+check Ctrl+Tab and the bar's return.
+
+Delete annotation stays as it is for the alpha: no confirm dialog and no
+code change. Undo comes after the alpha.
+
+Home's Tools group is removed. I approved it on 17 Nov. The Tools header and
+its six entries (Organize pages, Combine files, Fill & Sign, Comment,
+Export, Read aloud) are gone from Home's nav, along with the branch that
+opened them. The tile row stays, and so does every command it reaches. The
+nav keeps Recent and Starred, with Settings below. The accessibility probe
+checks the nav's entries. The older notes that say the group stays were
+right when I wrote them; each has a dated line under it instead of a
+rewrite.
+
+A tab that finishes loading while hidden is laid out once at a placeholder
+zoom and fits when it is first shown. I accepted that as by design on
+17 Nov. Nothing changes.
+
 ## Opening the music pane keeps the track (2026-11-16)
 
 Opening the music pane still asks the player for the track again, in case
@@ -143,6 +182,9 @@ callback are gone. Command-bar saving still uses the existing save flow.
 More temporarily keeps only Fill & Sign until its row in batch 6 step 8;
 no command is lost between commits. This implements audit 6.3.7/15/17's
 Comment portion. Home's Tools group and all settings/shortcuts stay.
+
+Update, 17 Nov: I approved removing Home's Tools group, so it no longer
+stays. See "Owner calls, 17 Nov".
 
 ## Tool eligibility before editing (2026-11-16)
 
@@ -3986,6 +4028,9 @@ when busy, so they cannot turn into window-level opens. Non-file drags
 are left to the native controls for their own reordering. This is A-33
 in the approved audit queue; Home's Tools group stays in place.
 
+Update, 17 Nov: I approved removing Home's Tools group, so it no longer
+stays. See "Owner calls, 17 Nov".
+
 ## Shortcut edits in open readers (2026-11-15)
 
 Before routing a key, each reader compares its active binding snapshot
@@ -4008,6 +4053,9 @@ Each row also has a named Remove from recent action. It removes that
 history entry, including its star if present, through the existing
 locked recent-file update. It never deletes or opens the source PDF.
 This follows A-47; the Home Tools group remains in place.
+
+Update, 17 Nov: I approved removing Home's Tools group, so it no longer
+stays. See "Owner calls, 17 Nov".
 
 ## Tab dragging stays inside the strip (2026-11-15)
 
@@ -4115,6 +4163,8 @@ load. Layout now opens two documents back to back and checks that the
 hidden one ends up fitted when selected. This is a reading, not a fix:
 the redundant layout is real but cheap.
 
+Update, 17 Nov: I accepted this as by design. Nothing changes.
+
 A-64 (not reproducible): the engine finishes everything queued before it
 stops (FinishesWhatsQueuedBeforeStopping), the form-fields job catches
 its own errors and always calls back, and a refused post throws before
@@ -4154,3 +4204,5 @@ Left open on purpose: A-20, A-34, A-44 and removal 18, which are your
 calls; batch 9's motion leftovers and A-42's busy dimming, which aren't
 approved; and every hand, device, clean-machine and legal check in
 "Waiting on the owner". The release notes list the limits users will see.
+
+Update, 17 Nov: I decided the four open calls. See "Owner calls, 17 Nov".
