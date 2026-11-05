@@ -201,6 +201,24 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			                            L"accessibility.txt",
 			                        ignored);
 		}
+		{
+			// the nav keeps Recent and Starred, with Settings below; the tools
+			// are the tile row, so there is no Tools header or entries
+			bool header = false;
+			std::vector<hstring> tags;
+			for (const auto& item : owner.Nav().MenuItems()) {
+				if (item.try_as<Controls::NavigationViewItemHeader>()) {
+					header = true;
+				} else if (const auto entry =
+				               item.try_as<Controls::NavigationViewItem>()) {
+					tags.push_back(unbox_value_or<hstring>(entry.Tag(), L""));
+				}
+			}
+			check(!header && tags.size() == 2 && tags[0] == L"recent" &&
+			          tags[1] == L"starred" &&
+			          owner.Nav().FooterMenuItems().Size() == 1,
+			      "Home's nav still has the Tools group");
+		}
 		findings += auditSurface(home, L"Home", true);
 		owner.openDocument(engine, L"tests/fixtures/text.pdf", 1);
 		break;

@@ -321,10 +321,6 @@ void MainWindow::setupOpen() {
 		    args.InvokedItemContainer().Tag(), hstring{});
 		if (tag == L"settings") {
 			self->onOpenSettings({}, {});
-		} else if (tag == L"organize" || tag == L"combine" ||
-		           tag == L"export" || tag == L"fillsign" ||
-		           tag == L"comment" || tag == L"readaloud") {
-			self->openTool(tag);
 		}
 	});
 	get_self<HomePage>(Home())->ToolRequested(

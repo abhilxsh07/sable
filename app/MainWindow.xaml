@@ -291,8 +291,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			</TitleBar.RightHeader>
 		</TitleBar>
 
-		<!-- Recent and Starred filter the same list, the tools are shortcuts
-			and don't stay selected. Below 1008px the pane folds down to icons;
+		<!-- Recent and Starred filter the same list; the tools are the tile row
+			on Home. Below 1008px the pane folds down to icons;
 			it never hides completely, there's no button to bring it back. -->
 		<NavigationView x:Name="Nav" Grid.Row="1"
 			PaneDisplayMode="Auto" CompactModeThresholdWidth="0"
@@ -309,43 +309,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 				<NavigationViewItem Content="Starred" Tag="starred">
 					<NavigationViewItem.Icon>
 						<FontIcon Glyph="&#xE734;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItemHeader Content="Tools" />
-				<NavigationViewItem Content="Organize pages" Tag="organize"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xE8A9;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItem Content="Combine files" Tag="combine"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xE8C8;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItem Content="Fill &amp; Sign" Tag="fillsign"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xE70F;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItem Content="Comment" Tag="comment"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xE8BD;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItem Content="Export" Tag="export"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xEDE1;" />
-					</NavigationViewItem.Icon>
-				</NavigationViewItem>
-				<NavigationViewItem Content="Read aloud" Tag="readaloud"
-					SelectsOnInvoked="False">
-					<NavigationViewItem.Icon>
-						<FontIcon Glyph="&#xE767;" />
 					</NavigationViewItem.Icon>
 				</NavigationViewItem>
 			</NavigationView.MenuItems>

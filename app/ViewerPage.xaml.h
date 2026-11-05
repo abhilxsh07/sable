@@ -133,8 +133,8 @@ struct ViewerPage : ViewerPageT<ViewerPage> {
 	void zoomOut(int steps = 1);
 	void zoomReset();
 	void rotateView(int turns);
-	// Organize, or another tool asked for from Home, the nav pane or a
-	// file just picked for it.
+	// Organize, or another tool asked for from Home or a file just picked
+	// for it.
 	void requestTool(std::wstring_view tool);
 	void openFillSign();
 	void setLayout(helpers::ScrollMode scroll, helpers::SpreadMode spread);
