@@ -52,6 +52,55 @@ TEST(PageLabels, KeptOtherwise) {
 	EXPECT_EQ(helpers::pageLabels(late, 3), late);
 }
 
+TEST(PageLabelsRules, DroppedWhenCountDiffers) {
+	EXPECT_TRUE(helpers::pageLabels({"i", "ii", "iii", "iv"}, 3).empty());
+	EXPECT_TRUE(helpers::pageLabels({"i", "ii"}, 3).empty());
+	EXPECT_TRUE(helpers::pageLabels({"1", "2", "3"}, 2).empty());
+	EXPECT_TRUE(helpers::pageLabels({"A"}, 0).empty());
+}
+
+TEST(PageLabelsRules, NoLabelsMeansNone) {
+	EXPECT_TRUE(helpers::pageLabels({}, 5).empty());
+}
+
+TEST(PageLabelsRules, SinglePage) {
+	EXPECT_TRUE(helpers::pageLabels({"1"}, 1).empty());
+	EXPECT_TRUE(helpers::pageLabels({""}, 1).empty());
+	const std::vector<std::string> cover = {"A"};
+	EXPECT_EQ(helpers::pageLabels(cover, 1), cover);
+}
+
+TEST(PageLabelsRules, KeptWhenTextDiffersFromNumber) {
+	const std::vector<std::string> padded = {"01", "02"};
+	EXPECT_EQ(helpers::pageLabels(padded, 2), padded);
+	const std::vector<std::string> gap = {"1", "2", "4"};
+	EXPECT_EQ(helpers::pageLabels(gap, 3), gap);
+	const std::vector<std::string> spaced = {"1", "2", "3", "4", "5", " 6"};
+	EXPECT_EQ(helpers::pageLabels(spaced, 6), spaced);
+	const std::vector<std::string> zeros = {"1", "2", "3", "4",  "5",  "6",
+	                                        "7", "8", "9", "10", "011"};
+	EXPECT_EQ(helpers::pageLabels(zeros, 11), zeros);
+}
+
+TEST(PageLabelsRules, MixOfNumbersAndEmptyIsKept) {
+	const std::vector<std::string> mixed = {"1", "", "3"};
+	EXPECT_EQ(helpers::pageLabels(mixed, 3), mixed);
+}
+
+TEST(PageLabelsRules, LongNumberRunIsDropped) {
+	std::vector<std::string> labels;
+	for (int page = 1; page <= 120; ++page) {
+		labels.push_back(std::to_string(page));
+	}
+	EXPECT_TRUE(helpers::pageLabels(labels, 120).empty());
+	labels.back() = "120 ";
+	EXPECT_EQ(helpers::pageLabels(labels, 120), labels);
+}
+
+TEST(PageLabelsRules, AllEmptyIsDropped) {
+	EXPECT_TRUE(helpers::pageLabels({"", "", "", "", ""}, 5).empty());
+}
+
 TEST(PageText, NumberAndCount) {
 	EXPECT_EQ(helpers::pageText(2, 128, NO_LABELS),
 	          (helpers::PageText{"3", "of 128"}));

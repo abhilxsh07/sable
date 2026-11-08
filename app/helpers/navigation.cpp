@@ -117,22 +117,21 @@ std::optional<long long> jsInt(std::string_view text) {
 
 std::vector<std::string> pageLabels(std::vector<std::string> labels,
                                     std::size_t count) {
-	// pdf_viewer.js setPageLabels drops a list of the wrong length
 	if (labels.empty() || labels.size() != count) {
 		return {};
 	}
-	std::size_t standard = 0;
-	std::size_t empty = 0;
-	for (std::size_t i = 0; i < labels.size(); ++i) {
-		if (labels[i] == std::to_string(i + 1)) {
-			++standard;
-		} else if (labels[i].empty()) {
-			++empty;
-		} else {
-			break;
-		}
+	// a label that is just its own page's number adds nothing
+	const auto isOwnNumber = [&labels](std::size_t index) {
+		return labels[index] == std::to_string(index + 1);
+	};
+	bool allNumbers = true;
+	for (std::size_t i = 0; i < labels.size() && allNumbers; ++i) {
+		allNumbers = isOwnNumber(i);
 	}
-	if (standard >= labels.size() || empty >= labels.size()) {
+	const bool allEmpty =
+	    std::all_of(labels.begin(), labels.end(),
+	                [](const std::string& label) { return label.empty(); });
+	if (allNumbers || allEmpty) {
 		return {};
 	}
 	return labels;

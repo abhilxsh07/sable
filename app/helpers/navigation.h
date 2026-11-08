@@ -36,9 +36,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "layout.h"
 
 namespace helpers {
-// the PDF's page labels (UTF-8, one per page), or none when pdf.js would
-// have ignored them: a count that doesn't match, or labels that are only
-// "1", "2", "3"... or only empty (app.js _initializePageLabels)
+// the PDF's page labels (UTF-8, one per page), or none when they add
+// nothing: the count doesn't match the pages, or the labels are only "1",
+// "2", "3"... or only empty
 std::vector<std::string> pageLabels(std::vector<std::string> labels,
                                     std::size_t count);
 
