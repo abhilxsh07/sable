@@ -411,8 +411,9 @@ void TabsTest::accessibilityTick(MainWindow& owner) {
 			const auto back = v.FindName(L"ToolPaneBack").try_as<Button>();
 			check(back && back.Visibility() == Visibility::Visible,
 			      "the properties pane has no back arrow to All tools");
-			// A-18: a screen reader gets the value, with its label, and the
-			// label takes its colour from the theme
+			// a value cell used to be named after its label, so the value was
+			// never announced: a screen reader gets the value, with its label,
+			// and the label takes its colour from the theme
 			const auto rows = host.Children().GetAt(0).as<Grid>();
 			const auto style =
 			    host.Resources().Lookup(box_value(L"PropertyLabelStyle"));

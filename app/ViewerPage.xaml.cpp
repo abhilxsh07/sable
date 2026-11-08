@@ -1763,7 +1763,7 @@ void ViewerPage::showNotice(const hstring& text, InfoBarSeverity severity) {
 	Message().IsOpen(true);
 	motion::show(Message(), true, motion::From::Above);
 	// a success closes itself; an error stays until it's closed or what it
-	// describes changes (A-10)
+	// describes changes, so it can't sit over the page for good
 	if (severity == InfoBarSeverity::Success) {
 		startNoticeTimer();
 	}
@@ -1809,7 +1809,8 @@ void ViewerPage::showMessage(const hstring& text) {
 	m_messageOnly = true;
 	Message().IsClosable(false);
 	Scroller().Visibility(XVisibility::Collapsed);
-	// a tab with nothing to show keeps only its message (A-09)
+	// a tab with nothing to show keeps only its message, not a command bar
+	// whose buttons do nothing
 	DocumentBar().Visibility(XVisibility::Collapsed);
 	closePane();
 	QuickTools().Visibility(XVisibility::Collapsed);

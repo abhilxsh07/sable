@@ -46,9 +46,9 @@ zoom and fits when it is first shown. I accepted that as by design on
 Opening the music pane still asks the player for the track again, in case
 it changed while the pane was shut, but no longer clears the title, artist
 and artwork while it waits, so "Unknown track" doesn't flash on every open
-(audit A-42). A new track or a different player still clears them at once.
-The controls still dim while a command is in flight; that half of A-42 is
-left for later.
+(the music pane re-reading the track). A new track or a different player
+still clears them at once. The controls still dim while a command is in
+flight; that half of it is left for later.
 
 ## MORTY on the tokens (2026-11-16)
 
@@ -152,7 +152,8 @@ editor, with a secondary Resize action. Resize closes that dialog before
 opening the existing guarded length editor on the same session/snapshot.
 Color/Width changes still require Apply; Resize does not apply them.
 The page menu retains its direct Resize action and gains the subtype
-Edit label. This closes audit A-45 without changing the write protocol,
+Edit label. This closes the missing Edit for an arrow's comment row without changing
+the write protocol,
 owned-line proof or the other drawing editors.
 
 ## Fill & Sign in the command bar (2026-11-16)
@@ -164,7 +165,8 @@ the same reason in the notice and accessibility help. Close stays outside
 the disabled group and scrollable actions, so it remains usable.
 The old Comments More menu is now gone; its final commands moved here.
 Form fields still use the existing click-to-fill path. This completes
-audit 6.3.7/17's Fill & Sign portion; no signature format, settings or
+the Fill & Sign part of the Comments panel cleanup; no signature format,
+settings or
 shortcut changes are included.
 
 ## Comment actions in the command bar (2026-11-16)
@@ -180,8 +182,8 @@ The strip now keeps Select, Hand, Note, Highlight, Draw and Text box.
 Comments keeps Add/Edit/Delete and the dirty line; its duplicate Save and
 callback are gone. Command-bar saving still uses the existing save flow.
 More temporarily keeps only Fill & Sign until its row in batch 6 step 8;
-no command is lost between commits. This implements audit 6.3.7/15/17's
-Comment portion. Home's Tools group and all settings/shortcuts stay.
+no command is lost between commits. This implements the Comments panel part of
+the quick strip and Comments cleanup. Home's Tools group and all settings/shortcuts stay.
 
 Update, 17 Nov: I approved removing Home's Tools group, so it no longer
 stays. See "Owner calls, 17 Nov".
@@ -199,7 +201,8 @@ for the refusal, with document/permission reasons before selection hints.
 Busy state uses the same gate; an armed tool can still be canceled.
 Form filling stays independent of annotation permission. Fill & Sign
 marks are annotations, so permission to fill fields alone cannot enable
-them. This follows audit A-28/A-36/A-37 without changing settings or keys.
+them. This follows the approved reasons for disabled tools on signed,
+annotation-locked and fill-only PDFs without changing settings or keys.
 
 ## Queued drawing strokes (2026-11-16)
 
@@ -217,15 +220,15 @@ from clearing a newer stroke. Forced teardown clears the FIFO and lets
 Session cancellation stop the write. I cap outstanding strokes at 64
 (each already has at most 4096 points) and refuse further presses with a
 notice until space is available. This replaces the dropped-press rule
-from 7 November, as approved in audit A-24; no settings keys change.
+from 7 November, as approved for two quick strokes; no settings keys change.
 
 ## Repeated Check and Cross placement (2026-11-15)
 
 Check and Cross stay armed after a mark is written. Esc, Hand, Select,
 another tool, save or close drops them through the shared tool state.
 A click while a write or dialog is pending explains the refusal and
-keeps the chosen mark; it does not queue another write. This is audit
-A-46's approved replacement for the one-shot Fill & Sign marks.
+keeps the chosen mark; it does not queue another write. This is the approved
+replacement for the one-shot Fill & Sign marks.
 Completed freehand strokes get their own queue in the next batch 6 step.
 
 ## Drawing style keeps the tool (2026-11-15)
@@ -234,7 +237,7 @@ I change only the shared pen color and width when choosing Drawing style.
 An idle style choice stays idle; a line or arrow keeps its first point,
 and a freehand stroke keeps the style it captured when it began. This
 replaces the 7 November choice that started Draw from a style item, as
-approved in audit A-38. The palette, widths and settings stay unchanged.
+approved after a Drawing style pick turned an arrow into freehand. The palette, widths and settings stay unchanged.
 
 ## Armed tools yield to save and close (2026-11-15)
 
@@ -242,7 +245,7 @@ I drop an armed tool before Save Copy, saving edits, or reviewing a tab
 close. An unfinished stroke, shape corner or stamp choice is canceled;
 an actual queued write, save or dialog keeps its existing busy guard.
 Clean tabs can close without an extra prompt, and canceling a save picker
-keeps the PDF and dirty edits intact. Audit A-11 replaces the old rule
+keeps the PDF and dirty edits intact. The approved fix for an armed tool blocking Ctrl+S replaces the old rule
 that required Esc before saving or closing an otherwise idle document.
 
 ## One active pointer tool (2026-11-15)
@@ -3987,7 +3990,8 @@ clears its saved selection even when restoring that selection fails.
 The XAML exception fallback marks the exception handled, logs its detail
 and asks the reader windows to show a retry notice. Debug probes still
 fail on an unexpected XAML exception, so recovery cannot hide a broken
-check. This follows A-25 in the approved shell audit queue.
+check. This follows the approved fix for a handler exception that ended the
+process.
 
 ## Form action names in the rewritten copy (2026-11-15)
 
@@ -3997,7 +4001,7 @@ and streams refuse a form transaction. Longer names do not match.
 This keeps the existing refusal for actions elsewhere in the form tree
 without treating compressed stream bytes or field text as actions.
 Signature checks keep their existing field/value and permission rules.
-This is A-29 in the approved shell audit queue.
+This is the approved fix for form writes refused over stray /JS bytes.
 
 ## Closing a background tab (2026-11-15)
 
@@ -4006,7 +4010,7 @@ Cancel keeps the active tab, and removing a clean background tab leaves
 the active viewer alone. Busy close/save/note refusals use the window's
 notice so they remain visible even when the requested tab is hidden.
 The existing per-document save/discard confirmation and save-copy
-cancellation still apply. This follows A-31 in the approved audit queue.
+cancellation still apply. This follows the approved fix for a closing tab being selected first.
 
 ## Document commands wait for a ready PDF (2026-11-15)
 
@@ -4015,7 +4019,8 @@ but document commands need its page layout. Opening a PDF refreshes the
 window's command state as soon as that layout is ready. Zoom, rotation,
 Find, presentation, properties, print, save and layout/cursor menus now
 follow that state. Print and save completion cannot enable a command
-over a failed or pending tab. This follows A-32 in the approved queue.
+over a failed or pending tab. This follows the approved fix for menu items left on for corrupt or
+password PDFs.
 
 ## PDF drops across the reader (2026-11-15)
 
@@ -4025,8 +4030,9 @@ skipped. Existing paths still select their tab instead of adding a copy.
 A document opening while the source supplies its files no longer
 invalidates the drop. Combine's list handles its own file drags, even
 when busy, so they cannot turn into window-level opens. Non-file drags
-are left to the native controls for their own reordering. This is A-33
-in the approved audit queue; Home's Tools group stays in place.
+are left to the native controls for their own reordering. This is the approved
+fix for drops refused on the viewer and most of Home; Home's Tools group
+stays in place.
 
 Update, 17 Nov: I approved removing Home's Tools group, so it no longer
 stays. See "Owner calls, 17 Nov".
@@ -4039,7 +4045,8 @@ Only saved edits reach the table; failed saves keep the old bindings.
 I keep the table builder separate from event registration so edits do
 not add handlers. The startup settings stay const. Fixed menu keys,
 modifier requirements and keypad aliases keep their existing precedence
-and mapping. This follows A-41 in the approved audit queue.
+and mapping. This follows the approved fix for shortcut edits only applying after a
+restart.
 
 ## Home presets and recent history (2026-11-15)
 
@@ -4052,7 +4059,8 @@ Clear recent is shown only when Recent contains an unstarred entry.
 Each row also has a named Remove from recent action. It removes that
 history entry, including its star if present, through the existing
 locked recent-file update. It never deletes or opens the source PDF.
-This follows A-47; the Home Tools group remains in place.
+This follows the approved fixes for the preset chips and Clear recent; the
+Home Tools group remains in place.
 
 Update, 17 Nov: I approved removing Home's Tools group, so it no longer
 stays. See "Owner calls, 17 Nov".
@@ -4062,7 +4070,7 @@ stays. See "Owner calls, 17 Nov".
 I keep CanReorderTabs on and turn CanDragTabs and CanTearOutTabs off.
 Reordering remains the native strip interaction, with the existing
 selection guard; no external tab payload or new-window tear-out is
-offered without a destination. This follows A-48 in the approved queue.
+offered without a destination. This follows the approved fix for dragging a tab out of the strip.
 The API distinguishes these behaviors:
 https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.candragtabs?view=windows-app-sdk-2.0
 https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.tabview.canreordertabs?view=windows-app-sdk-2.0
@@ -4078,7 +4086,8 @@ the current save to finish, or cancel its open dialog."
 
 The running operation keeps its controller, cancellation flag, picker
 and completion path. Closing windows and closed documents retain their
-existing bail-outs. This follows A-53 and completes audit batch 8.
+existing bail-outs. This follows the approved feedback for repeated Print and Save requests
+and completes audit batch 8.
 
 ## Settings theme colours (2026-11-15)
 
@@ -4087,7 +4096,8 @@ card and shortcut borders, capture overlay and navigation selection.
 A selected section takes Highlight/HighlightText under a contrast theme;
 shortcut captions take ButtonText. The title bar follows the same window
 and text colours on live theme changes. Dark keeps its existing colours,
-and Obsidian keeps its black surfaces. This follows approved A-43;
+and Obsidian keeps its black surfaces. This follows the approved fix for fixed colours in Settings under contrast
+themes;
 Windows contrast-theme appearance remains a hand check.
 
 ## Outline UI work on demand (2026-11-15)
@@ -4099,14 +4109,14 @@ the sidebar pauses queued work, reopening resumes it, and replacement
 or document close invalidates old batches. Cached nodes retain later
 expansion changes.
 
-Approved A-49 replaces the initial PDF-count expansion recorded under
+The approved outline fix replaces the initial PDF-count expansion recorded under
 Document outlines: every node starts collapsed. A large PDF cannot
 ask the UI to expand its entire hierarchy on first opening. The tree
 keeps its native selection, arrows, labels and destinations.
 
 ## Select an attachment before saving (2026-11-15)
 
-Approved A-50 replaces the row-invokes-picker flow under Attachment Save
+The approved attachment fix replaces the row-invokes-picker flow under Attachment Save
 As. Selecting a row now only selects it. A named Save button uses that
 row's PDF attachment index, even if rows have moved. It is disabled
 without a valid selection, while loading or saving, while hidden, and
@@ -4130,32 +4140,33 @@ asks for the peer. Existing text ranges retain their immutable snapshot.
 Every response must match the request generation, session and current
 page, and a closed viewer accepts none. Organize also invalidates the
 generation when a page number can now refer to different content. This
-follows approved A-51. The Accessibility check pauses the engine before
+follows the approved Narrator page-name fix. The Accessibility check pauses the engine before
 a real page turn and rejects stale same-page, session, page and close
 responses through the production completion path.
 
-## Speculative audit items A-60 to A-65 (2026-11-16)
+## Six speculative items checked and left alone (2026-11-16)
 
-Each got a probe step that tries to reproduce it. Only A-60 failed.
+Each got a probe step that tries to reproduce it. Only the first, a save
+cancelled by a tab switch, failed.
 
-A-60 (fixed): choosing a file in Save a copy and then switching tabs
+Save a copy cancelled by a tab switch (fixed): choosing a file in Save a copy and then switching tabs
 cancelled the save without a word. The window error now says "Copy not
 saved" and why. The SaveCopy probe checks it after the tab switch.
 
-A-61 (not reproducible): a copy sets the viewer's m_noteSaving and the
+A copy and a notes save overlapping (not reproducible): a copy sets the viewer's m_noteSaving and the
 window's m_saveCopyCancel before its picker opens, and saveNotes refuses
 on either one with "Save already in progress". A notes save on another
 tab writes another file, because opening a path that is already open
 selects its tab. SaveCopy now calls saveNotes while a copy is in flight.
 
-A-62 (not reproducible): Properties, Export and Combine are tool panes
+An editor dialog over a tool pane (not reproducible): Properties, Export and Combine are tool panes
 now, not ContentDialogs, so nothing can open a second dialog on top of
 them. The note, form and drawing editors, the password dialog and the
 close prompt are guarded by m_noteDialog and m_passwordDialog. The
 Comments probe opens the note editor with the Properties pane up; it
 opens and no notice appears.
 
-A-63 (left as it is): a tab that finishes loading while hidden has no
+A hidden tab laid out twice (left as it is): a tab that finishes loading while hidden has no
 viewport, so it is laid out once at a placeholder zoom (1.0 here) and
 fits through m_fitPending when it is first shown. Nothing renders at the
 placeholder zoom, so nobody sees it. The visible tab does the same on
@@ -4165,13 +4176,14 @@ the redundant layout is real but cheap.
 
 Update, 17 Nov: I accepted this as by design. Nothing changes.
 
-A-64 (not reproducible): the engine finishes everything queued before it
+A text-box edit waiting on a dropped job (not reproducible): the engine
+finishes everything queued before it
 stops (FinishesWhatsQueuedBeforeStopping), the form-fields job catches
 its own errors and always calls back, and a refused post throws before
 the wait, where the catch clears m_noteBusy. A timeout would only let a
 slow read hand the editor a stale snapshot, so none was added.
 
-A-65 (not pinned): the probes call dropDocuments with cached data, and
+A drop awaiting storage items (not pinned): the probes call dropDocuments with cached data, and
 DragEventArgs can't be built outside a real drag. The coroutine holds
 the data package view by value. Dragging a PDF in from Explorer is on
 the hand-check list instead; a deferral is a one-line change if it ever
@@ -4186,9 +4198,10 @@ and leftovers. Each fix started with a probe or test that failed, and
 each batch ended with zero-warning Debug and Release builds, the unit
 tests, the format check and a full probe run.
 
-What the last pass changed. A-60 now says "Copy not saved" when a tab
-switch cancels a chosen save. A-61 to A-65 were checked and left as they
-are, with the reasons in "Speculative audit items A-60 to A-65". The
+What the last pass changed. A tab switch that cancels a chosen save now
+says "Copy not saved". The other five speculative items were checked and
+left as they are, with the reasons in "Six speculative items checked and
+left alone". The
 Night Run tab takes the focus itself when it is picked again; it only
 repaired an empty focus before, which made Finish fail whenever the focus
 had already landed on the title bar. PrintUi now runs as its own probe.
@@ -4200,8 +4213,9 @@ changed nothing. Debug ARM64 and Release x64 build with no warnings, the
 x64 and ARM64 packages verify, and the extracted x64 ZIP opens a PDF and
 closes cleanly.
 
-Left open on purpose: A-20, A-34, A-44 and removal 18, which are your
-calls; batch 9's motion leftovers and A-42's busy dimming, which aren't
+Left open on purpose: where Settings opens, F11 and the title bar, confirm
+or undo for Delete annotation and Home's Tools group, which are your
+calls; batch 9's motion leftovers and the music pane's busy dimming, which aren't
 approved; and every hand, device, clean-machine and legal check in
 "Waiting on the owner". The release notes list the limits users will see.
 

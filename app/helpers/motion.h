@@ -18,7 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 #pragma once
-// Sable's motion tokens (audit section 7.1). styles/Theme.xaml carries the
+// Sable's motion tokens. styles/Theme.xaml carries the
 // same values as SableMotion* for anything written in XAML; the Motion probe
 // checks the two agree. The durations are WinUI's own
 // ControlFasterAnimationDuration, ControlFastAnimationDuration and

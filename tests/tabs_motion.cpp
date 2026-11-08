@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
-// Motion (audit section 7): every transition is on Sable's tokens, nothing
+// Motion: every transition is on Sable's tokens, nothing
 // runs longer than the longest one, and with Windows' animation effects off
 // nothing animates at all.
 #include "tabs_test.h"
@@ -39,7 +39,7 @@ std::chrono::milliseconds resourceDuration(const wchar_t* key) {
 	const auto seconds = std::stod(value.substr(value.rfind(L':') + 1));
 	return std::chrono::milliseconds(std::lround(seconds * 1000));
 }
-// over this, a frame during a transition was dropped at 60 Hz (audit 7.3)
+// over this, a frame during a transition was dropped at 60 Hz
 constexpr double FRAME_BUDGET_MS = 20;
 // one frame at 60 Hz
 constexpr double FRAME_MS = 1000. / 60;

@@ -189,8 +189,8 @@ TEST(Music, GatesCommandsOnCapabilitiesAndKnownState) {
 	EXPECT_FALSE(s.visible());
 	EXPECT_FALSE(enabled(s, Command::PlayPause));
 }
-// A-42: opening the pane read the track again and showed "Unknown track"
-// until the reply came
+// the music pane re-reading the track: opening it read the track again and
+// showed "Unknown track" until the reply came
 TEST(Music, ReopeningKeepsTheTrackOnShow) {
 	EXPECT_EQ(mediaRefresh(true, true, false, false), MediaRefresh::Reread);
 	EXPECT_EQ(mediaRefresh(true, false, false, false), MediaRefresh::None);

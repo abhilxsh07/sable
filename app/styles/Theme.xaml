@@ -260,7 +260,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Setter Property="RequestedTheme" Value="Light" />
 	</Style>
 
-	<!-- motion tokens (audit 7.1), WinUI's own durations and enter spline.
+	<!-- motion tokens, WinUI's own durations and enter spline.
 		helpers/motion.h carries the same values for the code. Every exit
 		is Faster; nothing runs longer than Normal. -->
 	<x:String x:Key="SableMotionFaster">00:00:00.083</x:String>
