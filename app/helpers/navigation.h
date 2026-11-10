@@ -79,10 +79,10 @@ struct Viewport {
 	double height = 0;
 };
 
-// pdf_viewer.js update(): the page with the largest share of itself in view,
-// lowest first on a tie, except that current stays while it's still all in
-// view. current is kept as well when nothing is in view. Edges are rounded
-// to whole DIPs first, like the browser's CSS pixels.
+// the page (0-based) the view is on while scrolling: the one with the
+// largest share of itself in view, the lowest on a tie, except that current
+// stays while it's still all in view. current is also the answer when
+// nothing is in view. Edges are rounded to whole DIPs first.
 std::size_t currentPage(const PageLayout& layout, const Viewport& view,
                         std::size_t current);
 

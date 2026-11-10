@@ -176,58 +176,51 @@ std::optional<std::size_t> pageFromText(std::string_view text,
 
 std::size_t currentPage(const PageLayout& layout, const Viewport& view,
                         std::size_t current) {
-	// ui_utils.js getVisibleElements: how much of each page is in view, as
-	// a whole percentage of the page. The browser measured in whole CSS
-	// pixels (scrollTop, offsetTop, clientHeight), so a view that stops a
-	// fraction past a page's edge still has all of that page.
-	struct Seen {
-		std::size_t page;
-		int percent;
-	};
-	std::vector<Seen> seen;
-	const double left = std::round(view.left);
-	const double top = std::round(view.top);
-	const double right = std::round(view.left + view.width);
-	const double bottom = std::round(view.top + view.height);
-	const auto range =
-	    layout.visiblePages({left, top, right - left, bottom - top}, 0);
-	for (auto page = range.first; page < range.end; ++page) {
-		const auto& rect = layout.pages()[page];
-		const double pageLeft = std::round(rect.x);
-		const double pageTop = std::round(rect.y);
-		const double pageRight = std::round(rect.x + rect.width);
-		const double pageBottom = std::round(rect.y + rect.height);
-		const double width = pageRight - pageLeft;
-		const double height = pageBottom - pageTop;
-		if (width <= 0 || height <= 0 || pageBottom <= top ||
-		    pageTop >= bottom || pageRight <= left || pageLeft >= right) {
-			continue;
-		}
-		const double hiddenHeight = (std::max)(0.0, top - pageTop) +
-		                            (std::max)(0.0, pageBottom - bottom);
-		const double hiddenWidth = (std::max)(0.0, left - pageLeft) +
-		                           (std::max)(0.0, pageRight - right);
-		const double fractionHeight = (height - hiddenHeight) / height;
-		const double fractionWidth = (width - hiddenWidth) / width;
-		seen.push_back(
-		    {page, static_cast<int>(fractionHeight * fractionWidth * 100)});
-	}
-	if (seen.empty()) {
+	const auto pages = layout.pages();
+	if (pages.empty()) {
 		return current;
 	}
-	// sortByVisibility: most visible first, and pages are already in order
-	std::stable_sort(
-	    seen.begin(), seen.end(),
-	    [](const Seen& a, const Seen& b) { return a.percent > b.percent; });
-	for (const auto& entry : seen) {
-		if (entry.percent < 100) {
-			break;
+	// every edge is rounded to a whole pixel on its own
+	const auto whole = [](double value) {
+		return static_cast<long long>(std::round(value));
+	};
+	const long long viewLeft = whole(view.left);
+	const long long viewTop = whole(view.top);
+	const long long viewRight = whole(view.left + view.width);
+	const long long viewBottom = whole(view.top + view.height);
+	if (viewRight <= viewLeft || viewBottom <= viewTop) {
+		return current;
+	}
+	// the visible percentage of a page (fraction dropped), or -1 when the
+	// page does not overlap the view or has no size after rounding
+	const auto visibility = [&](const PageRect& page) -> long long {
+		const long long left = whole(page.x);
+		const long long top = whole(page.y);
+		const long long right = whole(page.x + page.width);
+		const long long bottom = whole(page.y + page.height);
+		const long long across =
+		    std::min(right, viewRight) - std::max(left, viewLeft);
+		const long long down =
+		    std::min(bottom, viewBottom) - std::max(top, viewTop);
+		if (across <= 0 || down <= 0) {
+			return -1;
 		}
-		if (entry.page == current) {
-			return current;
+		// the overlap is positive, so the page's own size is as well
+		return across * down * 100 / ((right - left) * (bottom - top));
+	};
+	if (current < pages.size() && visibility(pages[current]) >= 100) {
+		return current;
+	}
+	long long best = -1;
+	std::size_t result = current;
+	for (std::size_t i = 0; i != pages.size(); ++i) {
+		const long long share = visibility(pages[i]);
+		if (share > best) {
+			best = share;
+			result = i;
 		}
 	}
-	return seen.front().page;
+	return result;
 }
 
 NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,

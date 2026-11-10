@@ -226,6 +226,127 @@ TEST(CurrentPage, NarrowerThanTheView) {
 	EXPECT_EQ(helpers::currentPage(layout, {-150, 0, 920, 1000}, 2), 2u);
 }
 
+TEST(CurrentPageRules, TieGoesToTheEarlierPage) {
+	const auto layout = shortPages();
+	// view y 300-331: page 0 shows 10 of 300, page 1 shows 10 of 300 (3%)
+	EXPECT_EQ(helpers::currentPage(layout, {0, 300, 620, 31}, 3), 0u);
+	// the later tied page being current doesn't help it
+	EXPECT_EQ(helpers::currentPage(layout, {0, 300, 620, 31}, 1), 0u);
+	// view y 611-642: page 1 shows 10 (611-621), page 2 shows 10 (632-642)
+	EXPECT_EQ(helpers::currentPage(layout, {0, 611, 620, 31}, 3), 1u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 611, 620, 31}, 2), 1u);
+}
+
+TEST(CurrentPageRules, FullyVisibleLaterPageStaysCurrent) {
+	const auto layout = shortPages();
+	// view y 0-700: pages 0 and 1 are whole, page 2 shows 68 of 300
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 700}, 1), 1u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 700}, 0), 0u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 700}, 3), 0u);
+}
+
+TEST(CurrentPageRules, TouchingTheEdgeDoesNotCount) {
+	const auto layout = shortPages();
+	// view y 310-321: page 0 ends at 310, page 1 starts at 321
+	EXPECT_EQ(helpers::currentPage(layout, {0, 310, 620, 11}, 3), 3u);
+	// view y 310-322: page 1 now overlaps by one pixel (0%), and counts
+	EXPECT_EQ(helpers::currentPage(layout, {0, 310, 620, 12}, 3), 1u);
+	// view x 610-710: pages end at x 610
+	EXPECT_EQ(helpers::currentPage(layout, {610, 0, 100, 1000}, 2), 2u);
+	// view x -100-10: pages start at x 10
+	EXPECT_EQ(helpers::currentPage(layout, {-100, 0, 110, 1000}, 1), 1u);
+}
+
+TEST(CurrentPageRules, NothingInViewKeepsTheCurrentPage) {
+	const auto layout = shortPages();
+	// view y -500 to -100 is above every page
+	EXPECT_EQ(helpers::currentPage(layout, {0, -500, 620, 400}, 1), 1u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, -500, 620, 400}, 99), 99u);
+	// zero width view
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 0, 1000}, 3), 3u);
+}
+
+TEST(CurrentPageRules, EmptyLayoutKeepsTheCurrentPage) {
+	const std::vector<helpers::PageSize> none;
+	const helpers::PageLayout layout(none, 0.75, 0, 11, 10);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 1000}, 0), 0u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 1000}, 5), 5u);
+}
+
+TEST(CurrentPageRules, CurrentOutOfRange) {
+	const auto layout = shortPages();
+	// pages 0-2 are whole in view; the first one wins
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 1000}, 4), 0u);
+	EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 1000}, 7), 0u);
+	// view y 321-621 shows only page 1
+	EXPECT_EQ(helpers::currentPage(layout, {0, 321, 620, 300}, 7), 1u);
+}
+
+// zoom 0.75 makes one point one DIP in the layouts below
+TEST(CurrentPageRules, ShareCountsNotPixels) {
+	const std::vector<helpers::PageSize> sizes{{600, 300}, {600, 100}};
+	// page 0 at y 10-310, page 1 at y 321-421
+	const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10);
+	// view y 160-421: page 0 shows 150 of 300 (50%), page 1 all of 100 (100%)
+	EXPECT_EQ(helpers::currentPage(layout, {0, 160, 620, 261}, 0), 1u);
+}
+
+TEST(CurrentPageRules, FractionIsDroppedBeforeComparing) {
+	const std::vector<helpers::PageSize> sizes(3, {600, 1000});
+	// pages at y 10-1010, 1021-2021, 2032-3032
+	const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10);
+	// view y 419-1620: page 0 shows 591 of 1000 (59.1%), page 1 shows 599
+	// (59.9%); both are 59, so the earlier page wins
+	EXPECT_EQ(helpers::currentPage(layout, {0, 419, 620, 1201}, 9), 0u);
+}
+
+TEST(CurrentPageRules, RoundingDecidesBetweenFullAndNinetyNine) {
+	const std::vector<helpers::PageSize> sizes(2, {600, 300});
+	// page 0 at y 10.4-310.4 (10-310), page 1 at y 321.4-621.4 (321-621)
+	const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10.4);
+	// view y 10.4-710.4 rounds to 10-710: page 0 is whole, so it stays
+	EXPECT_EQ(helpers::currentPage(layout, {0, 10.4, 620, 700}, 0), 0u);
+	// view y 10.6-710.6 rounds to 11-711: page 0 shows 299 of 300 (99%),
+	// page 1 is whole
+	EXPECT_EQ(helpers::currentPage(layout, {0, 10.6, 620, 700}, 0), 1u);
+}
+
+TEST(CurrentPageRules, PagesWithoutSizeAfterRoundingNeverCount) {
+	{
+		// page 1 is 0.2 high: y 321-321.2 rounds to 321-321
+		const std::vector<helpers::PageSize> sizes{
+		    {600, 300}, {600, 0.2}, {600, 300}};
+		const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10);
+		// page 2 at y 332.2-632.2 (332-632)
+		// view y 300-330: page 0 shows 10 of 300 (3%), nothing else counts
+		EXPECT_EQ(helpers::currentPage(layout, {0, 300, 620, 30}, 2), 0u);
+		// view y 315-325 meets only the empty page
+		EXPECT_EQ(helpers::currentPage(layout, {0, 315, 620, 10}, 2), 2u);
+	}
+	{
+		// page 0 is 0.2 wide: x 10-10.2 rounds to 10-10
+		const std::vector<helpers::PageSize> sizes{{0.2, 300}, {600, 300}};
+		const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10);
+		// page 1 is whole and the only page that counts
+		EXPECT_EQ(helpers::currentPage(layout, {0, 0, 620, 1000}, 0), 1u);
+	}
+}
+
+TEST(CurrentPageRules, EachEdgeIsRoundedOnItsOwn) {
+	// both pages sit at x 10.4-610.6, which rounds to 10-611: 601 wide,
+	// where rounding the width alone would give 600. Same-width pages are
+	// never shifted by the layout's centring.
+	const std::vector<helpers::PageSize> sizes(2, {600.2, 300});
+	const helpers::PageLayout layout(sizes, 0.75, 0, 11, 10.4);
+	// view x 10-610 leaves one pixel of each page out (600 of 601, 99%), so
+	// the current page doesn't stay and the earlier one wins
+	EXPECT_EQ(helpers::currentPage(layout, {10, 10, 600, 700}, 1), 0u);
+	// view x 10.4-610.8 rounds to 10-611: both pages are whole, so the
+	// current one stays, and with none current the earlier one wins
+	EXPECT_EQ(helpers::currentPage(layout, {10.4, 10, 600.4, 700}, 1), 1u);
+	EXPECT_EQ(helpers::currentPage(layout, {10.4, 10, 600.4, 700}, 5), 0u);
+}
+
 NavAction act(NavKey key, NavModifiers modifiers = {},
               NavFocus focus = NavFocus::Viewer, NavState state = {2, 5}) {
 	return helpers::navAction(key, modifiers, focus, state);
