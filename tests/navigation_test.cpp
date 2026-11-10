@@ -519,4 +519,485 @@ TEST(NavAction, WindowsChordsStayWithTheShell) {
 		EXPECT_EQ(act(key, {true, true, false, true}), NavAction::None);
 	}
 }
+// Tests for the rules in the keys description, one rule per group.
+constexpr NavKey ALL_KEYS[] = {
+    NavKey::Other, NavKey::Up,     NavKey::Down,     NavKey::Left,
+    NavKey::Right, NavKey::PageUp, NavKey::PageDown, NavKey::Home,
+    NavKey::End,   NavKey::Space,  NavKey::Enter,    NavKey::Backspace,
+    NavKey::G,     NavKey::J,      NavKey::K,        NavKey::N,
+    NavKey::P,     NavKey::R,      NavKey::H,        NavKey::S,
+    NavKey::F4,
+};
+constexpr NavFocus ALL_FOCUSES[] = {NavFocus::Viewer, NavFocus::Button,
+                                    NavFocus::TextBox};
+constexpr NavModifiers CTRL_ALT_SHIFT{true, true, true};
+constexpr NavModifiers ALT_SHIFT{false, true, true};
+// bit 0 ctrl, bit 1 alt, bit 2 shift, bit 3 Windows key
+constexpr NavModifiers modifiersFrom(unsigned bits) {
+	return {(bits & 1u) != 0, (bits & 2u) != 0, (bits & 4u) != 0,
+	        (bits & 8u) != 0};
+}
+// bit 0 vertical scrollbar, bit 1 horizontal scrollbar, bit 2 Page Fit
+constexpr NavState stateFrom(std::size_t page, std::size_t count,
+                             unsigned bits) {
+	return {page, count, (bits & 1u) != 0, (bits & 2u) != 0, (bits & 4u) != 0};
+}
+constexpr unsigned STATE_COMBOS = 8;
+constexpr unsigned MODIFIER_COMBOS = 16;
+constexpr NavState FIRST_PAGE{0, 5};
+constexpr NavState LAST_PAGE{4, 5};
+constexpr NavState NO_PAGES{0, 0};
+constexpr NavState ONLY_PAGE{0, 1};
+// nothing to scroll in either direction, and the zoom is not Page Fit
+constexpr NavState NOTHING_TO_SCROLL{2, 5, false, false, false};
+constexpr NavState PAGE_FIT{2, 5, false, false, true};
+
+// rule 1: the Windows key leaves everything to the shell
+TEST(NavActionRules, WindowsKeyBeatsEverything) {
+	for (const auto key : ALL_KEYS) {
+		for (const auto focus : ALL_FOCUSES) {
+			for (unsigned m = 0; m < MODIFIER_COMBOS; ++m) {
+				const NavModifiers modifiers = modifiersFrom(m | 8u);
+				for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+					EXPECT_EQ(act(key, modifiers, focus, stateFrom(2, 5, s)),
+					          NavAction::None);
+				}
+			}
+		}
+	}
+	// Ctrl+Up in a text field, from a page that is not the first
+	EXPECT_EQ(act(NavKey::Up, {true, false, false, true}, NavFocus::TextBox),
+	          NavAction::None);
+}
+
+// rule 2: Ctrl+Up and Ctrl+Down jump to the ends, from any focus
+TEST(NavActionRules, CtrlUpAndDownFromAnyFocus) {
+	for (const auto focus : ALL_FOCUSES) {
+		for (const auto modifiers : {CTRL, CTRL_SHIFT}) {
+			EXPECT_EQ(act(NavKey::Up, modifiers, focus), NavAction::First);
+			EXPECT_EQ(act(NavKey::Down, modifiers, focus), NavAction::Last);
+			// from the other end
+			EXPECT_EQ(act(NavKey::Up, modifiers, focus, LAST_PAGE),
+			          NavAction::First);
+			EXPECT_EQ(act(NavKey::Down, modifiers, focus, FIRST_PAGE),
+			          NavAction::Last);
+		}
+	}
+}
+TEST(NavActionRules, CtrlUpAndDownDoNothingAtTheEnds) {
+	for (const auto focus : ALL_FOCUSES) {
+		for (const auto modifiers : {CTRL, CTRL_SHIFT}) {
+			EXPECT_EQ(act(NavKey::Up, modifiers, focus, FIRST_PAGE),
+			          NavAction::None);
+			EXPECT_EQ(act(NavKey::Down, modifiers, focus, LAST_PAGE),
+			          NavAction::None);
+		}
+	}
+	// next to the end is not the end
+	EXPECT_EQ(act(NavKey::Down, CTRL, NavFocus::Viewer, {3, 5}),
+	          NavAction::Last);
+	EXPECT_EQ(act(NavKey::Up, CTRL, NavFocus::Viewer, {1, 5}),
+	          NavAction::First);
+	// a one-page document and an empty one are at both ends
+	for (const auto& state : {ONLY_PAGE, NO_PAGES}) {
+		EXPECT_EQ(act(NavKey::Up, CTRL, NavFocus::Viewer, state),
+		          NavAction::None);
+		EXPECT_EQ(act(NavKey::Down, CTRL, NavFocus::Viewer, state),
+		          NavAction::None);
+	}
+}
+TEST(NavActionRules, CtrlUpAndDownIgnoreScrollbarsAndPageFit) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		EXPECT_EQ(act(NavKey::Up, CTRL, NavFocus::Viewer, state),
+		          NavAction::First);
+		EXPECT_EQ(act(NavKey::Down, CTRL, NavFocus::Viewer, state),
+		          NavAction::Last);
+	}
+}
+TEST(NavActionRules, CtrlWithAnyOtherKeyDoesNothing) {
+	for (const auto key : ALL_KEYS) {
+		if (key == NavKey::Up || key == NavKey::Down) {
+			continue;
+		}
+		for (const auto focus : ALL_FOCUSES) {
+			for (const auto modifiers : {CTRL, CTRL_SHIFT}) {
+				for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+					EXPECT_EQ(act(key, modifiers, focus, stateFrom(2, 5, s)),
+					          NavAction::None);
+				}
+			}
+		}
+	}
+}
+
+// rule 3: Ctrl+Alt+G picks the page box, everything else with both is idle
+TEST(NavActionRules, CtrlAltGSelectsThePageBoxFromAnyFocus) {
+	for (const auto focus : ALL_FOCUSES) {
+		for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+			EXPECT_EQ(act(NavKey::G, CTRL_ALT, focus, stateFrom(2, 5, s)),
+			          NavAction::FocusPageBox);
+		}
+		EXPECT_EQ(act(NavKey::G, CTRL_ALT, focus, FIRST_PAGE),
+		          NavAction::FocusPageBox);
+		EXPECT_EQ(act(NavKey::G, CTRL_ALT, focus, NO_PAGES),
+		          NavAction::FocusPageBox);
+		EXPECT_EQ(act(NavKey::G, CTRL_ALT_SHIFT, focus), NavAction::None);
+	}
+}
+TEST(NavActionRules, CtrlAltWithAnyOtherKeyDoesNothing) {
+	for (const auto key : ALL_KEYS) {
+		if (key == NavKey::G) {
+			continue;
+		}
+		for (const auto focus : ALL_FOCUSES) {
+			EXPECT_EQ(act(key, CTRL_ALT, focus), NavAction::None);
+			EXPECT_EQ(act(key, CTRL_ALT_SHIFT, focus), NavAction::None);
+			EXPECT_EQ(act(key, CTRL_ALT, focus, PAGE_FIT), NavAction::None);
+		}
+	}
+}
+
+// rule 4: text fields keep every key
+TEST(NavActionRules, TextFieldKeepsEveryUnmodifiedKey) {
+	for (const auto key : ALL_KEYS) {
+		for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+			EXPECT_EQ(act(key, {}, NavFocus::TextBox, stateFrom(2, 5, s)),
+			          NavAction::None);
+		}
+		EXPECT_EQ(act(key, {}, NavFocus::TextBox, FIRST_PAGE), NavAction::None);
+		EXPECT_EQ(act(key, {}, NavFocus::TextBox, LAST_PAGE), NavAction::None);
+	}
+	EXPECT_EQ(act(NavKey::Backspace, {}, NavFocus::TextBox, PAGE_FIT),
+	          NavAction::None);
+	EXPECT_EQ(act(NavKey::Up, {}, NavFocus::TextBox, NOTHING_TO_SCROLL),
+	          NavAction::None);
+}
+TEST(NavActionRules, TextFieldKeepsShiftedAndAltKeys) {
+	for (const auto key : ALL_KEYS) {
+		for (const auto modifiers : {SHIFT, ALT, ALT_SHIFT}) {
+			for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+				EXPECT_EQ(
+				    act(key, modifiers, NavFocus::TextBox, stateFrom(2, 5, s)),
+				    NavAction::None);
+			}
+		}
+	}
+}
+TEST(NavActionRules, ButtonKeepsOnlyEnterAndSpace) {
+	for (const auto key : {NavKey::Enter, NavKey::Space}) {
+		for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+			const NavState state = stateFrom(2, 5, s);
+			EXPECT_EQ(act(key, {}, NavFocus::Button, state), NavAction::None);
+			EXPECT_EQ(act(key, SHIFT, NavFocus::Button, state),
+			          NavAction::None);
+		}
+	}
+	// the same keys do turn pages from the viewer
+	EXPECT_EQ(act(NavKey::Enter, {}, NavFocus::Viewer, PAGE_FIT),
+	          NavAction::Next);
+	EXPECT_EQ(act(NavKey::Space, SHIFT, NavFocus::Viewer, PAGE_FIT),
+	          NavAction::Previous);
+}
+TEST(NavActionRules, ButtonFocusActsLikeTheViewerForOtherKeys) {
+	const NavState scrolls{2, 5, true, true, false};
+	EXPECT_EQ(act(NavKey::K, {}, NavFocus::Button, scrolls),
+	          NavAction::Previous);
+	EXPECT_EQ(act(NavKey::P, {}, NavFocus::Button, scrolls),
+	          NavAction::Previous);
+	EXPECT_EQ(act(NavKey::J, {}, NavFocus::Button, scrolls), NavAction::Next);
+	EXPECT_EQ(act(NavKey::N, {}, NavFocus::Button, scrolls), NavAction::Next);
+	EXPECT_EQ(act(NavKey::R, {}, NavFocus::Button, scrolls),
+	          NavAction::RotateClockwise);
+	EXPECT_EQ(act(NavKey::R, SHIFT, NavFocus::Button, scrolls),
+	          NavAction::RotateCounterClockwise);
+	EXPECT_EQ(act(NavKey::H, {}, NavFocus::Button, scrolls),
+	          NavAction::HandTool);
+	EXPECT_EQ(act(NavKey::S, {}, NavFocus::Button, scrolls),
+	          NavAction::SelectTool);
+	EXPECT_EQ(act(NavKey::F4, {}, NavFocus::Button, scrolls),
+	          NavAction::ToggleSidebar);
+	EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Button, scrolls),
+	          NavAction::First);
+	EXPECT_EQ(act(NavKey::End, {}, NavFocus::Button, scrolls), NavAction::Last);
+	EXPECT_EQ(act(NavKey::Up, {}, NavFocus::Button, NOTHING_TO_SCROLL),
+	          NavAction::Previous);
+	EXPECT_EQ(act(NavKey::Right, {}, NavFocus::Button, scrolls),
+	          NavAction::None);
+	EXPECT_EQ(act(NavKey::Backspace, {}, NavFocus::Button, PAGE_FIT),
+	          NavAction::Previous);
+	EXPECT_EQ(act(NavKey::G, {}, NavFocus::Button), NavAction::None);
+	EXPECT_EQ(act(NavKey::Other, {}, NavFocus::Button), NavAction::None);
+}
+TEST(NavActionRules, ButtonFocusStillChecksTheEnds) {
+	EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Button, FIRST_PAGE),
+	          NavAction::None);
+	EXPECT_EQ(act(NavKey::End, {}, NavFocus::Button, LAST_PAGE),
+	          NavAction::None);
+	// Ctrl+Up and Ctrl+Down come before the button rule
+	EXPECT_EQ(act(NavKey::Up, CTRL, NavFocus::Button), NavAction::First);
+	EXPECT_EQ(act(NavKey::Down, CTRL, NavFocus::Button), NavAction::Last);
+}
+
+// rule 5: Alt alone takes the key away from every action
+TEST(NavActionRules, AltAloneDoesNothing) {
+	for (const auto key : ALL_KEYS) {
+		for (const auto focus : ALL_FOCUSES) {
+			for (const auto modifiers : {ALT, ALT_SHIFT}) {
+				for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+					EXPECT_EQ(act(key, modifiers, focus, stateFrom(2, 5, s)),
+					          NavAction::None);
+				}
+				EXPECT_EQ(act(key, modifiers, focus, FIRST_PAGE),
+				          NavAction::None);
+				EXPECT_EQ(act(key, modifiers, focus, LAST_PAGE),
+				          NavAction::None);
+			}
+		}
+	}
+	EXPECT_EQ(act(NavKey::F4, ALT, NavFocus::Button), NavAction::None);
+	EXPECT_EQ(act(NavKey::R, ALT_SHIFT), NavAction::None);
+	EXPECT_EQ(act(NavKey::Left, ALT, NavFocus::Viewer, NOTHING_TO_SCROLL),
+	          NavAction::None);
+}
+
+// rule 6: R rotates, Shift+R rotates the other way
+TEST(NavActionRules, RotationWorksInEveryViewState) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		EXPECT_EQ(act(NavKey::R, {}, NavFocus::Viewer, state),
+		          NavAction::RotateClockwise);
+		EXPECT_EQ(act(NavKey::R, SHIFT, NavFocus::Viewer, state),
+		          NavAction::RotateCounterClockwise);
+	}
+	for (const auto& state : {FIRST_PAGE, LAST_PAGE, NO_PAGES, ONLY_PAGE}) {
+		EXPECT_EQ(act(NavKey::R, {}, NavFocus::Viewer, state),
+		          NavAction::RotateClockwise);
+		EXPECT_EQ(act(NavKey::R, SHIFT, NavFocus::Button, state),
+		          NavAction::RotateCounterClockwise);
+	}
+}
+
+// rule 7: with Shift only Enter and Space in Page Fit do anything
+TEST(NavActionRules, ShiftedKeysDoNothingExceptEnterAndSpaceInPageFit) {
+	for (const auto key : ALL_KEYS) {
+		if (key == NavKey::R || key == NavKey::Enter || key == NavKey::Space) {
+			continue;
+		}
+		for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+			EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, stateFrom(2, 5, s)),
+			          NavAction::None);
+		}
+		EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, FIRST_PAGE),
+		          NavAction::None);
+		EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, LAST_PAGE),
+		          NavAction::None);
+	}
+}
+TEST(NavActionRules, ShiftEnterAndSpaceGoBackOnlyInPageFit) {
+	for (const auto key : {NavKey::Enter, NavKey::Space}) {
+		for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+			const NavState state = stateFrom(2, 5, s);
+			const bool pageFit = (s & 4u) != 0;
+			EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, state),
+			          pageFit ? NavAction::Previous : NavAction::None);
+		}
+		// the key is used up even on the first page
+		EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, {0, 5, false, false, true}),
+		          NavAction::Previous);
+		EXPECT_EQ(act(key, SHIFT, NavFocus::Viewer, {4, 5, true, true, true}),
+		          NavAction::Previous);
+	}
+}
+
+// rule 8: H and S pick the cursor tools
+TEST(NavActionRules, ToolKeysWorkInEveryViewState) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		EXPECT_EQ(act(NavKey::H, {}, NavFocus::Viewer, state),
+		          NavAction::HandTool);
+		EXPECT_EQ(act(NavKey::S, {}, NavFocus::Viewer, state),
+		          NavAction::SelectTool);
+	}
+	for (const auto& state : {FIRST_PAGE, LAST_PAGE, NO_PAGES}) {
+		EXPECT_EQ(act(NavKey::H, {}, NavFocus::Viewer, state),
+		          NavAction::HandTool);
+		EXPECT_EQ(act(NavKey::S, {}, NavFocus::Button, state),
+		          NavAction::SelectTool);
+	}
+}
+
+// rule 9: keys without modifiers
+TEST(NavActionRules, LetterPageKeysAlwaysTurnPages) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		for (const auto key : {NavKey::K, NavKey::P}) {
+			EXPECT_EQ(act(key, {}, NavFocus::Viewer, state),
+			          NavAction::Previous);
+		}
+		for (const auto key : {NavKey::J, NavKey::N}) {
+			EXPECT_EQ(act(key, {}, NavFocus::Viewer, state), NavAction::Next);
+		}
+	}
+	// the key is used up even when the page cannot change
+	for (const auto key : {NavKey::K, NavKey::P}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, FIRST_PAGE),
+		          NavAction::Previous);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, NO_PAGES),
+		          NavAction::Previous);
+	}
+	for (const auto key : {NavKey::J, NavKey::N}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, LAST_PAGE), NavAction::Next);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, NO_PAGES), NavAction::Next);
+	}
+}
+TEST(NavActionRules, VerticalKeysScrollWhenThePagesScrollVertically) {
+	for (const auto key : {NavKey::Up, NavKey::PageUp}) {
+		const NavAction turn = NavAction::Previous;
+		// no vertical scrollbar: turn, whatever the horizontal one and zoom
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 0)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 2)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 4)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 6)), turn);
+		// vertical scrollbar: scroll, unless Page Fit
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 1)),
+		          NavAction::None);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 3)),
+		          NavAction::None);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 5)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 7)), turn);
+	}
+	for (const auto key : {NavKey::Down, NavKey::PageDown}) {
+		const NavAction turn = NavAction::Next;
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 0)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 2)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 4)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 6)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 1)),
+		          NavAction::None);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 3)),
+		          NavAction::None);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 5)), turn);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, stateFrom(2, 5, 7)), turn);
+	}
+}
+TEST(NavActionRules, HorizontalKeysScrollWhenThePagesScrollHorizontally) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		const bool horizontal = (s & 2u) != 0;
+		const bool pageFit = (s & 4u) != 0;
+		const bool turns = !horizontal || pageFit;
+		EXPECT_EQ(act(NavKey::Left, {}, NavFocus::Viewer, state),
+		          turns ? NavAction::Previous : NavAction::None);
+		EXPECT_EQ(act(NavKey::Right, {}, NavFocus::Viewer, state),
+		          turns ? NavAction::Next : NavAction::None);
+	}
+}
+TEST(NavActionRules, ScrollingKeysAtTheEndsStillTurnWhenNothingScrolls) {
+	// nothing to scroll: the key is used up even when the page stays
+	for (const auto key : {NavKey::Up, NavKey::PageUp, NavKey::Left}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, {0, 5}), NavAction::Previous);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, {0, 0}), NavAction::Previous);
+	}
+	for (const auto key : {NavKey::Down, NavKey::PageDown, NavKey::Right}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, {4, 5}), NavAction::Next);
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, {0, 0}), NavAction::Next);
+	}
+	// and in Page Fit with scroll bars showing
+	const NavState firstFit{0, 5, true, true, true};
+	const NavState lastFit{4, 5, true, true, true};
+	for (const auto key :
+	     {NavKey::Up, NavKey::PageUp, NavKey::Left, NavKey::Backspace}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, firstFit),
+		          NavAction::Previous);
+	}
+	for (const auto key : {NavKey::Down, NavKey::PageDown, NavKey::Right,
+	                       NavKey::Space, NavKey::Enter}) {
+		EXPECT_EQ(act(key, {}, NavFocus::Viewer, lastFit), NavAction::Next);
+	}
+}
+TEST(NavActionRules, BackspaceEnterAndSpaceTurnPagesOnlyInPageFit) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState state = stateFrom(2, 5, s);
+		const bool pageFit = (s & 4u) != 0;
+		EXPECT_EQ(act(NavKey::Backspace, {}, NavFocus::Viewer, state),
+		          pageFit ? NavAction::Previous : NavAction::None);
+		EXPECT_EQ(act(NavKey::Enter, {}, NavFocus::Viewer, state),
+		          pageFit ? NavAction::Next : NavAction::None);
+		EXPECT_EQ(act(NavKey::Space, {}, NavFocus::Viewer, state),
+		          pageFit ? NavAction::Next : NavAction::None);
+	}
+	// still Previous or Next at the ends of the document
+	EXPECT_EQ(act(NavKey::Backspace, {}, NavFocus::Viewer,
+	              {0, 5, false, false, true}),
+	          NavAction::Previous);
+	EXPECT_EQ(
+	    act(NavKey::Space, {}, NavFocus::Viewer, {4, 5, false, false, true}),
+	    NavAction::Next);
+	EXPECT_EQ(
+	    act(NavKey::Enter, {}, NavFocus::Viewer, {4, 5, false, false, true}),
+	    NavAction::Next);
+}
+TEST(NavActionRules, HomeAndEndCheckTheEnds) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		const NavState middle = stateFrom(2, 5, s);
+		EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Viewer, middle),
+		          NavAction::First);
+		EXPECT_EQ(act(NavKey::End, {}, NavFocus::Viewer, middle),
+		          NavAction::Last);
+		EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Viewer, stateFrom(0, 5, s)),
+		          NavAction::None);
+		EXPECT_EQ(act(NavKey::End, {}, NavFocus::Viewer, stateFrom(4, 5, s)),
+		          NavAction::None);
+	}
+	// from the opposite end
+	EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Viewer, LAST_PAGE),
+	          NavAction::First);
+	EXPECT_EQ(act(NavKey::End, {}, NavFocus::Viewer, FIRST_PAGE),
+	          NavAction::Last);
+	EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Viewer, {1, 5}),
+	          NavAction::First);
+	EXPECT_EQ(act(NavKey::End, {}, NavFocus::Viewer, {3, 5}), NavAction::Last);
+}
+TEST(NavActionRules, EmptyAndSinglePageDocumentsAreAtBothEnds) {
+	for (const auto& state : {NO_PAGES, ONLY_PAGE}) {
+		EXPECT_EQ(act(NavKey::Home, {}, NavFocus::Viewer, state),
+		          NavAction::None);
+		EXPECT_EQ(act(NavKey::End, {}, NavFocus::Viewer, state),
+		          NavAction::None);
+		EXPECT_EQ(act(NavKey::Down, CTRL, NavFocus::Viewer, state),
+		          NavAction::None);
+		EXPECT_EQ(act(NavKey::Up, CTRL, NavFocus::Viewer, state),
+		          NavAction::None);
+	}
+}
+TEST(NavActionRules, F4TogglesTheSidebarEverywhereExceptTextFields) {
+	for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+		EXPECT_EQ(act(NavKey::F4, {}, NavFocus::Viewer, stateFrom(2, 5, s)),
+		          NavAction::ToggleSidebar);
+		EXPECT_EQ(act(NavKey::F4, {}, NavFocus::Button, stateFrom(2, 5, s)),
+		          NavAction::ToggleSidebar);
+	}
+	for (const auto& state : {FIRST_PAGE, LAST_PAGE, NO_PAGES}) {
+		EXPECT_EQ(act(NavKey::F4, {}, NavFocus::Viewer, state),
+		          NavAction::ToggleSidebar);
+	}
+	for (const auto modifiers :
+	     {SHIFT, CTRL, ALT, CTRL_SHIFT, CTRL_ALT, ALT_SHIFT, CTRL_ALT_SHIFT}) {
+		EXPECT_EQ(act(NavKey::F4, modifiers), NavAction::None);
+	}
+}
+
+// keys this module does not know
+TEST(NavActionRules, OtherKeyNeverDoesAnything) {
+	for (const auto focus : ALL_FOCUSES) {
+		for (unsigned m = 0; m < MODIFIER_COMBOS; ++m) {
+			for (unsigned s = 0; s < STATE_COMBOS; ++s) {
+				EXPECT_EQ(act(NavKey::Other, modifiersFrom(m), focus,
+				              stateFrom(2, 5, s)),
+				          NavAction::None);
+			}
+		}
+	}
+}
 } // namespace

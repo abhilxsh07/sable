@@ -225,107 +225,92 @@ std::size_t currentPage(const PageLayout& layout, const Viewport& view,
 
 NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
                     const NavState& state) {
+	constexpr auto none = NavAction::None;
+	const bool onFirstPage = state.page == 0;
+	const bool onLastPage = state.count == 0 || state.page >= state.count - 1;
+
+	// Windows shortcuts stay with the shell
 	if (modifiers.windows) {
-		return NavAction::None;
+		return none;
 	}
-	const bool hasPrevious = state.page > 0;
-	const bool hasNext = state.page + 1 < state.count;
-	// Ctrl, with or without Shift, works even in the page box (app.js
-	// L2928-2945)
-	if (modifiers.ctrl && !modifiers.alt) {
-		if (key == NavKey::Up && hasPrevious) {
-			return NavAction::First;
+	// Ctrl jumps to either end of the document, even from a text field
+	if (modifiers.ctrl) {
+		if (modifiers.alt) {
+			const bool goTo = key == NavKey::G && !modifiers.shift;
+			return goTo ? NavAction::FocusPageBox : none;
 		}
-		if (key == NavKey::Down && hasNext) {
-			return NavAction::Last;
+		switch (key) {
+		case NavKey::Up:
+			return onFirstPage ? none : NavAction::First;
+		case NavKey::Down:
+			return onLastPage ? none : NavAction::Last;
+		default:
+			return none;
 		}
-		return NavAction::None;
 	}
-	// Ctrl+Alt+G selects the page box (L2978-2984)
-	if (modifiers.ctrl && modifiers.alt) {
-		return key == NavKey::G && !modifiers.shift ? NavAction::FocusPageBox
-		                                            : NavAction::None;
-	}
-	// the rest is left to text fields, and Enter and Space to buttons
-	// (L2996-3012)
+	// text fields keep every key; buttons keep the ones that press them
+	const bool pressesButton = key == NavKey::Enter || key == NavKey::Space;
 	if (focus == NavFocus::TextBox ||
-	    (focus == NavFocus::Button &&
-	     (key == NavKey::Enter || key == NavKey::Space))) {
-		return NavAction::None;
+	    (focus == NavFocus::Button && pressesButton)) {
+		return none;
 	}
 	if (modifiers.alt) {
-		return NavAction::None;
+		return none;
 	}
-	// app.js webViewerKeyDown uses R and Shift+R outside text fields
 	if (key == NavKey::R) {
 		return modifiers.shift ? NavAction::RotateCounterClockwise
 		                       : NavAction::RotateClockwise;
 	}
-	// Shift+Space and Shift+Enter go back a page only in page-fit
-	// (L3153-3166)
+	// the only key combinations that survive Shift
 	if (modifiers.shift) {
-		return (key == NavKey::Enter || key == NavKey::Space) && state.pageFit
-		           ? NavAction::Previous
-		           : NavAction::None;
+		return pressesButton && state.pageFit ? NavAction::Previous : none;
 	}
-	if (key == NavKey::H) {
-		return NavAction::HandTool;
-	}
-	if (key == NavKey::S) {
-		return NavAction::SelectTool;
-	}
-	// no modifiers (L3014-3151). The scrolling keys only turn pages when
-	// there's nothing to scroll that way, or in page-fit.
-	int turn = 0;
-	bool onlyIfPageFit = false;
+
+	// from here on no modifier is held
+	const auto ifFit = [&state](NavAction action) {
+		return state.pageFit ? action : none;
+	};
+	// the arrows and Page Up/Down scroll when there is something to scroll
+	const auto vertical = [&](NavAction action) {
+		return state.verticalScrollbar ? ifFit(action) : action;
+	};
+	const auto horizontal = [&](NavAction action) {
+		return state.horizontalScrollbar ? ifFit(action) : action;
+	};
 	switch (key) {
-	case NavKey::Up:
-	case NavKey::PageUp:
-		onlyIfPageFit = state.verticalScrollbar;
-		turn = -1;
-		break;
-	case NavKey::Backspace:
-		onlyIfPageFit = true;
-		turn = -1;
-		break;
-	case NavKey::Left:
-		onlyIfPageFit = state.horizontalScrollbar;
-		turn = -1;
-		break;
+	case NavKey::H:
+		return NavAction::HandTool;
+	case NavKey::S:
+		return NavAction::SelectTool;
 	case NavKey::K:
 	case NavKey::P:
-		turn = -1;
-		break;
-	case NavKey::Down:
-	case NavKey::PageDown:
-		onlyIfPageFit = state.verticalScrollbar;
-		turn = 1;
-		break;
-	case NavKey::Enter:
-	case NavKey::Space:
-		onlyIfPageFit = true;
-		turn = 1;
-		break;
-	case NavKey::Right:
-		onlyIfPageFit = state.horizontalScrollbar;
-		turn = 1;
-		break;
+		return NavAction::Previous;
 	case NavKey::J:
 	case NavKey::N:
-		turn = 1;
-		break;
+		return NavAction::Next;
+	case NavKey::Up:
+	case NavKey::PageUp:
+		return vertical(NavAction::Previous);
+	case NavKey::Down:
+	case NavKey::PageDown:
+		return vertical(NavAction::Next);
+	case NavKey::Left:
+		return horizontal(NavAction::Previous);
+	case NavKey::Right:
+		return horizontal(NavAction::Next);
+	case NavKey::Backspace:
+		return ifFit(NavAction::Previous);
+	case NavKey::Enter:
+	case NavKey::Space:
+		return ifFit(NavAction::Next);
 	case NavKey::Home:
-		return hasPrevious ? NavAction::First : NavAction::None;
+		return onFirstPage ? none : NavAction::First;
 	case NavKey::End:
-		return hasNext ? NavAction::Last : NavAction::None;
+		return onLastPage ? none : NavAction::Last;
 	case NavKey::F4:
 		return NavAction::ToggleSidebar;
 	default:
-		break;
+		return none;
 	}
-	if (turn == 0 || (onlyIfPageFit && !state.pageFit)) {
-		return NavAction::None;
-	}
-	return turn > 0 ? NavAction::Next : NavAction::Previous;
 }
 } // namespace helpers

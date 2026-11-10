@@ -86,7 +86,7 @@ struct Viewport {
 std::size_t currentPage(const PageLayout& layout, const Viewport& view,
                         std::size_t current);
 
-// the keys app.js webViewerKeyDown turns pages with
+// the keys that turn pages or pick tools in the reader
 enum class NavKey {
 	Other,
 	Up,
@@ -126,7 +126,7 @@ struct NavState {
 	std::size_t count = 0;
 	bool verticalScrollbar = false;
 	bool horizontalScrollbar = false;
-	// pdf.js's "page-fit" zoom, where the scrolling keys turn pages
+	// the "Page Fit" zoom, where the scrolling keys turn pages
 	bool pageFit = false;
 };
 
@@ -144,8 +144,8 @@ enum class NavAction {
 	SelectTool,
 };
 
-// None leaves the key to the scroller. Previous on the first page and Next
-// on the last still take the key, like pdf.js.
+// None leaves the key to the scroller or the focused control. Previous on
+// the first page and Next on the last still take the key (the page stays).
 NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
                     const NavState& state);
 } // namespace helpers
