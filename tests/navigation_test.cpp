@@ -1000,4 +1000,360 @@ TEST(NavActionRules, OtherKeyNeverDoesAnything) {
 		}
 	}
 }
+
+// Every key, so the loops below do not depend on a hand-picked subset.
+constexpr NavKey FOCUS_KEYS[] = {
+    NavKey::Other, NavKey::Up,     NavKey::Down,     NavKey::Left,
+    NavKey::Right, NavKey::PageUp, NavKey::PageDown, NavKey::Home,
+    NavKey::End,   NavKey::Space,  NavKey::Enter,    NavKey::Backspace,
+    NavKey::G,     NavKey::J,      NavKey::K,        NavKey::N,
+    NavKey::P,     NavKey::R,      NavKey::H,        NavKey::S,
+    NavKey::F4};
+
+constexpr NavFocus FOCUS_PLACES[] = {NavFocus::Viewer, NavFocus::Button,
+                                     NavFocus::TextBox};
+
+constexpr NavAction FOCUS_ACTIONS[] = {NavAction::None,
+                                       NavAction::Previous,
+                                       NavAction::Next,
+                                       NavAction::First,
+                                       NavAction::Last,
+                                       NavAction::FocusPageBox,
+                                       NavAction::ToggleSidebar,
+                                       NavAction::RotateClockwise,
+                                       NavAction::RotateCounterClockwise,
+                                       NavAction::HandTool,
+                                       NavAction::SelectTool};
+
+// Page Up, Page Down, Home, End and the four arrow keys.
+constexpr NavKey FOCUS_MOVEMENT_KEYS[] = {
+    NavKey::PageUp, NavKey::PageDown, NavKey::Home, NavKey::End,
+    NavKey::Up,     NavKey::Down,     NavKey::Left, NavKey::Right};
+
+// Keys that are neither movement keys nor Space.
+constexpr NavKey FOCUS_OTHER_KEYS[] = {
+    NavKey::Other, NavKey::Enter, NavKey::Backspace, NavKey::G,
+    NavKey::J,     NavKey::K,     NavKey::N,         NavKey::P,
+    NavKey::R,     NavKey::H,     NavKey::S,         NavKey::F4};
+
+// Results that are neither a jump to the first/last page nor "none".
+constexpr NavAction FOCUS_OTHER_ACTIONS[] = {
+    NavAction::Previous,        NavAction::Next,
+    NavAction::FocusPageBox,    NavAction::ToggleSidebar,
+    NavAction::RotateClockwise, NavAction::RotateCounterClockwise,
+    NavAction::HandTool,        NavAction::SelectTool};
+
+// All sixteen combinations of Ctrl, Alt, Shift and the Windows key.
+NavModifiers focusModifiers(int bits) {
+	NavModifiers modifiers;
+	modifiers.ctrl = (bits & 1) != 0;
+	modifiers.alt = (bits & 2) != 0;
+	modifiers.shift = (bits & 4) != 0;
+	modifiers.windows = (bits & 8) != 0;
+	return modifiers;
+}
+
+constexpr NavModifiers FOCUS_CTRL_ONLY{.ctrl = true};
+constexpr NavModifiers FOCUS_ALT_ONLY{.alt = true};
+constexpr NavModifiers FOCUS_WIN_ONLY{.windows = true};
+constexpr NavModifiers FOCUS_SHIFT_ONLY{.shift = true};
+
+bool focusIsMovementKey(NavKey key) {
+	for (NavKey movement : FOCUS_MOVEMENT_KEYS) {
+		if (movement == key) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// An independent restatement of the rules, used by the exhaustive test.
+bool focusExpected(NavKey key, NavModifiers modifiers, NavFocus focus,
+                   NavAction action) {
+	if (focus == NavFocus::Viewer) {
+		return false;
+	}
+	if (action == NavAction::First || action == NavAction::Last) {
+		return true;
+	}
+	if (action != NavAction::None || focus == NavFocus::TextBox) {
+		return false;
+	}
+	if (modifiers.ctrl || modifiers.alt || modifiers.windows) {
+		return false;
+	}
+	if (key == NavKey::Space) {
+		return focus != NavFocus::Button;
+	}
+	return focusIsMovementKey(key);
+}
+
+TEST(FocusReturn, FirstAndLastFromButtonMoveFocus) {
+	for (NavAction action : {NavAction::First, NavAction::Last}) {
+		EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::Home, {},
+		                                         NavFocus::Button, action));
+		EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::End, {},
+		                                         NavFocus::Button, action));
+		EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::Up, FOCUS_CTRL_ONLY,
+		                                         NavFocus::Button, action));
+		EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::Down, FOCUS_CTRL_ONLY,
+		                                         NavFocus::Button, action));
+	}
+}
+
+TEST(FocusReturn, FirstAndLastFromTextBoxMoveFocus) {
+	// Ctrl+Up / Ctrl+Down typed in the page box.
+	EXPECT_TRUE(helpers::focusReturnsToPages(
+	    NavKey::Up, FOCUS_CTRL_ONLY, NavFocus::TextBox, NavAction::First));
+	EXPECT_TRUE(helpers::focusReturnsToPages(
+	    NavKey::Down, FOCUS_CTRL_ONLY, NavFocus::TextBox, NavAction::Last));
+	EXPECT_TRUE(helpers::focusReturnsToPages(
+	    NavKey::Home, {}, NavFocus::TextBox, NavAction::First));
+	EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::End, {}, NavFocus::TextBox,
+	                                         NavAction::Last));
+}
+
+TEST(FocusReturn, HomeAndEndFromButtonMoveFocus) {
+	EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::Home, {}, NavFocus::Button,
+	                                         NavAction::First));
+	EXPECT_TRUE(helpers::focusReturnsToPages(NavKey::End, {}, NavFocus::Button,
+	                                         NavAction::Last));
+}
+
+TEST(FocusReturn, FirstAndLastFromViewerDoNothing) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (int bits = 0; bits < 16; ++bits) {
+			for (NavAction action : {NavAction::First, NavAction::Last}) {
+				EXPECT_FALSE(helpers::focusReturnsToPages(
+				    key, focusModifiers(bits), NavFocus::Viewer, action));
+			}
+		}
+	}
+}
+
+TEST(FocusReturn, FirstAndLastIgnoreKeyAndModifiers) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (int bits = 0; bits < 16; ++bits) {
+			for (NavFocus focus : {NavFocus::Button, NavFocus::TextBox}) {
+				for (NavAction action : {NavAction::First, NavAction::Last}) {
+					EXPECT_TRUE(helpers::focusReturnsToPages(
+					    key, focusModifiers(bits), focus, action));
+				}
+			}
+		}
+	}
+}
+
+TEST(FocusReturn, MovementKeysWithNoResultFromButtonMoveFocus) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		EXPECT_TRUE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                         NavAction::None));
+	}
+}
+
+TEST(FocusReturn, MovementKeysWithNoResultFromTextBoxStay) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::TextBox,
+		                                          NavAction::None));
+	}
+}
+
+TEST(FocusReturn, MovementKeysWithNoResultFromViewerDoNothing) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Viewer,
+		                                          NavAction::None));
+	}
+}
+
+TEST(FocusReturn, ShiftDoesNotMatter) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		EXPECT_TRUE(helpers::focusReturnsToPages(
+		    key, FOCUS_SHIFT_ONLY, NavFocus::Button, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, FOCUS_SHIFT_ONLY, NavFocus::TextBox, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, FOCUS_SHIFT_ONLY, NavFocus::Viewer, NavAction::None));
+	}
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, FOCUS_SHIFT_ONLY, NavFocus::Button, NavAction::None));
+}
+
+TEST(FocusReturn, CtrlAltAndWindowsBlockMovementKeys) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		for (int bits = 0; bits < 16; ++bits) {
+			const NavModifiers modifiers = focusModifiers(bits);
+			const bool blocked =
+			    modifiers.ctrl || modifiers.alt || modifiers.windows;
+			if (blocked) {
+				EXPECT_FALSE(helpers::focusReturnsToPages(
+				    key, modifiers, NavFocus::Button, NavAction::None));
+			}
+		}
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, FOCUS_CTRL_ONLY, NavFocus::Button, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, FOCUS_ALT_ONLY, NavFocus::Button, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, FOCUS_WIN_ONLY, NavFocus::Button, NavAction::None));
+	}
+}
+
+TEST(FocusReturn, CtrlAltAndWindowsBlockWithShiftToo) {
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		NavModifiers ctrlShift = FOCUS_CTRL_ONLY;
+		ctrlShift.shift = true;
+		NavModifiers altShift = FOCUS_ALT_ONLY;
+		altShift.shift = true;
+		NavModifiers winShift = FOCUS_WIN_ONLY;
+		winShift.shift = true;
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, ctrlShift, NavFocus::Button, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, altShift, NavFocus::Button, NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(
+		    key, winShift, NavFocus::Button, NavAction::None));
+	}
+}
+
+TEST(FocusReturn, SpaceWithNoResultFromButtonStays) {
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, {}, NavFocus::Button, NavAction::None));
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, FOCUS_SHIFT_ONLY, NavFocus::Button, NavAction::None));
+}
+
+TEST(FocusReturn, SpaceWithNoResultFromTextBoxStays) {
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, {}, NavFocus::TextBox, NavAction::None));
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, FOCUS_SHIFT_ONLY, NavFocus::TextBox, NavAction::None));
+}
+
+TEST(FocusReturn, SpaceWithNoResultFromViewerDoesNothing) {
+	// Already on the pages, so there is nothing to move.
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, {}, NavFocus::Viewer, NavAction::None));
+	EXPECT_FALSE(helpers::focusReturnsToPages(
+	    NavKey::Space, FOCUS_SHIFT_ONLY, NavFocus::Viewer, NavAction::None));
+}
+
+TEST(FocusReturn, OtherKeysWithNoResultNeverMoveFocus) {
+	for (NavKey key : FOCUS_OTHER_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			for (int bits = 0; bits < 16; ++bits) {
+				EXPECT_FALSE(helpers::focusReturnsToPages(
+				    key, focusModifiers(bits), focus, NavAction::None));
+			}
+		}
+	}
+}
+
+TEST(FocusReturn, EnterAndBackspaceAreNotMovementKeys) {
+	for (NavKey key : {NavKey::Enter, NavKey::Backspace}) {
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                          NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::TextBox,
+		                                          NavAction::None));
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Viewer,
+		                                          NavAction::None));
+	}
+}
+
+TEST(FocusReturn, PreviousAndNextNeverMoveFocus) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			for (int bits = 0; bits < 16; ++bits) {
+				for (NavAction action :
+				     {NavAction::Previous, NavAction::Next}) {
+					EXPECT_FALSE(helpers::focusReturnsToPages(
+					    key, focusModifiers(bits), focus, action));
+				}
+			}
+		}
+	}
+}
+
+TEST(FocusReturn, ArrowsAndPageKeysThatTurnPagesStay) {
+	// Arrows and Page Up/Down in Page Fit turn pages; focus stays.
+	for (NavKey key : FOCUS_MOVEMENT_KEYS) {
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                          NavAction::Previous));
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                          NavAction::Next));
+	}
+	for (NavKey key : {NavKey::J, NavKey::K, NavKey::N, NavKey::P}) {
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                          NavAction::Previous));
+		EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, NavFocus::Button,
+		                                          NavAction::Next));
+	}
+}
+
+TEST(FocusReturn, FocusPageBoxNeverMovesFocus) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, focus,
+			                                          NavAction::FocusPageBox));
+		}
+	}
+}
+
+TEST(FocusReturn, ToggleSidebarNeverMovesFocus) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			EXPECT_FALSE(helpers::focusReturnsToPages(
+			    key, {}, focus, NavAction::ToggleSidebar));
+		}
+	}
+}
+
+TEST(FocusReturn, RotateNeverMovesFocus) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			EXPECT_FALSE(helpers::focusReturnsToPages(
+			    key, {}, focus, NavAction::RotateClockwise));
+			EXPECT_FALSE(helpers::focusReturnsToPages(
+			    key, {}, focus, NavAction::RotateCounterClockwise));
+		}
+	}
+}
+
+TEST(FocusReturn, ToolResultsNeverMoveFocus) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (NavFocus focus : FOCUS_PLACES) {
+			EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, focus,
+			                                          NavAction::HandTool));
+			EXPECT_FALSE(helpers::focusReturnsToPages(key, {}, focus,
+			                                          NavAction::SelectTool));
+		}
+	}
+}
+
+TEST(FocusReturn, OtherResultsNeverMoveFocusAnyCombination) {
+	for (NavAction action : FOCUS_OTHER_ACTIONS) {
+		for (NavKey key : FOCUS_KEYS) {
+			for (NavFocus focus : FOCUS_PLACES) {
+				for (int bits = 0; bits < 16; ++bits) {
+					EXPECT_FALSE(helpers::focusReturnsToPages(
+					    key, focusModifiers(bits), focus, action));
+				}
+			}
+		}
+	}
+}
+
+TEST(FocusReturn, EveryCombinationMatchesTheRules) {
+	for (NavKey key : FOCUS_KEYS) {
+		for (int bits = 0; bits < 16; ++bits) {
+			for (NavFocus focus : FOCUS_PLACES) {
+				for (NavAction action : FOCUS_ACTIONS) {
+					const NavModifiers modifiers = focusModifiers(bits);
+					EXPECT_EQ(helpers::focusReturnsToPages(key, modifiers,
+					                                       focus, action),
+					          focusExpected(key, modifiers, focus, action));
+				}
+			}
+		}
+	}
+}
 } // namespace

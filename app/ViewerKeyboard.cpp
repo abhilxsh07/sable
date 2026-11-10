@@ -214,30 +214,9 @@ bool ViewerPage::navigationKey(unsigned key, helpers::NavModifiers modifiers) {
 		}
 		handled = true;
 	}
-	// app.js: the navigation keys bring the focus back to the pages
-	// (ensureViewerFocused), except from a text field
-	bool focusPages = action == NavAction::First || action == NavAction::Last;
-	if (action == NavAction::None && focus != NavFocus::TextBox &&
-	    !modifiers.ctrl && !modifiers.alt && !modifiers.windows) {
-		switch (pressed) {
-		case NavKey::PageUp:
-		case NavKey::PageDown:
-		case NavKey::Home:
-		case NavKey::End:
-		case NavKey::Up:
-		case NavKey::Down:
-		case NavKey::Left:
-		case NavKey::Right:
-			focusPages = true;
-			break;
-		case NavKey::Space:
-			focusPages = focus != NavFocus::Button;
-			break;
-		default:
-			break;
-		}
-	}
-	if (focusPages && focus != NavFocus::Viewer) {
+	// the pages take the focus back after a jump to either end or a movement
+	// key the navigation left alone
+	if (helpers::focusReturnsToPages(pressed, modifiers, focus, action)) {
 		Scroller().Focus(FocusState::Programmatic);
 	}
 	return handled;

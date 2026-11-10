@@ -313,4 +313,46 @@ NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
 		return none;
 	}
 }
+
+bool focusReturnsToPages(NavKey key, NavModifiers modifiers, NavFocus focus,
+                         NavAction action) {
+	// Nothing to do when the pages already have the focus.
+	if (focus == NavFocus::Viewer) {
+		return false;
+	}
+
+	// A jump to the first or last page always brings the focus back,
+	// wherever it was.
+	if (action == NavAction::First || action == NavAction::Last) {
+		return true;
+	}
+
+	// Any other navigation result keeps the focus where it is, and so
+	// does a key typed in a text field.
+	if (action != NavAction::None || focus == NavFocus::TextBox) {
+		return false;
+	}
+
+	// Shortcuts with Ctrl, Alt or the Windows key are not movement.
+	if (modifiers.ctrl || modifiers.alt || modifiers.windows) {
+		return false;
+	}
+
+	switch (key) {
+	case NavKey::PageUp:
+	case NavKey::PageDown:
+	case NavKey::Home:
+	case NavKey::End:
+	case NavKey::Up:
+	case NavKey::Down:
+	case NavKey::Left:
+	case NavKey::Right:
+		return true;
+	case NavKey::Space:
+		// Space on a button presses it, so the button keeps the focus.
+		return focus != NavFocus::Button;
+	default:
+		return false;
+	}
+}
 } // namespace helpers

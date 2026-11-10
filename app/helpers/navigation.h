@@ -148,4 +148,11 @@ enum class NavAction {
 // the first page and Next on the last still take the key (the page stays).
 NavAction navAction(NavKey key, NavModifiers modifiers, NavFocus focus,
                     const NavState& state);
+
+// true when the pages (the scroller) should take the keyboard focus after
+// this key press: only when the focus is somewhere else and the key either
+// jumped to the first or last page, or was a movement key the navigation
+// left alone
+bool focusReturnsToPages(NavKey key, NavModifiers modifiers, NavFocus focus,
+                         NavAction action);
 } // namespace helpers
