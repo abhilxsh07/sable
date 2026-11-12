@@ -17,6 +17,8 @@ Sable is GPL-2.0-only and uses the components below. Pinned versions are in
 | [GoogleTest](https://github.com/google/googletest) | tests only, not shipped | BSD-3-Clause |
 | [Manrope](https://github.com/googlefonts/manrope) | UI font, bundled as `app/assets/fonts/Manrope-VF.ttf` with its `OFL.txt` | SIL Open Font License 1.1 |
 
+Some interface labels (page, zoom, password and find messages) match the en-US text of the [pdf.js viewer](https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/l10n/en-US/viewer.ftl) (Mozilla, Apache-2.0). This is a courtesy note; no licence is claimed for them.
+
 The PDFium binaries bundle a bunch of other libraries too (FreeType, HarfBuzz,
 ICU, lcms, libjpeg-turbo, OpenJPEG, libpng, zlib, abseil and a few more).
 The download's root LICENSE covers bblanchon's packaging. PDFium's own text

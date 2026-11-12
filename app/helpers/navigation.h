@@ -17,12 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
-// what pdf.js v4.2.67 did to move between pages, which is what NightPDF's
-// viewer did: the page box and its page labels, which page counts as the
-// current one while scrolling, and which keys turn pages.
-// see: https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/app.js
-// see:
-// https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/pdf_viewer.js
+// how the reader moves between pages, as NightPDF's viewer did: the page box
+// and its page labels, which page counts as the current one while scrolling,
+// which keys turn pages and when the pages take the focus back. The page
+// strings are the viewer's en-US ones.
 // see: https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/web/toolbar.js
 #pragma once
 

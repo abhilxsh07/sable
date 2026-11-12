@@ -4220,3 +4220,72 @@ approved; and every hand, device, clean-machine and legal check in
 "Waiting on the owner". The release notes list the limits users will see.
 
 Update, 17 Nov: I decided the four open calls. See "Owner calls, 17 Nov".
+
+## pdf.js rewrite (2026-11-17)
+
+You approved the behaviour rewrite of the four parts that followed pdf.js
+statement by statement (see "pdf.js review of navigation and layout").
+They are now written from the behaviour descriptions alone, the way the
+zoom code was, with the same signatures, keybinds, results and UI strings.
+
+What changed, one commit each:
+
+- `pageLabels` (0b74725): two separate checks, "every label is its own page
+  number" and "every label is empty", after the count check.
+- `currentPage` (929dd2b): edges rounded one by one in whole pixels, the
+  share of a page worked out in integers, the current page kept while it is
+  fully in view, the earliest page on a tie.
+- `navAction` (f79acf9): the Windows key and Ctrl chords first, then text
+  fields and buttons, Alt, rotation, Shift and a plain switch for the
+  unmodified keys.
+- The focus return (1779f1f): the rules moved out of ViewerKeyboard.cpp into
+  a new `helpers::focusReturnsToPages` (one added declaration in
+  navigation.h), so they can be unit tested. The key handler calls it.
+  Behaviour is unchanged.
+
+The comments on these four no longer cite pdf.js, and the header's opening
+comment now keeps only the toolbar.js link for the page strings.
+
+How it was kept clean. Each new body was written by a fresh agent that saw
+only its description file, the declaration with the pdf.js wording taken
+out, the types it uses, how it is called and the tests that pin it. They
+were told not to open the repository or fetch any pdf.js code, and each
+returned code only. I put each body in by function boundary. A separate
+fresh agent, which sees the old block but writes no rules, replaced the old
+inline focus code with the call. Two slips on my side: a search for the
+call sites printed a few lines around the end of the old focus code, and
+the line range in your prompt for that block was a little short, so the key
+list and the final focus call showed up in my output. The agent that wrote
+the new function never saw any of it.
+
+The focus description was incomplete. It said keys typed in a text field
+never move the focus, but Ctrl+Up and Ctrl+Down typed in the page box do
+(they go to the first or last page). A fresh agent read the old code and
+reported behaviour only, and I fixed the description file before the new
+function was written. No probe asserted focus after a navigation key, so
+the new unit tests are the only cover for it. One new `currentPage` test
+failed first because its author assumed the layout doesn't centre a
+narrower page; the test was corrected, the code wasn't touched. No
+existing test was edited.
+
+Reviewer (a fresh agent, compared with pdf.js v4.2.67 app.js, ui_utils.js
+and pdf_viewer.js at the ranges you gave): does it still follow pdf.js
+statement by statement? pageLabels no, currentPage no, navAction no, focus
+return no. What it still sees in common is forced by the behaviour: the
+"keep the current page, else the most visible" choice, the first and last
+page guards on Home, End and Ctrl+Up/Down, and the key list with Space
+unless the focus is on a button. It found no comment that mentions pdf.js.
+
+Left alone: the comment above the Space scrolling code in
+ViewerKeyboard.cpp (line 189) and the comment in `pageFromText` still name
+pdf.js files, and so does `pageFromText`'s declaration in navigation.h.
+They weren't among the four parts. The existing tests keep their names and
+one comment that mention pdf.js, because tests weren't to be edited.
+
+The pdf.js interface strings need no licence. THIRD_PARTY_NOTICES.md gets
+one courtesy line saying some labels match the viewer's en-US text, with
+the viewer.ftl link; no licence is claimed for them.
+
+Checks: 903 unit tests pass (68 new, up from 835), Release x64 and ARM64
+build with zero warnings, the format check is clean, and the Keyboard,
+Tabs and Accessibility probes pass on x64.
