@@ -196,6 +196,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Manifest Include="app.manifest" />
 	</ItemGroup>
 	<ItemGroup>
+		<ResourceCompile Include="Sable.rc" />
+	</ItemGroup>
+	<ItemGroup>
 		<ClInclude Include="pch.h" />
 		<ClInclude Include="SettingsWindow.h" />
 		<ClInclude Include="Appearance.h" />
@@ -516,7 +519,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<None Include="packages.config" />
 	</ItemGroup>
 	<ItemGroup>
-		<!-- straight copies of NightPDF's app/assets and build/icon.ico.
+		<!-- copies of NightPDF's app/assets (the icons are Sable's own, drawn
+			from assets/icon.svg and icon-small.svg).
 			Unpackaged, so ms-appx:/// resolves next to the exe: copy them there -->
 		<CopyFileToFolders Include="assets\icon.png">
 			<DestinationFolders>$(OutDir)assets</DestinationFolders>

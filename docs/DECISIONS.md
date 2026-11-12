@@ -4289,3 +4289,19 @@ the viewer.ftl link; no licence is claimed for them.
 Checks: 903 unit tests pass (68 new, up from 835), Release x64 and ARM64
 build with zero warnings, the format check is clean, and the Keyboard,
 Tabs and Accessibility probes pass on x64.
+
+## App icon (2026-11-17)
+
+Sable gets its own icon in place of NightPDF's: a cream page whose lower
+half has been painted dark, with a sable-hair brush finishing the stroke.
+It plays on the name and on what the app does, and stays clear of moon
+imagery. The sources are `app/assets/icon.svg` and `icon-small.svg`, a
+simpler drawing (two text bars, a thicker seam, no shadows) used for the
+16, 20 and 24 px entries, where the full one blurs.
+
+The files keep their names, so no code changed: `icon.ico` now holds 16,
+20, 24, 32, 40, 48, 64, 96, 128 and 256 px; `icon.png` (title bar) is
+256 px square and `icon2.png` (Home's drop card) 512 px square instead of
+NightPDF's 1024×1200 and 512×603. `app/Sable.rc` embeds `icon.ico` in the
+exe, which had no icon of its own, so Explorer, shortcuts and the taskbar
+before the window opens show it too. The gradient SVGs are still NightPDF's.

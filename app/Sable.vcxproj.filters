@@ -263,6 +263,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		<Manifest Include="app.manifest" />
 	</ItemGroup>
 	<ItemGroup>
+		<ResourceCompile Include="Sable.rc" />
+	</ItemGroup>
+	<ItemGroup>
 		<None Include="packages.config" />
 	</ItemGroup>
 </Project>

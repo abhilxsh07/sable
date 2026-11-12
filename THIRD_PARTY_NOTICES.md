@@ -5,7 +5,7 @@ Sable is GPL-2.0-only and uses the components below. Pinned versions are in
 
 | Component | Used for | License |
 |---|---|---|
-| [NightPDF](https://github.com/Lunarequest/NightPDF) | what Sable is ported from (icons and artwork included) | GPL-2.0-only |
+| [NightPDF](https://github.com/Lunarequest/NightPDF) | what Sable is ported from (artwork included; the app icon is Sable's own) | GPL-2.0-only |
 | [PDFium](https://pdfium.googlesource.com/pdfium/), built by [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) | PDF engine (`pdfium.dll`) | BSD-3-Clause; the downloaded `licenses/pdfium.txt` also contains Apache-2.0 text (see below) |
 | bblanchon/pdfium-binaries build scripts | where the binaries come from, not shipped | MIT |
 | [Windows App SDK / WinUI 3](https://github.com/microsoft/WindowsAppSDK) | UI; the runtime is installed separately from Microsoft, only its bootstrapper ships | Source repository: MIT. Restored binary packages also supply Microsoft Software License Terms; the actual package texts are bundled. |
@@ -39,7 +39,7 @@ bootstrapper below.
 
 | Files | Component | Terms in the package |
 |---|---|---|
-| `Sable.exe`, `Sable.pri`, `Sable.winmd`, `*.xbf`, `styles/`, `assets/` | Sable, with NightPDF's icons and artwork | `LICENSE` (GPL-2.0-only) |
+| `Sable.exe`, `Sable.pri`, `Sable.winmd`, `*.xbf`, `styles/`, `assets/` | Sable, with NightPDF's gradient artwork | `LICENSE` (GPL-2.0-only) |
 | `assets/fonts/Manrope-VF.ttf` | Manrope | `assets/fonts/OFL.txt` |
 | `pdfium.dll` | PDFium and the libraries built into it | `licenses/pdfium/*`, `licenses/pdfium-binaries/LICENSE` |
 | `Microsoft.WindowsAppRuntime.Bootstrap.dll` | Windows App SDK Foundation (bootstrapper) | `licenses/nuget/Microsoft.WindowsAppSDK.Foundation.*` |
