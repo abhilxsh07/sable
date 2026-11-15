@@ -15,6 +15,7 @@ Sable is GPL-2.0-only and uses the components below. Pinned versions are in
 | [spdlog](https://github.com/gabime/spdlog) | logging | MIT |
 | [fmt](https://github.com/fmtlib/fmt) | formatting used by spdlog | MIT |
 | [GoogleTest](https://github.com/google/googletest) | tests only, not shipped | BSD-3-Clause |
+| [NSIS](https://nsis.sourceforge.io/) | builds the setup .exe; its installer and uninstaller code is inside that file | zlib/libpng (bzip2 parts: bzip2 license) |
 | [Manrope](https://github.com/googlefonts/manrope) | UI font, bundled as `app/assets/fonts/Manrope-VF.ttf` with its `OFL.txt` | SIL Open Font License 1.1 |
 
 Some interface labels (page, zoom, password and find messages) match the en-US text of the [pdf.js viewer](https://raw.githubusercontent.com/mozilla/pdf.js/v4.2.67/l10n/en-US/viewer.ftl) (Mozilla, Apache-2.0). This is a courtesy note; no licence is claimed for them.
@@ -26,6 +27,14 @@ and the component notices are under `third_party/pdfium/<arch>/licenses/`.
 The portable package keeps both, along with the installed fmt, nlohmann/json
 and spdlog copyright files, Manrope's OFL and license/notice texts from the
 restored runtime and projection packages.
+
+## The installer
+
+The setup .exe holds the same files as the portable ZIP, plus NSIS's own
+installer and uninstaller code under the zlib/libpng license. It doesn't
+carry Microsoft's Windows App Runtime: when a PC doesn't have it, setup
+downloads Microsoft's own runtime installer from aka.ms and runs it, so the
+runtime comes straight from Microsoft under Microsoft's terms.
 
 ## What the portable package ships
 

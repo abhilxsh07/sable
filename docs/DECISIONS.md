@@ -4305,3 +4305,45 @@ The files keep their names, so no code changed: `icon.ico` now holds 16,
 NightPDF's 1024×1200 and 512×603. `app/Sable.rc` embeds `icon.ico` in the
 exe, which had no icon of its own, so Explorer, shortcuts and the taskbar
 before the window opens show it too. The gradient SVGs are still NightPDF's.
+
+## Installer (2026-11-17)
+
+Sable now has a setup .exe next to the portable ZIP. People should be able
+to pick where it goes and make it their PDF app without knowing about
+Choose another app. Velopack, the pre-approved choice, installs into the
+user's AppData with no folder choice, and MSIX was already ruled out
+(12 November), so this uses NSIS: zlib-licensed, and what NightPDF's
+electron-builder installer was built on. It's a build tool here; NSIS's
+installer code ends up inside the setup .exe (THIRD_PARTY_NOTICES.md).
+
+installer/Sable.nsi pages: welcome, the GPL (informational, no accept
+box), components (Sable; Start menu shortcut, on; desktop shortcut, off),
+folder (default Program Files\Sable, drive roots and Windows refused),
+progress, finish ("Open Sable now", "Make Sable my default PDF app", both
+ticked). It installs for all users and asks for an administrator once.
+
+Setup registers a Sable.PDF ProgID, OpenWithProgids for .pdf,
+Applications\Sable.exe, App Paths and Default Programs capabilities under
+HKLM, so Sable shows in Open with and in Settings > Default apps. Windows
+doesn't let a program make itself the default, so the finish checkbox
+opens ms-settings:defaultapps?registeredAppMachine=Sable, Sable's own page
+in Default apps (Windows 11 with the April 2023 update or later), where
+one click does it. This replaces the 12 November line that Sable registers
+no associations; the portable ZIP still doesn't.
+
+When the Windows App Runtime 2.5.1 or later for the PC's architecture is
+missing, setup downloads Microsoft's runtime installer from aka.ms and runs
+it with --quiet. If that fails it says so and offers Microsoft's download
+page. Nothing of Microsoft's is bundled.
+
+An earlier install is removed with its own uninstaller first, wherever it
+was, so upgrades and moving folders leave one copy. If Sable is open, setup
+and uninstall ask you to close it. Uninstall removes the listed files,
+shortcuts and registry entries and keeps settings and logs. Open Sable now
+starts it through Explorer so it runs as you, not elevated. The setup .exe
+is unsigned, like the ZIP, so SmartScreen and UAC show an unknown
+publisher until signing is settled.
+
+scripts/installer.py builds it from a verified package ZIP; test_installer.py
+covers the version number and the uninstall list. release.yaml doesn't
+build the installer yet.

@@ -1,8 +1,8 @@
 # Releasing Sable
 
-The first distribution is a portable alpha ZIP for each architecture,
-unsigned and without file associations (DECISIONS.md, 12 November). An
-installer and signing are for a later release. The release workflow creates a draft prerelease; publication is
+Each release has a setup .exe and a portable ZIP for each architecture.
+Both are unsigned (DECISIONS.md, 12 November). Setup registers Sable for
+PDFs; the ZIP doesn't (DECISIONS.md, 17 November). The release workflow creates a draft prerelease; publication is
 an owner step after the checks below.
 
 ## Prepare the source
@@ -46,6 +46,20 @@ Before committing, local review packages can be made explicitly:
 python scripts/package.py --platform x64 --allow-dirty --include-source
 python scripts/package.py --platform ARM64 --allow-dirty
 ```
+
+Then build the installer from a package ZIP. It needs NSIS 3 (`winget
+install NSIS.NSIS`):
+
+```powershell
+python scripts/installer.py dist/Sable-v1.0.0-alpha.1-local-x64.zip
+python -m unittest discover -s scripts -p test_installer.py
+```
+
+It verifies the ZIP against its manifest, unpacks it under installer/obj,
+compiles installer/Sable.nsi with warnings as errors and writes
+`<zip name>-setup.exe` beside the ZIP. The uninstaller deletes exactly the
+files in the manifest, never a whole folder, so a folder someone picked
+that already held other files keeps them.
 
 These produce `-local-` filenames and record the uncommitted source status.
 They are review candidates. The manifest identifies the base commit and a
@@ -102,6 +116,23 @@ turn off Windows protections to make the check pass. If Windows blocks an
 unsigned build, record the exact message; signing/distribution is an owner
 decision. Run the ARM64 package on actual Windows on ARM as a separate check.
 Compilation on the x64 host is not an ARM64 runtime check.
+
+## Installer check
+
+On the clean PC from the previous section, run the setup .exe as a
+standard user (it asks for an administrator through UAC):
+
+1. Without the runtime, setup should download and install it, then Open
+   Sable works. Offline, it should say so and offer Microsoft's page.
+2. Pick a folder other than the default. Sable, its Start menu entry and
+   Installed apps should all point there.
+3. Leave "Make Sable my default PDF app" ticked. Settings should open on
+   Sable's Default apps page; set it there, then double-click a PDF.
+4. Right-click a PDF: Open with lists Sable.
+5. Run setup again over it, into another folder. The first copy should be
+   gone and only one Sable listed.
+6. Uninstall from Installed apps. The folder, shortcuts and Open with entry
+   go; settings in AppData stay.
 
 ## Desktop sign-off
 
