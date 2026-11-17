@@ -102,6 +102,19 @@ jobs:
             '--tag', $env:RELEASE_TAG)
           if ($env:PACKAGE_PLATFORM -eq 'x64') { $arguments += '--include-source' }
           python @arguments
+      # The runner has no Windows App Runtime 2.x, and Sable is framework-
+      # dependent, so the smoke check needs Microsoft's runtime first, the
+      # same installer setup fetches on a PC without it.
+      # see: https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads
+      # see: https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/deploy-unpackaged-apps
+      - name: install the Windows App Runtime
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall-x64.exe"
+          Invoke-WebRequest -Uri 'https://aka.ms/windowsappsdk/2.5/2.5.1/windowsappruntimeinstall-x64.exe' -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList '--quiet' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "runtime install failed: $($process.ExitCode)" }
       - name: smoke check extracted x64 package
         if: matrix.platform == 'x64'
         shell: pwsh
