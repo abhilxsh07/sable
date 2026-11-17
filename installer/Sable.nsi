@@ -37,7 +37,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 Unicode true
 ManifestDPIAware true
 ManifestSupportedOS all
-RequestExecutionLevel admin
+; per user, like most apps people download, so there is no UAC prompt
+RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !include "MUI2.nsh"
@@ -67,8 +68,8 @@ SetCompressor /SOLID lzma
 
 Name "${APP}"
 OutFile "${OUTFILE}"
-InstallDir "$PROGRAMFILES64\${APP}"
-InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
+InstallDir "$LOCALAPPDATA\Programs\${APP}"
+InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 BrandingText "${APP} ${VERSION}"
 
 VIProductVersion "${VERSION_NUMBER}"
@@ -97,6 +98,7 @@ Var RuntimeMissing
 !insertmacro MUI_PAGE_LICENSE "..\LICENSE"
 !define MUI_COMPONENTSPAGE_SMALLDESC
 !insertmacro MUI_PAGE_COMPONENTS
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE CheckFolder
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "${APP} is installed"
@@ -148,7 +150,7 @@ Function .onInit
 		Abort
 	${EndIf}
 	SetRegView 64
-	SetShellVarContext all
+	SetShellVarContext current
 FunctionEnd
 
 Function .onVerifyInstDir
@@ -161,8 +163,21 @@ Function .onVerifyInstDir
 	${EndIf}
 FunctionEnd
 
+; setup isn't elevated, so a folder like Program Files can't be written to
+Function CheckFolder
+	ClearErrors
+	CreateDirectory "$INSTDIR"
+	FileOpen $0 "$INSTDIR\.sable-setup-check" w
+	${If} ${Errors}
+		MessageBox MB_ICONEXCLAMATION "${APP} can't be installed in $INSTDIR because that folder needs administrator rights.$\r$\n$\r$\nPick a folder in your user folder or on another drive." /SD IDOK
+		Abort
+	${EndIf}
+	FileClose $0
+	Delete "$INSTDIR\.sable-setup-check"
+FunctionEnd
+
 Function CheckRuntime
-	nsExec::ExecToStack `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsAppRuntime.2' -PackageTypeFilter Framework | Where-Object { $$_.Architecture -eq '${RUNTIME_ARCH}' -and [version]$$_.Version -ge [version]'${RUNTIME_MIN}' }) { exit 0 } else { exit 1 }"`
+	nsExec::ExecToStack `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.2' -PackageTypeFilter Framework | Where-Object { $$_.Architecture -eq '${RUNTIME_ARCH}' -and [version]$$_.Version -ge [version]'${RUNTIME_MIN}' }) { exit 0 } else { exit 1 }"`
 	Pop $0
 	Pop $1
 	${If} $0 == 0
@@ -187,7 +202,12 @@ Function InstallRuntime
 	DetailPrint "Installing Microsoft's Windows App Runtime..."
 	; see: https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/deploy-unpackaged-apps
 	ExecWait `"$PLUGINSDIR\WindowsAppRuntimeInstall.exe" --quiet` $0
-	${If} $0 == 0
+	; without elevation it installs for this user only, and Microsoft's page
+	; lists a code for that, so the result is checked rather than trusted
+	Push $0
+	Call CheckRuntime
+	Pop $0
+	${If} $RuntimeMissing == 0
 		StrCpy $RuntimeMissing 0
 		DetailPrint "Windows App Runtime installed."
 	${Else}
@@ -201,7 +221,7 @@ FunctionEnd
 ; files go even when the new version doesn't have them, and only one Sable
 ; stays registered
 Function RemoveEarlierInstall
-	ReadRegStr $0 HKLM "${UNINSTALL_KEY}" "InstallLocation"
+	ReadRegStr $0 HKCU "${UNINSTALL_KEY}" "InstallLocation"
 	${If} $0 != ""
 	${AndIf} ${FileExists} "$0\${UNINSTALLER}"
 		DetailPrint "Removing the earlier version from $0..."
@@ -221,41 +241,41 @@ Section "${APP}" SecApp
 
 	; Open with and Default apps
 	; see: https://learn.microsoft.com/en-us/windows/win32/shell/default-programs
-	WriteRegStr HKLM "Software\Classes\${PROGID}" "" "PDF Document"
-	WriteRegStr HKLM "Software\Classes\${PROGID}" "FriendlyTypeName" "PDF Document"
-	WriteRegStr HKLM "Software\Classes\${PROGID}\DefaultIcon" "" "$INSTDIR\${EXE},0"
-	WriteRegStr HKLM "Software\Classes\${PROGID}\Application" "ApplicationName" "${APP}"
-	WriteRegStr HKLM "Software\Classes\${PROGID}\Application" "ApplicationIcon" "$INSTDIR\${EXE},0"
-	WriteRegStr HKLM "Software\Classes\${PROGID}\Application" "ApplicationCompany" "${PUBLISHER}"
-	WriteRegStr HKLM "Software\Classes\${PROGID}\shell\open\command" "" `"$INSTDIR\${EXE}" "%1"`
-	WriteRegStr HKLM "Software\Classes\.pdf\OpenWithProgids" "${PROGID}" ""
-	WriteRegStr HKLM "Software\Classes\Applications\${EXE}" "FriendlyAppName" "${APP}"
-	WriteRegStr HKLM "Software\Classes\Applications\${EXE}\DefaultIcon" "" "$INSTDIR\${EXE},0"
-	WriteRegStr HKLM "Software\Classes\Applications\${EXE}\SupportedTypes" ".pdf" ""
-	WriteRegStr HKLM "Software\Classes\Applications\${EXE}\shell\open\command" "" `"$INSTDIR\${EXE}" "%1"`
-	WriteRegStr HKLM "${CAPABILITIES}" "ApplicationName" "${APP}"
-	WriteRegStr HKLM "${CAPABILITIES}" "ApplicationDescription" "A dark-mode PDF reader"
-	WriteRegStr HKLM "${CAPABILITIES}" "ApplicationIcon" "$INSTDIR\${EXE},0"
-	WriteRegStr HKLM "${CAPABILITIES}\FileAssociations" ".pdf" "${PROGID}"
-	WriteRegStr HKLM "Software\RegisteredApplications" "${APP}" "${CAPABILITIES}"
-	WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}" "" "$INSTDIR\${EXE}"
-	WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}" "Path" "$INSTDIR"
+	WriteRegStr HKCU "Software\Classes\${PROGID}" "" "PDF Document"
+	WriteRegStr HKCU "Software\Classes\${PROGID}" "FriendlyTypeName" "PDF Document"
+	WriteRegStr HKCU "Software\Classes\${PROGID}\DefaultIcon" "" "$INSTDIR\${EXE},0"
+	WriteRegStr HKCU "Software\Classes\${PROGID}\Application" "ApplicationName" "${APP}"
+	WriteRegStr HKCU "Software\Classes\${PROGID}\Application" "ApplicationIcon" "$INSTDIR\${EXE},0"
+	WriteRegStr HKCU "Software\Classes\${PROGID}\Application" "ApplicationCompany" "${PUBLISHER}"
+	WriteRegStr HKCU "Software\Classes\${PROGID}\shell\open\command" "" `"$INSTDIR\${EXE}" "%1"`
+	WriteRegStr HKCU "Software\Classes\.pdf\OpenWithProgids" "${PROGID}" ""
+	WriteRegStr HKCU "Software\Classes\Applications\${EXE}" "FriendlyAppName" "${APP}"
+	WriteRegStr HKCU "Software\Classes\Applications\${EXE}\DefaultIcon" "" "$INSTDIR\${EXE},0"
+	WriteRegStr HKCU "Software\Classes\Applications\${EXE}\SupportedTypes" ".pdf" ""
+	WriteRegStr HKCU "Software\Classes\Applications\${EXE}\shell\open\command" "" `"$INSTDIR\${EXE}" "%1"`
+	WriteRegStr HKCU "${CAPABILITIES}" "ApplicationName" "${APP}"
+	WriteRegStr HKCU "${CAPABILITIES}" "ApplicationDescription" "A dark-mode PDF reader"
+	WriteRegStr HKCU "${CAPABILITIES}" "ApplicationIcon" "$INSTDIR\${EXE},0"
+	WriteRegStr HKCU "${CAPABILITIES}\FileAssociations" ".pdf" "${PROGID}"
+	WriteRegStr HKCU "Software\RegisteredApplications" "${APP}" "${CAPABILITIES}"
+	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}" "" "$INSTDIR\${EXE}"
+	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}" "Path" "$INSTDIR"
 
 	; Installed apps
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP}"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${EXE},0"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "${PUBLISHER}"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "URLInfoAbout" "${URL}"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "HelpLink" "${URL}/issues"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" `"$INSTDIR\${UNINSTALLER}"`
-	WriteRegStr HKLM "${UNINSTALL_KEY}" "QuietUninstallString" `"$INSTDIR\${UNINSTALLER}" /S`
-	WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoModify" 1
-	WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoRepair" 1
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${APP}"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${EXE},0"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "${PUBLISHER}"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "URLInfoAbout" "${URL}"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "HelpLink" "${URL}/issues"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" `"$INSTDIR\${UNINSTALLER}"`
+	WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" `"$INSTDIR\${UNINSTALLER}" /S`
+	WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
+	WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
 	${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
 	IntFmt $0 "0x%08X" $0
-	WriteRegDWORD HKLM "${UNINSTALL_KEY}" "EstimatedSize" $0
+	WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" $0
 
 	; SHCNE_ASSOCCHANGED, SHCNF_DWORD | SHCNF_FLUSH
 	System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1003, p 0, p 0)'
@@ -281,22 +301,24 @@ SectionEnd
 	!insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Puts a ${APP} shortcut on the desktop."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
-; the installer runs elevated; going through Explorer starts Sable as the
-; signed-in user, so drag and drop from Explorer still works
 Function OpenSable
-	Exec `"$WINDIR\explorer.exe" "$INSTDIR\${EXE}"`
+	Exec `"$INSTDIR\${EXE}"`
 FunctionEnd
 
-; Windows doesn't let a program set itself as the default. This opens Sable's
-; own page in Settings > Default apps, where one click does it.
+; Windows doesn't let a program set itself as the default. Settings'
+; per-app page (registeredAppUser) only found machine-wide installs when
+; tried, and Windows 11 answers SHOpenWithDialog's register mode with "go to
+; Settings", so this says what to pick and opens Default apps, where .pdf
+; lists Sable.
 ; see: https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-settings-app
 Function MakeDefault
-	ExecShell "open" "ms-settings:defaultapps?registeredAppMachine=${APP}"
+	MessageBox MB_OK|MB_ICONINFORMATION "Windows lets only you choose your PDF app.$\r$\n$\r$\nIn the Settings page that opens, type .pdf in the box at the top, click the app shown under it and choose ${APP}." /SD IDOK
+	ExecShell "open" "ms-settings:defaultapps"
 FunctionEnd
 
 Function un.onInit
 	SetRegView 64
-	SetShellVarContext all
+	SetShellVarContext current
 FunctionEnd
 
 Section "Uninstall"
@@ -308,13 +330,13 @@ Section "Uninstall"
 	Delete "$SMPROGRAMS\${APP}.lnk"
 	Delete "$DESKTOP\${APP}.lnk"
 
-	DeleteRegValue HKLM "Software\Classes\.pdf\OpenWithProgids" "${PROGID}"
-	DeleteRegKey HKLM "Software\Classes\${PROGID}"
-	DeleteRegKey HKLM "Software\Classes\Applications\${EXE}"
-	DeleteRegValue HKLM "Software\RegisteredApplications" "${APP}"
-	DeleteRegKey HKLM "Software\Sable"
-	DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}"
-	DeleteRegKey HKLM "${UNINSTALL_KEY}"
+	DeleteRegValue HKCU "Software\Classes\.pdf\OpenWithProgids" "${PROGID}"
+	DeleteRegKey HKCU "Software\Classes\${PROGID}"
+	DeleteRegKey HKCU "Software\Classes\Applications\${EXE}"
+	DeleteRegValue HKCU "Software\RegisteredApplications" "${APP}"
+	DeleteRegKey HKCU "Software\Sable"
+	DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\${EXE}"
+	DeleteRegKey HKCU "${UNINSTALL_KEY}"
 
 	; SHCNE_ASSOCCHANGED, SHCNF_DWORD | SHCNF_FLUSH
 	System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1003, p 0, p 0)'

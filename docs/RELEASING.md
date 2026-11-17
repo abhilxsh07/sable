@@ -120,14 +120,16 @@ Compilation on the x64 host is not an ARM64 runtime check.
 ## Installer check
 
 On the clean PC from the previous section, run the setup .exe as a
-standard user (it asks for an administrator through UAC):
+standard user. It shouldn't ask for an administrator:
 
 1. Without the runtime, setup should download and install it, then Open
    Sable works. Offline, it should say so and offer Microsoft's page.
-2. Pick a folder other than the default. Sable, its Start menu entry and
-   Installed apps should all point there.
-3. Leave "Make Sable my default PDF app" ticked. Settings should open on
-   Sable's Default apps page; set it there, then double-click a PDF.
+2. Try Program Files: the folder page should refuse it. Pick another
+   folder; Sable, its Start menu entry and Installed apps should all
+   point there.
+3. Leave "Make Sable my default PDF app" ticked. A note says what to
+   pick, then Settings > Default apps opens. Type .pdf, pick Sable, then
+   double-click a PDF.
 4. Right-click a PDF: Open with lists Sable.
 5. Run setup again over it, into another folder. The first copy should be
    gone and only one Sable listed.

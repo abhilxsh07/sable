@@ -4320,15 +4320,22 @@ installer/Sable.nsi pages: welcome, the GPL (informational, no accept
 box), components (Sable; Start menu shortcut, on; desktop shortcut, off),
 folder (default Program Files\Sable, drive roots and Windows refused),
 progress, finish ("Open Sable now", "Make Sable my default PDF app", both
-ticked). It installs for all users and asks for an administrator once.
+ticked). It installs for the current user, into %LOCALAPPDATA%\Programs\Sable
+by default, so there's no UAC prompt; a folder that would need an
+administrator, like Program Files, is refused on the folder page with a
+note to pick another.
 
 Setup registers a Sable.PDF ProgID, OpenWithProgids for .pdf,
 Applications\Sable.exe, App Paths and Default Programs capabilities under
-HKLM, so Sable shows in Open with and in Settings > Default apps. Windows
+HKCU, so Sable shows in Open with and in Settings > Default apps. Windows
 doesn't let a program make itself the default, so the finish checkbox
-opens ms-settings:defaultapps?registeredAppMachine=Sable, Sable's own page
-in Default apps (Windows 11 with the April 2023 update or later), where
-one click does it. This replaces the 12 November line that Sable registers
+says in one line what to pick and opens Settings > Default apps; typing
+.pdf there lists Sable, marked New. Two shortcuts were tried and dropped:
+Settings' per-app page (ms-settings:defaultapps?registeredAppUser=Sable)
+found the machine-wide test install but not the per-user one, even after
+restarting Explorer, and SHOpenWithDialog with OAIF_REGISTER_EXT only gets
+a "go to Settings" message on Windows 11. Windows itself may also ask
+which app to use the next time a PDF is opened. This replaces the 12 November line that Sable registers
 no associations; the portable ZIP still doesn't.
 
 When the Windows App Runtime 2.5.1 or later for the PC's architecture is
@@ -4339,11 +4346,19 @@ page. Nothing of Microsoft's is bundled.
 An earlier install is removed with its own uninstaller first, wherever it
 was, so upgrades and moving folders leave one copy. If Sable is open, setup
 and uninstall ask you to close it. Uninstall removes the listed files,
-shortcuts and registry entries and keeps settings and logs. Open Sable now
-starts it through Explorer so it runs as you, not elevated. The setup .exe
-is unsigned, like the ZIP, so SmartScreen and UAC show an unknown
+shortcuts and registry entries and keeps settings and logs. The setup
+.exe is unsigned, like the ZIP, so SmartScreen warns about an unknown
 publisher until signing is settled.
 
 scripts/installer.py builds it from a verified package ZIP; test_installer.py
 covers the version number and the uninstall list. release.yaml doesn't
 build the installer yet.
+
+Signing, looked at again the same day: Azure Artifact Signing only
+validates individuals in the USA and Canada, so it's out. What's left is
+SignPath Foundation (free for open-source projects, after an application;
+the certificate and the publisher shown are SignPath Foundation's, and
+signing runs from CI) or Certum's Open Source Code Signing certificate
+(paid, issued to me as "Open Source Developer, Abhilash Kar" after an ID
+check). Either one replaces "Unknown publisher"; SmartScreen's warning only
+goes once the signed builds have built up download reputation. My call.
