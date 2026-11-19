@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/abhilxsh07/sable/releases/tag/v1.0.0-alpha.1"><img alt="Release" src="https://img.shields.io/github/v/release/abhilxsh07/sable?include_prereleases&label=release"></a>
+	<a href="https://github.com/abhilxsh07/sable/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/abhilxsh07/sable/total?label=downloads"></a>
   <a href="https://github.com/abhilxsh07/sable/actions/workflows/pull.yaml"><img alt="Build" src="https://github.com/abhilxsh07/sable/actions/workflows/pull.yaml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: GPL-2.0-only" src="https://img.shields.io/badge/license-GPL--2.0--only-blue"></a>
   <img alt="Windows 10 and 11, x64 and ARM64" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%C2%B7%20x64%20%7C%20ARM64-0078D4">
