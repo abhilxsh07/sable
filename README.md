@@ -168,7 +168,7 @@ Settings > Shortcuts.
   format steps, and a GitHub Actions workflow that checks formatting, builds
   x64 and ARM64 and runs the tests on x64. Release ZIPs are built in a stable
   order with a manifest and SHA-256 sums, and the installer is an NSIS script.
-- **Tests.** Over 600 GoogleTest tests cover the engine, rendering against
+- **Tests.** 903 GoogleTest tests cover the engine, rendering against
   golden images, annotations, forms, export, printing, keybinds and the UI
   logic, along with malformed-input, cache, cancellation and lifetime cases.
 - **Size.** Roughly 46,000 lines of app code and 40,000 lines of tests.
